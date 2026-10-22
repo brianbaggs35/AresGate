@@ -137,6 +137,30 @@ RUN npm ci --ignore-scripts --no-audit --no-fund && chown -R aresgate:aresgate /
 WORKDIR /app
 COPY docker/supervisor/dev.d /etc/supervisor/conf.d
 
+# ---- End-to-end test image: `make e2e` -------------------------------------------------
+# The production image plus what the Playwright tests need: the test harness (backend/e2e),
+# which can erase the database and so is never in the production image, the API run under
+# coverage, a web app built with inline source maps so the browser's coverage maps back to
+# src/, and rate limits loose enough for tests that make many requests.
+FROM frontend-build AS frontend-e2e-build
+RUN npm run build:e2e
+
+FROM backend-build AS backend-e2e-build
+RUN uv sync --frozen --no-dev --no-build --group e2e
+
+FROM runtime-base AS e2e
+COPY --from=backend-e2e-build /opt/venv /opt/venv
+COPY --from=frontend-e2e-build /src/dist /usr/share/aresgate/www
+COPY backend/e2e /app/backend/e2e
+COPY docker/e2e/coveragerc /app/docker/e2e/coveragerc
+COPY --chmod=0755 docker/e2e/start-api.sh /app/docker/e2e/start-api.sh
+COPY docker/e2e/api.conf /etc/supervisor/conf.d/api.conf
+RUN sed -i -e 's|zone=api:10m rate=20r/s;|zone=api:10m rate=500r/s;|' \
+        -e 's|zone=auth:10m rate=10r/m;|zone=auth:10m rate=500r/s;|' /etc/nginx/nginx.conf \
+    && grep -q 'zone=api:10m rate=500r/s;' /etc/nginx/nginx.conf \
+    && grep -q 'zone=auth:10m rate=500r/s;' /etc/nginx/nginx.conf
+ENV ARESGATE_MODE=production ARESGATE_ENVIRONMENT=test
+
 # ---- Production image (default target) ------------------------------------------------
 FROM runtime-base AS runtime
 # The release workflow passes the release's version (e.g. 1.4.0), which Settings > System

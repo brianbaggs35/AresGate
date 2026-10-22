@@ -27,6 +27,12 @@ grep --quiet '<div id="app">' <<<"$index" || fail "the web app's index page did 
 curl --silent --show-error --fail --insecure --output /dev/null "$base/integrations" ||
     fail "a page of the web app did not fall back to the index"
 
+echo "The end-to-end test harness is not in this image"
+# It can erase the database, so only the e2e image has it (the Dockerfile's e2e target).
+code="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' --request POST \
+    "$base/api/__test__/database/clean")"
+[[ "$code" = 404 ]] || fail "the test harness answered $code, but only the e2e image has it"
+
 echo "TLS 1.3 only"
 curl --silent --show-error --fail --insecure --tlsv1.3 --tls-max 1.3 --output /dev/null "$base/" ||
     fail "TLS 1.3 was refused"

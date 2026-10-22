@@ -1,0 +1,9 @@
+# Coverage settings for the API's end-to-end runs (the e2e image, and CI's run on the runner),
+# which start it under `coverage run` so the Playwright tests can report what they exercised
+# (GET /api/__test__/coverage).
+[run]
+branch = true
+source = app
+# Paths relative to backend/, so reports line up with it in the repository.
+relative_files = true
+data_file = /tmp/aresgate-api.coverage

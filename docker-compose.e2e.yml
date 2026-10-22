@@ -1,0 +1,39 @@
+# The end-to-end test server: `make e2e`, or `make e2e-up` to keep it running while you write
+# specs. It's the production image plus the test harness, which can erase the database, so it
+# runs as a project of its own: throwaway data in memory, no .env, and a port only this
+# computer can reach. See frontend/e2e/README.md.
+name: aresgate-e2e
+
+services:
+  aresgate:
+    build:
+      context: .
+      target: e2e
+    image: aresgate:e2e
+    container_name: aresgate-e2e
+    environment:
+      ARESGATE_SERVER_NAME: localhost
+      ARESGATE_HTTPS_PORT: ${ARESGATE_E2E_PORT:-9443}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${ARESGATE_E2E_PORT:-9443}:8443"
+    # The same hardening as production (docker-compose.yml).
+    read_only: true
+    tmpfs:
+      - /data
+      - /run
+      - /tmp
+      - /var/cache/nginx
+      - /etc/nginx/conf.d
+      - /etc/nginx/aresgate
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
