@@ -107,7 +107,7 @@ lint: lint-backend lint-frontend lint-infra ## Run every linter and type checker
 
 lint-backend: ## ruff, pyright and bandit (API and container scripts)
 	$(BACKEND) uv run ruff check . ../docker && uv run ruff format --check . ../docker \
-		&& uv run pyright && uv run bandit -c pyproject.toml -r app migrations ../docker -q
+		&& uv run pyright && uv run bandit -c pyproject.toml -r app e2e migrations ../docker -q
 
 lint-frontend: ## ESLint, Prettier and vue-tsc
 	$(FRONTEND) npm run lint -- --max-warnings=0 && npm run format:check && npm run typecheck

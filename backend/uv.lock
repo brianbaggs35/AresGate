@@ -71,6 +71,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+e2e = [
+    { name = "coverage" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -93,6 +96,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.17.1" },
 ]
+e2e = [{ name = "coverage", specifier = ">=7.14" }]
 
 [[package]]
 name = "bandit"
