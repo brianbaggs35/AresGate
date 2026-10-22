@@ -214,11 +214,8 @@ def log_in_with_passkey(
         passkey = passkeys.finish_sign_in(db, settings, body.challenge_id, body.credential, now)
     except (passkeys.ChallengeGone, passkeys.Rejected) as error:
         reason = error.reason if isinstance(error, passkeys.Rejected) else "challenge_gone"
-        user = (
-            db.get(User, error.user_id)
-            if isinstance(error, passkeys.Rejected) and error.user_id
-            else None
-        )
+        owner = error.user_id if isinstance(error, passkeys.Rejected) else None
+        user = db.get(User, owner) if owner else None
         throttle.record_failure(db, Scope.ADDRESS, address, now)
         record_audit(
             db,
