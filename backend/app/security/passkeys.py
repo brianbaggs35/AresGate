@@ -13,6 +13,7 @@ to care which make of device holds the key.
 """
 
 import struct
+from abc import abstractmethod
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Protocol, cast
@@ -89,28 +90,36 @@ class AlreadyRegistered(Exception):
 class _Server(Protocol):
     """The parts of ``Fido2Server`` used here, with the types its ``state`` lacks."""
 
+    @abstractmethod
     def register_begin(
         self,
         user: PublicKeyCredentialUserEntity,
         credentials: Sequence[AttestedCredentialData],
         resident_key_requirement: ResidentKeyRequirement,
         user_verification: UserVerificationRequirement,
-    ) -> tuple[CredentialCreationOptions, dict[str, Any]]: ...
+    ) -> tuple[CredentialCreationOptions, dict[str, Any]]:
+        """Starts making a passkey."""
 
+    @abstractmethod
     def register_complete(
         self, state: Mapping[str, Any], response: Mapping[str, Any]
-    ) -> AuthenticatorData: ...
+    ) -> AuthenticatorData:
+        """Checks the answer to ``register_begin``."""
 
+    @abstractmethod
     def authenticate_begin(
         self, user_verification: UserVerificationRequirement
-    ) -> tuple[CredentialRequestOptions, dict[str, Any]]: ...
+    ) -> tuple[CredentialRequestOptions, dict[str, Any]]:
+        """Starts a sign-in."""
 
+    @abstractmethod
     def authenticate_complete(
         self,
         state: Mapping[str, Any],
         credentials: Sequence[AttestedCredentialData],
         response: Mapping[str, Any],
-    ) -> AttestedCredentialData: ...
+    ) -> AttestedCredentialData:
+        """Checks the answer to ``authenticate_begin``."""
 
 
 def _server(settings: Settings) -> _Server:
