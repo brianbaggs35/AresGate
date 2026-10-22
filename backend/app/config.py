@@ -9,6 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app import __version__
 
+# Where the container keeps the secret key it makes on its first start.
+DEFAULT_SECRET_KEY_FILE = Path("/data/secrets/secret.key")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ARESGATE_", env_file=".env", extra="ignore")
@@ -29,7 +32,7 @@ class Settings(BaseSettings):
     # (a restored backup, a secret manager). Either the key itself or a file holding it, such as
     # a Docker secret: app/secret_key.py has the rules.
     secret_key: SecretStr | None = None
-    secret_key_file: Path = Path("/data/secrets/secret.key")
+    secret_key_file: Path = DEFAULT_SECRET_KEY_FILE
 
     # The name people browse to and the host port it's served on. Passkeys and the check that
     # requests really come from AresGate's own pages are bound to this address.

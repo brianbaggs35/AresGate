@@ -65,3 +65,19 @@ def test_tests_and_the_harness_leave_logging_as_it_is(
 
     with TestClient(create_app(settings)):
         pass
+
+
+def test_a_refused_request_does_not_quote_what_was_sent(client: TestClient) -> None:
+    response = client.post(
+        "/api/auth/login", json={"username": "brian", "password": "hunter2" * 200}
+    )
+
+    assert response.status_code == 422
+    assert "hunter2" not in response.text
+    assert response.json()["detail"] == [
+        {
+            "type": "string_too_long",
+            "loc": ["body", "password"],
+            "msg": "String should have at most 1024 characters",
+        }
+    ]

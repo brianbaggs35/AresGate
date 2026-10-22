@@ -4,8 +4,10 @@ import asyncio
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import logs, retention
@@ -51,6 +53,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={HEADER: logs.request_id.get() or ""},
         )
 
+    def invalid_request(request: Request, error: Exception) -> JSONResponse:
+        # FastAPI's own report quotes the value that was wrong, which for a password or a
+        # credential would send it straight back.
+        problems = cast("RequestValidationError", error).errors()
+        detail = [
+            {"type": item["type"], "loc": item["loc"], "msg": item["msg"]} for item in problems
+        ]
+        return JSONResponse({"detail": detail}, status_code=422)
+
     app = FastAPI(
         title="AresGate API",
         version=settings.version,
@@ -63,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.started_monotonic = time.monotonic()
     app.add_middleware(RequestContext)
     app.add_exception_handler(Exception, server_error)
+    app.add_exception_handler(RequestValidationError, invalid_request)
     app.include_router(api_router, prefix="/api")
     app.dependency_overrides[get_settings] = lambda: settings
     return app

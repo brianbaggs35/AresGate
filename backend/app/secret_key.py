@@ -11,13 +11,23 @@ import sys
 
 from pydantic import SecretStr
 
-from app.config import Settings, get_settings
+from app.config import DEFAULT_SECRET_KEY_FILE, Settings, get_settings
 
 MIN_LENGTH = 32
 
 
 class SecretKeyError(RuntimeError):
     """The app secret key is missing or unusable."""
+
+
+def check_length(key: str, source: str) -> SecretStr:
+    """The key, or ``SecretKeyError`` if it is too short to use."""
+    if len(key) < MIN_LENGTH:
+        raise SecretKeyError(
+            f"The app secret key from {source} has {len(key)} characters, "
+            f"but it needs at least {MIN_LENGTH}."
+        )
+    return SecretStr(key)
 
 
 def load_secret_key(settings: Settings) -> SecretStr:
@@ -34,12 +44,14 @@ def load_secret_key(settings: Settings) -> SecretStr:
                 f"There is no app secret key. Set ARESGATE_SECRET_KEY, or put the key in {source} "
                 f"(ARESGATE_SECRET_KEY_FILE changes where it is looked for): {error}"
             ) from error
-    if len(key) < MIN_LENGTH:
-        raise SecretKeyError(
-            f"The app secret key from {source} has {len(key)} characters, "
-            f"but it needs at least {MIN_LENGTH}."
-        )
-    return SecretStr(key)
+    return check_length(key, source)
+
+
+def is_container_made(settings: Settings) -> bool:
+    """Whether the key is the one the container made in its data volume, rather than one that
+    was supplied. Only that one can be replaced without touching how AresGate is started."""
+    supplied = settings.secret_key is not None and settings.secret_key.get_secret_value().strip()
+    return not supplied and settings.secret_key_file == DEFAULT_SECRET_KEY_FILE
 
 
 def check_or_exit() -> None:

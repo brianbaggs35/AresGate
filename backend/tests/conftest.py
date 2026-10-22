@@ -9,7 +9,7 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import audit
+from app import audit, cli, db
 from app.config import Settings
 from app.db import get_session
 from app.main import create_app
@@ -111,6 +111,17 @@ def csrf_token(client: TestClient, account: User) -> str:
     )
     assert response.status_code == 200
     return str(response.json()["csrf_token"])
+
+
+@pytest.fixture
+def command_line(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runs the commands in app/cli.py against the test database."""
+
+    def sessionmaker_for_test() -> sessionmaker[Session]:
+        return sessionmaker(bind=engine, expire_on_commit=False)
+
+    monkeypatch.setattr(cli, "get_sessionmaker", sessionmaker_for_test)
+    monkeypatch.setattr(db, "get_sessionmaker", sessionmaker_for_test)
 
 
 @pytest.fixture

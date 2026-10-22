@@ -20,7 +20,7 @@ TEST_DB := aresgate-test-db
 TEST_DB_PORT ?= 55432
 
 .DEFAULT_GOAL := help
-.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key two-factor-off \
+.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key rotate-secret-key two-factor-off \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
 	e2e e2e-up e2e-down e2e-host e2e-coverage e2e-ui e2e-codegen e2e-report e2e-logs \
 	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
@@ -72,6 +72,9 @@ two-factor-off: ## Turn off an account's authenticator app (ACCOUNT=<username>)
 
 secret-key: ## Print the app secret key, to keep somewhere safe apart from the backups
 	@$(COMPOSE) exec -u aresgate aresgate cat /data/secrets/secret.key
+
+rotate-secret-key: ## Change the app secret key and seal everything AresGate stores again with it
+	$(COMPOSE) exec -T -u aresgate -w /app/backend aresgate python -m app.cli rotate-secret-key
 
 ## ---- Develop -------------------------------------------------------------------
 dev: ## Run the dev container with live reload (Vite + API)
