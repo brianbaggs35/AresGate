@@ -3,26 +3,15 @@ import sys
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
-from app import cli, db
+from app import cli
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.models import AuditEvent, RecoveryCode, TotpCredential, User, UserSession
 from app.security import two_factor
 from tests.helpers import ACCOUNT_USERNAME, turn_on_two_factor
-
-
-@pytest.fixture
-def command_line(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Runs the commands against the test database."""
-
-    def sessionmaker_for_test() -> sessionmaker[Session]:
-        return sessionmaker(bind=engine, expire_on_commit=False)
-
-    monkeypatch.setattr(cli, "get_sessionmaker", sessionmaker_for_test)
-    monkeypatch.setattr(db, "get_sessionmaker", sessionmaker_for_test)
 
 
 def test_it_takes_the_authenticator_app_off(

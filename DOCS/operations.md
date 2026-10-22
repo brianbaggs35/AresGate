@@ -63,9 +63,49 @@ supplied. Either way the container hands the key only to the API, and takes `ARE
 out of the environment of everything else it runs. After changing `.env`, run `make up` (or `make pull`) again so the
 container is created with the new setting: `make restart` keeps the old one.
 
-Changing the key after AresGate has stored credentials makes those credentials, and the keys of
-authenticator apps, unreadable, so only do it to bring back the key that encrypted them. (If it
-is lost for good, [turn the second step off](#signing-in) and set it up again.)
+Changing `.env` to a different key makes the credentials AresGate has stored, and the keys of
+authenticator apps, unreadable, so only do it to bring back the key that encrypted them. To
+change the key on purpose, use `make rotate-secret-key` instead, below. (If the key is lost for
+good, [turn the second step off](#signing-in) and set it up again.)
+
+### Changing the app secret key
+
+Change the key now and then, and at once if you think someone has seen it:
+
+```sh
+make rotate-secret-key
+```
+
+This works when the container made the key. It makes a new one, seals everything AresGate
+stores again with it (the credentials for your integrations and AI providers, and the keys of
+authenticator apps), and replaces the key in the data volume, which AresGate starts using at
+once. It is all one transaction, so if anything can't be opened with the current key the command
+says which and changes nothing. Then run `make restart`, so that the logs blank out the new key
+too, keep a copy of the new key apart from the backups (`make secret-key`), and take a new
+backup, because **older backups need the older key**.
+
+Two things to know:
+
+- **Recovery codes end.** They are kept as hashes made with the key and can't be made again
+  under a new one, so each account has to make new codes on the Security page. Its authenticator
+  app keeps working.
+- **Do it when nobody is signing in.** For the moment between the data changing and the key file
+  being replaced, a request that needs a sealed value can fail. Trying again works.
+
+If you supplied the key in `.env` or as a Docker secret, the container can't change it for you,
+so give the command the new key (at least 32 characters) on its standard input, then put the
+same key in `.env` or the secret and run `make up` so that AresGate restarts with it. Until it
+does, AresGate can't open what it stores.
+
+```sh
+docker compose exec -T -u aresgate -w /app/backend aresgate \
+    python -m app.cli rotate-secret-key --new-key-file - < new-secret-key.txt
+```
+
+If a rotation is cut short, `secret.key.new` can be left beside the key in `secrets/`. If the
+stored credentials still open with `secret.key`, the change never happened: delete the new file.
+If they don't, move `secret.key.new` over `secret.key`. Either way the next rotation refuses to
+run until the leftover file is gone.
 
 ### Restoring
 

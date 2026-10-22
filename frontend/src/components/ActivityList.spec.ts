@@ -54,6 +54,9 @@ describe('ActivityList', () => {
       'auth.two_factor_disabled',
       'auth.two_factor_failed',
       'auth.recovery_codes_created',
+      'credential.stored',
+      'credential.deleted',
+      'system.secret_key_rotated',
       'audit.events_purged',
     ]
     const wrapper = await show(
@@ -69,6 +72,9 @@ describe('ActivityList', () => {
       'Two-step verification was turned off',
       'Wrong verification code',
       'New recovery codes were made',
+      'A credential was saved',
+      'A credential was deleted',
+      'The app secret key was changed',
       'Old activity was removed',
     ])
   })

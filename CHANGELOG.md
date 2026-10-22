@@ -47,6 +47,15 @@ Every release's notes are here, newest first. The format follows
 - `make two-factor-off ACCOUNT=<username>` turns an account's second step off for someone who
   has lost both the phone and the recovery codes. It ends the account's sign-ins and leaves an
   event in the audit log ([DOCS/operations.md](DOCS/operations.md)).
+- An encrypted, write-only store for the credentials of integrations and AI providers: each is
+  sealed with AES-256-GCM using a key made from the app secret key for its purpose and tied to
+  its row, so a copy of the database reveals none of them. `PUT`, `DELETE` and `GET
+  /api/credentials` store, forget and list them, and nothing returns a value. A refused request
+  no longer quotes what it was sent. The pages that use it come with the integrations
+  ([DOCS/security.md](DOCS/security.md)).
+- `make rotate-secret-key` changes the app secret key and seals everything stored again with
+  the new one, all or nothing, and leaves an event in the audit log. Recovery codes can't be
+  carried over and are made again ([DOCS/operations.md](DOCS/operations.md)).
 - Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
   that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`

@@ -173,6 +173,30 @@ def disable(db: Session, user_id: UUID) -> None:
     db.execute(delete(TotpCredential).where(TotpCredential.user_id == user_id))
 
 
+def reseal_keys(db: Session, old: Settings, new: Settings) -> int:
+    """Seals every account's authenticator key again with a new app secret key, and returns how
+    many there were. Raises ``VaultError`` naming the account whose key can't be opened with the
+    old one. The caller commits."""
+    rows = db.execute(
+        select(TotpCredential, User.username).join(User, User.id == TotpCredential.user_id)
+    ).all()
+    for credential, username in rows:
+        belongs_to = str(credential.user_id)
+        try:
+            key = vault.unseal(old, _KEY_PURPOSE, credential.secret_sealed, belongs_to)
+        except vault.VaultError as error:
+            raise vault.VaultError(f"The authenticator key of {username}: {error}") from error
+        credential.secret_sealed = vault.seal(new, _KEY_PURPOSE, key, belongs_to)
+    return len(rows)
+
+
+def discard_recovery_codes(db: Session) -> int:
+    """Removes every account's recovery codes, and returns how many were left. They are kept as
+    hashes made with the app secret key, which can't be made again under a new key without the
+    codes themselves, so a new key ends them. The caller commits."""
+    return db.connection().execute(delete(RecoveryCode)).rowcount
+
+
 def make_challenge(settings: Settings, user_id: UUID, now: datetime) -> str:
     """What a right password earns on an account with an authenticator app: proof it was
     given, which only this install can have made, and which stops working after a few minutes."""

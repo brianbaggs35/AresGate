@@ -9,6 +9,7 @@ from app.models.auth import (
     UserSession,
 )
 from app.models.base import Base, UTCDateTime, utcnow
+from app.models.credentials import StoredCredential
 from app.models.system import SystemInfo
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "Base",
     "LoginThrottle",
     "RecoveryCode",
+    "StoredCredential",
     "SystemInfo",
     "TotpCredential",
     "UTCDateTime",

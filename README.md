@@ -25,8 +25,8 @@ being built in this order. Nothing here is ready to protect a network yet.
 
 | | |
 | --- | --- |
-| **Built** | The single hardened container (nginx with TLS 1.3, the API, PostgreSQL and the web app), the status page, light and dark themes, the test, scanning and release pipeline, first-run setup and sign-in (API and pages), an audit log, and a second step with an authenticator app |
-| **Next** | Passkeys, an encrypted store for credentials |
+| **Built** | The single hardened container (nginx with TLS 1.3, the API, PostgreSQL and the web app), the status page, light and dark themes, the test, scanning and release pipeline, first-run setup and sign-in (API and pages), an audit log, a second step with an authenticator app, and an encrypted store for credentials |
+| **Next** | Passkeys, the integration pages that use the credential store |
 | **Then** | Connecting OPNsense, ntopng and Wazuh, and an overview dashboard (Suricata and CrowdSec are planned after those) |
 | **Goal** | An AI analyst that reads that data around the clock, explains what it finds, and suggests what to do. It starts read-only: it never changes your firewall |
 

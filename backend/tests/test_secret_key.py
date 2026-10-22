@@ -5,7 +5,14 @@ from pydantic import SecretStr
 
 from app import secret_key
 from app.config import Settings
-from app.secret_key import MIN_LENGTH, SecretKeyError, check_or_exit, load_secret_key
+from app.secret_key import (
+    MIN_LENGTH,
+    SecretKeyError,
+    check_length,
+    check_or_exit,
+    is_container_made,
+    load_secret_key,
+)
 
 KEY = "a-key-that-is-long-enough-to-use-123"
 
@@ -91,3 +98,21 @@ def test_the_start_up_check_stops_with_a_plain_message(
     monkeypatch.setattr(secret_key, "get_settings", lambda: settings_for(tmp_path / "missing.key"))
     with pytest.raises(SystemExit, match=r"^aresgate: There is no app secret key"):
         check_or_exit()
+
+
+def test_a_key_of_the_minimum_length_passes_the_length_check_and_a_shorter_one_does_not() -> None:
+    assert check_length("k" * MIN_LENGTH, "a file").get_secret_value() == "k" * MIN_LENGTH
+    with pytest.raises(SecretKeyError, match="from a file has 31 characters"):
+        check_length("k" * (MIN_LENGTH - 1), "a file")
+
+
+def test_the_key_the_container_made_is_told_apart_from_one_that_was_supplied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made = tmp_path / "secret.key"
+    monkeypatch.setattr(secret_key, "DEFAULT_SECRET_KEY_FILE", made)
+
+    assert is_container_made(settings_for(made))
+    assert is_container_made(settings_for(made, "  "))
+    assert not is_container_made(settings_for(made, KEY))
+    assert not is_container_made(settings_for(tmp_path / "docker-secret"))

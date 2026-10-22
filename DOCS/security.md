@@ -37,6 +37,20 @@ see [SECURITY.md](../SECURITY.md).
 - The app secret key is made on first start, or supplied by you in `.env` or a Docker secret, and
   can be read only by the API. It must be at least 32 characters, and the API won't start
   without one.
+- The credentials AresGate holds for the things it talks to (a firewall's API key, an AI
+  provider's key) are encrypted with AES-256-GCM before they reach the database, using a key
+  made from the app secret key with HKDF, one for each purpose (integrations and AI providers).
+  Each is also tied to the row it belongs to, so it can't be opened with another key, as
+  another kind of value, or copied onto another row. A copy of the database on its own reveals
+  none of them, and a test checks that no password, key or recovery code appears anywhere in a
+  dump of every table.
+- Credentials only go in. The API stores, replaces and deletes them and says which are set, but
+  no route returns one, and a request that is refused doesn't quote what it was sent. Only the
+  code that talks to the integration opens a credential. Every store and delete is in the
+  audit log, with its name and never its value.
+- `make rotate-secret-key` changes the app secret key and seals everything again with the new
+  one, in a single transaction, so a value that can't be opened changes nothing
+  ([Operations](operations.md#changing-the-app-secret-key)).
 
 **The account and signing in**
 
@@ -104,7 +118,8 @@ see [SECURITY.md](../SECURITY.md).
 - Setting up, signing in (and every wrong guess), signing out and the log's own housekeeping are
   recorded, each with the time, the account, the address the request came from and the browser's
   name. Turning the second step on or off, wrong codes and new recovery codes are recorded too,
-  and so is the command that turns the step off. The features that follow (passkeys, settings
+  and so is the command that turns the step off. Storing or deleting a credential and changing
+  the app secret key are recorded as well. The features that follow (passkeys, settings
   and stored credentials) add their own events.
 - The database refuses to change or delete an event, so a bug in AresGate can't rewrite
   history. The one exception is the clean-up that deletes events older than
@@ -139,8 +154,9 @@ These are being built, in this order, and are not in AresGate yet:
 
 - Passkeys as another second step. Until then an account without a second step is protected by
   its password alone, so use a long one, and add an authenticator app on the Security page.
-- Credentials for OPNsense, ntopng, Wazuh and AI providers stored encrypted and write-only: you
-  can replace them but never read them back.
+- The pages where you enter the credentials for OPNsense, ntopng, Wazuh and AI providers. The
+  store they will use is in AresGate already; you can replace a credential but never read it
+  back.
 - Logging that redacts secrets, and the audit log's page in the web app.
 - An AI analyst that only reads at first. Hosted AI providers will get addresses and host names
   replaced with stand-ins.

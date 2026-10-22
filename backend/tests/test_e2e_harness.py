@@ -129,6 +129,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     e2e.post("/api/__test__/database/clean")
     expected = {
         "audit_events": 0,
+        "credentials": 0,
         "login_throttles": 0,
         "recovery_codes": 0,
         "system_info": len(BASELINE_SYSTEM_INFO),
@@ -161,6 +162,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "users",
             "system_info",
             "login_throttles",
+            "credentials",
             "audit_events",
         ],
     }
