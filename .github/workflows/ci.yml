@@ -321,6 +321,208 @@ jobs:
         if: ${{ always() }}
         run: docker compose down --volumes
 
+  # Playwright against the built container: the e2e image is the production image plus the test
+  # harness (the Dockerfile's e2e target), started with its compose file as `make e2e` does. Each
+  # shard builds and runs its own container and database, so the shards run side by side while
+  # the tests inside one stay sequential.
+  e2e-container:
+    name: End-to-end in the container (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    env:
+      # Optional: a Chainguard pull token, which raises the pull limits on cgr.dev. The base
+      # image is public, so the build works without it, as on pull requests from forks.
+      CHAINGUARD_PULL_USERNAME: ${{ secrets.CHAINGUARD_PULL_USERNAME }}
+      SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No package cache here: this job also builds an image, and a poisoned cache must not be
+      # able to reach what it builds.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Chromium for Playwright
+        working-directory: frontend
+        run: npm run e2e:install -- --with-deps
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to Chainguard
+        if: ${{ env.CHAINGUARD_PULL_USERNAME != '' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: cgr.dev
+          username: ${{ secrets.CHAINGUARD_PULL_USERNAME }}
+          password: ${{ secrets.CHAINGUARD_PULL_PASSWORD }}
+
+      - name: Today's date, to refresh cached OS packages daily
+        id: date
+        run: echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # Never published, so its packages only need refreshing daily.
+      - name: Build the test container
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: e2e
+          load: true
+          tags: aresgate:e2e
+          build-args: APK_REFRESH=${{ steps.date.outputs.today }}
+          cache-from: |
+            type=gha
+            type=gha,scope=e2e-${{ strategy.job-index }}
+          # One scope per shard, so shards that finish together don't export to the same one.
+          cache-to: type=gha,scope=e2e-${{ strategy.job-index }},mode=max,ignore-error=true
+
+      - name: Start the test container
+        run: docker compose --file docker-compose.e2e.yml up --detach --no-build --wait --wait-timeout 180
+
+      - name: Playwright tests with coverage
+        working-directory: frontend
+        run: npm run e2e -- --shard="$SHARD"
+
+      - name: Upload the report and coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-container-${{ strategy.job-index }}
+          path: frontend/e2e-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Test container logs
+        if: ${{ failure() }}
+        run: docker compose --file docker-compose.e2e.yml logs --no-color
+
+      - name: Stop the test container
+        if: ${{ always() }}
+        run: docker compose --file docker-compose.e2e.yml down --volumes
+
+  # The same specs with no container: the API (with the test harness) and the built web app run
+  # on the runner, on a Postgres service. A failure that shows up in only one of the two
+  # end-to-end jobs points at the container (nginx, TLS, the image) or at the code itself.
+  e2e-host:
+    name: End-to-end on the runner (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: aresgate
+          POSTGRES_DB: aresgate
+          # A throwaway database only this job can reach, so no password is kept for it.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        # Check over TCP so the check can't pass while the init scripts' socket-only server runs.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U aresgate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ARESGATE_DATABASE_URL: postgresql+psycopg://aresgate@127.0.0.1:5432/aresgate
+      SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          # Same Python as the container image.
+          python-version: "3.14"
+          working-directory: backend
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the API's dependencies
+        working-directory: backend
+        run: uv sync --locked --no-build --group e2e
+
+      - name: Install the web app's dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Chromium for Playwright
+        working-directory: frontend
+        run: npm run e2e:install -- --with-deps
+
+      - name: Playwright tests with coverage
+        run: ./.github/scripts/e2e-host.sh --shard="$SHARD"
+
+      - name: Upload the report and coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-host-${{ strategy.job-index }}
+          path: frontend/e2e-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Each shard only runs some of the specs, so the web app's coverage is merged across every
+  # shard of both runs before it's held to its 95% minimum (100% is the target).
+  e2e-coverage:
+    name: End-to-end coverage
+    needs: [e2e-container, e2e-host]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Download every shard's report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-*
+          path: e2e-artifacts
+
+      - name: Merge and check the web app's coverage (95% minimum; 100% target)
+        working-directory: frontend
+        run: npm run e2e:coverage -- ../e2e-artifacts/*/coverage/web/raw
+
+      - name: Upload the merged report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: end-to-end-coverage
+          path: frontend/e2e-results/coverage-merged/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # SonarQube Cloud: bugs, code smells, security hotspots, duplication and coverage, held to
   # its quality gate. It needs the SONAR_TOKEN secret (DOCS, Code quality); without it,
   # as on pull requests from forks, the job is skipped.

@@ -22,7 +22,7 @@ TEST_DB_PORT ?= 55432
 .DEFAULT_GOAL := help
 .PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
-	e2e e2e-up e2e-down e2e-host e2e-ui e2e-codegen e2e-report e2e-logs \
+	e2e e2e-up e2e-down e2e-host e2e-coverage e2e-ui e2e-codegen e2e-report e2e-logs \
 	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
 
 help: ## Show this help
@@ -128,6 +128,9 @@ e2e-host: ## Run the Playwright tests with no container: the API and web app run
 	@ARESGATE_DATABASE_URL=postgresql+psycopg://aresgate@127.0.0.1:$(TEST_DB_PORT)/aresgate \
 		.github/scripts/e2e-host.sh $(ARGS); status=$$?; docker rm --force $(TEST_DB) >/dev/null; exit $$status
 
+e2e-coverage: ## Check the last full run's web coverage reached the minimum (95%)
+	$(FRONTEND) npm run e2e:coverage
+
 e2e-ui: e2e-up ## Open Playwright's UI to run and debug tests step by step
 	$(FRONTEND) npm run e2e:ui
 
@@ -177,4 +180,4 @@ scan-image: ## Trivy: vulnerabilities in the built image's packages
 
 clean: ## Remove local build and test artifacts
 	rm -rf backend/.pytest_cache backend/.ruff_cache backend/.coverage \
-		backend/coverage.xml frontend/dist frontend/coverage build.log
+		backend/coverage.xml frontend/dist frontend/coverage frontend/e2e-results build.log
