@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import SystemInfo, UTCDateTime, utcnow
+from app.models import LoginThrottle, SystemInfo, User, UserSession, UTCDateTime, utcnow
 
 
 def test_system_info_round_trips(session: Session) -> None:
@@ -42,3 +44,42 @@ def test_nothing_in_nothing_out() -> None:
 
 def test_utcnow_is_aware() -> None:
     assert utcnow().tzinfo is UTC
+
+
+def test_an_account_and_its_session_round_trip(session: Session) -> None:
+    user = User(username="brian", password_hash="$argon2id$x")
+    session.add(user)
+    session.flush()
+    session.add(
+        UserSession(
+            token_hash="a" * 64,
+            user=user,
+            csrf_token="csrf",
+            expires_at=utcnow() + timedelta(hours=1),
+        )
+    )
+    session.commit()
+    session.expire_all()
+
+    stored = session.scalars(select(UserSession)).one()
+    assert stored.user.username == "brian"
+    assert stored.user.created_at.tzinfo is UTC
+    assert stored.last_seen_at.tzinfo is UTC
+
+
+def test_usernames_are_unique(session: Session) -> None:
+    session.add(User(username="brian", password_hash="x"))
+    session.commit()
+    session.add(User(username="brian", password_hash="y"))
+
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_a_failure_count_starts_unlocked(session: Session) -> None:
+    session.add(LoginThrottle(scope="account", key_hash="k" * 64, last_failure_at=utcnow()))
+    session.commit()
+
+    row = session.scalars(select(LoginThrottle)).one()
+    assert row.failures == 0
+    assert row.locked_until is None

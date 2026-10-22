@@ -1,0 +1,114 @@
+"""Signing in and out."""
+
+import math
+from datetime import datetime, timedelta
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field
+
+from app.api.deps import Db, SettingsDep, SignedIn, client_address, signed_in
+from app.config import Settings
+from app.models import User, utcnow
+from app.security import passwords, sessions, throttle
+from app.security.accounts import find_user, normalize_username
+from app.security.throttle import Scope
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class SessionInfo(BaseModel):
+    username: str
+    # Sent back in the X-CSRF-Token header with every change.
+    csrf_token: str
+    expires_at: datetime
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(max_length=256)
+    password: str = Field(max_length=1024)
+
+
+def too_many_attempts(wait: timedelta) -> HTTPException:
+    seconds = math.ceil(wait.total_seconds())
+    minutes = math.ceil(seconds / 60)
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        f"Too many attempts. Try again in {minutes} minute{'' if minutes == 1 else 's'}.",
+        headers={"Retry-After": str(seconds)},
+    )
+
+
+def open_session(
+    db: Db, response: Response, user: User, settings: Settings, now: datetime
+) -> SessionInfo:
+    """Signs the user in: records the session, commits, and sets its cookie."""
+    sessions.purge_ended(db, settings, now)
+    row, token = sessions.start(db, user, settings, now)
+    db.commit()
+    # No Max-Age, so the browser forgets it when it closes. The __Host- prefix makes browsers
+    # accept it only from this exact host, over HTTPS, for the whole site.
+    response.set_cookie(
+        sessions.COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
+    return SessionInfo(
+        username=user.username,
+        csrf_token=row.csrf_token,
+        expires_at=sessions.expires_at(row, settings),
+    )
+
+
+@router.post("/login")
+def log_in(
+    body: LoginRequest, request: Request, response: Response, db: Db, settings: SettingsDep
+) -> SessionInfo:
+    now = utcnow()
+    address = client_address(request)
+    username = normalize_username(body.username)
+
+    waits = [
+        wait
+        for scope, value in ((Scope.ADDRESS, address), (Scope.ACCOUNT, username))
+        if (wait := throttle.remaining_lockout(db, scope, value, now))
+    ]
+    if waits:
+        raise too_many_attempts(max(waits))
+
+    user = find_user(db, username)
+    # The same work whether or not the username is an account.
+    password_ok = passwords.verify_password(body.password, user.password_hash if user else None)
+    if user is None or not password_ok:
+        throttle.record_failure(db, Scope.ADDRESS, address, now)
+        throttle.record_failure(db, Scope.ACCOUNT, username, now)
+        db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect username or password.")
+
+    throttle.clear(db, Scope.ADDRESS, address)
+    throttle.clear(db, Scope.ACCOUNT, username)
+    if passwords.needs_rehash(user.password_hash):
+        user.password_hash = passwords.hash_password(body.password)
+    return open_session(db, response, user, settings, now)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def log_out(auth: Annotated[SignedIn, Depends(signed_in)], response: Response, db: Db) -> None:
+    sessions.end(db, auth.session)
+    response.delete_cookie(
+        sessions.COOKIE_NAME, httponly=True, secure=True, samesite="strict", path="/"
+    )
+
+
+@router.get("/session")
+def current_session(
+    auth: Annotated[SignedIn, Depends(signed_in)], settings: SettingsDep
+) -> SessionInfo:
+    return SessionInfo(
+        username=auth.user.username,
+        csrf_token=auth.session.csrf_token,
+        expires_at=sessions.expires_at(auth.session, settings),
+    )

@@ -7,6 +7,7 @@ test.describe('test harness', () => {
     const counts = await harness.rowCounts()
 
     expect(counts.system_info).toBe(Object.keys(baseline.system_info).length)
+    expect(counts.users).toBe(1)
   })
 
   test('makes a record from what it is given, and makes up the rest', async ({ harness }) => {
@@ -24,12 +25,24 @@ test.describe('test harness', () => {
     })
   })
 
-  test('loads the fresh-install state, which has no rows at all', async ({ harness }) => {
+  test('loads the fresh-install state, which has no account, only a setup code', async ({
+    harness,
+  }) => {
     const loaded = await harness.loadFixture('fresh-install')
 
     expect(loaded.fixture).toBe('fresh-install')
-    expect(loaded.tables_emptied).toContain('system_info')
-    expect(Object.values(await harness.rowCounts()).every((rows) => rows === 0)).toBe(true)
+    expect(loaded.tables_emptied).toEqual(expect.arrayContaining(['system_info', 'users']))
+    expect(await harness.rowCounts()).toMatchObject({ users: 0, user_sessions: 0, system_info: 1 })
+  })
+
+  test('makes an account from what it is given, and makes up the rest', async ({ harness }) => {
+    const chosen = await harness.createAccount({ username: 'chosen', password: 'kept as given' })
+    const invented = await harness.createAccount()
+
+    expect(chosen).toEqual({ username: 'chosen', password: 'kept as given' })
+    expect(invented.username).not.toBe(chosen.username)
+    expect(invented.password).not.toBe('')
+    expect((await harness.rowCounts()).users).toBe(3)
   })
 
   test('puts the baseline back after anything else', async ({ harness, baseline }) => {
@@ -38,7 +51,9 @@ test.describe('test harness', () => {
 
     await harness.clean()
 
-    expect((await harness.rowCounts()).system_info).toBe(Object.keys(baseline.system_info).length)
+    const counts = await harness.rowCounts()
+    expect(counts.system_info).toBe(Object.keys(baseline.system_info).length)
+    expect(counts.users).toBe(1)
   })
 
   test('never touches the migration history', async ({ harness }) => {

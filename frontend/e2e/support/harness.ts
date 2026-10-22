@@ -11,10 +11,20 @@ import {
  * `make e2e-host` starts, serve it, under /api/__test__.
  */
 
+/** What to sign in with. */
+export interface Credentials {
+  username: string
+  password: string
+}
+
 /** What the baseline holds, as the API describes it. */
 export interface BaselineData {
   /** The `system_info` rows, by key. */
   system_info: Record<string, string>
+  /** The account the baseline signs in with. */
+  account: Credentials
+  /** The setup code the `fresh-install` state waits with, where a real install prints its own. */
+  fresh_install_setup_code: string
 }
 
 /** The named states `loadFixture()` can put the database in. */
@@ -123,6 +133,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/system-info', { data: record })
       .then((response) => readJson<SystemInfoRecord>(response, 'Making a system_info row'))
+  }
+
+  /** Adds an account; what isn't given is made up. Returns what to sign in with. */
+  createAccount(record: { username?: string; password?: string } = {}): Promise<Credentials> {
+    return this.api
+      .post('/api/__test__/factories/account', { data: record })
+      .then((response) => readJson<Credentials>(response, 'Making an account'))
   }
 
   /** The API's coverage so far, or null when the API isn't measuring it. */

@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     server_name: str = "localhost"
     https_port: Annotated[int, Field(ge=1, le=65535)] = 443
 
+    # How long a sign-in lasts: until it has been idle for this long, or this long after it
+    # began, whichever comes first.
+    session_idle_minutes: Annotated[int, Field(ge=1)] = 30
+    session_max_hours: Annotated[int, Field(ge=1)] = 12
+
     @property
     def version(self) -> str:
         return self.release or __version__
