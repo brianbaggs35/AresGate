@@ -94,6 +94,31 @@ the backup or a newer one:
 
 The status page (the first page you see) shows whether the API and the database are up.
 
+## Signing in
+
+AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create
+it with the setup code from the log.
+
+- **Locked out.** Five wrong passwords lock the account for a minute, then two, four and so on up
+  to an hour; the page says how long. Behind Docker Desktop, or any setup that hides who is
+  connecting, every browser can look like the same address, so one person's wrong guesses can
+  make others wait too. The wait ends by itself.
+- **A sign-in ended.** It ends after 30 minutes idle or 12 hours in all. Change that with
+  `ARESGATE_SESSION_IDLE_MINUTES` and `ARESGATE_SESSION_MAX_HOURS` in `.env`, then `make up` or
+  `make restart`.
+- **Forgot the password.** There is no way to change or reset it from the web app yet. To start
+  over without losing anything else, delete the account and set up again:
+
+  ```sh
+  make psql
+  DELETE FROM users;
+  \q
+  make restart
+  ```
+
+  Then follow the setup steps with the code in `make logs`. Anyone who can run these commands
+  can already read everything on the server, so this opens nothing new.
+
 ## Certificates
 
 See [Quick start](quick-start.md#certificates). After you renew a certificate, `make restart`

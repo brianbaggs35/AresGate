@@ -32,6 +32,8 @@ settings have working defaults:
 | `TZ` | `UTC` | Time zone, e.g. `America/Halifax` |
 | `ARESGATE_API_WORKERS` | `2` | How many API processes to run |
 | `ARESGATE_SECRET_KEY` | made for you | The key that encrypts what AresGate stores. Only set it to bring a key from another server ([Operations](operations.md#the-app-secret-key)) |
+| `ARESGATE_SESSION_IDLE_MINUTES` | `30` | How long a sign-in can sit unused before it ends |
+| `ARESGATE_SESSION_MAX_HOURS` | `12` | The longest a sign-in lasts, however busy |
 
 Then build and start it:
 
@@ -39,9 +41,29 @@ Then build and start it:
 make up
 ```
 
-The first build takes a few minutes. When it's done, open `https://<your server name>`. You
-should see AresGate's status page with the API and database shown as running. `make ps` shows
-the container's health.
+The first build takes a few minutes. When it's done, `make ps` shows the container's health.
+
+## Set up your account
+
+A new install has no account, and anyone who reaches the page first could take it, so AresGate
+asks for a setup code that only someone who can read its log has. Run `make logs` and look for
+the box near the start:
+
+```
+================================================================
+ AresGate is ready to be set up.
+ Open https://aresgate.example.com and enter this setup code:
+
+     K7QD-3MWX-9HPA
+```
+
+Open that address, enter the code and choose a username and a password. Use a long password,
+such as a few words in a sentence: at least 12 characters, and nothing like your username or the
+server's name. You are signed in as soon as the account exists.
+
+The code changes each time the container starts until the account exists, and stops working
+once it has been used, so a later start prints no code. If you lose the code, `make restart`
+prints a new one. Five wrong codes in a row make you wait a minute before trying again.
 
 ## Certificates
 
