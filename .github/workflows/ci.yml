@@ -196,6 +196,21 @@ jobs:
           exit-code: "1"
         continue-on-error: true
 
+      - name: Show the source scan findings
+        if: ${{ steps.trivy-source.outcome == 'failure' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.0
+          skip-setup-trivy: true
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          trivyignores: .trivyignore.yaml
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "0"
+
       # GitHub makes fork pull requests' tokens read-only, so scan them without uploading.
       - name: Upload source scan to GitHub code scanning
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -244,6 +259,20 @@ jobs:
           output: trivy-image.sarif
           exit-code: "1"
         continue-on-error: true
+
+      # The SARIF report goes to code scanning; this prints the same findings in the log.
+      - name: Show the image scan findings
+        if: ${{ steps.trivy-image.outcome == 'failure' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.0
+          skip-setup-trivy: true
+          scan-type: image
+          image-ref: aresgate:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "0"
 
       - name: Upload image scan to GitHub code scanning
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
