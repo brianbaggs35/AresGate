@@ -61,4 +61,42 @@ test.describe('layout on a phone', () => {
 
     expect(room).toBeGreaterThanOrEqual(bar?.height ?? Infinity)
   })
+
+  test.describe('before signing in', () => {
+    test.use({ signedIn: false })
+
+    test('the sign-in page fits the screen, with no menu', async ({ page, signIn }) => {
+      await signIn.goto()
+      await expect(signIn.submit).toBeVisible()
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+      expect(overflow).toBeLessThanOrEqual(0)
+      await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+    })
+
+    test('the sign-in form uses nearly the whole width', async ({ page, signIn }) => {
+      await signIn.goto()
+
+      const box = await page.getByTestId('auth-card').boundingBox()
+      const viewport = page.viewportSize()
+
+      expect(box?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
+    })
+
+    test('setting up fits the screen', async ({ page, harness, setup, baseline }) => {
+      await harness.loadFixture('fresh-install')
+      await setup.goto()
+      await setup.enterCode(baseline.fresh_install_setup_code)
+      await expect(setup.createAccount).toBeVisible()
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+      expect(overflow).toBeLessThanOrEqual(0)
+    })
+  })
 })

@@ -57,11 +57,16 @@ test('shows that the API is up', async ({ overview }) => {
   the menu is added to `src/navigation.ts`; keep it to five, which is all a phone's bar holds.
 - **Every test starts from the baseline.** The `freshDatabase` fixture cleans the database
   before each test, so no test depends on another.
+- **Every `page` starts signed in** as the baseline account, through the API, since most pages
+  need it. A spec or group of specs for what comes before that turns it off with
+  `test.use({ signedIn: false })` and uses the `signIn` and `setup` page objects. Cleaning the
+  database ends every sign-in, so a test can also use `harness.clean()` to end its own.
 - **`harness`** is the test server's harness (`backend/e2e`, served under `/api/__test__`, only by
   the e2e image and `make e2e-host`): `clean()`, `loadFixture(name)`, `createSystemInfo()`,
   `createAccount()` and other factories, `rowCounts()` and `describe()` for what the baseline
   holds, which includes the account to sign in with (`baseline.account`). The `fresh-install`
-  state has no account and waits for the setup code in `baseline.fresh_install_setup_code`. A new table gets a
+  state has no account and waits for the setup code in `baseline.fresh_install_setup_code`. A new
+  table gets a
   factory in `backend/e2e/factories.py` and an endpoint in `backend/e2e/api.py`, so specs can make
   records on demand; give the baseline the rows every spec can rely on in `baseline.py`.
 - `expectAccessible(page)` runs axe against WCAG 2.2 A and AA. Check each new page in both themes.

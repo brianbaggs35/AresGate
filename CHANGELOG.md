@@ -24,13 +24,17 @@ Every release's notes are here, newest first. The format follows
   one account, passwords are hashed with Argon2id and checked against a password policy,
   sign-ins are kept in `HttpOnly` `__Host-` cookies with a security token for every change, and
   wrong guesses lock the account, the address and the setup code for a growing wait
-  ([DOCS/security.md](DOCS/security.md)). The web app's pages for these arrive next.
+  ([DOCS/security.md](DOCS/security.md)).
 - The web app's frame: a menu at the side that shrinks to icons (and remembers it), a bar at the
   bottom on a phone, a skip link for keyboards, and the page's title on top, in the light, dark
   ("mission control") and system themes.
 - An audit log of sign-ins (and wrong guesses), sign-outs and setup, kept for a year
   (`ARESGATE_AUDIT_RETENTION_DAYS`), which the database refuses to change or delete, listed by
   `GET /api/audit/events` with filters ([DOCS/security.md](DOCS/security.md)).
+- The web app's pages for these: setting up an account in two steps (the setup code, then a
+  username and password), signing in and out, and a Security page with the account and its
+  recent activity. Pages are closed to anyone who isn't signed in, and a sign-in that ends while
+  a page is open sends you back to the sign-in page and on to where you were.
 - Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
   that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`

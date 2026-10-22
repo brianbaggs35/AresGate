@@ -7,12 +7,39 @@ import {
   type RouterHistory,
 } from 'vue-router'
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    /** The page's name, shown in the bar and the browser's tab. */
+    title?: string
+    /** Open to someone who isn't signed in, and shown without the menu. */
+    public?: boolean
+  }
+}
+
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
     component: () => import('@/views/HomeView.vue'),
     meta: { title: 'Overview' },
+  },
+  {
+    path: '/security',
+    name: 'security',
+    component: () => import('@/views/SecurityView.vue'),
+    meta: { title: 'Security' },
+  },
+  {
+    path: '/setup',
+    name: 'setup',
+    component: () => import('@/views/SetupView.vue'),
+    meta: { title: 'Set up', public: true },
+  },
+  {
+    path: '/sign-in',
+    name: 'sign-in',
+    component: () => import('@/views/SignInView.vue'),
+    meta: { title: 'Sign in', public: true },
   },
   {
     path: '/:path(.*)*',

@@ -1,9 +1,10 @@
 const OFFLINE = "Can't reach AresGate. Check your connection and try again."
 const SERVER_ERROR = 'AresGate ran into a problem. Try again in a moment.'
+const REJECTED = "AresGate couldn't use that. Check what you entered and try again."
 
-/** A failed API call: a message people can act on, and the API's code for it. */
+/** A failed API call: a message people can act on, and a code to tell failures apart. */
 export class ApiError extends Error {
-  /** The API's error code, e.g. `invalid_credentials`, or a generic one this client assigns. */
+  /** What kind of failure it is, e.g. `unauthenticated`, or `offline` when there was no answer. */
   readonly code: string
 
   constructor(
@@ -15,6 +16,16 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.code = code
   }
+}
+
+/** The API's own status codes, named. */
+const CODES: Readonly<Record<number, string>> = {
+  401: 'unauthenticated',
+  403: 'forbidden',
+  404: 'not_found',
+  409: 'conflict',
+  422: 'invalid',
+  429: 'rate_limited',
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -29,28 +40,51 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
+/** The API explains a refusal in words made for people (`detail`), except when a request is so
+ * malformed that its framework answers instead, with a list for programs. */
 function toError(status: number, body: unknown): ApiError {
+  if (status >= 500) return new ApiError(status, SERVER_ERROR)
+  const code = CODES[status] ?? 'error'
   const detail = isRecord(body) ? body.detail : undefined
-  if (isRecord(detail) && typeof detail.code === 'string' && typeof detail.message === 'string') {
-    return new ApiError(status, detail.message, detail.code)
-  }
-  return new ApiError(status, SERVER_ERROR)
+  if (typeof detail === 'string') return new ApiError(status, detail, code)
+  return new ApiError(status, status === 422 ? REJECTED : SERVER_ERROR, code)
 }
 
-/** Calls the API on the same origin, like every page of the web app does. */
-export async function apiGet<T>(path: string): Promise<T> {
+interface Request {
+  method: 'GET' | 'POST'
+  body?: unknown
+  csrfToken?: string
+}
+
+async function send<T>(path: string, { method, body, csrfToken }: Request): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  // Proves the call comes from AresGate's own pages. Every change after signing in needs it.
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken
   let response: Response
   try {
     response = await fetch(`/api${path}`, {
-      headers: { Accept: 'application/json' },
+      ...(method === 'GET' ? {} : { method }),
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       credentials: 'same-origin',
     })
   } catch {
     throw new ApiError(0, OFFLINE, 'offline')
   }
-  const body = await readBody(response)
-  if (!response.ok) throw toError(response.status, body)
-  return body as T
+  const answer = await readBody(response)
+  if (!response.ok) throw toError(response.status, answer)
+  return answer as T
+}
+
+/** Calls the API on the same origin, like every page of the web app does. */
+export function apiGet<T>(path: string): Promise<T> {
+  return send<T>(path, { method: 'GET' })
+}
+
+/** Asks the API to change something. After signing in, that takes the sign-in's security token. */
+export function apiPost<T>(path: string, body?: unknown, csrfToken?: string): Promise<T> {
+  return send<T>(path, { method: 'POST', body, csrfToken })
 }
 
 /** Words to show for any error, including ones that didn't come from the API. */

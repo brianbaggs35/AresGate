@@ -1,28 +1,49 @@
+import * as authApi from '@/api/auth'
+import { ApiError } from '@/api/client'
 import App from '@/App.vue'
+import { guardRoutes } from '@/router/guard'
+import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
+const signedIn = { route: '/', signedIn: 'admin' }
+
 describe('App', () => {
   it('shows the app bar, the menu at the side and the page for the route', async () => {
-    const { wrapper } = await mountWithPlugins(App, { route: '/', width: 1280 })
+    const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
     await flushPromises()
     expect(wrapper.find('[data-test="page-title"]').text()).toBe('Overview')
     expect(wrapper.find('.app-drawer').exists()).toBe(true)
     expect(wrapper.find('.v-bottom-navigation').exists()).toBe(false)
     expect(wrapper.find('[data-test="theme-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="user-menu"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="status-card"]').exists()).toBe(true)
   })
 
   it('puts the menu at the bottom on a phone', async () => {
-    const { wrapper } = await mountWithPlugins(App, { route: '/', width: 400 })
+    const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 400 })
     await flushPromises()
     expect(wrapper.find('.app-drawer').exists()).toBe(false)
     expect(wrapper.find('.v-bottom-navigation').exists()).toBe(true)
     expect(wrapper.text()).toContain('AresGate')
   })
 
+  it('shows the sign-in page on its own, with no menu', async () => {
+    const { wrapper } = await mountWithPlugins(App, { route: '/sign-in', width: 1280 })
+    await flushPromises()
+    expect(wrapper.find('[data-test="auth-card"]').exists()).toBe(true)
+    expect(wrapper.find('.app-drawer').exists()).toBe(false)
+    expect(wrapper.find('.v-app-bar').exists()).toBe(false)
+  })
+
+  it('shows no menu on a phone either before anyone has signed in', async () => {
+    const { wrapper } = await mountWithPlugins(App, { route: '/sign-in', width: 400 })
+    await flushPromises()
+    expect(wrapper.find('.v-bottom-navigation').exists()).toBe(false)
+  })
+
   it('lets the keyboard skip the menu', async () => {
-    const { wrapper } = await mountWithPlugins(App, { route: '/', width: 1280 })
+    const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
     await flushPromises()
     const link = wrapper.find('[data-test="skip-link"]')
     expect(link.text()).toBe('Skip to the page')
@@ -32,10 +53,52 @@ describe('App', () => {
   })
 
   it('applies the theme preference to Vuetify', async () => {
-    const { wrapper, vuetify } = await mountWithPlugins(App, { route: '/' })
+    const { wrapper, vuetify } = await mountWithPlugins(App, signedIn)
     useThemeStore().setPreference('dark')
     await flushPromises()
     expect(vuetify.theme.name.value).toBe('dark')
     expect(wrapper.find('.v-theme--dark').exists()).toBe(true)
+  })
+
+  it('goes to the sign-in page, and on from there, when the sign-in ends', async () => {
+    const { router } = await mountWithPlugins(App, { route: '/security', signedIn: 'admin' })
+    await flushPromises()
+    const session = useSessionStore()
+    session.expired = true
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.name).toBe('sign-in')
+    })
+    expect(router.currentRoute.value.query).toEqual({ next: '/security' })
+
+    // Signing in again isn't a reason to move.
+    session.expired = false
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('sign-in')
+  })
+
+  describe('when the API can’t say who is signed in', () => {
+    const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
+
+    it('says so, and tries again on request', async () => {
+      const setup = vi.spyOn(authApi, 'fetchSetupRequired').mockRejectedValueOnce(offline())
+      setup.mockResolvedValue(false)
+      vi.spyOn(authApi, 'fetchSession').mockResolvedValue({
+        username: 'admin',
+        csrf_token: 'a-token',
+        expires_at: '2026-01-01T12:00:00Z',
+      })
+      const { wrapper, router } = await mountWithPlugins(App, { width: 1280 })
+      guardRoutes(router)
+      await router.push('/security?tab=activity')
+      await flushPromises()
+      expect(wrapper.find('[data-test="startup-error"]').text()).toContain("Can't reach AresGate.")
+      expect(wrapper.find('.app-drawer').exists()).toBe(false)
+
+      await wrapper.find('[data-test="retry"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="startup-error"]').exists()).toBe(false)
+      expect(router.currentRoute.value.fullPath).toBe('/security?tab=activity')
+      expect(wrapper.find('.app-drawer').exists()).toBe(true)
+    })
   })
 })

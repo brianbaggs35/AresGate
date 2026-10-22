@@ -6,6 +6,7 @@ import { VApp } from 'vuetify/components'
 
 import { buildVuetify } from '@/plugins/vuetify'
 import { buildRouter } from '@/router'
+import { useSessionStore } from '@/stores/session'
 import { track } from '@/test/cleanup'
 
 export interface MountOptions {
@@ -16,6 +17,8 @@ export interface MountOptions {
   withApp?: boolean
   /** Viewport width used for Vuetify's display breakpoints (jsdom defaults to 1024, i.e. mobile). */
   width?: number
+  /** Starts signed in as this user, so a page or the app's frame has someone to show. */
+  signedIn?: string
   /** Runs after Pinia is active and before mounting, e.g. to seed stores. */
   beforeMount?: () => void
 }
@@ -26,6 +29,13 @@ export async function mountWithPlugins(component: Component, options: MountOptio
   setActivePinia(pinia)
   const router = buildRouter(createMemoryHistory())
   const vuetify = buildVuetify()
+  if (options.signedIn) {
+    useSessionStore().$patch({
+      known: true,
+      username: options.signedIn,
+      csrfToken: 'a-security-token',
+    })
+  }
   options.beforeMount?.()
 
   if (options.route) {

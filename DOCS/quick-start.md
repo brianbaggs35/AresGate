@@ -57,9 +57,14 @@ the box near the start:
      K7QD-3MWX-9HPA
 ```
 
-Open that address, enter the code and choose a username and a password. Use a long password,
-such as a few words in a sentence: at least 12 characters, and nothing like your username or the
-server's name. You are signed in as soon as the account exists.
+Open that address. AresGate asks for the code (step 1), then for a username and a password
+(step 2). Use a long password, such as a few words in a sentence: at least 12 characters, and
+nothing like your username or the server's name. You are signed in as soon as the account exists.
+
+After that, AresGate asks you to sign in with that username and password. Your sign-in lasts
+until it has sat unused for 30 minutes, and ends when you choose **Sign out** from the account
+button at the top right. The **Security** page lists the most recent sign-ins, wrong guesses
+and sign-outs, so you can see whether anyone else has tried.
 
 The code changes each time the container starts until the account exists, and stops working
 once it has been used, so a later start prints no code. If you lose the code, `make restart`

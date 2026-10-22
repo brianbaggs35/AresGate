@@ -1,14 +1,22 @@
 import { test as base } from '@playwright/test'
 
 import { addWebCoverage, coverageEnabled } from './coverage'
-import { Harness, type BaselineData } from './harness'
+import { Harness, readJson, type BaselineData } from './harness'
 import { AppShell } from './pages/app-shell'
 import { OverviewPage } from './pages/overview-page'
+import { SecurityPage } from './pages/security-page'
+import { SetupPage } from './pages/setup-page'
+import { SignInPage } from './pages/sign-in-page'
 
 export interface AresGateFixtures {
   /** The logo and the theme switcher that every page has. */
   shell: AppShell
   overview: OverviewPage
+  signIn: SignInPage
+  setup: SetupPage
+  security: SecurityPage
+  /** Whether the page starts signed in as the baseline account, as most pages need. */
+  signedIn: boolean
   /** Puts the database back to the baseline before every test, so none depends on another. */
   freshDatabase: undefined
   /** Collects the web app's coverage in Chromium, for every test. */
@@ -55,6 +63,37 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   overview: async ({ page }, use) => {
     await use(new OverviewPage(page))
+  },
+
+  signIn: async ({ page }, use) => {
+    await use(new SignInPage(page))
+  },
+
+  setup: async ({ page }, use) => {
+    await use(new SetupPage(page))
+  },
+
+  security: async ({ page }, use) => {
+    await use(new SecurityPage(page))
+  },
+
+  signedIn: [true, { option: true }],
+
+  // The sign-in is done through the API, which is quicker than the form, and the form has its
+  // own tests. The cookie goes to the page's browser context. Cleaning the database ends every
+  // sign-in, so this relies on Playwright setting up automatic fixtures such as `freshDatabase`
+  // before the ones a test asks for.
+  page: async ({ page, baseURL, baseline, signedIn }, use) => {
+    if (signedIn) {
+      if (!baseURL) throw new Error('playwright.config.ts needs a baseURL')
+      const response = await page.context().request.post('/api/auth/login', {
+        data: baseline.account,
+        // What a browser sends, which the API checks on every change.
+        headers: { Origin: new URL(baseURL).origin },
+      })
+      await readJson(response, 'Signing in')
+    }
+    await use(page)
   },
 
   webCoverage: [

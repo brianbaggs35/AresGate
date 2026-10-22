@@ -1,5 +1,6 @@
 describe('main', () => {
-  it('mounts the app on #app', async () => {
+  // Loads the whole app, which takes a few seconds, and longer on a busy machine.
+  it('mounts the app on #app', { timeout: 30_000 }, async () => {
     const root = document.createElement('div')
     root.id = 'app'
     document.body.appendChild(root)

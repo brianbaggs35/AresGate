@@ -84,7 +84,7 @@ see [SECURITY.md](../SECURITY.md).
   can't forge a line.
 - The list is for whoever is signed in: `GET /api/audit/events`, newest first, filtered by
   `action` (repeat it), `outcome`, `username`, `since` and `until`, a page at a time with
-  `before` and `limit`. The web app's page for it arrives with the account pages.
+  `before` and `limit`. The web app's Security page shows the latest 20.
 
 **Logs**
 
