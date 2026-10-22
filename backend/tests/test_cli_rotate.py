@@ -84,8 +84,9 @@ def test_it_makes_a_new_key_and_seals_everything_again(
     now = utcnow()
     code = totp.code_for(secret, totp.current_period(now) + 1)
     assert two_factor.accept_code(session, new, account.id, code, now) is not None
+    old = Settings(secret_key=SecretStr(OLD_KEY))
     with pytest.raises(vault.VaultError):
-        kept(session, Settings(secret_key=SecretStr(OLD_KEY)))
+        kept(session, old)
     output = capsys.readouterr()
     assert "Sealed 1 credentials and 1 authenticator keys again" in output.out
     assert "10 recovery codes" in output.out
