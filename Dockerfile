@@ -77,10 +77,15 @@ RUN uv venv /opt/supervisor \
 FROM wolfi AS runtime-base
 ARG PYTHON_VERSION
 ARG POSTGRES_VERSION
+# CI passes a value that changes on every run, so the packages that ship in the image are
+# upgraded when the image is built, even when the base stage above comes from the cache.
+ARG IMAGE_REFRESH=""
 # Wolfi packages don't create service accounts, so they're made here with fixed IDs that
 # stay the same across rebuilds (the database files on the volume belong to postgres).
 RUN --mount=type=bind,source=docker/apk-retry.sh,target=/apk-retry.sh \
     set -eux; \
+    echo "image refresh: ${IMAGE_REFRESH:-none}"; \
+    sh /apk-retry.sh apk upgrade --no-cache; \
     addgroup -S -g 10001 aresgate; \
     adduser -S -D -H -u 10001 -G aresgate -h /app -s /sbin/nologin aresgate; \
     addgroup -S -g 10002 postgres; \
