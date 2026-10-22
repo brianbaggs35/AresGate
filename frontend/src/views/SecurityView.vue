@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { fetchRecentActivity, type AuditEvent } from '@/api/audit'
 import { errorMessage } from '@/api/client'
 import ActivityList from '@/components/ActivityList.vue'
+import TwoFactorCard from '@/components/TwoFactorCard.vue'
 import { useSessionStore } from '@/stores/session'
 
 const RECENT = 20
@@ -64,6 +65,8 @@ onMounted(loadActivity)
       </v-btn>
     </v-card>
 
+    <TwoFactorCard />
+
     <v-card class="pa-6" data-test="activity-card">
       <div class="d-flex align-center justify-space-between ga-3 mb-1">
         <h2 class="text-title-large">Recent activity</h2>
@@ -78,7 +81,8 @@ onMounted(loadActivity)
         </v-btn>
       </div>
       <p class="text-body-medium text-medium-emphasis mb-2">
-        Sign-ins, wrong guesses and sign-outs. If something here wasn't you, change your password.
+        Sign-ins, wrong guesses and sign-outs, and changes to two-step verification. If something
+        here wasn't you, change your password.
       </p>
       <v-alert v-if="error" type="error" variant="tonal" data-test="activity-error">
         {{ error }}

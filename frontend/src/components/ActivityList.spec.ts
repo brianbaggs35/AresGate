@@ -50,6 +50,10 @@ describe('ActivityList', () => {
       'auth.login_succeeded',
       'auth.login_failed',
       'auth.logout',
+      'auth.two_factor_enabled',
+      'auth.two_factor_disabled',
+      'auth.two_factor_failed',
+      'auth.recovery_codes_created',
       'audit.events_purged',
     ]
     const wrapper = await show(
@@ -61,6 +65,10 @@ describe('ActivityList', () => {
       'Signed in',
       'Sign-in failed',
       'Signed out',
+      'Two-step verification was turned on',
+      'Two-step verification was turned off',
+      'Wrong verification code',
+      'New recovery codes were made',
       'Old activity was removed',
     ])
   })

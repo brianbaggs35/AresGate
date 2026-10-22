@@ -13,6 +13,10 @@ const TITLES: Readonly<Record<string, string>> = {
   'auth.login_succeeded': 'Signed in',
   'auth.login_failed': 'Sign-in failed',
   'auth.logout': 'Signed out',
+  'auth.two_factor_enabled': 'Two-step verification was turned on',
+  'auth.two_factor_disabled': 'Two-step verification was turned off',
+  'auth.two_factor_failed': 'Wrong verification code',
+  'auth.recovery_codes_created': 'New recovery codes were made',
   'audit.events_purged': 'Old activity was removed',
 }
 

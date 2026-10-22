@@ -30,6 +30,20 @@ describe('auth API', () => {
     expect(post).toHaveBeenCalledWith('/auth/login', credentials)
   })
 
+  it('tells a challenge from a sign-in', () => {
+    expect(auth.isChallenge({ two_factor_required: true, challenge: 'a-challenge' })).toBe(true)
+    expect(auth.isChallenge(session)).toBe(false)
+  })
+
+  it('finishes signing in with a code and the challenge it was given', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue(session)
+    await expect(auth.logInWithCode('a-challenge', '123456')).resolves.toEqual(session)
+    expect(post).toHaveBeenCalledWith('/auth/login/two-factor', {
+      challenge: 'a-challenge',
+      code: '123456',
+    })
+  })
+
   it('signs out with the security token', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue(undefined)
     await auth.logOut('a-token')

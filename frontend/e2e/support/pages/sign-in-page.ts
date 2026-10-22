@@ -13,6 +13,10 @@ export class SignInPage {
   readonly error: Locator
   /** Says the last sign-in ended while the page was open. */
   readonly endedNotice: Locator
+  /** The second step, for an account with an authenticator app. */
+  readonly code: Locator
+  readonly verify: Locator
+  readonly startOver: Locator
 
   constructor(private readonly page: Page) {
     this.title = page.getByRole('heading', { level: 1 })
@@ -23,6 +27,9 @@ export class SignInPage {
     this.submit = page.getByTestId('sign-in')
     this.error = page.getByTestId('sign-in-error')
     this.endedNotice = page.getByTestId('signed-out-notice')
+    this.code = page.getByLabel('Code', { exact: true })
+    this.verify = page.getByTestId('verify')
+    this.startOver = page.getByTestId('start-over')
   }
 
   async goto(path = '/sign-in'): Promise<void> {
@@ -33,5 +40,11 @@ export class SignInPage {
     await this.username.fill(username)
     await this.password.fill(password)
     await this.submit.click()
+  }
+
+  /** The second step: a code from the authenticator app, or a recovery code. */
+  async enterCode(code: string): Promise<void> {
+    await this.code.fill(code)
+    await this.verify.click()
   }
 }

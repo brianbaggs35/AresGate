@@ -93,6 +93,40 @@ describe('session store', () => {
       expect(store).toMatchObject({ signedIn: true, expired: false, csrfToken: 'a-token' })
     })
 
+    it('is not signed in by a password that needs a second step, and hands back the challenge', async () => {
+      vi.spyOn(authApi, 'logIn').mockResolvedValue({
+        two_factor_required: true,
+        challenge: 'a-challenge',
+      })
+      const store = useSessionStore()
+      await expect(store.logIn({ username: 'admin', password: 'x' })).resolves.toBe('a-challenge')
+      expect(store.signedIn).toBe(false)
+    })
+
+    it('has nothing to hand back when the password signed in', async () => {
+      vi.spyOn(authApi, 'logIn').mockResolvedValue(info)
+      const store = useSessionStore()
+      await expect(store.logIn({ username: 'admin', password: 'x' })).resolves.toBeNull()
+    })
+
+    it('is signed in once a code finishes the second step', async () => {
+      const logInWithCode = vi.spyOn(authApi, 'logInWithCode').mockResolvedValue(info)
+      const store = useSessionStore()
+      store.expired = true
+      await store.logInWithCode('a-challenge', '123456')
+      expect(logInWithCode).toHaveBeenCalledWith('a-challenge', '123456')
+      expect(store).toMatchObject({ signedIn: true, expired: false, csrfToken: 'a-token' })
+    })
+
+    it('stays signed out when the code is wrong', async () => {
+      vi.spyOn(authApi, 'logInWithCode').mockRejectedValue(
+        new ApiError(401, "That code isn't right.", 'unauthenticated'),
+      )
+      const store = useSessionStore()
+      await expect(store.logInWithCode('a-challenge', '000000')).rejects.toThrow('code')
+      expect(store.signedIn).toBe(false)
+    })
+
     it('stays signed out when signing in fails', async () => {
       vi.spyOn(authApi, 'logIn').mockRejectedValue(
         new ApiError(401, 'Incorrect.', 'unauthenticated'),
@@ -163,6 +197,42 @@ describe('session store', () => {
       await store.logIn({ username: 'admin', password: 'x' })
       await expect(store.call(() => Promise.reject(offline()))).rejects.toThrow('reach')
       await expect(store.call(() => Promise.reject(new Error('odd')))).rejects.toThrow('odd')
+      expect(store).toMatchObject({ signedIn: true, expired: false })
+    })
+  })
+
+  describe('change', () => {
+    async function signedIn() {
+      vi.spyOn(authApi, 'logIn').mockResolvedValue(info)
+      const store = useSessionStore()
+      await store.logIn({ username: 'admin', password: 'x' })
+      return store
+    }
+
+    it('gives the call the security token, and returns what it returns', async () => {
+      const store = await signedIn()
+      const request = vi.fn().mockResolvedValue(42)
+      await expect(store.change(request)).resolves.toBe(42)
+      expect(request).toHaveBeenCalledWith('a-token')
+    })
+
+    it('gives it no token when nobody is signed in, and the API refuses', async () => {
+      const store = useSessionStore()
+      const request = vi.fn().mockRejectedValue(new ApiError(403, 'No token.', 'forbidden'))
+      await expect(store.change(request)).rejects.toThrow('No token.')
+      expect(request).toHaveBeenCalledWith('')
+    })
+
+    it('notes that the sign-in is over when the API says nobody is signed in', async () => {
+      const store = await signedIn()
+      await expect(store.change(() => Promise.reject(notSignedIn()))).rejects.toThrow('signed in')
+      expect(store).toMatchObject({ signedIn: false, expired: true })
+    })
+
+    it('leaves the sign-in alone when the API refuses for another reason', async () => {
+      const store = await signedIn()
+      const refused = new ApiError(403, "That isn't right.", 'forbidden')
+      await expect(store.change(() => Promise.reject(refused))).rejects.toThrow('right')
       expect(store).toMatchObject({ signedIn: true, expired: false })
     })
   })

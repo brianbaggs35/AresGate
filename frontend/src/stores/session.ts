@@ -58,8 +58,18 @@ export const useSessionStore = defineStore('session', () => {
     adopt(await authApi.setUp(setup))
   }
 
-  async function logIn(credentials: authApi.Credentials) {
-    adopt(await authApi.logIn(credentials))
+  /** Signs in. An account with a second step isn't signed in by its password alone: then this
+   * returns the challenge to send back with a code (see `logInWithCode`), and otherwise null. */
+  async function logIn(credentials: authApi.Credentials): Promise<string | null> {
+    const result = await authApi.logIn(credentials)
+    if (authApi.isChallenge(result)) return result.challenge
+    adopt(result)
+    return null
+  }
+
+  /** Finishes signing in with a code from the authenticator app or a recovery code. */
+  async function logInWithCode(challenge: string, code: string) {
+    adopt(await authApi.logInWithCode(challenge, code))
   }
 
   /** Ends the sign-in. If it was over already, that's what was wanted. */
@@ -88,6 +98,11 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  /** Runs a change that needs the sign-in's security token, as `call` does. */
+  function change<T>(request: (csrfToken: string) => Promise<T>): Promise<T> {
+    return call(() => request(csrfToken.value ?? ''))
+  }
+
   return {
     known,
     setupRequired,
@@ -99,7 +114,9 @@ export const useSessionStore = defineStore('session', () => {
     restore,
     setUp,
     logIn,
+    logInWithCode,
     logOut,
     call,
+    change,
   }
 })

@@ -137,9 +137,8 @@ see [SECURITY.md](../SECURITY.md).
 
 These are being built, in this order, and are not in AresGate yet:
 
-- Passkeys as another second step, and the web app's pages for the authenticator app. Until
-  those are in, an account without a second step is protected by its password alone, so use a
-  long one.
+- Passkeys as another second step. Until then an account without a second step is protected by
+  its password alone, so use a long one, and add an authenticator app on the Security page.
 - Credentials for OPNsense, ntopng, Wazuh and AI providers stored encrypted and write-only: you
   can replace them but never read them back.
 - Logging that redacts secrets, and the audit log's page in the web app.

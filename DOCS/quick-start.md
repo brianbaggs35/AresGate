@@ -64,7 +64,9 @@ nothing like your username or the server's name. You are signed in as soon as th
 After that, AresGate asks you to sign in with that username and password. Your sign-in lasts
 until it has sat unused for 30 minutes, and ends when you choose **Sign out** from the account
 button at the top right. The **Security** page lists the most recent sign-ins, wrong guesses
-and sign-outs, so you can see whether anyone else has tried.
+and sign-outs, so you can see whether anyone else has tried. It is also where you add an
+authenticator app, so that signing in asks for a code from it as well as the password
+([Operations](operations.md#signing-in)).
 
 The code changes each time the container starts until the account exists, and stops working
 once it has been used, so a later start prints no code. If you lose the code, `make restart`

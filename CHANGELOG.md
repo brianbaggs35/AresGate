@@ -39,8 +39,11 @@ Every release's notes are here, newest first. The format follows
   key to scan or type in, turns the step on once a code from the app proves it works, and gives
   ten single-use recovery codes. The key is encrypted with the app secret key, recovery codes
   are kept as keyed hashes, a code works once, and wrong codes count towards the same lockout
-  as wrong passwords ([DOCS/security.md](DOCS/security.md)). The web app's pages for it are
-  next.
+  as wrong passwords ([DOCS/security.md](DOCS/security.md)).
+- The web app's pages for it: a Two-step verification card on the Security page to add an
+  authenticator app (a QR code, a link for the same device and the key to type in), save the
+  recovery codes, make new ones and turn it off, and a second step on the sign-in page that
+  takes a code from the app or a recovery code. The activity list names the new events.
 - `make two-factor-off ACCOUNT=<username>` turns an account's second step off for someone who
   has lost both the phone and the recovery codes. It ends the account's sign-ins and leaves an
   event in the audit log ([DOCS/operations.md](DOCS/operations.md)).
