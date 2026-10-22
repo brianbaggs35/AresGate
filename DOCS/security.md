@@ -22,6 +22,12 @@ see [SECURITY.md](../SECURITY.md).
 
 - Only HTTPS is served, with TLS 1.3 and nothing older. HTTP only redirects to HTTPS.
 - A request for a host name that isn't AresGate's is refused during the TLS handshake.
+- Certificates: a certificate from `make cert` is obtained by a pinned ACME client image run as
+  your user, never inside AresGate's container. The IONOS API key it uses is a file only you can
+  read, passed to the client as a file rather than in its command line or environment, and the
+  `acme` folder is excluded from the image build. The container only ever sees the certificate
+  and its key, mounted read-only. A replacement certificate is checked (key, name, expiry)
+  before it is served, so a wrong one can't take AresGate down at renewal time.
 - Responses carry strict security headers: HSTS, a content security policy that allows only the
   app's own scripts and connections, no framing, no content sniffing, and a strict referrer and
   permissions policy. The server doesn't reveal its version.

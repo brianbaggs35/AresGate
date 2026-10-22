@@ -15,7 +15,8 @@ import ssl
 import sys
 
 PORT = 8443
-# The certificate nginx is serving, copied here by entrypoint.sh.
+# The certificate nginx is serving, put here by install-certificate.sh when the container starts
+# and again whenever a renewed certificate is loaded.
 CERTIFICATE = "/run/aresgate/tls/cert.pem"
 
 

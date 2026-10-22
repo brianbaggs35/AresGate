@@ -22,7 +22,8 @@ make             # lists every command
 | `backend/e2e` | The test server's harness, used only by the end-to-end tests (see [frontend/e2e/README.md](../frontend/e2e/README.md)) |
 | `frontend/src` | The web app (Vue 3, Vuetify, TypeScript), with its unit tests (Vitest) |
 | `frontend/e2e` | The end-to-end tests (Playwright) |
-| `docker` | What runs inside the container: the entrypoint, nginx and supervisord settings |
+| `docker` | What runs inside the container: the entrypoint, nginx and supervisord settings, and the certificate scripts |
+| `scripts` | What runs on the host behind `make` commands (`make cert` and its siblings) |
 | `.github` | The CI, CodeQL, zizmor and release workflows, and the scripts they run |
 | `DOCS` | These guides |
 

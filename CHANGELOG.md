@@ -62,6 +62,12 @@ Every release's notes are here, newest first. The format follows
   sign-in count that must go up. The Security page adds and removes them (both ask for the
   password), the sign-in page has a "Sign in with a passkey" button, and the audit log records
   each ([DOCS/security.md](DOCS/security.md)).
+- TLS certificates: `make cert` gets a Let's Encrypt certificate for the server name through the
+  DNS challenge with an IONOS API key (using a pinned ACME client image, so nothing is installed),
+  `make cert-renew` renews it when due and is meant for cron, and `make cert-reload` has nginx
+  serve a changed certificate with no restart. A replacement is checked (key, name, expiry)
+  before it is served. The container's health check already verifies the certificate as a
+  browser would ([DOCS/quick-start.md](DOCS/quick-start.md#certificates)).
 - Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
   that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`

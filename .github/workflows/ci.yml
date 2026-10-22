@@ -179,6 +179,11 @@ jobs:
       - name: Hadolint, ShellCheck and actionlint
         run: make lint-infra
 
+      # make cert and make cert-renew, with a stand-in for Docker: what they read, refuse, pass to
+      # the ACME client, save and reload.
+      - name: Certificate script test
+        run: ./.github/scripts/certificate-script-test.sh
+
       - name: Trivy scan of dependencies, secrets and the Dockerfile
         id: trivy-source
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -323,6 +328,11 @@ jobs:
       # as a Docker secret, and a key that is too short has to stop the container.
       - name: Start with a secret key you supply
         run: ./.github/scripts/supplied-key-test.sh
+
+      # A certificate in certs/ is served and healthy, a renewed one is served after a reload with
+      # no restart, one that is wrong is refused, and an expired one makes the container unhealthy.
+      - name: Serve, renew and check certificates
+        run: ./.github/scripts/certificate-test.sh
 
       - name: Container logs
         if: ${{ failure() }}

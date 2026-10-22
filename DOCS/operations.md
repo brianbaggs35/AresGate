@@ -11,6 +11,11 @@ container (Docker names it `aresgate_aresgate-data`):
 | `secrets/secret.key` | The app secret key, made on first start. Only the API can read it |
 | `certs/` | The self-signed certificate, when you haven't provided your own |
 
+The `certs` and `acme` folders next to `docker-compose.yml` are on the computer, not in the
+volume: `certs/` holds the certificate and key you use, and `acme/` what `make cert` needs to
+renew them ([Certificates](#certificates)). `make backup` doesn't include either. A certificate from
+`make cert` is made again by running it; keep a copy of one you brought yourself.
+
 `make down` stops AresGate and keeps the volume. Deleting the volume (`docker volume rm`, or
 `docker compose down --volumes`) deletes all of it, so back it up first.
 
@@ -228,8 +233,24 @@ it with the setup code from the log.
 
 ## Certificates
 
-See [Quick start](quick-start.md#certificates). After you renew a certificate, `make restart`
-makes AresGate use the new one.
+[Quick start](quick-start.md#certificates) covers getting one. After a certificate in `certs/`
+changes, whether `make cert-renew` replaced it or you did, `make cert-reload` makes AresGate use
+it with no restart: nginx reloads, finishes the requests it is in the middle of, and the people
+signed in stay signed in. (`make restart` also works, and drops them for a moment.)
+
+AresGate checks a certificate before it replaces the one it is serving, and refuses one that has
+expired, is for another name than `ARESGATE_SERVER_NAME`, doesn't match its private key, or whose
+key needs a password. The reload says which, and the old certificate keeps being served.
+
+| What you see | What it means |
+| --- | --- |
+| `make cert-renew` says there is no certificate to renew | `make cert` hasn't succeeded yet for this `ARESGATE_SERVER_NAME`. Run it first |
+| The reload says the certificate isn't for your server name | Either `certs/` still has the certificate for an older name (run `make cert`), or you changed `ARESGATE_SERVER_NAME` in `.env` and the running container still has the old one: `make up` applies it, and starts with the certificate in `certs/` |
+| `make cert` waits for the DNS record, then gives up | The DNS server it uses can't see your public records. Set `ARESGATE_ACME_RESOLVERS` ([Quick start](quick-start.md#getting-a-lets-encrypt-certificate-ionos-dns)). Or the IONOS key can't change that domain's DNS: check it in the IONOS portal, and that the domain's DNS is hosted at IONOS |
+| `make ps` says unhealthy, and the log is quiet | The certificate has expired or is for another name. Renew it, then `make cert-reload` |
+
+To use another IONOS API key, delete `acme/ionos-api-key` and run `make cert-renew` (or
+`make cert`); it asks for the new one.
 
 ## Changing the server name or the ports
 

@@ -41,8 +41,9 @@ cp .env.example .env     # set ARESGATE_SERVER_NAME to the name you will browse 
 make up
 ```
 
-Then open `https://<your server name>`. Without a certificate of your own AresGate makes a
-self-signed one, so your browser will warn you the first time.
+Then open `https://<your server name>`. Without a certificate AresGate makes a self-signed one,
+so your browser will warn you the first time. `make cert` gets a Let's Encrypt one instead,
+through IONOS DNS, and `make cert-renew` keeps it fresh.
 
 [DOCS/quick-start.md](DOCS/quick-start.md) has the details: certificates, ports, running a
 published release instead of building it, and updating.

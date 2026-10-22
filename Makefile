@@ -21,6 +21,7 @@ TEST_DB_PORT ?= 55432
 
 .DEFAULT_GOAL := help
 .PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key rotate-secret-key two-factor-off \
+	cert cert-renew cert-reload \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
 	e2e e2e-up e2e-down e2e-host e2e-coverage e2e-ui e2e-codegen e2e-report e2e-logs \
 	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
@@ -41,7 +42,7 @@ pull: ## Download and start the release in .env's ARESGATE_IMAGE and ARESGATE_VE
 down: ## Stop AresGate (your data is kept)
 	$(COMPOSE) down
 
-restart: ## Restart AresGate, e.g. after renewing certificates
+restart: ## Restart AresGate (a renewed certificate needs only make cert-reload)
 	$(COMPOSE) restart
 
 rebuild: ## Rebuild the image from scratch and restart
@@ -69,6 +70,15 @@ backup: ## Dump the database to ./backups
 two-factor-off: ## Turn off an account's authenticator app (ACCOUNT=<username>)
 	@test -n "$(ACCOUNT)" || { echo "Say whose: make two-factor-off ACCOUNT=<username>" >&2; exit 2; }
 	$(COMPOSE) exec -T -u aresgate -w /app/backend aresgate python -m app.cli disable-two-factor "$(ACCOUNT)"
+
+cert: ## Get a Let's Encrypt certificate for ARESGATE_SERVER_NAME through IONOS DNS (DOCS/quick-start.md)
+	scripts/certificate.sh get
+
+cert-renew: ## Renew the certificate if it is due, then reload it; run it daily from cron
+	scripts/certificate.sh renew
+
+cert-reload: ## Serve the certificate now in certs/ without restarting AresGate
+	scripts/certificate.sh reload
 
 secret-key: ## Print the app secret key, to keep somewhere safe apart from the backups
 	@$(COMPOSE) exec -u aresgate aresgate cat /data/secrets/secret.key
@@ -164,10 +174,12 @@ lint-frontend: ## ESLint, Prettier and vue-tsc
 lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI workflows)
 	docker run --rm -v "$(CURDIR):/work:ro" -w /work $(HADOLINT_IMAGE) hadolint Dockerfile
 	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh \
-		docker/apk-retry.sh docker/e2e/start-api.sh .github/scripts/smoke-test.sh \
+		docker/apk-retry.sh docker/check-certificate.sh docker/install-certificate.sh \
+		docker/reload-certificate.sh scripts/certificate.sh docker/e2e/start-api.sh .github/scripts/smoke-test.sh \
 		.github/scripts/e2e-host.sh .github/scripts/trivy-report.sh \
 		.github/scripts/codeql-report.sh .github/scripts/release-version.sh \
-		.github/scripts/supplied-key-test.sh .github/scripts/sign-in-test.sh
+		.github/scripts/supplied-key-test.sh .github/scripts/sign-in-test.sh \
+		.github/scripts/certificate-test.sh .github/scripts/certificate-script-test.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code
