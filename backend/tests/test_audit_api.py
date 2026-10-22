@@ -7,7 +7,9 @@ from app import audit
 from app.audit import Action, Outcome
 from app.models import User
 
-NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+# Later than the sign-in the tests start with, which is recorded at the real time, so a filter
+# that starts at NOW leaves that event out however long the tests run.
+NOW = datetime(2099, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def add(
@@ -52,7 +54,7 @@ def test_lists_events_newest_first_with_what_was_kept(
     assert [event["id"] for event in listed] == [newer, older]
     assert listed[0] == {
         "id": newer,
-        "occurred_at": "2026-10-22T12:00:00Z",
+        "occurred_at": "2099-01-01T12:00:00Z",
         "action": "auth.logout",
         "outcome": "success",
         "user_id": None,
@@ -71,7 +73,7 @@ def test_filters_by_action_outcome_and_username(
     logout = add(session, Action.LOGOUT, username="brian")
 
     def ids(**query: object) -> list[object]:
-        return [event["id"] for event in events(client, **query, since="2026-10-22T00:00:00Z")]
+        return [event["id"] for event in events(client, **query, since="2099-01-01T00:00:00Z")]
 
     assert ids(action="auth.login_failed", username="brian") == [failed]
     assert ids(action=["auth.logout", "auth.login_failed"], username="brian") == [logout, failed]
@@ -114,7 +116,7 @@ def test_refuses_what_makes_no_sense(client: TestClient, csrf_token: str) -> Non
         {"limit": audit.MAX_PAGE + 1},
         {"before": 0},
         {"outcome": "maybe"},
-        {"since": "2026-10-22T12:00:00"},  # no time zone, so it could mean any of 24 times
+        {"since": "2099-01-01T12:00:00"},  # no time zone, so it could mean any of 24 times
         {"until": "yesterday"},
         {"username": "x" * 65},
         {"action": "x" * 65},
