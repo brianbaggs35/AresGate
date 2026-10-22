@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     server_name: str = "localhost"
     https_port: Annotated[int, Field(ge=1, le=65535)] = 443
 
+    # What the logs look like: one JSON object a line, or plain text for reading while developing.
+    log_format: Literal["json", "text"] = "json"
+    log_level: Literal["debug", "info", "warning", "error"] = "info"
+
     # How long a sign-in lasts: until it has been idle for this long, or this long after it
     # began, whichever comes first.
     session_idle_minutes: Annotated[int, Field(ge=1)] = 30

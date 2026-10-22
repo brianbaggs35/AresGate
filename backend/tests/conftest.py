@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 
 import pytest
@@ -110,3 +111,23 @@ def csrf_token(client: TestClient, account: User) -> str:
     )
     assert response.status_code == 200
     return str(response.json()["csrf_token"])
+
+
+@pytest.fixture
+def untouched_logging() -> Iterator[None]:
+    """Puts the loggers `configure` changes back as they were."""
+    names = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
+    saved = [
+        (
+            logging.getLogger(name),
+            list(logging.getLogger(name).handlers),
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+        )
+        for name in names
+    ]
+    yield
+    for logger, handlers, level, propagate in saved:
+        logger.handlers[:] = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate

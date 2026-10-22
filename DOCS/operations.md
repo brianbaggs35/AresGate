@@ -92,7 +92,38 @@ the backup or a newer one:
   is for the wrong name.
 - `make shell` opens a shell in the container, and `make psql` a database shell.
 
-The status page (the first page you see) shows whether the API and the database are up.
+The status page (the first page you see) shows whether the API and the database are up. Once
+you're signed in, the API's `/api/system` endpoint also reports AresGate's version, how long it
+has been running and PostgreSQL's version.
+
+### Reading the logs
+
+The API writes one JSON object per line: the `time`, the `level`, the `logger`, the `message`,
+the `request_id` of the request it was serving, and anything else that was logged with it. Every
+request gets one `aresgate.request` line with its `method`, `path`, `status` and `duration_ms`.
+The query string is left out of it, since it can carry things that shouldn't be kept.
+
+nginx gives each request an ID too, and writes it at the end of its own access line, so one
+request can be followed from nginx into the API:
+
+```sh
+make logs | grep 3f9c1e0d5b7a4c68a2e1d4f60b9a7c35
+```
+
+The ID is also sent back in the `X-Request-ID` header, so a failed request in the browser's
+network tools tells you what to look for. nginx replaces any `X-Request-ID` a client sends, so
+the ID is always one AresGate made.
+
+Set these in `.env` (see `.env.example`):
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ARESGATE_LOG_FORMAT` | `json` | `json`, or `text` for plain lines that are easier to read |
+| `ARESGATE_LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error` |
+
+Secrets are blanked out before anything is written (see
+[Security](security.md#how-it-is-hardened-today)). That is a safety net: if you find one in a log,
+please [report it](../SECURITY.md).
 
 ## Signing in
 
