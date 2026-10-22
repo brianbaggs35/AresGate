@@ -42,6 +42,8 @@ class Action(StrEnum):
     TWO_FACTOR_DISABLED = "auth.two_factor_disabled"
     TWO_FACTOR_FAILED = "auth.two_factor_failed"
     RECOVERY_CODES_CREATED = "auth.recovery_codes_created"
+    PASSKEY_ADDED = "auth.passkey_added"
+    PASSKEY_REMOVED = "auth.passkey_removed"
     CREDENTIAL_STORED = "credential.stored"
     CREDENTIAL_DELETED = "credential.deleted"
     KEY_ROTATED = "system.secret_key_rotated"
