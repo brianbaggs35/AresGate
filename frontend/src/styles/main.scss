@@ -1,18 +1,84 @@
-:root {
-  font-feature-settings: 'cv11', 'ss01';
+// Vuetify files its styles under layers (vuetify-core through vuetify-final), which
+// `vuetify/styles` declares first. These come after them, so the app's styles win without
+// raising specificity or reaching for !important, and `components` beats `base`.
+@layer aresgate-base, aresgate-components;
+
+@layer aresgate-base {
+  :root {
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  html,
+  body,
+  .v-application {
+    font-family:
+      'Inter Variable',
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-html,
-body,
-.v-application {
-  font-family:
-    'Inter Variable',
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
-}
+@layer aresgate-components {
+  // Hidden until it has the keyboard's focus, as the first stop for people who tab.
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 2000;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    background: rgb(var(--v-theme-primary));
+    color: rgb(var(--v-theme-on-primary));
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
 
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
+    &:focus-visible {
+      transform: none;
+    }
+  }
+
+  // Moving focus to the page is only for the skip link; it shouldn't draw a box round the page.
+  #main-content:focus {
+    outline: none;
+  }
+
+  .app-drawer {
+    // The rail keeps the logo's mark centred over the icons below it.
+    &__brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 64px;
+      padding: 0 1rem;
+      border-bottom: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    &:not(.v-navigation-drawer--rail) &__brand {
+      justify-content: flex-start;
+      padding: 0 1.25rem;
+    }
+
+    &__footer {
+      display: flex;
+      justify-content: center;
+      padding: 0.5rem;
+      border-top: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    &:not(.v-navigation-drawer--rail) &__footer {
+      justify-content: flex-end;
+    }
+
+    // A bar at the edge marks the current page, besides the tint, so it doesn't rest on colour.
+    .v-list-item--active {
+      box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary));
+    }
+  }
 }

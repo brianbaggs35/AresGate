@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import logoMark from '@/assets/logo-mark.png'
 
-withDefaults(defineProps<{ size?: number }>(), { size: 36 })
+withDefaults(defineProps<{ size?: number; compact?: boolean }>(), { size: 36, compact: false })
 </script>
 
 <template>
   <span class="app-logo" data-test="app-logo">
     <img :src="logoMark" alt="" :width="size" :height="size" class="app-logo__mark" />
-    <span class="app-logo__wordmark">Ares<span class="text-brand">Gate</span></span>
+    <span v-if="!compact" class="app-logo__wordmark">Ares<span class="text-brand">Gate</span></span>
   </span>
 </template>
 

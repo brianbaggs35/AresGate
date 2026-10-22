@@ -40,7 +40,7 @@ export default defineConfigWithVueTs(
       ...playwright.configs['flat/recommended'].rules,
       'playwright/expect-expect': [
         'error',
-        { assertFunctionNames: ['expect', 'expectAccessible', 'expectTheme'] },
+        { assertFunctionNames: ['expect', 'expectAccessible', 'expectTheme', 'expectMenuWidth'] },
       ],
     },
   },

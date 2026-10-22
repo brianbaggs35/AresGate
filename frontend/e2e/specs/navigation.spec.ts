@@ -27,4 +27,39 @@ test.describe('navigation', () => {
     await expect(page).toHaveURL('/')
     await expect(overview.card).toBeVisible()
   })
+
+  test('opens the overview from the menu', async ({ page, shell, overview }) => {
+    await page.goto('/no/such/page')
+
+    await shell.overviewLink.click()
+
+    await expect(page).toHaveURL('/')
+    await expect(page).toHaveTitle('Overview · AresGate')
+    await expect(overview.card).toBeVisible()
+  })
+
+  test('marks the place the menu is on', async ({ page, shell }) => {
+    await page.goto('/')
+    await expect(shell.overviewLink).toHaveAttribute('aria-current', 'page')
+
+    await page.goto('/no/such/page')
+
+    await expect(shell.overviewLink).not.toHaveAttribute('aria-current', 'page')
+  })
+
+  test('lets the keyboard skip past the menu to the page', async ({ page, shell, overview }) => {
+    await overview.goto()
+    await expect(overview.card).toBeVisible()
+
+    await page.keyboard.press('Tab')
+    await expect(shell.skipLink).toBeFocused()
+    // It appears on screen only while it has focus.
+    const box = await shell.skipLink.boundingBox()
+    expect(box?.y).toBeGreaterThanOrEqual(0)
+
+    await page.keyboard.press('Enter')
+
+    await expect(shell.main).toBeFocused()
+    await expect(page).toHaveURL('/')
+  })
 })
