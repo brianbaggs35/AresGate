@@ -165,16 +165,20 @@ def test_names_must_be_short_lowercase_words(client: TestClient, csrf_token: str
 
 
 def test_signing_in_is_required(client: TestClient, account: object) -> None:
-    assert client.get(BASE).status_code == 401
-    assert client.put(FIREWALL, json={"value": API_KEY}).status_code == 401
-    assert client.delete(FIREWALL).status_code == 401
+    listed = client.get(BASE)
+    replaced = client.put(FIREWALL, json={"value": API_KEY})
+    deleted = client.delete(FIREWALL)
+
+    assert (listed.status_code, replaced.status_code, deleted.status_code) == (401, 401, 401)
 
 
 def test_a_change_needs_the_security_token_of_the_sign_in(
     client: TestClient, csrf_token: str
 ) -> None:
-    assert client.put(FIREWALL, json={"value": API_KEY}).status_code == 403
-    assert client.delete(FIREWALL).status_code == 403
+    replaced = client.put(FIREWALL, json={"value": API_KEY})
+    deleted = client.delete(FIREWALL)
+
+    assert (replaced.status_code, deleted.status_code) == (403, 403)
     assert client.get(BASE).json() == []
 
 
