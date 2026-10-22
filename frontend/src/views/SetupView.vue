@@ -7,7 +7,7 @@ import type { SubmitEventPromise } from 'vuetify'
 import { ApiError, errorMessage } from '@/api/client'
 import AuthLayout from '@/components/AuthLayout.vue'
 import PasswordField from '@/components/PasswordField.vue'
-import { isValid } from '@/form'
+import { isValid, vFocus } from '@/form'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -103,12 +103,12 @@ async function createAccount(event: SubmitEventPromise) {
         </p>
         <v-text-field
           v-model="code"
+          v-focus
           label="Setup code"
           placeholder="K7QD-3MWX-9HPA"
           autocomplete="off"
           autocapitalize="characters"
           spellcheck="false"
-          autofocus
           :rules="[rules.code]"
           data-test="setup-code"
         />
@@ -126,25 +126,25 @@ async function createAccount(event: SubmitEventPromise) {
       <template v-else>
         <v-text-field
           v-model="username"
+          v-focus
           label="Username"
           autocomplete="username"
           autocapitalize="off"
           spellcheck="false"
-          autofocus
           :rules="[rules.username]"
           data-test="username"
         />
         <PasswordField
           v-model="password"
           label="Password"
-          autocomplete="new-password"
+          creating
           :rules="[rules.password]"
           data-test="password"
         />
         <PasswordField
           v-model="confirmation"
           label="Confirm password"
-          autocomplete="new-password"
+          creating
           :rules="[rules.confirmation]"
           data-test="confirm-password"
         />

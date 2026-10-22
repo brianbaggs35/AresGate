@@ -3,12 +3,12 @@ import { defineComponent, ref } from 'vue'
 import PasswordField from '@/components/PasswordField.vue'
 import { mountWithPlugins } from '@/test/mount'
 
-async function open() {
+async function open(creating = true) {
   const typed = ref('')
   const host = defineComponent({
     components: { PasswordField },
     setup: () => ({ typed }),
-    template: '<PasswordField v-model="typed" label="Password" autocomplete="new-password" />',
+    template: `<PasswordField v-model="typed" label="Password" :creating="${String(creating)}" />`,
   })
   const { wrapper } = await mountWithPlugins(host)
   return { wrapper, typed, input: () => wrapper.find('input') }
@@ -20,6 +20,11 @@ describe('PasswordField', () => {
     expect(input().attributes('type')).toBe('password')
     expect(input().attributes('autocomplete')).toBe('new-password')
     expect(input().attributes('spellcheck')).toBe('false')
+  })
+
+  it('names the field for signing in when it is not for choosing a password', async () => {
+    const { input } = await open(false)
+    expect(input().attributes('autocomplete')).toBe('current-password')
   })
 
   it('passes what is typed on', async () => {
