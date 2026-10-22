@@ -2,6 +2,8 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
 DEV_COMPOSE := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
+E2E_COMPOSE := $(COMPOSE) -f docker-compose.e2e.yml
+E2E_PORT := $${ARESGATE_E2E_PORT:-9443}
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 HADOLINT_IMAGE := hadolint/hadolint:v2.15.1
@@ -20,6 +22,7 @@ TEST_DB_PORT ?= 55432
 .DEFAULT_GOAL := help
 .PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
+	e2e e2e-up e2e-down e2e-host e2e-ui e2e-codegen e2e-report e2e-logs \
 	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
 
 help: ## Show this help
@@ -84,7 +87,7 @@ dev-web: ## Run the web app with live reload on http://127.0.0.1:5173, proxying 
 
 install: ## Install backend and frontend dependencies locally
 	$(BACKEND) uv sync
-	$(FRONTEND) npm ci --ignore-scripts
+	$(FRONTEND) npm ci --ignore-scripts && npm run e2e:install
 
 test: test-backend test-frontend ## Run all tests with coverage (95% minimum; 100% target)
 
@@ -102,6 +105,41 @@ test-backend: ## Run pytest with coverage, on a throwaway Postgres
 test-frontend: ## Run vitest with coverage
 	$(FRONTEND) npm run coverage
 
+## ---- End-to-end tests (frontend/e2e/README.md) ---------------------------------
+e2e: e2e-up ## Run the Playwright tests against the test container, e.g. make e2e ARGS="home --project=desktop"
+	$(FRONTEND) npm run e2e -- $(ARGS)
+
+e2e-up: ## Build and start the test container at https://localhost:9443, with the baseline data
+	$(E2E_COMPOSE) up --detach --build --wait --wait-timeout 180
+	@curl --silent --show-error --fail --insecure --request POST \
+		"https://localhost:$(E2E_PORT)/api/__test__/database/clean" >/dev/null
+	@echo "The test server is at https://localhost:$(E2E_PORT) (make e2e-down stops it)"
+
+e2e-down: ## Stop the test container and throw its data away
+	$(E2E_COMPOSE) down --volumes
+
+e2e-host: ## Run the Playwright tests with no container: the API and web app run on this computer
+	@docker rm --force $(TEST_DB) >/dev/null 2>&1 || true
+	docker run --detach --rm --name $(TEST_DB) --publish 127.0.0.1:$(TEST_DB_PORT):5432 \
+		--env POSTGRES_USER=aresgate --env POSTGRES_HOST_AUTH_METHOD=trust $(TEST_DB_IMAGE) >/dev/null
+	@for _ in $$(seq 60); do \
+		docker exec $(TEST_DB) pg_isready --quiet -h 127.0.0.1 -U aresgate && break; sleep 1; \
+	done
+	@ARESGATE_DATABASE_URL=postgresql+psycopg://aresgate@127.0.0.1:$(TEST_DB_PORT)/aresgate \
+		.github/scripts/e2e-host.sh $(ARGS); status=$$?; docker rm --force $(TEST_DB) >/dev/null; exit $$status
+
+e2e-ui: e2e-up ## Open Playwright's UI to run and debug tests step by step
+	$(FRONTEND) npm run e2e:ui
+
+e2e-codegen: e2e-up ## Record a test by clicking through the app (Playwright's codegen)
+	$(FRONTEND) npm run e2e:codegen
+
+e2e-report: ## Open the last run's HTML report
+	$(FRONTEND) npm run e2e:report
+
+e2e-logs: ## Follow the test container's logs
+	$(E2E_COMPOSE) logs -f
+
 ## ---- Check ---------------------------------------------------------------------
 lint: lint-backend lint-frontend lint-infra ## Run every linter and type checker
 
@@ -115,7 +153,8 @@ lint-frontend: ## ESLint, Prettier and vue-tsc
 lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI workflows)
 	docker run --rm -v "$(CURDIR):/work:ro" -w /work $(HADOLINT_IMAGE) hadolint Dockerfile
 	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh \
-		docker/apk-retry.sh .github/scripts/smoke-test.sh .github/scripts/trivy-report.sh
+		docker/apk-retry.sh docker/e2e/start-api.sh .github/scripts/smoke-test.sh \
+		.github/scripts/e2e-host.sh .github/scripts/trivy-report.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code
