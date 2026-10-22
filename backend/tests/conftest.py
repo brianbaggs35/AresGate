@@ -3,6 +3,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -10,7 +11,7 @@ from app.config import Settings
 from app.db import get_session
 from app.main import create_app
 from app.models import Base
-from tests.helpers import ORIGIN, SERVER_NAME, TEST_DATABASE_URL
+from tests.helpers import ORIGIN, SERVER_NAME, TEST_DATABASE_URL, TEST_SECRET_KEY
 
 
 def pytest_configure() -> None:
@@ -37,6 +38,7 @@ def settings() -> Settings:
         database_url=TEST_DATABASE_URL,
         enable_docs=True,
         server_name=SERVER_NAME,
+        secret_key=SecretStr(TEST_SECRET_KEY),
     )
 
 

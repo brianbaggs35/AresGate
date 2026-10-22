@@ -1,9 +1,10 @@
 """Application settings, read from ``ARESGATE_*`` environment variables."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app import __version__
@@ -22,6 +23,13 @@ class Settings(BaseSettings):
     database_echo: bool = False
     # Interactive OpenAPI docs are off unless explicitly enabled.
     enable_docs: bool = False
+
+    # The app secret key, which encrypts what AresGate stores. The container makes one in its
+    # data volume the first time it starts, so it's only set to bring a key from somewhere else
+    # (a restored backup, a secret manager). Either the key itself or a file holding it, such as
+    # a Docker secret: app/secret_key.py has the rules.
+    secret_key: SecretStr | None = None
+    secret_key_file: Path = Path("/data/secrets/secret.key")
 
     # The name people browse to and the host port it's served on. Passkeys and the check that
     # requests really come from AresGate's own pages are bound to this address.

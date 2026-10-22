@@ -313,6 +313,11 @@ jobs:
           docker compose up --detach --no-build --wait --wait-timeout 180
           ./.github/scripts/smoke-test.sh
 
+      # The app secret key can be supplied instead of made, in the environment or in a file such
+      # as a Docker secret, and a key that is too short has to stop the container.
+      - name: Start with a secret key you supply
+        run: ./.github/scripts/supplied-key-test.sh
+
       - name: Container logs
         if: ${{ failure() }}
         run: docker compose logs --no-color
