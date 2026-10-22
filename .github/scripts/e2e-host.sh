@@ -31,10 +31,10 @@ cd "$root/backend"
 # The harness refuses to start unless the API is told it's a test server.
 export ARESGATE_ENVIRONMENT=test
 echo "Migrating the database"
-uv run --no-sync alembic upgrade head
+uv run --no-sync --no-build alembic upgrade head
 
 echo "Starting the API on port $api_port, measured by coverage"
-uv run --no-sync python -m coverage run --rcfile="$root/docker/e2e/coveragerc" \
+uv run --no-sync --no-build python -m coverage run --rcfile="$root/docker/e2e/coveragerc" \
     -m uvicorn e2e.main:create_e2e_app --factory --host 127.0.0.1 --port "$api_port" &
 pids+=("$!")
 
