@@ -23,6 +23,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.17.1",
 ]
+e2e = [
+    "coverage>=7.14",
+]
 
 [tool.uv]
 package = false
@@ -54,7 +57,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 "tests/**" = ["S101", "S105", "S106"]
 
 [tool.pyright]
-include = ["app", "tests", "migrations", "../docker"]
+include = ["app", "e2e", "tests", "migrations", "../docker"]
 typeCheckingMode = "strict"
 pythonVersion = "3.14"
 venvPath = "."

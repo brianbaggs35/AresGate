@@ -69,7 +69,7 @@ jobs:
         run: pyright
 
       - name: Bandit
-        run: bandit -c pyproject.toml -r app migrations
+        run: bandit -c pyproject.toml -r app e2e migrations
 
       - name: Dependency audit
         run: pip-audit
