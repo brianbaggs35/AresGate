@@ -17,6 +17,8 @@ const TITLES: Readonly<Record<string, string>> = {
   'auth.two_factor_disabled': 'Two-step verification was turned off',
   'auth.two_factor_failed': 'Wrong verification code',
   'auth.recovery_codes_created': 'New recovery codes were made',
+  'auth.passkey_added': 'A passkey was added',
+  'auth.passkey_removed': 'A passkey was removed',
   'credential.stored': 'A credential was saved',
   'credential.deleted': 'A credential was deleted',
   'system.secret_key_rotated': 'The app secret key was changed',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, LogIn, ShieldCheck } from '@lucide/vue'
+import { ArrowLeft, KeyRound, LogIn, ShieldCheck } from '@lucide/vue'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { SubmitEventPromise } from 'vuetify'
@@ -10,6 +10,7 @@ import PasswordField from '@/components/PasswordField.vue'
 import { isValid, vFocus } from '@/form'
 import { landingPage } from '@/router/guard'
 import { useSessionStore } from '@/stores/session'
+import { passkeysSupported } from '@/webauthn'
 
 const session = useSessionStore()
 const route = useRoute()
@@ -23,6 +24,7 @@ const challenge = ref<string | null>(null)
 const code = ref('')
 const busy = ref(false)
 const error = ref<string | null>(null)
+const passkeys = passkeysSupported()
 
 const required = (what: string) => (value: string) => value.trim() !== '' || `Enter ${what}.`
 
@@ -52,6 +54,19 @@ async function submitCode(event: SubmitEventPromise) {
   } catch (codeError) {
     error.value = errorMessage(codeError)
     code.value = ''
+  } finally {
+    busy.value = false
+  }
+}
+
+async function signInWithPasskey() {
+  busy.value = true
+  error.value = null
+  try {
+    await session.logInWithPasskey()
+    await router.replace(landingPage(route.query))
+  } catch (passkeyError) {
+    error.value = errorMessage(passkeyError)
   } finally {
     busy.value = false
   }
@@ -147,5 +162,23 @@ function startOver() {
         Sign in
       </v-btn>
     </v-form>
+    <template v-if="challenge === null && passkeys">
+      <div class="d-flex align-center ga-3 my-4" aria-hidden="true">
+        <v-divider />
+        <span class="text-body-medium text-medium-emphasis">or</span>
+        <v-divider />
+      </div>
+      <v-btn
+        variant="outlined"
+        size="large"
+        block
+        :prepend-icon="KeyRound"
+        :loading="busy"
+        data-test="sign-in-passkey"
+        @click="signInWithPasskey"
+      >
+        Sign in with a passkey
+      </v-btn>
+    </template>
   </AuthLayout>
 </template>

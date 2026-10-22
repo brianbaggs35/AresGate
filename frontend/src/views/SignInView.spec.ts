@@ -1,8 +1,10 @@
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as passkeysApi from '@/api/passkeys'
 import { useSessionStore } from '@/stores/session'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import SignInView from '@/views/SignInView.vue'
+import * as webauthn from '@/webauthn'
 
 const info = { username: 'admin', csrf_token: 'a-token', expires_at: '2026-01-01T12:00:00Z' }
 
@@ -202,6 +204,109 @@ describe('SignInView', () => {
       useSessionStore().expired = true
       await flushPromises()
       expect(wrapper.find('[data-test="signed-out-notice"]').exists()).toBe(false)
+    })
+  })
+
+  describe('a passkey', () => {
+    const challenge = {
+      challenge_id: 'a-challenge',
+      options: { challenge: 'AAAA' } as PublicKeyCredentialRequestOptionsJSON,
+    }
+    const signed = {
+      id: 'AAAA',
+      rawId: 'AAAA',
+      type: 'public-key',
+      response: { clientDataJSON: 'BBBB', authenticatorData: 'CCCC', signature: 'DDDD' },
+      clientExtensionResults: {},
+    } satisfies AuthenticationResponseJSON
+
+    async function openWithPasskeys(route = '/sign-in', supported = true) {
+      vi.spyOn(webauthn, 'passkeysSupported').mockReturnValue(supported)
+      return open(route)
+    }
+
+    function answerSignIn() {
+      return {
+        start: vi.spyOn(passkeysApi, 'startPasskeySignIn').mockResolvedValue(challenge),
+        get: vi.spyOn(webauthn, 'getPasskey').mockResolvedValue(signed),
+        finish: vi.spyOn(passkeysApi, 'logInWithPasskey').mockResolvedValue(info),
+      }
+    }
+
+    it('is offered under the password, by a browser that has them', async () => {
+      const { wrapper } = await openWithPasskeys()
+      expect(wrapper.find('[data-test="sign-in-passkey"]').text()).toBe('Sign in with a passkey')
+    })
+
+    it('is not offered by a browser that has none', async () => {
+      const { wrapper } = await openWithPasskeys('/sign-in', false)
+      expect(wrapper.find('[data-test="sign-in-passkey"]').exists()).toBe(false)
+    })
+
+    it('is not offered once the password has been accepted and a code is wanted', async () => {
+      vi.spyOn(authApi, 'logIn').mockResolvedValue({
+        two_factor_required: true,
+        challenge: 'a-challenge',
+      })
+      const { wrapper, type, submit } = await openWithPasskeys()
+      await type('username', 'admin')
+      await type('password', 'a long enough phrase')
+      await submit()
+      expect(wrapper.find('h1').text()).toBe('Enter a code')
+      expect(wrapper.find('[data-test="sign-in-passkey"]').exists()).toBe(false)
+    })
+
+    it('signs in with nothing typed, and goes to the front page', async () => {
+      const { start, get, finish } = answerSignIn()
+      const { wrapper, router } = await openWithPasskeys()
+      await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
+      await flushPromises()
+      expect(start).toHaveBeenCalledOnce()
+      expect(get).toHaveBeenCalledWith(challenge.options)
+      expect(finish).toHaveBeenCalledWith('a-challenge', signed)
+      expect(useSessionStore().signedIn).toBe(true)
+      expect(wrapper.text()).not.toContain('Enter your username.')
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.name).toBe('home')
+      })
+    })
+
+    it('goes on to the page that was asked for', async () => {
+      answerSignIn()
+      const { wrapper, router } = await openWithPasskeys('/sign-in?next=/security')
+      await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
+      await flushPromises()
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.name).toBe('security')
+      })
+    })
+
+    it('says when the device was cancelled, and can be tried again', async () => {
+      const { get } = answerSignIn()
+      get.mockRejectedValue(new webauthn.PasskeyError('Using the passkey was cancelled.'))
+      const { wrapper } = await openWithPasskeys()
+      await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="sign-in-error"]').text()).toBe(
+        'Using the passkey was cancelled.',
+      )
+      expect(useSessionStore().signedIn).toBe(false)
+
+      get.mockResolvedValue(signed)
+      await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
+      await flushPromises()
+      expect(useSessionStore().signedIn).toBe(true)
+      expect(wrapper.find('[data-test="sign-in-error"]').exists()).toBe(false)
+    })
+
+    it('says when the API did not accept the passkey', async () => {
+      const { finish } = answerSignIn()
+      finish.mockRejectedValue(new ApiError(401, "That passkey didn't work.", 'unauthenticated'))
+      const { wrapper } = await openWithPasskeys()
+      await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="sign-in-error"]').text()).toBe("That passkey didn't work.")
+      expect(useSessionStore().signedIn).toBe(false)
     })
   })
 })

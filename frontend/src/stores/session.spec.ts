@@ -2,7 +2,9 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as passkeysApi from '@/api/passkeys'
 import { useSessionStore } from '@/stores/session'
+import * as webauthn from '@/webauthn'
 
 const info = { username: 'admin', csrf_token: 'a-token', expires_at: '2026-01-01T12:00:00Z' }
 const notSignedIn = () => new ApiError(401, "You're not signed in.", 'unauthenticated')
@@ -133,6 +135,59 @@ describe('session store', () => {
       )
       const store = useSessionStore()
       await expect(store.logIn({ username: 'a', password: 'b' })).rejects.toThrow('Incorrect.')
+      expect(store.signedIn).toBe(false)
+    })
+  })
+
+  describe('logInWithPasskey', () => {
+    const options = { challenge: 'AAAA' } as PublicKeyCredentialRequestOptionsJSON
+    const signed = {
+      id: 'AAAA',
+      rawId: 'AAAA',
+      type: 'public-key',
+      response: { clientDataJSON: 'BBBB', authenticatorData: 'CCCC', signature: 'DDDD' },
+      clientExtensionResults: {},
+    } satisfies AuthenticationResponseJSON
+
+    it('is signed in once the device signs what the API asked for', async () => {
+      const start = vi
+        .spyOn(passkeysApi, 'startPasskeySignIn')
+        .mockResolvedValue({ challenge_id: 'an-id', options })
+      const get = vi.spyOn(webauthn, 'getPasskey').mockResolvedValue(signed)
+      const finish = vi.spyOn(passkeysApi, 'logInWithPasskey').mockResolvedValue(info)
+      const store = useSessionStore()
+      store.expired = true
+      await store.logInWithPasskey()
+      expect(start).toHaveBeenCalledOnce()
+      expect(get).toHaveBeenCalledWith(options)
+      expect(finish).toHaveBeenCalledWith('an-id', signed)
+      expect(store).toMatchObject({ signedIn: true, expired: false, csrfToken: 'a-token' })
+    })
+
+    it('stays signed out, and sends nothing, when the device is cancelled', async () => {
+      vi.spyOn(passkeysApi, 'startPasskeySignIn').mockResolvedValue({
+        challenge_id: 'an-id',
+        options,
+      })
+      vi.spyOn(webauthn, 'getPasskey').mockRejectedValue(new webauthn.PasskeyError('Cancelled.'))
+      const finish = vi.spyOn(passkeysApi, 'logInWithPasskey')
+      const store = useSessionStore()
+      await expect(store.logInWithPasskey()).rejects.toThrow('Cancelled.')
+      expect(store.signedIn).toBe(false)
+      expect(finish).not.toHaveBeenCalled()
+    })
+
+    it('stays signed out when the API will not accept the passkey', async () => {
+      vi.spyOn(passkeysApi, 'startPasskeySignIn').mockResolvedValue({
+        challenge_id: 'an-id',
+        options,
+      })
+      vi.spyOn(webauthn, 'getPasskey').mockResolvedValue(signed)
+      vi.spyOn(passkeysApi, 'logInWithPasskey').mockRejectedValue(
+        new ApiError(401, "That passkey didn't work.", 'unauthenticated'),
+      )
+      const store = useSessionStore()
+      await expect(store.logInWithPasskey()).rejects.toThrow('passkey')
       expect(store.signedIn).toBe(false)
     })
   })
