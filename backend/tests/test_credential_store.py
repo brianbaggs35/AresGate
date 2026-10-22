@@ -104,11 +104,13 @@ def test_the_list_says_what_is_kept_in_order_without_the_secrets(
 def test_a_secret_can_be_forgotten(session: Session, settings: Settings) -> None:
     keep(session, settings)
 
-    assert credential_store.remove(session, Kind.INTEGRATION, "opnsense", "api_key")
+    removed = credential_store.remove(session, Kind.INTEGRATION, "opnsense", "api_key")
     session.commit()
+    removed_again = credential_store.remove(session, Kind.INTEGRATION, "opnsense", "api_key")
 
+    assert removed
     assert credential_store.entries(session) == []
-    assert not credential_store.remove(session, Kind.INTEGRATION, "opnsense", "api_key")
+    assert not removed_again
 
 
 @pytest.mark.parametrize(
