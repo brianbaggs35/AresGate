@@ -5,6 +5,7 @@ import { useDisplay } from 'vuetify'
 
 import AppLogo from '@/components/AppLogo.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import UserMenu from '@/components/UserMenu.vue'
 import { pageTitle } from '@/router'
 
 const route = useRoute()
@@ -24,6 +25,7 @@ const title = computed(() => pageTitle(route))
     <v-app-bar-title v-else class="px-2" data-test="page-title">{{ title }}</v-app-bar-title>
     <template #append>
       <ThemeToggle />
+      <UserMenu />
     </template>
   </v-app-bar>
 </template>

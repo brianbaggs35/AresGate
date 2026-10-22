@@ -20,6 +20,74 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the security page has no WCAG 2.2 AA problems', async ({ page, security, shell }) => {
+      await security.goto()
+      await expect(security.activities.first()).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+    })
+
+    test('the account menu has no WCAG 2.2 AA problems', async ({ page, overview, shell }) => {
+      await overview.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await shell.userMenu.click()
+      await expect(shell.signOut).toBeVisible()
+
+      await expectAccessible(page)
+    })
+
+    test.describe('before signing in', () => {
+      test.use({ signedIn: false })
+
+      test('the sign-in page has no WCAG 2.2 AA problems', async ({ page, signIn, shell }) => {
+        await signIn.goto()
+        await shell.chooseTheme(theme)
+        await shell.expectTheme(theme)
+
+        await expectAccessible(page)
+      })
+
+      test('the sign-in page with an error has no WCAG 2.2 AA problems', async ({
+        page,
+        signIn,
+        shell,
+        baseline,
+      }) => {
+        await signIn.goto()
+        await shell.chooseTheme(theme)
+        await shell.expectTheme(theme)
+        await signIn.signIn({ ...baseline.account, password: 'not the right password' })
+        await expect(signIn.error).toBeVisible()
+
+        await expectAccessible(page)
+      })
+
+      test('both steps of setting up have no WCAG 2.2 AA problems', async ({
+        page,
+        harness,
+        setup,
+        shell,
+        baseline,
+      }) => {
+        await harness.loadFixture('fresh-install')
+        await setup.goto()
+        await shell.chooseTheme(theme)
+        await shell.expectTheme(theme)
+        await expectAccessible(page)
+
+        await setup.enterCode(baseline.fresh_install_setup_code)
+        await expect(setup.step).toHaveText(/^Step 2 of 2/)
+        await expectAccessible(page)
+
+        await setup.createAccountWith({ username: 'x', password: 'short' }, 'different')
+        await expect(page.getByText("The passwords don't match.")).toBeVisible()
+        await expectAccessible(page)
+      })
+    })
+
     test('the theme menu has no WCAG 2.2 AA problems', async ({ page, overview, shell }) => {
       await overview.goto()
       await shell.chooseTheme(theme)

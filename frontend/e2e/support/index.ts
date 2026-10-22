@@ -10,4 +10,7 @@ export {
 } from './harness'
 export { AppShell, type ThemeChoice } from './pages/app-shell'
 export { OverviewPage } from './pages/overview-page'
+export { SecurityPage } from './pages/security-page'
+export { SetupPage } from './pages/setup-page'
+export { SignInPage } from './pages/sign-in-page'
 export { expect, test } from './test'

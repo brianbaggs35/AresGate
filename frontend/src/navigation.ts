@@ -1,4 +1,4 @@
-import { LayoutDashboard } from '@lucide/vue'
+import { LayoutDashboard, ShieldCheck } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A place in the menu. */
@@ -15,4 +15,5 @@ export const BOTTOM_BAR_LIMIT = 5
 /** The menu, in order. A page that should be in it adds itself here. */
 export const navItems: readonly NavItem[] = [
   { route: 'home', title: 'Overview', icon: LayoutDashboard },
+  { route: 'security', title: 'Security', icon: ShieldCheck },
 ]

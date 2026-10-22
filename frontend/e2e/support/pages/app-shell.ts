@@ -11,6 +11,15 @@ export class AppShell {
   readonly menu: Locator
   /** The places in the menu. */
   readonly overviewLink: Locator
+  readonly securityLink: Locator
+  /** The account's button in the bar, which opens the menu with Sign out in it. */
+  readonly userMenu: Locator
+  readonly signOut: Locator
+  /** Why signing out from the menu failed, in a message at the bottom. */
+  readonly signOutError: Locator
+  /** Shown instead of the page when the API can't be reached to ask who is signed in. */
+  readonly startupError: Locator
+  readonly startupRetry: Locator
   /** Switches the side menu between labelled and just icons. Not on a phone. */
   readonly menuWidthToggle: Locator
   /** What a place's tooltip says in the icons-only menu, once it is showing. */
@@ -25,14 +34,30 @@ export class AppShell {
     this.logo = page.getByRole('link', { name: 'AresGate' })
     this.menu = page.getByRole('navigation', { name: 'Main' })
     this.overviewLink = page.getByTestId('nav-home')
+    this.securityLink = page.getByTestId('nav-security')
+    this.userMenu = page.getByTestId('user-menu')
+    this.signOut = page.getByTestId('sign-out')
+    this.signOutError = page.getByTestId('sign-out-error')
+    this.startupError = page.getByTestId('startup-error')
+    this.startupRetry = page.getByTestId('retry')
     this.menuWidthToggle = page.getByTestId('menu-width')
     // Screen readers skip it, as the place's own name says the same, so a role can't find it.
-    this.menuTooltip = page.getByTestId('menu-tooltip').locator('.v-overlay__content')
+    // Every place has one, and only the one being pointed at is showing.
+    this.menuTooltip = page
+      .getByTestId('menu-tooltip')
+      .locator('.v-overlay__content')
+      .filter({ visible: true })
     this.pageTitle = page.getByTestId('page-title')
     this.skipLink = page.getByTestId('skip-link')
     this.main = page.getByRole('main')
     this.themeToggle = page.getByTestId('theme-toggle')
     this.app = page.locator('.v-application')
+  }
+
+  /** Signs out from the account's menu in the bar. */
+  async signOutFromMenu(): Promise<void> {
+    await this.userMenu.click()
+    await this.signOut.click()
   }
 
   async chooseTheme(choice: ThemeChoice): Promise<void> {
