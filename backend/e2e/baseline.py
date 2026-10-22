@@ -13,6 +13,7 @@ from typing import Literal, NamedTuple
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.models import Base, SystemInfo, User
 from app.security import passwords, setup_code
 
@@ -49,6 +50,7 @@ def clean(session: Session) -> list[str]:
     """Empties every table the models define, keeping the migration history, and returns the
     tables' names in the order they were emptied (rows that refer to others go first)."""
     emptied: list[str] = []
+    audit.allow_deletes(session)
     for table in reversed(Base.metadata.sorted_tables):
         session.execute(table.delete())
         emptied.append(table.name)

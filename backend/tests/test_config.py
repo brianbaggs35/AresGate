@@ -80,3 +80,13 @@ def test_a_sign_in_lasts_half_an_hour_idle_and_half_a_day_at_most() -> None:
 def test_a_sign_in_cannot_last_no_time_at_all(setting: str) -> None:
     with pytest.raises(ValidationError):
         Settings(**{setting: 0})  # type: ignore[arg-type]
+
+
+def test_the_audit_log_keeps_a_year_by_default() -> None:
+    assert Settings().audit_retention_days == 365
+
+
+@pytest.mark.parametrize("days", [0, -1, 3651])
+def test_the_audit_log_keeps_between_a_day_and_ten_years(days: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(audit_retention_days=days)

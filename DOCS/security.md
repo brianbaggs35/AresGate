@@ -67,6 +67,25 @@ see [SECURITY.md](../SECURITY.md).
 - A wrong username and a wrong password get the same answer in the same time, so the sign-in
   page doesn't tell anyone which names exist.
 
+**The audit log**
+
+- Setting up, signing in (and every wrong guess), signing out and the log's own housekeeping are
+  recorded, each with the time, the account, the address the request came from and the browser's
+  name. The features that follow (authenticator apps, passkeys, settings and stored credentials)
+  add their own events, and so does the command that turns the second step off.
+- The database refuses to change or delete an event, so a bug in AresGate can't rewrite
+  history. The one exception is the clean-up that deletes events older than
+  `ARESGATE_AUDIT_RETENTION_DAYS` (a year unless you change it), which records how many it
+  deleted. Someone with access to the database can still switch that protection off, as they
+  can anything, so it guards against mistakes rather than against them.
+- It never holds a password, a setup code or a token. A wrong username that isn't an account is
+  recorded without the name, because people sometimes type their password where it goes. Text
+  from the browser is stripped of control characters and cut short before it is kept, so it
+  can't forge a line.
+- The list is for whoever is signed in: `GET /api/audit/events`, newest first, filtered by
+  `action` (repeat it), `outcome`, `username`, `since` and `until`, a page at a time with
+  `before` and `limit`. The web app's page for it arrives with the account pages.
+
 ## Planned
 
 These are being built, in this order, and are not in AresGate yet:
@@ -75,7 +94,7 @@ These are being built, in this order, and are not in AresGate yet:
   Until then the account is protected by its password alone, so use a long one.
 - Credentials for OPNsense, ntopng, Wazuh and AI providers stored encrypted and write-only: you
   can replace them but never read them back.
-- An audit log of sign-ins and changes, and logging that redacts secrets.
+- Logging that redacts secrets, and the audit log's page in the web app.
 - An AI analyst that only reads at first. Hosted AI providers will get addresses and host names
   replaced with stand-ins.
 

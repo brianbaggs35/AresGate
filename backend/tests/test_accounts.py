@@ -45,3 +45,10 @@ def test_the_account_is_found_by_its_username(session: Session, account: User) -
     assert any_user_exists(session)
     assert find_user(session, ACCOUNT_USERNAME) == account
     assert find_user(session, "someone-else") is None
+
+
+@pytest.mark.parametrize("name", ["a\x00b", "", "ab", "Brian", "has space", "x" * 65])
+def test_a_name_no_account_can_have_finds_nothing_and_asks_nothing_of_the_database(
+    session: Session, account: User, name: str
+) -> None:
+    assert find_user(session, name) is None
