@@ -8,6 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UTCDateTime, utcnow
 
+USERS_ID = "users.id"
+
 
 class User(Base):
     """The one account that runs this install. Usernames are stored lowercase."""
@@ -29,7 +31,7 @@ class UserSession(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey(USERS_ID, ondelete="CASCADE"), index=True)
     # Pages send this back in a header on every change they ask for, which another website
     # can't read.
     csrf_token: Mapped[str] = mapped_column(String(64))
@@ -61,7 +63,7 @@ class TotpCredential(Base):
     __tablename__ = "totp_credentials"
 
     user_id: Mapped[UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey(USERS_ID, ondelete="CASCADE"), primary_key=True
     )
     # The key, sealed with the app secret key (see app/security/vault.py).
     secret_sealed: Mapped[str] = mapped_column(String(255))
@@ -82,7 +84,7 @@ class RecoveryCode(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     # The unique constraint's index starts with the account, so looking its codes up needs no
     # index of its own.
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey(USERS_ID, ondelete="CASCADE"))
     code_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
