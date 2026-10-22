@@ -251,7 +251,7 @@ jobs:
       - name: Show the versions in the image
         run: |
           docker run --rm --entrypoint sh aresgate:ci -c \
-            'python --version; nginx -v 2>&1; psql --version; apk info -v ca-certificates-bundle python-3.14 nginx-mainline postgresql-18; apk update >/dev/null 2>&1; apk policy ca-certificates-bundle nginx-mainline' || true
+            'python --version; nginx -v 2>&1; psql --version; apk info -v ca-certificates-bundle python-3.14 nginx-mainline postgresql-18; echo "--- world"; cat /etc/apk/world; echo "--- repositories"; cat /etc/apk/repositories; apk update >/dev/null 2>&1; echo "--- upgrade"; apk upgrade --simulate' || true
 
       - name: Trivy scan of the image
         id: trivy-image
