@@ -307,6 +307,11 @@ jobs:
       - name: Smoke test
         run: ./.github/scripts/smoke-test.sh
 
+      # A fresh container asks to be set up: the setup code in its log creates the account, which
+      # signs in, stays after a restart and locks after five wrong passwords.
+      - name: Set up and sign in
+        run: ./.github/scripts/sign-in-test.sh
+
       - name: Restart on the existing data
         run: |
           docker compose down
