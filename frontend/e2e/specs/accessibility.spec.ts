@@ -29,6 +29,39 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the passkeys card, adding one and removing one have no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+      authenticator,
+      baseline,
+    }) => {
+      await security.goto()
+      await expect(security.noPasskeys).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await security.addPasskey.click()
+      await expect(security.newPasskeyName).toBeVisible()
+      await expectAccessible(page)
+
+      await security.passkeyPassword.fill('not the password')
+      await security.createPasskey.click()
+      await expect(security.passkeysError).toBeVisible()
+      await expectAccessible(page)
+
+      await security.passkeyPassword.fill(baseline.account.password)
+      await security.createPasskey.click()
+      await expect(security.passkeyNames).toHaveCount(1)
+      expect(await authenticator.passkeys()).toHaveLength(1)
+      await expectAccessible(page)
+
+      await security.removePasskeyButtons.click()
+      await expect(security.confirmRemovePasskey).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('adding an authenticator app has no WCAG 2.2 AA problems', async ({
       page,
       security,

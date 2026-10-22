@@ -69,6 +69,12 @@ test('shows that the API is up', async ({ overview }) => {
   table gets a
   factory in `backend/e2e/factories.py` and an endpoint in `backend/e2e/api.py`, so specs can make
   records on demand; give the baseline the rows every spec can rely on in `baseline.py`.
+- **`authenticator`** is the passkey device every page has, made of software (Chromium's virtual
+  authenticator, `support/virtual-authenticator.ts`). It unlocks itself, so a test adds a passkey
+  and signs in with it without a prompt to click through, and `setUnlockable(false)` makes it
+  refuse. Ask for it to see what the device holds. A passkey
+  belongs to a server name, which is why `make e2e-host` serves the web app at
+  `http://localhost:…` and not at the IP address that means the same.
 - `expectAccessible(page)` runs axe against WCAG 2.2 A and AA. Check each new page in both themes.
 - Tests run one at a time per shard, since they share one database.
 

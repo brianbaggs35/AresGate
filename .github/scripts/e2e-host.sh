@@ -59,4 +59,6 @@ done
 curl --silent --fail --output /dev/null "http://127.0.0.1:$web_port/api/health" ||
     fail "the API and web app did not come up"
 
-ARESGATE_E2E_URL="http://127.0.0.1:$web_port" npm run e2e -- "$@"
+# "localhost" rather than the address it stands for: a passkey belongs to a server name, which
+# browsers won't take an IP address for.
+ARESGATE_E2E_URL="http://localhost:$web_port" npm run e2e -- "$@"

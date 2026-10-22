@@ -7,6 +7,7 @@ import { OverviewPage } from './pages/overview-page'
 import { SecurityPage } from './pages/security-page'
 import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
+import { VirtualAuthenticator } from './virtual-authenticator'
 
 export interface AresGateFixtures {
   /** The logo and the theme switcher that every page has. */
@@ -15,6 +16,8 @@ export interface AresGateFixtures {
   signIn: SignInPage
   setup: SetupPage
   security: SecurityPage
+  /** The passkey device every page has, which unlocks itself. Chromium only. */
+  authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
   signedIn: boolean
   /** Puts the database back to the baseline before every test, so none depends on another. */
@@ -76,6 +79,19 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
   security: async ({ page }, use) => {
     await use(new SecurityPage(page))
   },
+
+  // Automatic, because without a device to answer, a browser with nobody at it waits for a
+  // security key to be plugged in, and a test that asks for a passkey hangs.
+  authenticator: [
+    async ({ page }, use) => {
+      const authenticator = await VirtualAuthenticator.attach(page)
+      await use(authenticator)
+      await authenticator.detach().catch(() => {
+        // The page may have gone first, taking the device with it.
+      })
+    },
+    { auto: true },
+  ],
 
   signedIn: [true, { option: true }],
 

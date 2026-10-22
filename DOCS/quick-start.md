@@ -10,8 +10,8 @@ web server with TLS.
 - `make`, which runs the short commands below. (Without it, every target in the `Makefile` is a
   `docker compose` command you can run yourself.)
 - A name for the server on your network, such as `aresgate.example.com`, pointing at its address.
-  Use the same name every time you browse to it. Passkeys, when they arrive, only work at the
-  name they were created for, and not at an IP address.
+  Use the same name every time you browse to it. Passkeys only work at the name they were
+  created for, and not at an IP address, and stop working if you change the name.
 
 ## Install
 

@@ -13,6 +13,23 @@ export class SecurityPage {
   readonly activityError: Locator
   readonly refresh: Locator
 
+  /** The card for passkeys: the ones on the account ... */
+  readonly passkeysCard: Locator
+  readonly passkeyNames: Locator
+  readonly passkeyDetails: Locator
+  readonly noPasskeys: Locator
+  readonly removePasskeyButtons: Locator
+  readonly passkeysUnsupported: Locator
+  readonly passkeysLoadError: Locator
+  /** ... why a change failed ... */
+  readonly passkeysError: Locator
+  /** ... adding one, and removing one. */
+  readonly addPasskey: Locator
+  readonly newPasskeyName: Locator
+  readonly passkeyPassword: Locator
+  readonly createPasskey: Locator
+  readonly confirmRemovePasskey: Locator
+
   /** The card for two-step verification: first what it says about the account ... */
   readonly twoFactorCard: Locator
   readonly twoFactorOff: Locator
@@ -53,6 +70,19 @@ export class SecurityPage {
     this.activities = page.getByTestId('activity')
     this.activityError = page.getByTestId('activity-error')
     this.refresh = page.getByTestId('refresh-activity')
+    this.passkeysCard = page.getByTestId('passkeys-card')
+    this.passkeyNames = page.getByTestId('passkey-name')
+    this.passkeyDetails = page.getByTestId('passkey-details')
+    this.noPasskeys = page.getByTestId('no-passkeys')
+    this.removePasskeyButtons = page.getByTestId('remove-passkey')
+    this.passkeysUnsupported = page.getByTestId('passkeys-unsupported')
+    this.passkeysLoadError = page.getByTestId('passkeys-load-error')
+    this.passkeysError = page.getByTestId('passkeys-error')
+    this.addPasskey = page.getByTestId('add-passkey')
+    this.newPasskeyName = page.getByLabel('Name', { exact: true })
+    this.passkeyPassword = page.getByLabel('Password', { exact: true })
+    this.createPasskey = page.getByTestId('create-passkey')
+    this.confirmRemovePasskey = page.getByTestId('confirm-remove-passkey')
     this.twoFactorCard = page.getByTestId('two-factor-card')
     this.twoFactorOff = page.getByTestId('two-factor-off')
     this.twoFactorOn = page.getByTestId('two-factor-state')
@@ -84,6 +114,15 @@ export class SecurityPage {
 
   async goto(): Promise<void> {
     await this.page.goto('/security')
+  }
+
+  /** Adds a passkey the way a person would: a name and the password, then the device unlocks. */
+  async addPasskeyNamed(name: string, password: string): Promise<void> {
+    await this.addPasskey.click()
+    await this.newPasskeyName.fill(name)
+    await this.passkeyPassword.fill(password)
+    await this.createPasskey.click()
+    await expect(this.passkeyNames.filter({ hasText: name })).toBeVisible()
   }
 
   /**
