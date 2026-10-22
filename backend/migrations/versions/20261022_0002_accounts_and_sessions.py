@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("password_changed_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
         sa.UniqueConstraint("username", name=op.f("uq_users_username")),
+        if_not_exists=True,
     )
     op.create_table(
         "user_sessions",
@@ -46,8 +47,11 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_user_sessions")),
         sa.UniqueConstraint("token_hash", name=op.f("uq_user_sessions_token_hash")),
+        if_not_exists=True,
     )
-    op.create_index(op.f("ix_user_sessions_user_id"), "user_sessions", ["user_id"])
+    op.create_index(
+        op.f("ix_user_sessions_user_id"), "user_sessions", ["user_id"], if_not_exists=True
+    )
     op.create_table(
         "login_throttles",
         sa.Column("scope", sa.String(length=16), nullable=False),
@@ -56,11 +60,12 @@ def upgrade() -> None:
         sa.Column("last_failure_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("scope", "key_hash", name=op.f("pk_login_throttles")),
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
-    op.drop_table("login_throttles")
-    op.drop_index(op.f("ix_user_sessions_user_id"), table_name="user_sessions")
-    op.drop_table("user_sessions")
-    op.drop_table("users")
+    op.drop_table("login_throttles", if_exists=True)
+    op.drop_index(op.f("ix_user_sessions_user_id"), table_name="user_sessions", if_exists=True)
+    op.drop_table("user_sessions", if_exists=True)
+    op.drop_table("users", if_exists=True)
