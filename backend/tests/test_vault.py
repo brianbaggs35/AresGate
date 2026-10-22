@@ -32,14 +32,10 @@ def test_sealing_the_same_thing_twice_gives_different_results(settings: Settings
 
 def test_another_key_cannot_open_it(settings: Settings) -> None:
     sealed = vault.seal(settings, "authenticator-key", b"secret", "account-1")
+    other = settings_with("another key, also long enough to be used")
 
     with pytest.raises(vault.VaultError):
-        vault.unseal(
-            settings_with("another key, also long enough to be used"),
-            "authenticator-key",
-            sealed,
-            "account-1",
-        )
+        vault.unseal(other, "authenticator-key", sealed, "account-1")
 
 
 def test_it_opens_only_for_the_purpose_it_was_sealed_for(settings: Settings) -> None:
@@ -74,9 +70,10 @@ def damage(sealed: str, how: str) -> str:
 )
 def test_damaged_values_are_refused(settings: Settings, how: str) -> None:
     sealed = vault.seal(settings, "authenticator-key", b"secret", "account-1")
+    damaged = damage(sealed, how)
 
     with pytest.raises(vault.VaultError):
-        vault.unseal(settings, "authenticator-key", damage(sealed, how), "account-1")
+        vault.unseal(settings, "authenticator-key", damaged, "account-1")
 
 
 def test_a_keyed_hash_is_repeatable_and_depends_on_everything(settings: Settings) -> None:

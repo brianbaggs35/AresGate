@@ -109,8 +109,10 @@ def test_a_wrong_code_does_not_turn_it_on(
 def test_confirming_needs_a_key_to_have_been_made(
     session: Session, settings: Settings, account: User
 ) -> None:
+    now = utcnow()
+
     with pytest.raises(two_factor.NotEnrolling):
-        two_factor.confirm_enrollment(session, settings, account, "123456", utcnow())
+        two_factor.confirm_enrollment(session, settings, account, "123456", now)
 
 
 def test_confirming_twice_is_refused_like_not_having_started(
@@ -118,8 +120,10 @@ def test_confirming_twice_is_refused_like_not_having_started(
 ) -> None:
     turn_on_two_factor(session, settings, account)
 
+    now = utcnow()
+
     with pytest.raises(two_factor.NotEnrolling):
-        two_factor.confirm_enrollment(session, settings, account, "123456", utcnow())
+        two_factor.confirm_enrollment(session, settings, account, "123456", now)
 
 
 def test_it_cannot_be_started_again_while_on(
@@ -127,8 +131,10 @@ def test_it_cannot_be_started_again_while_on(
 ) -> None:
     turn_on_two_factor(session, settings, account)
 
+    now = utcnow()
+
     with pytest.raises(two_factor.AlreadyEnabled):
-        two_factor.start_enrollment(session, settings, account, utcnow())
+        two_factor.start_enrollment(session, settings, account, now)
 
 
 def test_the_code_that_confirmed_it_cannot_sign_in(
