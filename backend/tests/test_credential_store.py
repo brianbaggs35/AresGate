@@ -128,8 +128,9 @@ def test_a_secret_can_be_forgotten(session: Session, settings: Settings) -> None
 def test_names_that_are_not_short_lowercase_words_are_refused(
     session: Session, settings: Settings, name: str, field: str
 ) -> None:
+    now = utcnow()
     with pytest.raises(InvalidName):
-        credential_store.store(session, settings, Kind.INTEGRATION, name, field, "x", utcnow())
+        credential_store.store(session, settings, Kind.INTEGRATION, name, field, "x", now)
     with pytest.raises(InvalidName):
         credential_store.reveal(session, settings, Kind.INTEGRATION, name, field)
     with pytest.raises(InvalidName):

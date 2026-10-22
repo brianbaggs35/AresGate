@@ -99,8 +99,9 @@ def test_a_credential_that_cannot_be_opened_is_named_and_nothing_changes(
     )
     session.commit()
 
+    new = settings_with(NEW_KEY)
     with pytest.raises(vault.VaultError, match=r"integration secret zzz-broken/api_key"):
-        rotation.rotate(session, settings, settings_with(NEW_KEY))
+        rotation.rotate(session, settings, new)
     session.rollback()
 
     for kind, name in ((Kind.INTEGRATION, "opnsense"), (Kind.AI_PROVIDER, "anthropic")):
@@ -113,8 +114,9 @@ def test_an_authenticator_key_that_cannot_be_opened_names_its_account(
     elsewhere = settings_with("a key that sealed this somewhere else")
     turn_on_two_factor(session, elsewhere, account)
 
+    new = settings_with(NEW_KEY)
     with pytest.raises(vault.VaultError, match=f"authenticator key of {account.username}"):
-        rotation.rotate(session, settings, settings_with(NEW_KEY))
+        rotation.rotate(session, settings, new)
 
 
 def test_every_column_that_is_sealed_is_rotated() -> None:
