@@ -78,10 +78,13 @@ def test_a_code_can_be_chosen(session: Session) -> None:
 
 
 def test_the_log_shows_the_code_and_where_to_use_it() -> None:
-    text = setup_code.banner("K7QD-3MWX-9HPA", "https://aresgate.example.com")
+    lines = setup_code.banner("K7QD-3MWX-9HPA", "https://aresgate.example.com").splitlines()
 
-    assert "K7QD-3MWX-9HPA" in text
-    assert "https://aresgate.example.com" in text
+    assert any(line.strip() == "K7QD-3MWX-9HPA" for line in lines)
+    assert any(
+        line.strip() == "Open https://aresgate.example.com and enter this setup code:"
+        for line in lines
+    )
 
 
 @pytest.fixture
@@ -103,7 +106,10 @@ def test_a_fresh_install_prints_a_code_that_works(
     stored = setup_code.lock(session)
     assert stored is not None
     assert setup_code.matches(stored, code)
-    assert "https://aresgate.test" in shown
+    assert any(
+        line.strip() == "Open https://aresgate.test and enter this setup code:"
+        for line in shown.splitlines()
+    )
 
 
 def test_each_start_prints_a_new_code(
