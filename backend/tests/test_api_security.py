@@ -52,7 +52,21 @@ def test_a_change_from_anywhere_else_is_refused_in_production(
     assert response.status_code == 403
 
 
-@pytest.mark.parametrize("origin", [OTHER_ORIGIN, "null", "http://localhost.evil.example"])
+@pytest.mark.parametrize(
+    "origin",
+    [
+        OTHER_ORIGIN,
+        "null",
+        "",
+        "http://localhost.evil.example",
+        "http://localhost@evil.example",
+        "http://localhost:abc",
+        "http://localhost:5173/path",
+        "http://[::1",
+        "https://localhost:5173",
+        "ftp://localhost",
+    ],
+)
 def test_a_change_from_another_website_is_refused(client: TestClient, origin: str) -> None:
     assert client.post("/api/auth/login", json=LOGIN, headers={"Origin": origin}).status_code == 403
 

@@ -1,10 +1,10 @@
 """What the API's routes share: refusing changes that don't come from AresGate's own pages,
 finding who is signed in, and the address a request came from."""
 
-import re
 import secrets
 from dataclasses import dataclass
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -19,7 +19,24 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # The web app's dev server and the end-to-end tests serve it over plain HTTP on this computer.
-_LOCAL_ORIGIN = re.compile(r"http://(localhost|127\.0\.0\.1)(:\d+)?")
+_DEV_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
+def _is_dev_server_origin(origin: str) -> bool:
+    """Whether the origin is plain HTTP on this computer, with or without a port."""
+    try:
+        parts = urlsplit(origin)
+        port = parts.port
+    except ValueError:
+        return False
+    host = parts.hostname
+    expected = host if port is None else f"{host}:{port}"
+    return (
+        parts.scheme == "http"
+        and host in _DEV_HOSTS
+        and parts.netloc == expected
+        and origin == f"{parts.scheme}://{parts.netloc}"
+    )
 
 
 def require_same_origin(request: Request, settings: SettingsDep) -> None:
@@ -30,7 +47,7 @@ def require_same_origin(request: Request, settings: SettingsDep) -> None:
     origin = request.headers.get("origin", "")
     if origin == settings.public_origin:
         return
-    if not settings.is_production and _LOCAL_ORIGIN.fullmatch(origin):
+    if not settings.is_production and _is_dev_server_origin(origin):
         return
     raise HTTPException(status.HTTP_403_FORBIDDEN, "The request didn't come from AresGate.")
 
