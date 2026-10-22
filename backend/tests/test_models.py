@@ -29,8 +29,9 @@ def test_timestamps_come_back_in_utc(session: Session) -> None:
 
 def test_naive_timestamps_are_refused() -> None:
     column = UTCDateTime()
+    naive = datetime(2026, 10, 22)  # no timezone, on purpose
     with pytest.raises(ValueError, match="timezone-aware"):
-        column.process_bind_param(datetime(2026, 10, 22), None)  # type: ignore[arg-type]
+        column.process_bind_param(naive, None)  # type: ignore[arg-type]
 
 
 def test_nothing_in_nothing_out() -> None:
