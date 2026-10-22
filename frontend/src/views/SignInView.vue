@@ -7,7 +7,7 @@ import type { SubmitEventPromise } from 'vuetify'
 import { errorMessage } from '@/api/client'
 import AuthLayout from '@/components/AuthLayout.vue'
 import PasswordField from '@/components/PasswordField.vue'
-import { isValid } from '@/form'
+import { isValid, vFocus } from '@/form'
 import { landingPage } from '@/router/guard'
 import { useSessionStore } from '@/stores/session'
 
@@ -55,18 +55,17 @@ async function submit(event: SubmitEventPromise) {
     <v-form validate-on="submit" @submit.prevent="submit">
       <v-text-field
         v-model="username"
+        v-focus
         label="Username"
         autocomplete="username"
         autocapitalize="off"
         spellcheck="false"
-        autofocus
         :rules="[required('your username')]"
         data-test="username"
       />
       <PasswordField
         v-model="password"
         label="Password"
-        autocomplete="current-password"
         :rules="[required('your password')]"
         data-test="password"
       />

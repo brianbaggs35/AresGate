@@ -2,7 +2,8 @@
 import { Eye, EyeOff } from '@lucide/vue'
 import { ref } from 'vue'
 
-defineProps<{ label: string; autocomplete: 'current-password' | 'new-password' }>()
+/** `creating` is for choosing a password, so a password manager offers to make one. */
+defineProps<{ label: string; creating?: boolean }>()
 const password = defineModel<string>({ required: true })
 const visible = ref(false)
 </script>
@@ -12,7 +13,7 @@ const visible = ref(false)
     v-model="password"
     :label="label"
     :type="visible ? 'text' : 'password'"
-    :autocomplete="autocomplete"
+    :autocomplete="creating ? 'new-password' : 'current-password'"
     spellcheck="false"
     autocapitalize="off"
   >

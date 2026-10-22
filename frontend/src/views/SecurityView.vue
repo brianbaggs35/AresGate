@@ -35,8 +35,8 @@ async function signOut() {
   try {
     await session.logOut()
     await router.push({ name: 'sign-in' })
-  } catch (signOutFailure) {
-    signOutError.value = errorMessage(signOutFailure)
+  } catch (logOutError) {
+    signOutError.value = errorMessage(logOutError)
   }
 }
 
