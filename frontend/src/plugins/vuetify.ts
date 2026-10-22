@@ -22,6 +22,8 @@ const light: ThemeDefinition = {
     info: '#0369a1',
     warning: '#a54a0b',
     error: '#b91c1c',
+    // The logo's red, dark enough for text on white (5.5:1).
+    brand: '#d11229',
   },
   variables: {
     // Vuetify's 0.6 leaves field labels, hints and subtitles, which it dims twice, below
@@ -45,6 +47,8 @@ const dark: ThemeDefinition = {
     info: '#60a5fa',
     warning: '#fbbf24',
     error: '#f87171',
+    // The logo's red, lifted to read as text on the dark surfaces (5:1).
+    brand: '#ff3b4a',
     // Vuetify would put white on these light colours, which is hard to read.
     'on-primary': '#04141a',
     'on-error': '#000000',
