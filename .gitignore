@@ -25,6 +25,7 @@ data/
 backups/
 certs/*
 !certs/README.md
+acme/
 .lego/
 *.log
 .DS_Store

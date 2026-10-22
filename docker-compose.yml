@@ -28,7 +28,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - aresgate-data:/data
-      # Drop fullchain.pem and privkey.pem here to use your own certificate.
+      # fullchain.pem and privkey.pem here are served instead of a self-signed certificate:
+      # make cert gets them from Let's Encrypt, or drop in your own.
       - ./certs:/certs:ro
     # Hardening: immutable filesystem, no extra kernel capabilities, no privilege escalation.
     read_only: true

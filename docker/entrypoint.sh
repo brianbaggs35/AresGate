@@ -94,12 +94,14 @@ chmod 0700 "$SECRETS_DIR"
 [ ! -e "$SECRETS_DIR/secret.key" ] || chmod 0400 "$SECRETS_DIR/secret.key"
 
 # ---- TLS -----------------------------------------------------------------------------
-# Use your own certificate from /certs (e.g. from Let's Encrypt via DNS challenge) when
-# present; otherwise generate a self-signed one for ARESGATE_SERVER_NAME.
+# Use the certificate in /certs (from `make cert`, which gets one from Let's Encrypt through a
+# DNS challenge, or one you bring) when present; otherwise generate a self-signed one for
+# ARESGATE_SERVER_NAME. `make cert-reload` swaps in a renewed one without a restart.
+chown root:nginx "$TLS_DIR"
+chmod 0750 "$TLS_DIR"
 if [ -s /certs/fullchain.pem ] && [ -s /certs/privkey.pem ]; then
     log "using certificate from /certs"
-    cp /certs/fullchain.pem "$TLS_DIR/cert.pem"
-    cp /certs/privkey.pem "$TLS_DIR/key.pem"
+    /app/docker/install-certificate.sh /certs/fullchain.pem /certs/privkey.pem
 else
     SELF_SIGNED="$DATA_DIR/certs/selfsigned"
     if [ ! -s "$SELF_SIGNED.crt" ] || [ "$(cat "$SELF_SIGNED.name" 2>/dev/null)" != "$ARESGATE_SERVER_NAME" ]; then
@@ -110,12 +112,8 @@ else
             -keyout "$SELF_SIGNED.key" -out "$SELF_SIGNED.crt" 2>/dev/null)
         echo "$ARESGATE_SERVER_NAME" >"$SELF_SIGNED.name"
     fi
-    cp "$SELF_SIGNED.crt" "$TLS_DIR/cert.pem"
-    cp "$SELF_SIGNED.key" "$TLS_DIR/key.pem"
+    /app/docker/install-certificate.sh "$SELF_SIGNED.crt" "$SELF_SIGNED.key"
 fi
-chown root:nginx "$TLS_DIR" "$TLS_DIR/cert.pem" "$TLS_DIR/key.pem"
-chmod 0750 "$TLS_DIR"
-chmod 0640 "$TLS_DIR/cert.pem" "$TLS_DIR/key.pem"
 export ARESGATE_TLS_CERT="$TLS_DIR/cert.pem" ARESGATE_TLS_KEY="$TLS_DIR/key.pem"
 
 # ---- nginx -----------------------------------------------------------------------------

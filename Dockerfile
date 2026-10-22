@@ -107,7 +107,8 @@ COPY docker/nginx/templates /etc/nginx/aresgate-templates
 COPY docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY docker/supervisor/conf.d /etc/supervisor/conf.d
 COPY --chmod=0755 docker/entrypoint.sh docker/start-api.sh docker/render-nginx-config.py \
-    docker/healthcheck.py docker/exit-on-fatal.py /app/docker/
+    docker/healthcheck.py docker/exit-on-fatal.py docker/check-certificate.sh \
+    docker/install-certificate.sh docker/reload-certificate.sh /app/docker/
 COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/migrations /app/backend/migrations
 COPY backend/app /app/backend/app

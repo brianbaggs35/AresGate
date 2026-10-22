@@ -74,16 +74,74 @@ prints a new one. Five wrong codes in a row make you wait a minute before trying
 
 ## Certificates
 
+AresGate serves HTTPS with TLS 1.3 only, using the first of these that applies:
+
+- **A Let's Encrypt certificate that AresGate gets for you** (`make cert`, below). Every browser
+  trusts it, so there is no warning.
 - **Your own certificate.** Put the full chain in `certs/fullchain.pem` and the private key in
   `certs/privkey.pem` (the `certs` folder next to `docker-compose.yml`), then `make restart`.
-  A certificate from a public authority such as Let's Encrypt is the best choice, because every
-  browser trusts it. After you renew it, run `make restart` again.
+  After you renew it, `make cert-reload` makes AresGate use the new one without a restart.
 - **No certificate.** AresGate makes a self-signed one for your server name when it first
   starts, and keeps it in its data volume. It's fully encrypted, but your browser will warn you
   once. If you change `ARESGATE_SERVER_NAME`, it makes a new one.
 
 The container's health check uses the certificate the way a browser does, so an expired one, or
 one for another name, shows as unhealthy in `make ps`.
+
+### Getting a Let's Encrypt certificate (IONOS DNS)
+
+`make cert` gets a free certificate from [Let's Encrypt](https://letsencrypt.org/) with the
+*DNS challenge*: it proves you own the domain by adding a short-lived record to its DNS, through
+IONOS's API. Nothing from the internet has to reach your server, so AresGate can stay on a
+private address, and you can use a name that points at it there. You need:
+
+- A domain whose DNS is hosted at IONOS, and `ARESGATE_SERVER_NAME` in `.env` set to a name in
+  it, such as `aresgate.example.com`. A certificate can't be made for `localhost` or an IP
+  address.
+- An IONOS API key for the DNS API.
+
+**Create the IONOS API key.** IONOS describes this in its
+[getting started guide](https://developer.hosting.ionos.com/docs/getstarted). In short: sign in
+to the [IONOS developer portal](https://developer.hosting.ionos.com/) with your IONOS account,
+open the page for API keys and create one. IONOS shows a *public prefix* and a *secret*, and
+shows the secret only once. The key you give AresGate is the two joined with a dot:
+`<prefix>.<secret>`. The key can change the DNS of every domain in your IONOS account, so keep it
+as private as a password, and delete it in the portal if it leaks or you stop using this.
+
+**Get the certificate.**
+
+```sh
+make cert
+```
+
+The first time it asks for the IONOS key and keeps it in `acme/ionos-api-key`, which only you
+can read. (To skip the question, create that file yourself, holding the key on one line.) Then
+it adds the DNS record, waits for it to spread, which can take a few minutes, gets the
+certificate, saves it in `certs/` and reloads AresGate with it. Running it accepts Let's
+Encrypt's [subscriber agreement](https://letsencrypt.org/repository/). To let Let's Encrypt know
+how to reach you, add `ARESGATE_ACME_EMAIL=you@example.com` to `.env` first.
+
+The ACME client (the program that talks to Let's Encrypt) runs from a pinned container image, so
+nothing is installed on your computer. The folder `acme/` holds its account key, the
+certificate it made and your IONOS key. It is not in the AresGate image or container (only
+`certs/` is), and git ignores it.
+
+**Renew it.** A Let's Encrypt certificate lasts 90 days, and is renewed once fewer than 30 are
+left. `make cert-renew` does that, and does nothing when the certificate isn't due, so run it
+daily from cron:
+
+```cron
+17 3 * * * cd /path/to/aresgate && make cert-renew >> /var/log/aresgate-cert.log 2>&1
+```
+
+(Cron's `PATH` is short. If it can't find `make` or `docker`, put a `PATH=` line at the top of
+the crontab.) Renewal saves the new certificate in `certs/` and reloads nginx with it, so
+AresGate doesn't restart and nobody is signed out. Add `FORCE=1` (`make cert-renew FORCE=1`) to
+renew before it's due. If a reload is refused, [Operations](operations.md#certificates) says why.
+
+If `make cert` gives up waiting for the DNS record, the DNS server your computer uses probably
+can't see your domain's public records (a server that answers for your domain itself does that).
+Set `ARESGATE_ACME_RESOLVERS=1.1.1.1:53` in `.env` to have it look there instead.
 
 ## Run a published release instead of building it
 
