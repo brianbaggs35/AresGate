@@ -1,0 +1,6 @@
+# hadolint configuration (https://github.com/hadolint/hadolint)
+ignored:
+  # Packages come from Wolfi's repository so every build picks up the latest patched
+  # release; pinning exact apk versions would hold back security fixes and break when an
+  # old version is withdrawn. Trivy scans the finished image in CI instead.
+  - DL3018

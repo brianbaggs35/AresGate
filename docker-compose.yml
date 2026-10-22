@@ -1,0 +1,55 @@
+# One container runs all of AresGate: nginx with TLS, the API, Postgres and the web app.
+# Configure it with a .env file next to this one (see .env.example), then `make up` to build
+# it here, or `make pull` to run a published release.
+name: aresgate
+
+services:
+  aresgate:
+    build:
+      context: .
+      target: runtime
+    image: ${ARESGATE_IMAGE:-aresgate}:${ARESGATE_VERSION:-latest}
+    container_name: aresgate
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ARESGATE_SERVER_NAME: ${ARESGATE_SERVER_NAME:-localhost}
+      ARESGATE_HTTPS_PORT: ${ARESGATE_HTTPS_PORT:-443}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${ARESGATE_HTTPS_PORT:-443}:8443"
+      - "${ARESGATE_HTTP_PORT:-80}:8080"
+    # Ollama on this computer, if you use it for AI, is at host.docker.internal: inside the
+    # container "localhost" is the container itself. Docker Desktop has that name already; this
+    # gives it to Docker on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - aresgate-data:/data
+      # Drop fullchain.pem and privkey.pem here to use your own certificate.
+      - ./certs:/certs:ro
+    # Hardening: immutable filesystem, no extra kernel capabilities, no privilege escalation.
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+      - /var/cache/nginx
+      - /etc/nginx/conf.d
+      - /etc/nginx/aresgate
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 60s
+
+volumes:
+  aresgate-data:

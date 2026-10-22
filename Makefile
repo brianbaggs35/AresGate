@@ -1,7 +1,11 @@
 # AresGate: `make` lists every command.
 SHELL := /bin/bash
+COMPOSE := docker compose
+DEV_COMPOSE := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
+HADOLINT_IMAGE := hadolint/hadolint:v2.15.1
+SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0
 ACTIONLINT_IMAGE := rhysd/actionlint:1.7.12
 # Run from its image, pinned by digest, rather than a third-party GitHub Action.
 TRIVY_IMAGE := aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222
@@ -14,13 +18,64 @@ TEST_DB := aresgate-test-db
 TEST_DB_PORT ?= 55432
 
 .DEFAULT_GOAL := help
-.PHONY: help dev-api dev-web install test test-backend test-frontend \
-	lint lint-backend lint-frontend lint-infra format audit scan scan-source clean
+.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key \
+	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
+	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+## ---- Run -----------------------------------------------------------------------
+up: ## Build and start AresGate in the background
+	$(COMPOSE) up -d --build || { echo; echo "The build failed. Trying once more with the whole log, saved to build.log. The steps that finished are kept."; set -o pipefail; $(COMPOSE) --progress=plain up -d --build 2>&1 | tee build.log; }
+	@echo "AresGate is starting at https://$${ARESGATE_SERVER_NAME:-localhost}"
+
+pull: ## Download and start the release in .env's ARESGATE_IMAGE and ARESGATE_VERSION
+	$(COMPOSE) pull
+	$(COMPOSE) up -d --no-build
+	@echo "AresGate is starting at https://$${ARESGATE_SERVER_NAME:-localhost}"
+
+down: ## Stop AresGate (your data is kept)
+	$(COMPOSE) down
+
+restart: ## Restart AresGate, e.g. after renewing certificates
+	$(COMPOSE) restart
+
+rebuild: ## Rebuild the image from scratch and restart
+	$(COMPOSE) build --pull --no-cache
+	$(COMPOSE) up -d --force-recreate
+
+logs: ## Follow the logs
+	$(COMPOSE) logs -f
+
+ps: ## Show container status and health
+	$(COMPOSE) ps
+
+shell: ## Open a shell in the running container
+	$(COMPOSE) exec aresgate sh
+
+psql: ## Open a database shell
+	$(COMPOSE) exec -u aresgate aresgate psql -h /run/postgresql aresgate
+
+backup: ## Dump the database to ./backups
+	@mkdir -p backups
+	$(COMPOSE) exec -T -u aresgate aresgate pg_dump -h /run/postgresql -Fc aresgate \
+		> backups/aresgate-$$(date +%Y%m%d-%H%M%S).dump
+	@ls -1t backups | head -1
+
+secret-key: ## Print the app secret key, to keep somewhere safe apart from the backups
+	@$(COMPOSE) exec -u aresgate aresgate cat /data/secrets/secret.key
+
 ## ---- Develop -------------------------------------------------------------------
+dev: ## Run the dev container with live reload (Vite + API)
+	$(DEV_COMPOSE) up --build
+
+dev-down: ## Stop the dev container
+	$(DEV_COMPOSE) down
+
+dev-logs: ## Follow the dev container's logs
+	$(DEV_COMPOSE) logs -f
+
 dev-api: ## Run the API with live reload on http://127.0.0.1:8000 (needs ARESGATE_DATABASE_URL)
 	$(BACKEND) uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
@@ -50,30 +105,37 @@ test-frontend: ## Run vitest with coverage
 ## ---- Check ---------------------------------------------------------------------
 lint: lint-backend lint-frontend lint-infra ## Run every linter and type checker
 
-lint-backend: ## ruff, pyright and bandit
-	$(BACKEND) uv run ruff check . && uv run ruff format --check . \
-		&& uv run pyright && uv run bandit -c pyproject.toml -r app migrations -q
+lint-backend: ## ruff, pyright and bandit (API and container scripts)
+	$(BACKEND) uv run ruff check . ../docker && uv run ruff format --check . ../docker \
+		&& uv run pyright && uv run bandit -c pyproject.toml -r app migrations ../docker -q
 
 lint-frontend: ## ESLint, Prettier and vue-tsc
 	$(FRONTEND) npm run lint -- --max-warnings=0 && npm run format:check && npm run typecheck
 
-lint-infra: ## actionlint (CI workflows)
+lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI workflows)
+	docker run --rm -v "$(CURDIR):/work:ro" -w /work $(HADOLINT_IMAGE) hadolint Dockerfile
+	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh \
+		docker/apk-retry.sh .github/scripts/smoke-test.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code
-	$(BACKEND) uv run ruff check --fix . && uv run ruff format .
+	$(BACKEND) uv run ruff check --fix . ../docker && uv run ruff format . ../docker
 	$(FRONTEND) npm run lint -- --fix && npm run format
 
 audit: ## Check dependencies for known vulnerabilities (the frontend fails on critical, as CI does)
 	$(BACKEND) uv run pip-audit
 	$(FRONTEND) npm audit --audit-level=critical
 
-scan: scan-source ## Scan the code with Trivy
+scan: scan-source scan-image ## Scan the code and the built image with Trivy
 
-scan-source: ## Trivy: vulnerable dependencies, leaked secrets and configuration mistakes
+scan-source: ## Trivy: vulnerable dependencies, leaked secrets and Dockerfile mistakes
 	$(TRIVY) -v "$(CURDIR):/src:ro" -w /src $(TRIVY_IMAGE) fs $(TRIVY_FLAGS) \
-		--scanners vuln,secret,misconfig .
+		--scanners vuln,secret,misconfig --ignorefile .trivyignore.yaml .
+
+scan-image: ## Trivy: vulnerabilities in the built image's packages
+	$(TRIVY) -v /var/run/docker.sock:/var/run/docker.sock:ro $(TRIVY_IMAGE) image $(TRIVY_FLAGS) \
+		$${ARESGATE_IMAGE:-aresgate}:$${ARESGATE_VERSION:-latest}
 
 clean: ## Remove local build and test artifacts
 	rm -rf backend/.pytest_cache backend/.ruff_cache backend/.coverage \
-		backend/coverage.xml frontend/dist frontend/coverage
+		backend/coverage.xml frontend/dist frontend/coverage build.log

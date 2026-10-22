@@ -1,0 +1,21 @@
+# Development overlay: `make dev`. Same single container, plus the Vite dev server and API
+# auto-reload, with your source mounted in.
+services:
+  aresgate:
+    build:
+      target: dev
+    image: aresgate:dev
+    container_name: aresgate-dev
+    environment:
+      ARESGATE_ENABLE_DOCS: "true"
+    volumes:
+      - aresgate-dev-data:/data
+      - ./backend/app:/app/backend/app
+      - ./backend/migrations:/app/backend/migrations
+      - ./frontend:/app/frontend
+      - aresgate-dev-node-modules:/app/frontend/node_modules
+    read_only: false
+
+volumes:
+  aresgate-dev-data:
+  aresgate-dev-node-modules:
