@@ -183,7 +183,7 @@ jobs:
         id: trivy-source
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: v0.76.0
+          version: v0.76.1
           scan-type: fs
           scan-ref: .
           scanners: vuln,secret,misconfig
@@ -200,7 +200,7 @@ jobs:
         if: ${{ steps.trivy-source.outcome == 'failure' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: v0.76.0
+          version: v0.76.1
           skip-setup-trivy: true
           scan-type: fs
           scan-ref: .
@@ -229,11 +229,9 @@ jobs:
           username: ${{ secrets.CHAINGUARD_PULL_USERNAME }}
           password: ${{ secrets.CHAINGUARD_PULL_PASSWORD }}
 
-      # Wolfi publishes package fixes all day, and a cached layer would keep a stale package
-      # (and fail the image scan) until the next day, so the cache key changes every hour.
-      - name: Current hour, to refresh cached OS packages
+      - name: Today's date, to refresh cached OS packages daily
         id: date
-        run: echo "refresh=$(date -u +%FT%H)" >> "$GITHUB_OUTPUT"
+        run: echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
       - name: Build the image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -242,20 +240,24 @@ jobs:
           target: runtime
           load: true
           tags: aresgate:ci
-          build-args: APK_REFRESH=${{ steps.date.outputs.refresh }}
+          # Wolfi publishes package fixes all day, so the packages the image ships are upgraded
+          # on every run instead of coming from a cached layer that could fail the image scan.
+          build-args: |
+            APK_REFRESH=${{ steps.date.outputs.today }}
+            IMAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Show the versions in the image
         run: |
           docker run --rm --entrypoint sh aresgate:ci -c \
-            'python --version; nginx -v 2>&1; psql --version; apk info -v ca-certificates-bundle python-3.14 nginx-mainline postgresql-18' || true
+            'python --version; nginx -v 2>&1; psql --version; apk info -v ca-certificates-bundle python-3.14 nginx-mainline postgresql-18; apk update >/dev/null 2>&1; apk policy ca-certificates-bundle nginx-mainline' || true
 
       - name: Trivy scan of the image
         id: trivy-image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: v0.76.0
+          version: v0.76.1
           skip-setup-trivy: true
           scan-type: image
           image-ref: aresgate:ci
@@ -272,7 +274,7 @@ jobs:
         if: ${{ steps.trivy-image.outcome == 'failure' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: v0.76.0
+          version: v0.76.1
           skip-setup-trivy: true
           scan-type: image
           image-ref: aresgate:ci
