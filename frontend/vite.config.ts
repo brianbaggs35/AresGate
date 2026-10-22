@@ -19,6 +19,11 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: true } },
   },
+  // The end-to-end tests that run without a container serve the built app with `vite preview`.
+  preview: {
+    host: '127.0.0.1',
+    proxy: { '/api': { target: apiTarget, changeOrigin: true } },
+  },
   build: {
     sourcemap: false,
   },

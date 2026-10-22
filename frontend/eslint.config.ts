@@ -1,5 +1,6 @@
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
 import prettier from 'eslint-config-prettier'
+import playwright from 'eslint-plugin-playwright'
 import pluginVue from 'eslint-plugin-vue'
 
 export default defineConfigWithVueTs(
@@ -25,6 +26,22 @@ export default defineConfigWithVueTs(
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-empty-function': 'off',
+    },
+  },
+  {
+    ...playwright.configs['flat/recommended'],
+    name: 'aresgate/e2e',
+    files: ['e2e/**'],
+    settings: {
+      // Specs use the fixtures from e2e/support, which extend Playwright's test and expect.
+      playwright: { globalAliases: { test: ['test'], expect: ['expect'] } },
+    },
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      'playwright/expect-expect': [
+        'error',
+        { assertFunctionNames: ['expect', 'expectAccessible', 'expectTheme'] },
+      ],
     },
   },
   prettier,
