@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "e2e:ui": "playwright test --ui",
     "e2e:codegen": "playwright codegen --ignore-https-errors \"${ARESGATE_E2E_URL:-https://localhost:9443}\"",
     "e2e:report": "playwright show-report e2e-results/report",
+    "e2e:coverage": "node e2e/merge-coverage.ts",
     "lint": "eslint .",
     "format": "prettier --write src e2e *.ts",
     "format:check": "prettier --check src e2e *.ts"
