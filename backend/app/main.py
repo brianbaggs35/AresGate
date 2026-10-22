@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -33,8 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             if purging:
                 purging.cancel()
-                with suppress(asyncio.CancelledError):
-                    await purging
+                await asyncio.wait({purging})
 
     app = FastAPI(
         title="AresGate API",

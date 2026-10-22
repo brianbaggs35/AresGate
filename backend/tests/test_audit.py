@@ -150,9 +150,10 @@ class TestAppendOnly:
 
     def test_not_even_with_plain_sql(self, session: Session) -> None:
         add(session)
+        delete = text("DELETE FROM audit_events")
 
         with pytest.raises(IntegrityError, match="append-only"):
-            session.execute(text("DELETE FROM audit_events"))
+            session.execute(delete)
 
     def test_deleting_can_be_allowed_for_one_transaction(self, session: Session) -> None:
         event = add(session)
@@ -175,9 +176,10 @@ class TestAppendOnly:
     def test_changing_is_never_allowed(self, session: Session) -> None:
         add(session)
         audit.allow_deletes(session)
+        update = text("UPDATE audit_events SET outcome = 'failure'")
 
         with pytest.raises(IntegrityError, match="append-only"):
-            session.execute(text("UPDATE audit_events SET outcome = 'failure'"))
+            session.execute(update)
 
 
 class TestListing:

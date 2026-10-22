@@ -1,7 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Callable, Iterator
-from contextlib import suppress
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -16,8 +15,8 @@ from app.models import AuditEvent
 
 
 @pytest.fixture
-def new_session(engine: Engine) -> Iterator[Callable[[], Session]]:
-    yield sessionmaker(bind=engine, expire_on_commit=False)
+def new_session(engine: Engine) -> Callable[[], Session]:
+    return sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def add_event(db: Session, age: timedelta) -> None:
@@ -67,8 +66,7 @@ def run_until_called(settings: Settings, purge: FakePurge, times: int) -> None:
         while purge.calls < times:
             await asyncio.sleep(0.001)
         task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        await asyncio.wait({task})
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(retention, "purge_once", purge)
