@@ -1,6 +1,7 @@
 import * as auditApi from '@/api/audit'
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as passkeysApi from '@/api/passkeys'
 import * as twoFactorApi from '@/api/two-factor'
 import { useSessionStore } from '@/stores/session'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -17,6 +18,7 @@ const recorded: auditApi.AuditEvent = {
 }
 
 async function open() {
+  vi.spyOn(passkeysApi, 'fetchPasskeys').mockResolvedValue([])
   vi.spyOn(twoFactorApi, 'fetchTwoFactorStatus').mockResolvedValue({
     enabled: false,
     recovery_codes_left: 0,
@@ -41,13 +43,13 @@ describe('SecurityView', () => {
     expect(wrapper.find('[data-test="no-activity"]').exists()).toBe(false)
   })
 
-  it('has the card for two-step verification between the account and the activity', async () => {
+  it('has the cards for passkeys and two-step verification between the account and the activity', async () => {
     vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
     const { wrapper } = await open()
     const cards = wrapper
       .findAll('[data-test$="-card"]')
       .map((card) => card.attributes('data-test'))
-    expect(cards).toEqual(['account-card', 'two-factor-card', 'activity-card'])
+    expect(cards).toEqual(['account-card', 'passkeys-card', 'two-factor-card', 'activity-card'])
   })
 
   it('shows a placeholder while it loads', async () => {

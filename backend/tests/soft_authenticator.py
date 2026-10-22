@@ -87,14 +87,18 @@ class SoftAuthenticator:
             "id": self.id,
             "rawId": self.id,
             "type": "public-key",
+            # Browsers add more than the server needs, which it has to put up with.
+            "authenticatorAttachment": "platform",
             "response": {
                 "clientDataJSON": websafe_encode(client_data),
                 "attestationObject": websafe_encode(
                     bytes(AttestationObject.create("none", auth_data, {}))
                 ),
+                "authenticatorData": websafe_encode(bytes(auth_data)),
                 "transports": ["internal"],
+                "publicKeyAlgorithm": self._cose.ALGORITHM,
             },
-            "clientExtensionResults": {},
+            "clientExtensionResults": {"credProps": {"rk": True}},
         }
 
     def sign_in(
@@ -131,6 +135,7 @@ class SoftAuthenticator:
             "id": raw_id,
             "rawId": raw_id,
             "type": "public-key",
+            "authenticatorAttachment": "platform",
             "response": {
                 "clientDataJSON": websafe_encode(client_data),
                 "authenticatorData": websafe_encode(auth_data),

@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 
 import * as authApi from '@/api/auth'
 import { ApiError, errorMessage } from '@/api/client'
+import * as passkeysApi from '@/api/passkeys'
+import { getPasskey } from '@/webauthn'
 
 const isUnauthenticated = (error: unknown) => error instanceof ApiError && error.status === 401
 
@@ -72,6 +74,14 @@ export const useSessionStore = defineStore('session', () => {
     adopt(await authApi.logInWithCode(challenge, code))
   }
 
+  /** Signs in with a passkey: the device is asked to unlock one of its passkeys for this address,
+   * which says whose it is. A passkey is the password and the second step in one. */
+  async function logInWithPasskey() {
+    const { challenge_id: challengeId, options } = await passkeysApi.startPasskeySignIn()
+    const credential = await getPasskey(options)
+    adopt(await passkeysApi.logInWithPasskey(challengeId, credential))
+  }
+
   /** Ends the sign-in. If it was over already, that's what was wanted. */
   async function logOut() {
     if (csrfToken.value) {
@@ -115,6 +125,7 @@ export const useSessionStore = defineStore('session', () => {
     setUp,
     logIn,
     logInWithCode,
+    logInWithPasskey,
     logOut,
     call,
     change,
