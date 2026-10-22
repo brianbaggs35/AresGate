@@ -1,5 +1,6 @@
-# Checks every pull request and every push to master. Anything that fails here can be run
-# locally with the same command, from the directory the step names.
+# Checks every pull request and every push to master. Each job mirrors a `make` target, so
+# anything that fails here can be reproduced locally with `make lint`, `make test`,
+# `make audit` and `make scan`.
 name: CI
 
 on:
