@@ -229,9 +229,11 @@ jobs:
           username: ${{ secrets.CHAINGUARD_PULL_USERNAME }}
           password: ${{ secrets.CHAINGUARD_PULL_PASSWORD }}
 
-      - name: Today's date, to refresh cached OS packages daily
+      # Wolfi publishes package fixes all day, and a cached layer would keep a stale package
+      # (and fail the image scan) until the next day, so the cache key changes every hour.
+      - name: Current hour, to refresh cached OS packages
         id: date
-        run: echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+        run: echo "refresh=$(date -u +%FT%H)" >> "$GITHUB_OUTPUT"
 
       - name: Build the image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -240,9 +242,14 @@ jobs:
           target: runtime
           load: true
           tags: aresgate:ci
-          build-args: APK_REFRESH=${{ steps.date.outputs.today }}
+          build-args: APK_REFRESH=${{ steps.date.outputs.refresh }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Show the versions in the image
+        run: |
+          docker run --rm --entrypoint sh aresgate:ci -c \
+            'python --version; nginx -v 2>&1; psql --version; apk info -v ca-certificates-bundle python-3.14 nginx-mainline postgresql-18' || true
 
       - name: Trivy scan of the image
         id: trivy-image
