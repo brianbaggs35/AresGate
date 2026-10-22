@@ -33,6 +33,30 @@ test.describe('overview', () => {
     await expect(overview.databaseStatus).toHaveText('Database: Unavailable')
   })
 
+  test('says so when the API answers with an error', async ({ page, overview }) => {
+    await page.route('**/api/health', (route) =>
+      route.fulfill({
+        status: 500,
+        json: { detail: { code: 'broken', message: 'The API is broken.' } },
+      }),
+    )
+
+    await overview.goto()
+
+    await expect(overview.apiStatus).toHaveText('API: Unreachable')
+    await expect(overview.databaseStatus).toHaveText('Database: Unknown')
+  })
+
+  test('says so when the answer is not even JSON', async ({ page, overview }) => {
+    await page.route('**/api/health', (route) =>
+      route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad gateway' }),
+    )
+
+    await overview.goto()
+
+    await expect(overview.apiStatus).toHaveText('API: Unreachable')
+  })
+
   test('says so when the API cannot be reached', async ({ page, overview }) => {
     await page.route('**/api/health', (route) => route.abort())
 

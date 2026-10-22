@@ -8,9 +8,10 @@ import type { ApiCoverage } from './harness'
 /**
  * End-to-end coverage: which of the web app's source the tests ran (from Chromium's own
  * coverage, mapped back to src/ through the test build's source maps) and which of the API's
- * code (measured by coverage.py inside the test server). Reports land in e2e-results/coverage;
- * there's no minimum, since the unit tests hold the thresholds. Set ARESGATE_E2E_COVERAGE=off
- * to skip collecting it.
+ * code (measured by coverage.py inside the test server). Reports land in e2e-results/coverage.
+ * `npm run e2e:coverage` holds the web app's to a minimum once every spec has run; a run of just
+ * some of them, or of one shard, isn't expected to reach it. Set ARESGATE_E2E_COVERAGE=off to
+ * skip collecting any.
  */
 
 const RESULTS = path.resolve(import.meta.dirname, '../../e2e-results/coverage')
@@ -24,7 +25,8 @@ export function coverageEnabled(): boolean {
 export const webCoverageOptions: CoverageReportOptions = {
   name: 'AresGate web app: end-to-end coverage',
   outputDir: WEB_COVERAGE_DIR,
-  reports: ['v8', 'lcovonly', 'console-summary'],
+  // The raw data is kept so shards and servers can be merged afterwards: merge-coverage.ts.
+  reports: ['v8', 'lcovonly', 'console-summary', 'raw'],
   // Only AresGate's own scripts, not the browser's.
   entryFilter: (entry) => new URL(entry.url).pathname.startsWith('/assets/'),
   // Only the web app's source, not the libraries bundled with it.

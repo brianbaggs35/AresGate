@@ -7,6 +7,8 @@ const baseURL = process.env.ARESGATE_E2E_URL ?? 'https://localhost:9443'
 const ci = !!process.env.CI
 // A Chromium that's already installed, instead of the one `npm run e2e:install` downloads.
 const executablePath = process.env.ARESGATE_E2E_BROWSER || undefined
+// Videos of failed tests need Playwright's ffmpeg; ARESGATE_E2E_VIDEO=off skips them.
+const video = process.env.ARESGATE_E2E_VIDEO === 'off' ? 'off' : 'retain-on-failure'
 const reporters: ReporterDescription[] = [['list']]
 
 if (ci) reporters.push(['github'])
@@ -37,7 +39,7 @@ export default defineConfig({
     launchOptions: { executablePath },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video,
   },
   projects: [
     { name: 'desktop', testIgnore: '**/*.mobile.spec.ts', use: { ...devices['Desktop Chrome'] } },

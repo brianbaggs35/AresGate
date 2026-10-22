@@ -43,6 +43,27 @@ test.describe('theme', () => {
     await shell.expectTheme('dark')
   })
 
+  test('still works when the browser will not store settings', async ({
+    page,
+    overview,
+    shell,
+  }) => {
+    await page.addInitScript(() => {
+      const refuse = () => {
+        throw new DOMException('Storage is off', 'SecurityError')
+      }
+      Storage.prototype.getItem = refuse
+      Storage.prototype.setItem = refuse
+    })
+    await page.emulateMedia({ colorScheme: 'light' })
+    await overview.goto()
+    await shell.expectTheme('light')
+
+    await shell.chooseTheme('dark')
+
+    await shell.expectTheme('dark')
+  })
+
   test('follows the browser when the choice is System', async ({ page, overview, shell }) => {
     await page.emulateMedia({ colorScheme: 'dark' })
     await overview.goto()
