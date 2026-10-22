@@ -85,17 +85,17 @@ ARG IMAGE_REFRESH=""
 RUN --mount=type=bind,source=docker/apk-retry.sh,target=/apk-retry.sh \
     set -eux; \
     echo "image refresh: ${IMAGE_REFRESH:-none}"; \
-    sh /apk-retry.sh apk upgrade --no-cache; \
     addgroup -S -g 10001 aresgate; \
     adduser -S -D -H -u 10001 -G aresgate -h /app -s /sbin/nologin aresgate; \
     addgroup -S -g 10002 postgres; \
     adduser -S -D -H -u 10002 -G postgres -h /var/lib/postgresql -s /sbin/nologin postgres; \
     addgroup -S -g 10003 nginx; \
     adduser -S -D -H -u 10003 -G nginx -h /var/lib/nginx -s /sbin/nologin nginx; \
-    sh /apk-retry.sh apk add --no-cache ca-certificates-bundle nginx-mainline \
+    sh /apk-retry.sh apk add --no-cache --upgrade ca-certificates-bundle nginx-mainline \
         nginx-mainline-config openssl setpriv tzdata; \
-    sh /apk-retry.sh apk add --no-cache "postgresql-${POSTGRES_VERSION}" \
+    sh /apk-retry.sh apk add --no-cache --upgrade "postgresql-${POSTGRES_VERSION}" \
         "postgresql-${POSTGRES_VERSION}-client" "python-${PYTHON_VERSION}"; \
+    sh /apk-retry.sh apk upgrade --no-cache; \
     rm -f /etc/nginx/conf.d/default.conf
 ENV PATH=/opt/venv/bin:/opt/supervisor/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
