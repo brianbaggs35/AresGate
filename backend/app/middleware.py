@@ -20,6 +20,15 @@ _HEALTH_CHECK = "/api/health"
 _LONGEST_PATH = 200
 
 
+def _level(path: str, status: int) -> int:
+    if status >= 500:
+        return logging.ERROR
+    # The container checks its health every few seconds, which isn't worth a line each.
+    if path == _HEALTH_CHECK and status < 400:
+        return logging.DEBUG
+    return logging.INFO
+
+
 class RequestContext:
     """The ID is on the response, in the header, and on every log line written while the request
     is served. The query string isn't logged, since it can carry what shouldn't be."""
@@ -56,11 +65,9 @@ class RequestContext:
     def _log(scope: Scope, status: int, seconds: float) -> None:
         method = scope["method"]
         path = str(scope["path"])[:_LONGEST_PATH]
-        # The container checks its health every few seconds, which isn't worth a line each.
-        quiet = path == _HEALTH_CHECK and status < 400
         client = scope.get("client")
         logger.log(
-            logging.DEBUG if quiet else logging.ERROR if status >= 500 else logging.INFO,
+            _level(path, status),
             "%s %s %d",
             method,
             path,

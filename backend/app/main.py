@@ -42,7 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 purging.cancel()
                 await asyncio.wait({purging})
 
-    async def server_error(request: Request, error: Exception) -> JSONResponse:
+    def server_error(request: Request, error: Exception) -> JSONResponse:
         # What ends a request that failed, so the person who sees it can quote its ID. The error
         # itself is logged, with the ID, after this.
         return JSONResponse(
