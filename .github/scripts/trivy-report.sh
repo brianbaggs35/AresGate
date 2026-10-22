@@ -31,7 +31,7 @@ fi
 annotation="${message//'%'/%25}"
 annotation="${annotation//$'\r'/%0D}"
 annotation="${annotation//$'\n'/%0A}"
-echo "::error title=Trivy $name scan::$annotation"
+echo "::error title=Trivy $name scan::$annotation" >&2
 
 {
   echo "### Trivy $name scan"
