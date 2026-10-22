@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     session_idle_minutes: Annotated[int, Field(ge=1)] = 30
     session_max_hours: Annotated[int, Field(ge=1)] = 12
 
+    # How long the audit log keeps an event before the API deletes it.
+    audit_retention_days: Annotated[int, Field(ge=1, le=3650)] = 365
+
     @property
     def version(self) -> str:
         return self.release or __version__

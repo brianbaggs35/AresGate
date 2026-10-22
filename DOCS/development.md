@@ -85,7 +85,13 @@ migration from the models; read it and fix what autogenerate gets wrong (such as
 it imports from the app). CI applies every migration, checks that the models and the migrations
 agree, goes down to nothing and up again, and then applies the newest migration a second time to
 a database that already has it, which must change nothing. So a migration creates with
-`if_not_exists=True` and drops with `if_exists=True`, as the existing ones do.
+`if_not_exists=True` and drops with `if_exists=True`, as the existing ones do. SQL that has no
+such option, such as a trigger, drops what it makes (`DROP TRIGGER IF EXISTS`) before making it.
+
+The audit log's table refuses `UPDATE` and `DELETE` with a trigger (`app/models/audit.py`), which
+the tests make through the models and the migration makes with its own copy of the SQL. Code that
+has to empty the tables, such as a test's cleanup or the end-to-end harness, calls
+`audit.allow_deletes(session)` first, in the same transaction.
 
 ## Dependencies
 

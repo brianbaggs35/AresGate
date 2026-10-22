@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.models import User, UserSession, utcnow
@@ -56,6 +57,29 @@ def client_address(request: Request) -> str:
     """Where the request came from. Behind nginx, uvicorn has already swapped in the address
     nginx saw, as long as the request came from nginx."""
     return request.client.host if request.client else "unknown"
+
+
+def record_audit(
+    db: Session,
+    request: Request,
+    action: audit.Action,
+    outcome: audit.Outcome,
+    *,
+    user: User | None = None,
+    detail: audit.Detail | None = None,
+) -> None:
+    """Adds an audit event for the request: who it was about (if anyone), where it came from and
+    what the client called itself. The caller commits."""
+    audit.record(
+        db,
+        action,
+        outcome,
+        user_id=user.id if user else None,
+        username=user.username if user else None,
+        address=client_address(request),
+        user_agent=request.headers.get("user-agent"),
+        detail=detail,
+    )
 
 
 @dataclass(frozen=True)

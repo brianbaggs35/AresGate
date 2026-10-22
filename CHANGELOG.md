@@ -28,3 +28,10 @@ Every release's notes are here, newest first. The format follows
 - The web app's frame: a menu at the side that shrinks to icons (and remembers it), a bar at the
   bottom on a phone, a skip link for keyboards, and the page's title on top, in the light, dark
   ("mission control") and system themes.
+- An audit log of sign-ins (and wrong guesses), sign-outs and setup, kept for a year
+  (`ARESGATE_AUDIT_RETENTION_DAYS`), which the database refuses to change or delete, listed by
+  `GET /api/audit/events` with filters ([DOCS/security.md](DOCS/security.md)).
+
+### Fixed
+
+- Signing in with a username containing a NUL character no longer ends in a server error.

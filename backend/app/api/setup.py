@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.api.auth import SessionInfo, open_session, too_many_attempts
-from app.api.deps import Db, SettingsDep, client_address
+from app.api.deps import Db, SettingsDep, client_address, record_audit
+from app.audit import Action, Outcome
 from app.models import User, utcnow
 from app.security import passwords, setup_code, throttle
 from app.security.accounts import (
@@ -55,6 +56,7 @@ def set_up(
         )
     if not setup_code.matches(stored_hash, body.code):
         throttle.record_failure(db, Scope.SETUP, address, now)
+        record_audit(db, request, Action.SETUP_CODE_REJECTED, Outcome.FAILURE)
         db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "That setup code isn't right.")
 
@@ -68,6 +70,9 @@ def set_up(
 
     user = User(username=username, password_hash=passwords.hash_password(body.password))
     db.add(user)
+    # The new account's id is made when it's saved, and the event is about that account.
+    db.flush()
+    record_audit(db, request, Action.SETUP_COMPLETED, Outcome.SUCCESS, user=user)
     setup_code.consume(db)
     throttle.clear(db, Scope.SETUP, address)
     return open_session(db, response, user, settings, now)

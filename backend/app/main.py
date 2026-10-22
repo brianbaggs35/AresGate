@@ -1,12 +1,15 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
+from app import retention
 from app.api import api_router
 from app.config import Settings, get_settings
+from app.db import get_sessionmaker
 from app.secret_key import load_secret_key
 
 
@@ -19,7 +22,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Checked when the server starts, so a missing or short key stops it with a clear
         # message instead of failing later, the first time something is encrypted.
         app.state.secret_key = load_secret_key(settings)
-        yield
+        # The tests and the end-to-end harness decide for themselves when the log is purged.
+        purging = (
+            None
+            if settings.environment == "test"
+            else asyncio.create_task(retention.run(settings, get_sessionmaker()))
+        )
+        try:
+            yield
+        finally:
+            if purging:
+                purging.cancel()
+                with suppress(asyncio.CancelledError):
+                    await purging
 
     app = FastAPI(
         title="AresGate API",

@@ -8,6 +8,7 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import audit
 from app.config import Settings
 from app.db import get_session
 from app.main import create_app
@@ -66,6 +67,7 @@ def session(engine: Engine) -> Iterator[Session]:
     with sessionmaker(bind=engine, expire_on_commit=False)() as session:
         yield session
     with engine.begin() as connection:
+        audit.allow_deletes(connection)
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
 

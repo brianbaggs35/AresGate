@@ -106,6 +106,10 @@ it with the setup code from the log.
 - **A sign-in ended.** It ends after 30 minutes idle or 12 hours in all. Change that with
   `ARESGATE_SESSION_IDLE_MINUTES` and `ARESGATE_SESSION_MAX_HOURS` in `.env`, then `make up` or
   `make restart`.
+- **What happened, and when.** Every sign-in, wrong guess and sign-out is in the audit log
+  ([Security](security.md)). It keeps a year of events; change that with
+  `ARESGATE_AUDIT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. The API
+  deletes older events when it starts and every six hours after that.
 - **Forgot the password.** There is no way to change or reset it from the web app yet. To start
   over without losing anything else, delete the account and set up again:
 
@@ -117,7 +121,8 @@ it with the setup code from the log.
   ```
 
   Then follow the setup steps with the code in `make logs`. Anyone who can run these commands
-  can already read everything on the server, so this opens nothing new.
+  can already read everything on the server, so this opens nothing new. The audit log keeps its
+  events, including those of the account you deleted.
 
 ## Certificates
 

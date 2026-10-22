@@ -117,6 +117,20 @@ jq --exit-status '.setup_required == false' <<<"$body" >/dev/null || fail "setup
 request GET /api/auth/session ""
 expect 200 "reading the session after a restart"
 
+echo "The audit log shows what happened so far, and has kept it through the restart"
+request GET "/api/audit/events?limit=200" ""
+expect 200 "reading the audit log"
+actions="$(jq --raw-output '[.events[].action] | sort | join(" ")' <<<"$body")"
+[[ "$actions" = "auth.login_failed auth.login_succeeded auth.logout setup.code_rejected setup.completed" ]] ||
+    fail "the audit log holds: $actions"
+jq --exit-status --arg u "$username" \
+    '[.events[] | select(.action == "setup.completed" and .username == $u and .client_address != null and .user_agent != null)] | length == 1' \
+    <<<"$body" >/dev/null || fail "the setup isn't in the audit log with who and from where: $body"
+# Neither the setup code nor either password may end up in the log.
+for secret in "$code" "AAAA-AAAA-AAAA" "$password" "not the password"; do
+    ! grep --quiet --fixed-strings "$secret" <<<"$body" || fail "the audit log shows a secret"
+done
+
 echo "Five wrong passwords lock the account, even for the right password"
 for _ in 1 2 3 4 5; do
     request POST /api/auth/login "$(json --arg u "$username" '{username: $u, password: "guess"}')"
@@ -126,5 +140,11 @@ request POST /api/auth/login "$(json --arg u "$username" --arg p "$password" '{u
     --dump-header "$workdir/headers"
 expect 429 "signing in while locked"
 grep --quiet --ignore-case '^retry-after: [0-9]' "$workdir/headers" || fail "the lockout has no Retry-After"
+
+echo "The audit log says the fifth wrong password locked the account, and not the attempts after it"
+request GET "/api/audit/events?action=auth.login_failed&limit=200" ""
+expect 200 "reading the failed sign-ins"
+jq --exit-status '(.events | length) == 6 and ([.events[] | select(.detail.locked_for_seconds != null)] | length) == 1' \
+    <<<"$body" >/dev/null || fail "the failed sign-ins are not as expected: $body"
 
 echo "Setup and sign-in test passed"

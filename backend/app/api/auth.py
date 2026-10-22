@@ -7,7 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import Db, SettingsDep, SignedIn, client_address, signed_in
+from app.api.deps import Db, SettingsDep, SignedIn, client_address, record_audit, signed_in
+from app.audit import Action, Detail, Outcome
 from app.config import Settings
 from app.models import User, utcnow
 from app.security import passwords, sessions, throttle
@@ -37,6 +38,15 @@ def too_many_attempts(wait: timedelta) -> HTTPException:
         f"Too many attempts. Try again in {minutes} minute{'' if minutes == 1 else 's'}.",
         headers={"Retry-After": str(seconds)},
     )
+
+
+def current_lockouts(db: Db, address: str, username: str, now: datetime) -> list[timedelta]:
+    """How long each of the address and the account is still locked, for those that are."""
+    return [
+        wait
+        for scope, value in ((Scope.ADDRESS, address), (Scope.ACCOUNT, username))
+        if (wait := throttle.remaining_lockout(db, scope, value, now))
+    ]
 
 
 def open_session(
@@ -71,12 +81,7 @@ def log_in(
     address = client_address(request)
     username = normalize_username(body.username)
 
-    waits = [
-        wait
-        for scope, value in ((Scope.ADDRESS, address), (Scope.ACCOUNT, username))
-        if (wait := throttle.remaining_lockout(db, scope, value, now))
-    ]
-    if waits:
+    if waits := current_lockouts(db, address, username, now):
         raise too_many_attempts(max(waits))
 
     user = find_user(db, username)
@@ -85,6 +90,11 @@ def log_in(
     if user is None or not password_ok:
         throttle.record_failure(db, Scope.ADDRESS, address, now)
         throttle.record_failure(db, Scope.ACCOUNT, username, now)
+        # A wrong name isn't kept, since people sometimes type their password where it goes.
+        detail: Detail = {"reason": "wrong_password" if user else "unknown_account"}
+        if waits := current_lockouts(db, address, username, now):
+            detail = {**detail, "locked_for_seconds": math.ceil(max(waits).total_seconds())}
+        record_audit(db, request, Action.LOGIN_FAILED, Outcome.FAILURE, user=user, detail=detail)
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect username or password.")
 
@@ -92,11 +102,15 @@ def log_in(
     throttle.clear(db, Scope.ACCOUNT, username)
     if passwords.needs_rehash(user.password_hash):
         user.password_hash = passwords.hash_password(body.password)
+    record_audit(db, request, Action.LOGIN_SUCCEEDED, Outcome.SUCCESS, user=user)
     return open_session(db, response, user, settings, now)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def log_out(auth: Annotated[SignedIn, Depends(signed_in)], response: Response, db: Db) -> None:
+def log_out(
+    auth: Annotated[SignedIn, Depends(signed_in)], request: Request, response: Response, db: Db
+) -> None:
+    record_audit(db, request, Action.LOGOUT, Outcome.SUCCESS, user=auth.user)
     sessions.end(db, auth.session)
     response.delete_cookie(
         sessions.COOKIE_NAME, httponly=True, secure=True, samesite="strict", path="/"

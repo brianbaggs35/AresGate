@@ -128,6 +128,7 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
     e2e.post("/api/__test__/database/clean")
     expected = {
+        "audit_events": 0,
         "login_throttles": 0,
         "system_info": len(BASELINE_SYSTEM_INFO),
         "user_sessions": 0,
@@ -151,7 +152,13 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
     assert response.status_code == 200
     assert response.json() == {
         "fixture": "baseline",
-        "tables_emptied": ["user_sessions", "users", "system_info", "login_throttles"],
+        "tables_emptied": [
+            "user_sessions",
+            "users",
+            "system_info",
+            "login_throttles",
+            "audit_events",
+        ],
     }
     assert system_info(session) == BASELINE_SYSTEM_INFO
 

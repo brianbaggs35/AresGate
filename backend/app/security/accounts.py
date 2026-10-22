@@ -29,6 +29,10 @@ def check_username(username: str) -> None:
 
 
 def find_user(db: Session, username: str) -> User | None:
+    # Nobody has an account under a name like this, and a client can send what the database
+    # refuses to look up, such as a NUL character.
+    if not _VALID_USERNAME.fullmatch(username):
+        return None
     return db.scalar(select(User).where(User.username == username))
 
 
