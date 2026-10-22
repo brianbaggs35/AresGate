@@ -78,6 +78,15 @@ SonarQube Cloud must report **zero open issues** on the pull request.
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) has the short version.
 
+## Database migrations
+
+`cd backend && uv run alembic revision --autogenerate --rev-id 000n -m "what changed"` writes a
+migration from the models; read it and fix what autogenerate gets wrong (such as a column type
+it imports from the app). CI applies every migration, checks that the models and the migrations
+agree, goes down to nothing and up again, and then applies the newest migration a second time to
+a database that already has it, which must change nothing. So a migration creates with
+`if_not_exists=True` and drops with `if_exists=True`, as the existing ones do.
+
 ## Dependencies
 
 Add the newest version of a dependency unless there's a reason not to, and prefer packages that
