@@ -35,7 +35,8 @@ plus the test harness, used only for tests).
 - `make dev` runs the container with live reload, with your source mounted in. Open
   `https://localhost` as with `make up`.
 - Or run the pieces on this computer: `make dev-api` (needs `ARESGATE_DATABASE_URL` pointing at
-  a Postgres) and `make dev-web`, which serves the web app on `http://127.0.0.1:5173` and passes
+  a Postgres, and makes a throwaway app secret key unless `ARESGATE_SECRET_KEY` is set, so
+  anything it encrypts can't be read after you stop it) and `make dev-web`, which serves the web app on `http://127.0.0.1:5173` and passes
   `/api` to the API.
 
 ## Checks

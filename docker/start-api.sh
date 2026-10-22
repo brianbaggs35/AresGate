@@ -1,8 +1,11 @@
 #!/bin/sh
-# Waits for Postgres, applies migrations, then serves the API on loopback for nginx.
+# Checks the app secret key, waits for Postgres, applies migrations, then serves the API on
+# loopback for nginx.
 set -eu
 cd /app/backend
 
+# Stops here, with the reason in the log, if the key is missing or too short.
+python -c 'from app.secret_key import check_or_exit; check_or_exit()'
 until pg_isready -q -h /run/postgresql; do sleep 1; done
 alembic upgrade head
 

@@ -80,7 +80,8 @@ dev-logs: ## Follow the dev container's logs
 	$(DEV_COMPOSE) logs -f
 
 dev-api: ## Run the API with live reload on http://127.0.0.1:8000 (needs ARESGATE_DATABASE_URL)
-	$(BACKEND) uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	$(BACKEND) ARESGATE_SECRET_KEY="$${ARESGATE_SECRET_KEY:-$$(openssl rand -base64 32)}" \
+		uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 dev-web: ## Run the web app with live reload on http://127.0.0.1:5173, proxying /api to the API
 	$(FRONTEND) npm run dev
@@ -158,7 +159,8 @@ lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI work
 	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh \
 		docker/apk-retry.sh docker/e2e/start-api.sh .github/scripts/smoke-test.sh \
 		.github/scripts/e2e-host.sh .github/scripts/trivy-report.sh \
-		.github/scripts/codeql-report.sh .github/scripts/release-version.sh
+		.github/scripts/codeql-report.sh .github/scripts/release-version.sh \
+		.github/scripts/supplied-key-test.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code

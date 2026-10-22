@@ -17,3 +17,6 @@ Every release's notes are here, newest first. The format follows
 - A workflow that publishes the image for amd64 and arm64 with signed provenance and an SBOM
   when a release is made ([DOCS/releasing.md](DOCS/releasing.md)).
 - The README, these docs, and the security policy.
+- The app secret key that will encrypt stored credentials and authenticator-app keys: the API
+  won't start without one of at least 32 characters. The container makes it, or you supply it
+  in `.env` or as a Docker secret ([DOCS/operations.md](DOCS/operations.md)).

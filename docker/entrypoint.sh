@@ -69,14 +69,29 @@ fi
 # ---- App secret --------------------------------------------------------------------
 # Encrypts sensitive values, such as integration credentials and authenticator-app keys,
 # before they reach the database, so a database dump on its own doesn't reveal them. Only the
-# API can read it.
-if [ ! -s "$SECRETS_DIR/secret.key" ]; then
+# API can read it. The first start makes one in the data volume. A key you supply, in
+# ARESGATE_SECRET_KEY or in the file ARESGATE_SECRET_KEY_FILE names (a Docker secret), is used
+# instead: it's copied to memory-backed storage that only the API can read, which also works
+# for a secret file that only root can read, and is dropped from the environment so no other
+# process inherits it. The API checks the key's length when it starts.
+if [ -n "${ARESGATE_SECRET_KEY:-}" ]; then
+    log "using the app secret key from ARESGATE_SECRET_KEY"
+    (umask 077 && printf '%s\n' "$ARESGATE_SECRET_KEY" >/run/aresgate/secret.key)
+    unset ARESGATE_SECRET_KEY
+    export ARESGATE_SECRET_KEY_FILE=/run/aresgate/secret.key
+    chown aresgate:aresgate "$ARESGATE_SECRET_KEY_FILE"
+elif [ -n "${ARESGATE_SECRET_KEY_FILE:-}" ]; then
+    log "using the app secret key in $ARESGATE_SECRET_KEY_FILE"
+    (umask 077 && cat "$ARESGATE_SECRET_KEY_FILE" >/run/aresgate/secret.key)
+    export ARESGATE_SECRET_KEY_FILE=/run/aresgate/secret.key
+    chown aresgate:aresgate "$ARESGATE_SECRET_KEY_FILE"
+elif [ ! -s "$SECRETS_DIR/secret.key" ]; then
     log "generating the app secret key"
     (umask 077 && openssl rand -base64 32 >"$SECRETS_DIR/secret.key")
 fi
 chown -R aresgate:aresgate "$SECRETS_DIR"
 chmod 0700 "$SECRETS_DIR"
-chmod 0400 "$SECRETS_DIR/secret.key"
+[ ! -e "$SECRETS_DIR/secret.key" ] || chmod 0400 "$SECRETS_DIR/secret.key"
 
 # ---- TLS -----------------------------------------------------------------------------
 # Use your own certificate from /certs (e.g. from Let's Encrypt via DNS challenge) when

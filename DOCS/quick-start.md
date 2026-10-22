@@ -31,6 +31,7 @@ settings have working defaults:
 | `ARESGATE_HTTP_PORT` | `80` | The port that redirects to HTTPS |
 | `TZ` | `UTC` | Time zone, e.g. `America/Halifax` |
 | `ARESGATE_API_WORKERS` | `2` | How many API processes to run |
+| `ARESGATE_SECRET_KEY` | made for you | The key that encrypts what AresGate stores. Only set it to bring a key from another server ([Operations](operations.md#the-app-secret-key)) |
 
 Then build and start it:
 

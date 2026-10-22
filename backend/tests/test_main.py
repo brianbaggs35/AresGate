@@ -1,7 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.config import Settings
 from app.main import create_app
+from app.secret_key import SecretKeyError
 
 
 def test_docs_are_off_by_default() -> None:
@@ -19,3 +22,15 @@ def test_docs_can_be_turned_on() -> None:
 def test_the_version_is_the_apps() -> None:
     app = create_app(Settings(release="2.0.0"))
     assert app.version == "2.0.0"
+
+
+def test_the_server_starts_with_the_secret_key_loaded(settings: Settings) -> None:
+    app = create_app(settings)
+    with TestClient(app):
+        assert app.state.secret_key == settings.secret_key
+
+
+def test_the_server_will_not_start_without_a_usable_secret_key(settings: Settings) -> None:
+    app = create_app(settings.model_copy(update={"secret_key": SecretStr("too short")}))
+    with pytest.raises(SecretKeyError, match="needs at least 32"), TestClient(app):
+        pass

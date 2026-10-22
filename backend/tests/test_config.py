@@ -17,6 +17,8 @@ def test_defaults_target_bundled_postgres_socket(
     assert settings.database_url == "postgresql+psycopg://aresgate@/aresgate?host=/run/postgresql"
     assert settings.is_production
     assert not settings.enable_docs
+    assert settings.secret_key is None
+    assert settings.secret_key_file == Path("/data/secrets/secret.key")
 
 
 def test_reads_prefixed_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -52,3 +54,16 @@ def test_port_must_be_a_real_port() -> None:
         Settings(https_port=0)
     with pytest.raises(ValidationError):
         Settings(https_port=70000)
+
+
+def test_secret_key_is_read_from_the_environment_and_kept_out_of_logs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ARESGATE_SECRET_KEY", "k" * 40)
+    monkeypatch.setenv("ARESGATE_SECRET_KEY_FILE", str(tmp_path / "key"))
+    settings = Settings()
+    assert settings.secret_key is not None
+    assert settings.secret_key.get_secret_value() == "k" * 40
+    assert "k" * 40 not in repr(settings)
+    assert settings.secret_key_file == tmp_path / "key"

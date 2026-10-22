@@ -30,6 +30,10 @@ fail() {
 cd "$root/backend"
 # The harness refuses to start unless the API is told it's a test server.
 export ARESGATE_ENVIRONMENT=test
+# The API won't start without an app secret key. These tests keep nothing worth protecting, so
+# a throwaway one will do.
+ARESGATE_SECRET_KEY="${ARESGATE_SECRET_KEY:-$(openssl rand -base64 32)}"
+export ARESGATE_SECRET_KEY
 echo "Migrating the database"
 uv run --no-sync --no-build alembic upgrade head
 

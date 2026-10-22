@@ -34,7 +34,9 @@ see [SECURITY.md](../SECURITY.md).
 - PostgreSQL listens only on a unix socket inside the container, and the API connects as the
   operating system user it runs as (peer authentication). There is no database password to leak
   and nothing outside the container can connect.
-- The app secret key is made on first start and can be read only by the API.
+- The app secret key is made on first start, or supplied by you in `.env` or a Docker secret, and
+  can be read only by the API. It must be at least 32 characters, and the API won't start
+  without one.
 
 ## Planned
 
