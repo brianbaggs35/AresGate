@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from e2e import baseline, factories
-from e2e.baseline import BASELINE_SYSTEM_INFO, FIXTURES, FixtureName
+from e2e.baseline import (
+    BASELINE_ACCOUNT,
+    BASELINE_SYSTEM_INFO,
+    FIXTURES,
+    FRESH_INSTALL_SETUP_CODE,
+    FixtureName,
+)
 from e2e.coverage_report import CoverageReport, current_measurement, report
 
 router = APIRouter(prefix="/__test__", tags=["test"])
@@ -23,14 +29,29 @@ Db = Annotated[Session, Depends(get_session)]
 Measurement = Annotated[coverage.Coverage | None, Depends(current_measurement)]
 
 
+class AccountLogin(BaseModel):
+    username: str
+    password: str
+
+
 class Baseline(BaseModel):
     system_info: dict[str, str]
+    # The account the baseline signs in with.
+    account: AccountLogin
+    # The setup code the fresh-install fixture waits with.
+    fresh_install_setup_code: str
 
 
 @router.get("/baseline")
 def describe_baseline() -> Baseline:
     """What the baseline holds, without touching the database."""
-    return Baseline(system_info=BASELINE_SYSTEM_INFO)
+    return Baseline(
+        system_info=BASELINE_SYSTEM_INFO,
+        account=AccountLogin(
+            username=BASELINE_ACCOUNT.username, password=BASELINE_ACCOUNT.password
+        ),
+        fresh_install_setup_code=FRESH_INSTALL_SETUP_CODE,
+    )
 
 
 class FixtureInfo(BaseModel):
@@ -90,6 +111,20 @@ def make_system_info(body: SystemInfoRequest, db: Db) -> SystemInfoRecord:
     record = SystemInfoRecord(key=row.key, value=row.value, updated_at=row.updated_at)
     db.commit()
     return record
+
+
+class AccountRequest(BaseModel):
+    username: str | None = None
+    password: str = factories.DEFAULT_PASSWORD
+
+
+@router.post("/factories/account", status_code=status.HTTP_201_CREATED)
+def make_account(body: AccountRequest, db: Db) -> AccountLogin:
+    """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""
+    user = factories.account(db, username=body.username, password=body.password)
+    login = AccountLogin(username=user.username, password=body.password)
+    db.commit()
+    return login
 
 
 @router.get("/coverage")

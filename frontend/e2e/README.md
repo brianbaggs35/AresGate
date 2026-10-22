@@ -53,8 +53,10 @@ test('shows that the API is up', async ({ overview }) => {
 - **Every test starts from the baseline.** The `freshDatabase` fixture cleans the database
   before each test, so no test depends on another.
 - **`harness`** is the test server's harness (`backend/e2e`, served under `/api/__test__`, only by
-  the e2e image and `make e2e-host`): `clean()`, `loadFixture(name)`, `createSystemInfo()` and
-  other factories, `rowCounts()` and `describe()` for what the baseline holds. A new table gets a
+  the e2e image and `make e2e-host`): `clean()`, `loadFixture(name)`, `createSystemInfo()`,
+  `createAccount()` and other factories, `rowCounts()` and `describe()` for what the baseline
+  holds, which includes the account to sign in with (`baseline.account`). The `fresh-install`
+  state has no account and waits for the setup code in `baseline.fresh_install_setup_code`. A new table gets a
   factory in `backend/e2e/factories.py` and an endpoint in `backend/e2e/api.py`, so specs can make
   records on demand; give the baseline the rows every spec can rely on in `baseline.py`.
 - `expectAccessible(page)` runs axe against WCAG 2.2 A and AA. Check each new page in both themes.

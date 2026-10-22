@@ -5,6 +5,7 @@ description = "Self-hosted home network security monitoring"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.159.1",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.1",
@@ -55,6 +56,8 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, and use made-up passwords and tokens.
 "tests/**" = ["S101", "S105", "S106"]
+# The end-to-end harness makes accounts with made-up passwords.
+"e2e/**" = ["S105", "S106"]
 
 [tool.pyright]
 include = ["app", "e2e", "tests", "migrations", "../docker"]

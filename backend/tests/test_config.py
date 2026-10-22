@@ -67,3 +67,16 @@ def test_secret_key_is_read_from_the_environment_and_kept_out_of_logs(
     assert settings.secret_key.get_secret_value() == "k" * 40
     assert "k" * 40 not in repr(settings)
     assert settings.secret_key_file == tmp_path / "key"
+
+
+def test_a_sign_in_lasts_half_an_hour_idle_and_half_a_day_at_most() -> None:
+    settings = Settings()
+
+    assert settings.session_idle_minutes == 30
+    assert settings.session_max_hours == 12
+
+
+@pytest.mark.parametrize("setting", ["session_idle_minutes", "session_max_hours"])
+def test_a_sign_in_cannot_last_no_time_at_all(setting: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**{setting: 0})  # type: ignore[arg-type]

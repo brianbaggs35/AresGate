@@ -8,9 +8,12 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import SystemInfo
+from app.models import SystemInfo, User
+from app.security import passwords
+from app.security.accounts import normalize_username
 
 DEFAULT_VALUE = "an e2e value"
+DEFAULT_PASSWORD = "an e2e password for testing"  # nosec B105: made up, for test accounts
 
 
 def system_info(
@@ -20,3 +23,15 @@ def system_info(
     session.add(row)
     session.flush()
     return row
+
+
+def account(
+    session: Session, *, username: str | None = None, password: str = DEFAULT_PASSWORD
+) -> User:
+    user = User(
+        username=normalize_username(username or f"factory-{uuid4().hex[:8]}"),
+        password_hash=passwords.hash_password(password),
+    )
+    session.add(user)
+    session.flush()
+    return user

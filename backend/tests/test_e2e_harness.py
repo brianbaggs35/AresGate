@@ -15,9 +15,15 @@ from sqlalchemy.orm import Session
 from app import config as config_module
 from app.config import Settings
 from app.db import get_session
-from app.models import SystemInfo
+from app.models import SystemInfo, User
+from app.security import passwords, setup_code
 from e2e import factories
-from e2e.baseline import BASELINE_SYSTEM_INFO, BASELINE_TIME
+from e2e.baseline import (
+    BASELINE_ACCOUNT,
+    BASELINE_SYSTEM_INFO,
+    BASELINE_TIME,
+    FRESH_INSTALL_SETUP_CODE,
+)
 from e2e.coverage_report import current_measurement
 from e2e.main import create_e2e_app
 from tests.helpers import ORIGIN
@@ -38,12 +44,16 @@ def harness(settings: Settings, session: Session) -> FastAPI:
 
 @pytest.fixture
 def e2e(harness: FastAPI) -> Iterator[TestClient]:
-    with TestClient(harness, base_url=ORIGIN) as client:
+    with TestClient(harness, base_url=ORIGIN, headers={"Origin": ORIGIN}) as client:
         yield client
 
 
 def system_info(session: Session) -> dict[str, str]:
     return {row.key: row.value for row in session.scalars(select(SystemInfo))}
+
+
+def usernames(session: Session) -> list[str]:
+    return [user.username for user in session.scalars(select(User))]
 
 
 @pytest.mark.parametrize("environment", ["production", "development"])
@@ -74,9 +84,38 @@ def test_the_baseline_describes_what_it_loads(e2e: TestClient, session: Session)
     described = e2e.get("/api/__test__/baseline").json()
     e2e.post("/api/__test__/database/clean")
 
-    assert described == {"system_info": BASELINE_SYSTEM_INFO}
+    assert described == {
+        "system_info": BASELINE_SYSTEM_INFO,
+        "account": {
+            "username": BASELINE_ACCOUNT.username,
+            "password": BASELINE_ACCOUNT.password,
+        },
+        "fresh_install_setup_code": FRESH_INSTALL_SETUP_CODE,
+    }
     assert system_info(session) == BASELINE_SYSTEM_INFO
     assert {row.updated_at for row in session.scalars(select(SystemInfo))} == {BASELINE_TIME}
+
+
+def test_the_baseline_account_can_sign_in(e2e: TestClient, session: Session) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    response = e2e.post(
+        "/api/auth/login",
+        json={"username": BASELINE_ACCOUNT.username, "password": BASELINE_ACCOUNT.password},
+    )
+
+    assert response.status_code == 200
+    assert usernames(session) == [BASELINE_ACCOUNT.username]
+
+
+def test_the_account_is_hashed_once_however_many_times_the_baseline_loads(
+    e2e: TestClient, session: Session
+) -> None:
+    e2e.post("/api/__test__/database/clean")
+    first = session.scalars(select(User)).one().password_hash
+    e2e.post("/api/__test__/database/clean")
+
+    assert session.scalars(select(User)).one().password_hash == first
 
 
 def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
@@ -87,13 +126,20 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 
 
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
-    e2e.post("/api/__test__/fixtures/fresh-install")
-    assert e2e.get("/api/__test__/database/counts").json() == {"system_info": 0}
+    e2e.post("/api/__test__/database/clean")
+    expected = {
+        "login_throttles": 0,
+        "system_info": len(BASELINE_SYSTEM_INFO),
+        "user_sessions": 0,
+        "users": 1,
+    }
+    assert e2e.get("/api/__test__/database/counts").json() == expected
 
     factories.system_info(session)
     session.commit()
 
-    assert e2e.get("/api/__test__/database/counts").json() == {"system_info": 1}
+    counts = e2e.get("/api/__test__/database/counts").json()
+    assert counts == {**expected, "system_info": len(BASELINE_SYSTEM_INFO) + 1}
 
 
 def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session: Session) -> None:
@@ -103,11 +149,14 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
     response = e2e.post("/api/__test__/database/clean")
 
     assert response.status_code == 200
-    assert response.json() == {"fixture": "baseline", "tables_emptied": ["system_info"]}
+    assert response.json() == {
+        "fixture": "baseline",
+        "tables_emptied": ["user_sessions", "users", "system_info", "login_throttles"],
+    }
     assert system_info(session) == BASELINE_SYSTEM_INFO
 
 
-def test_the_fresh_install_fixture_leaves_the_database_empty(
+def test_the_fresh_install_has_no_account_and_waits_for_its_setup_code(
     e2e: TestClient, session: Session
 ) -> None:
     e2e.post("/api/__test__/database/clean")
@@ -115,7 +164,27 @@ def test_the_fresh_install_fixture_leaves_the_database_empty(
     response = e2e.post("/api/__test__/fixtures/fresh-install")
 
     assert response.json()["fixture"] == "fresh-install"
-    assert system_info(session) == {}
+    assert usernames(session) == []
+    assert set(system_info(session)) == {setup_code.KEY}
+    assert e2e.get("/api/setup/status").json() == {"setup_required": True}
+
+
+def test_the_fresh_install_can_be_set_up_with_its_known_code(
+    e2e: TestClient, session: Session
+) -> None:
+    e2e.post("/api/__test__/fixtures/fresh-install")
+
+    response = e2e.post(
+        "/api/setup",
+        json={
+            "code": FRESH_INSTALL_SETUP_CODE,
+            "username": "admin1",
+            "password": "an e2e passphrase for owners",
+        },
+    )
+
+    assert response.status_code == 201
+    assert usernames(session) == ["admin1"]
 
 
 def test_a_fixture_that_does_not_exist_is_refused(e2e: TestClient) -> None:
@@ -175,3 +244,18 @@ def test_coverage_comes_back_as_an_html_report_and_lcov(
     assert "html/index.html" in files
     assert b"config.py" in files["lcov.info"]
     assert 0 < report["percent_covered"] < 100
+
+
+def test_an_account_can_be_made_to_order(e2e: TestClient, session: Session) -> None:
+    chosen = e2e.post(
+        "/api/__test__/factories/account", json={"username": "Chosen", "password": "kept as given"}
+    )
+    invented = e2e.post("/api/__test__/factories/account", json={})
+
+    assert chosen.status_code == invented.status_code == 201
+    assert chosen.json() == {"username": "chosen", "password": "kept as given"}
+    assert invented.json()["username"].startswith("factory-")
+    assert invented.json()["password"] == factories.DEFAULT_PASSWORD
+    assert sorted(usernames(session)) == sorted(["chosen", invented.json()["username"]])
+    stored = session.scalars(select(User).where(User.username == "chosen")).one()
+    assert passwords.verify_password("kept as given", stored.password_hash)
