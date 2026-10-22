@@ -20,7 +20,7 @@ from app.security.accounts import any_user_exists
 
 KEY = "setup_code_hash"
 # No 0, 1, I or O, which are easily mistaken for each other.
-_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _GROUPS = 3
 _GROUP_LENGTH = 4
 
@@ -28,14 +28,14 @@ _GROUP_LENGTH = 4
 def generate() -> str:
     """A new code such as ``K7QD-3MWX-9HPA``: 60 bits, too many to guess."""
     groups = (
-        "".join(secrets.choice(_ALPHABET) for _ in range(_GROUP_LENGTH)) for _ in range(_GROUPS)
+        "".join(secrets.choice(ALPHABET) for _ in range(_GROUP_LENGTH)) for _ in range(_GROUPS)
     )
     return "-".join(groups)
 
 
 def _digest(code: str) -> str:
     """Hashes a code however it was typed: in lowercase, with spaces, or without the dashes."""
-    letters = "".join(character for character in code.upper() if character in _ALPHABET)
+    letters = "".join(character for character in code.upper() if character in ALPHABET)
     return hashlib.sha256(letters.encode()).hexdigest()
 
 

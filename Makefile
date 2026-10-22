@@ -20,7 +20,7 @@ TEST_DB := aresgate-test-db
 TEST_DB_PORT ?= 55432
 
 .DEFAULT_GOAL := help
-.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key \
+.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key two-factor-off \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
 	e2e e2e-up e2e-down e2e-host e2e-coverage e2e-ui e2e-codegen e2e-report e2e-logs \
 	lint lint-backend lint-frontend lint-infra format audit scan scan-source scan-image clean
@@ -65,6 +65,10 @@ backup: ## Dump the database to ./backups
 	$(COMPOSE) exec -T -u aresgate aresgate pg_dump -h /run/postgresql -Fc aresgate \
 		> backups/aresgate-$$(date +%Y%m%d-%H%M%S).dump
 	@ls -1t backups | head -1
+
+two-factor-off: ## Turn off an account's authenticator app (ACCOUNT=<username>)
+	@test -n "$(ACCOUNT)" || { echo "Say whose: make two-factor-off ACCOUNT=<username>" >&2; exit 2; }
+	$(COMPOSE) exec -T -u aresgate -w /app/backend aresgate python -m app.cli disable-two-factor "$(ACCOUNT)"
 
 secret-key: ## Print the app secret key, to keep somewhere safe apart from the backups
 	@$(COMPOSE) exec -u aresgate aresgate cat /data/secrets/secret.key

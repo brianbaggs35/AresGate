@@ -35,6 +35,15 @@ Every release's notes are here, newest first. The format follows
   username and password), signing in and out, and a Security page with the account and its
   recent activity. Pages are closed to anyone who isn't signed in, and a sign-in that ends while
   a page is open sends you back to the sign-in page and on to where you were.
+- A second step when signing in, with an authenticator app (RFC 6238 codes): the API makes a
+  key to scan or type in, turns the step on once a code from the app proves it works, and gives
+  ten single-use recovery codes. The key is encrypted with the app secret key, recovery codes
+  are kept as keyed hashes, a code works once, and wrong codes count towards the same lockout
+  as wrong passwords ([DOCS/security.md](DOCS/security.md)). The web app's pages for it are
+  next.
+- `make two-factor-off ACCOUNT=<username>` turns an account's second step off for someone who
+  has lost both the phone and the recovery codes. It ends the account's sign-ins and leaves an
+  event in the audit log ([DOCS/operations.md](DOCS/operations.md)).
 - Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
   that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`

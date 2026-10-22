@@ -2,7 +2,7 @@
 
 import math
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from app.api.deps import Db, SettingsDep, SignedIn, client_address, record_audit
 from app.audit import Action, Detail, Outcome
 from app.config import Settings
 from app.models import User, utcnow
-from app.security import passwords, sessions, throttle
+from app.security import passwords, sessions, throttle, two_factor
 from app.security.accounts import find_user, normalize_username
 from app.security.throttle import Scope
 
@@ -28,6 +28,19 @@ class SessionInfo(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(max_length=256)
     password: str = Field(max_length=1024)
+
+
+class TwoFactorChallenge(BaseModel):
+    """What a right password earns on an account that has an authenticator app: not a sign-in
+    yet, but a challenge to send back with a code from the app or a recovery code."""
+
+    two_factor_required: Literal[True] = True
+    challenge: str
+
+
+class TwoFactorLoginRequest(BaseModel):
+    challenge: str = Field(max_length=512)
+    code: str = Field(max_length=64)
 
 
 def too_many_attempts(wait: timedelta) -> HTTPException:
@@ -76,7 +89,7 @@ def open_session(
 @router.post("/login")
 def log_in(
     body: LoginRequest, request: Request, response: Response, db: Db, settings: SettingsDep
-) -> SessionInfo:
+) -> SessionInfo | TwoFactorChallenge:
     now = utcnow()
     address = client_address(request)
     username = normalize_username(body.username)
@@ -98,11 +111,60 @@ def log_in(
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect username or password.")
 
-    throttle.clear(db, Scope.ADDRESS, address)
-    throttle.clear(db, Scope.ACCOUNT, username)
     if passwords.needs_rehash(user.password_hash):
         user.password_hash = passwords.hash_password(body.password)
+    if two_factor.is_enabled(db, user.id):
+        # The wrong guesses stay counted until the second step is right too, so a password that
+        # has been found out can't be used to wipe them.
+        db.commit()
+        return TwoFactorChallenge(challenge=two_factor.make_challenge(settings, user.id, now))
+    throttle.clear(db, Scope.ADDRESS, address)
+    throttle.clear(db, Scope.ACCOUNT, username)
     record_audit(db, request, Action.LOGIN_SUCCEEDED, Outcome.SUCCESS, user=user)
+    return open_session(db, response, user, settings, now)
+
+
+@router.post("/login/two-factor")
+def log_in_with_second_step(
+    body: TwoFactorLoginRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    settings: SettingsDep,
+) -> SessionInfo:
+    """The second step of signing in to an account with an authenticator app."""
+    now = utcnow()
+    address = client_address(request)
+    user_id = two_factor.read_challenge(settings, body.challenge, now)
+    user = db.get(User, user_id) if user_id else None
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Your sign-in timed out. Enter your username and password again.",
+        )
+
+    if waits := current_lockouts(db, address, user.username, now):
+        raise too_many_attempts(max(waits))
+
+    accepted = two_factor.accept_code(db, settings, user.id, body.code, now)
+    if accepted is None:
+        throttle.record_failure(db, Scope.ADDRESS, address, now)
+        throttle.record_failure(db, Scope.ACCOUNT, user.username, now)
+        detail: Detail = {"reason": "wrong_code"}
+        if waits := current_lockouts(db, address, user.username, now):
+            detail = {**detail, "locked_for_seconds": math.ceil(max(waits).total_seconds())}
+        record_audit(
+            db, request, Action.TWO_FACTOR_FAILED, Outcome.FAILURE, user=user, detail=detail
+        )
+        db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "That code isn't right.")
+
+    throttle.clear(db, Scope.ADDRESS, address)
+    throttle.clear(db, Scope.ACCOUNT, user.username)
+    detail = {"second_factor": accepted.method.value}
+    if accepted.recovery_codes_left is not None:
+        detail = {**detail, "recovery_codes_left": accepted.recovery_codes_left}
+    record_audit(db, request, Action.LOGIN_SUCCEEDED, Outcome.SUCCESS, user=user, detail=detail)
     return open_session(db, response, user, settings, now)
 
 

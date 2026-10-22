@@ -67,12 +67,45 @@ see [SECURITY.md](../SECURITY.md).
 - A wrong username and a wrong password get the same answer in the same time, so the sign-in
   page doesn't tell anyone which names exist.
 
+**The second step**
+
+- An account can add an authenticator app: any app that shows six-digit codes, such as the ones
+  built into password managers. AresGate makes a random 160-bit key and shows it as a QR code
+  and as text. The step only counts once a code from the app has proved the app has the key, so
+  a typing mistake can't lock the account out. Turning it on also makes ten recovery codes, 60
+  bits each and shown once.
+- With it on, the right password is not enough. It earns a challenge that is good for five
+  minutes and can't be forged without the app secret key, and the sign-in finishes with a code
+  from the app or a recovery code. A wrong password gets the same answer as ever, so the sign-in
+  page doesn't say whether an account has a second step.
+- A code from the app works once, so one that was watched being typed is no use to anyone
+  else, and a recovery code works once. The codes use HMAC-SHA1 because every authenticator app
+  does; what protects the account is that guesses are limited and each code is single-use.
+- Wrong codes lock the account and the address exactly like wrong passwords do. A right
+  password does not reset that count on an account with a second step, only a right code does,
+  so someone who knows the password can't use the sign-in page to wipe their guesses at the
+  code.
+- The app's key is encrypted with AES-256-GCM, using a key made from the app secret key (HKDF,
+  one for each purpose) and tied to the account, so it can't be opened with another key, as
+  another kind of value or on another account's row. Recovery codes are kept as HMAC-SHA256
+  hashes made with a key of their own, so a copy of the database can't be used to guess either
+  offline.
+- Making new recovery codes, which ends the old ones, needs a current code, and turning the
+  step off needs the password and a current code, so a sign-in left open on a borrowed computer
+  can't do either. Wrong answers there count towards the same lockout, and say 403 and not
+  401, so the web app doesn't take them for the sign-in having ended. A code isn't used up when
+  the password next to it was wrong.
+- If the phone and the recovery codes are both lost, whoever runs the server can turn the step
+  off with `make two-factor-off` ([Operations](operations.md#signing-in)). It ends the
+  account's sign-ins and leaves an event in the audit log.
+
 **The audit log**
 
 - Setting up, signing in (and every wrong guess), signing out and the log's own housekeeping are
   recorded, each with the time, the account, the address the request came from and the browser's
-  name. The features that follow (authenticator apps, passkeys, settings and stored credentials)
-  add their own events, and so does the command that turns the second step off.
+  name. Turning the second step on or off, wrong codes and new recovery codes are recorded too,
+  and so is the command that turns the step off. The features that follow (passkeys, settings
+  and stored credentials) add their own events.
 - The database refuses to change or delete an event, so a bug in AresGate can't rewrite
   history. The one exception is the clean-up that deletes events older than
   `ARESGATE_AUDIT_RETENTION_DAYS` (a year unless you change it), which records how many it
@@ -104,8 +137,9 @@ see [SECURITY.md](../SECURITY.md).
 
 These are being built, in this order, and are not in AresGate yet:
 
-- A second step when you sign in, with an authenticator app or a passkey, and recovery codes.
-  Until then the account is protected by its password alone, so use a long one.
+- Passkeys as another second step, and the web app's pages for the authenticator app. Until
+  those are in, an account without a second step is protected by its password alone, so use a
+  long one.
 - Credentials for OPNsense, ntopng, Wazuh and AI providers stored encrypted and write-only: you
   can replace them but never read them back.
 - Logging that redacts secrets, and the audit log's page in the web app.
