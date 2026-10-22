@@ -35,7 +35,9 @@ Playwright's ffmpeg).
 ## Writing a spec
 
 Specs live in `e2e/specs`. `*.mobile.spec.ts` only runs on the phone and `*.desktop.spec.ts` only
-on the computer. Import from `../support`:
+on the computer. A spec for another size sets it for a group of tests with
+`test.use({ viewport: { width: 768, height: 1024 } })`, as `layout.desktop.spec.ts` does for a
+tablet. Import from `../support`:
 
 ```ts
 import { expect, test } from '../support'
@@ -50,6 +52,9 @@ test('shows that the API is up', async ({ overview }) => {
   roles and visible text (`getByRole`, `getByText`) where they say what a person sees.
 - **Page objects** (`support/pages`) hold the locators for a page, and are fixtures: add one to
   `support/test.ts` and `support/index.ts` for each new page.
+- The `shell` fixture (`AppShell`) is what surrounds every page: the logo, the menu (at the side,
+  or at the bottom on a phone), the page's title and the theme switcher. A page that belongs in
+  the menu is added to `src/navigation.ts`; keep it to five, which is all a phone's bar holds.
 - **Every test starts from the baseline.** The `freshDatabase` fixture cleans the database
   before each test, so no test depends on another.
 - **`harness`** is the test server's harness (`backend/e2e`, served under `/api/__test__`, only by

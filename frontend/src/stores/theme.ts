@@ -1,34 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { readChoice, saveChoice } from '@/stores/saved-choice'
+
 export type ThemePreference = 'light' | 'dark' | 'system'
 
 export const THEME_STORAGE_KEY = 'aresgate.theme'
-const PREFERENCES: ReadonlySet<unknown> = new Set<ThemePreference>(['light', 'dark', 'system'])
-
-function isPreference(value: unknown): value is ThemePreference {
-  return PREFERENCES.has(value)
-}
-
-function readStored(): ThemePreference {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY)
-    return isPreference(stored) ? stored : 'system'
-  } catch {
-    return 'system'
-  }
-}
+const PREFERENCES: readonly ThemePreference[] = ['light', 'dark', 'system']
 
 export const useThemeStore = defineStore('theme', () => {
-  const preference = ref<ThemePreference>(readStored())
+  const preference = ref<ThemePreference>(readChoice(THEME_STORAGE_KEY, PREFERENCES) ?? 'system')
 
   function setPreference(value: ThemePreference) {
     preference.value = value
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, value)
-    } catch {
-      // Storage can be unavailable (private mode); the choice still applies for this visit.
-    }
+    saveChoice(THEME_STORAGE_KEY, value)
   }
 
   return { preference, setPreference }

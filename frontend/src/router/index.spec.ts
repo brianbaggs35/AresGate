@@ -1,6 +1,6 @@
 import { createMemoryHistory } from 'vue-router'
 
-import { buildRouter, routes } from '@/router'
+import { buildRouter, pageTitle, routes } from '@/router'
 
 async function visit(path: string) {
   const router = buildRouter(createMemoryHistory())
@@ -24,6 +24,11 @@ describe('router', () => {
     router.addRoute({ path: '/untitled', component: { render: () => null } })
     await router.push('/untitled')
     expect(document.title).toBe('AresGate')
+  })
+
+  it("gives a page's title, if it has one", async () => {
+    expect(pageTitle(await visit('/'))).toBe('Overview')
+    expect(pageTitle({ meta: {} })).toBeUndefined()
   })
 
   it('lazy-loads every view module', async () => {

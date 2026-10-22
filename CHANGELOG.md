@@ -25,3 +25,6 @@ Every release's notes are here, newest first. The format follows
   sign-ins are kept in `HttpOnly` `__Host-` cookies with a security token for every change, and
   wrong guesses lock the account, the address and the setup code for a growing wait
   ([DOCS/security.md](DOCS/security.md)). The web app's pages for these arrive next.
+- The web app's frame: a menu at the side that shrinks to icons (and remembers it), a bar at the
+  bottom on a phone, a skip link for keyboards, and the page's title on top, in the light, dark
+  ("mission control") and system themes.
