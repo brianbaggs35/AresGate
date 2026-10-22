@@ -1,6 +1,7 @@
 import * as auditApi from '@/api/audit'
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as twoFactorApi from '@/api/two-factor'
 import { useSessionStore } from '@/stores/session'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import SecurityView from '@/views/SecurityView.vue'
@@ -16,6 +17,10 @@ const recorded: auditApi.AuditEvent = {
 }
 
 async function open() {
+  vi.spyOn(twoFactorApi, 'fetchTwoFactorStatus').mockResolvedValue({
+    enabled: false,
+    recovery_codes_left: 0,
+  })
   const mounted = await mountWithPlugins(SecurityView, { route: '/security', signedIn: 'admin' })
   await flushPromises()
   return mounted
@@ -34,6 +39,15 @@ describe('SecurityView', () => {
     expect(fetchRecent).toHaveBeenCalledWith(20)
     expect(wrapper.findAll('[data-test="activity"]')).toHaveLength(1)
     expect(wrapper.find('[data-test="no-activity"]').exists()).toBe(false)
+  })
+
+  it('has the card for two-step verification between the account and the activity', async () => {
+    vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
+    const { wrapper } = await open()
+    const cards = wrapper
+      .findAll('[data-test$="-card"]')
+      .map((card) => card.attributes('data-test'))
+    expect(cards).toEqual(['account-card', 'two-factor-card', 'activity-card'])
   })
 
   it('shows a placeholder while it loads', async () => {

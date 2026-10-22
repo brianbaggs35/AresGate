@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LogIn } from '@lucide/vue'
+import { ArrowLeft, LogIn, ShieldCheck } from '@lucide/vue'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { SubmitEventPromise } from 'vuetify'
@@ -17,6 +17,10 @@ const router = useRouter()
 
 const username = ref('')
 const password = ref('')
+/** Set once the password is right on an account that has an authenticator app: the code is the
+ * second step, and this is what it is sent back with. */
+const challenge = ref<string | null>(null)
+const code = ref('')
 const busy = ref(false)
 const error = ref<string | null>(null)
 
@@ -27,8 +31,9 @@ async function submit(event: SubmitEventPromise) {
   busy.value = true
   error.value = null
   try {
-    await session.logIn({ username: username.value, password: password.value })
-    await router.replace(landingPage(route.query))
+    challenge.value = await session.logIn({ username: username.value, password: password.value })
+    password.value = ''
+    if (challenge.value === null) await router.replace(landingPage(route.query))
   } catch (signInError) {
     error.value = errorMessage(signInError)
     password.value = ''
@@ -36,12 +41,40 @@ async function submit(event: SubmitEventPromise) {
     busy.value = false
   }
 }
+
+async function submitCode(event: SubmitEventPromise) {
+  if (!(await isValid(event)) || challenge.value === null) return
+  busy.value = true
+  error.value = null
+  try {
+    await session.logInWithCode(challenge.value, code.value)
+    await router.replace(landingPage(route.query))
+  } catch (codeError) {
+    error.value = errorMessage(codeError)
+    code.value = ''
+  } finally {
+    busy.value = false
+  }
+}
+
+function startOver() {
+  challenge.value = null
+  code.value = ''
+  error.value = null
+}
 </script>
 
 <template>
-  <AuthLayout title="Sign in" subtitle="Welcome back to AresGate.">
+  <AuthLayout
+    :title="challenge === null ? 'Sign in' : 'Enter a code'"
+    :subtitle="
+      challenge === null
+        ? 'Welcome back to AresGate.'
+        : 'Open your authenticator app and enter the 6-digit code it shows, or enter a recovery code.'
+    "
+  >
     <v-alert
-      v-if="session.expired && !error"
+      v-if="session.expired && !error && challenge === null"
       type="info"
       variant="tonal"
       class="mb-4"
@@ -52,7 +85,40 @@ async function submit(event: SubmitEventPromise) {
     <v-alert v-if="error" type="error" variant="tonal" class="mb-4" data-test="sign-in-error">
       {{ error }}
     </v-alert>
-    <v-form validate-on="submit" @submit.prevent="submit">
+    <v-form v-if="challenge !== null" validate-on="submit" @submit.prevent="submitCode">
+      <v-text-field
+        v-model="code"
+        v-focus
+        label="Code"
+        autocomplete="one-time-code"
+        autocapitalize="off"
+        spellcheck="false"
+        :rules="[required('a code')]"
+        data-test="code"
+      />
+      <v-btn
+        type="submit"
+        color="primary"
+        size="large"
+        block
+        :prepend-icon="ShieldCheck"
+        :loading="busy"
+        data-test="verify"
+      >
+        Verify
+      </v-btn>
+      <v-btn
+        variant="text"
+        block
+        class="mt-2"
+        :prepend-icon="ArrowLeft"
+        data-test="start-over"
+        @click="startOver"
+      >
+        Use a different account
+      </v-btn>
+    </v-form>
+    <v-form v-else validate-on="submit" @submit.prevent="submit">
       <v-text-field
         v-model="username"
         v-focus

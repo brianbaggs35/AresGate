@@ -142,6 +142,11 @@ it with the setup code from the log.
   ([Security](security.md)). It keeps a year of events; change that with
   `ARESGATE_AUDIT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. The API
   deletes older events when it starts and every six hours after that.
+- **Adding the second step.** On the Security page, Two-step verification, choose *Add an
+  authenticator app*. Scan the QR code with the app (or open the link on the same device, or type
+  in the key), enter the code it shows, and save the ten recovery codes: they are shown once. The
+  same card makes new recovery codes and turns the step off. Both ask for a code from the app or
+  a recovery code, and turning it off asks for the password too.
 - **Lost the phone and the recovery codes.** An account with an authenticator app can't finish
   signing in without a code from it or a recovery code. If you have neither, turn the second
   step off from the machine that runs AresGate, then sign in with the password and add the app

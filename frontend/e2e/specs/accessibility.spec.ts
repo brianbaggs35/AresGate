@@ -1,4 +1,4 @@
-import { expect, expectAccessible, test } from '../support'
+import { authenticatorCode, expect, expectAccessible, test } from '../support'
 
 // Both themes, since contrast is checked against the colors each one draws.
 for (const theme of ['light', 'dark'] as const) {
@@ -26,6 +26,89 @@ for (const theme of ['light', 'dark'] as const) {
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 
+      await expectAccessible(page)
+    })
+
+    test('adding an authenticator app has no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+    }) => {
+      await security.goto()
+      await expect(security.twoFactorOff).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await security.addApp.click()
+      await expect(security.key).toBeVisible()
+      await expectAccessible(page)
+
+      await security.confirmCode.fill('000000')
+      await security.confirm.click()
+      await expect(security.twoFactorError).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the recovery codes and the card when it is on have no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+    }) => {
+      await security.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await security.addApp.click()
+      const secret = ((await security.key.textContent()) ?? '').replaceAll(/\s/g, '')
+      await security.confirmCode.fill(authenticatorCode(secret))
+      await security.confirm.click()
+      await expect(security.recoveryCodeItems).toHaveCount(10)
+      await expectAccessible(page)
+
+      await security.codesSaved.check()
+      await security.codesDone.click()
+      await expect(security.twoFactorOn).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('making new codes and turning it off have no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+    }) => {
+      await security.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await security.addAuthenticator()
+
+      await security.renewCodes.click()
+      await expect(security.renewCode).toBeVisible()
+      await expectAccessible(page)
+      await security.cancel.click()
+
+      await security.turnOff.click()
+      await expect(security.turnOffPassword).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the second step of signing in has no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+      signIn,
+      baseline,
+    }) => {
+      await security.goto()
+      await security.addAuthenticator()
+      await shell.signOutFromMenu()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await signIn.signIn(baseline.account)
+      await expect(signIn.code).toBeVisible()
+      await expectAccessible(page)
+
+      await signIn.enterCode('000000')
+      await expect(signIn.error).toBeVisible()
       await expectAccessible(page)
     })
 
