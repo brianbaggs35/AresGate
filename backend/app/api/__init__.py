@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api import audit, auth, credentials, health, setup, system, two_factor
+from app.api import audit, auth, credentials, health, passkeys, setup, system, two_factor
 from app.api.deps import require_same_origin
 
 api_router = APIRouter(dependencies=[Depends(require_same_origin)])
@@ -10,6 +10,7 @@ api_router.include_router(health.router)
 api_router.include_router(setup.router)
 api_router.include_router(auth.router)
 api_router.include_router(two_factor.router)
+api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(audit.router)
 api_router.include_router(system.router)
