@@ -20,3 +20,8 @@ Every release's notes are here, newest first. The format follows
 - The app secret key that will encrypt stored credentials and authenticator-app keys: the API
   won't start without one of at least 32 characters. The container makes it, or you supply it
   in `.env` or as a Docker secret ([DOCS/operations.md](DOCS/operations.md)).
+- Setting up and signing in to the API: a one-time setup code in the container's log creates the
+  one account, passwords are hashed with Argon2id and checked against a password policy,
+  sign-ins are kept in `HttpOnly` `__Host-` cookies with a security token for every change, and
+  wrong guesses lock the account, the address and the setup code for a growing wait
+  ([DOCS/security.md](DOCS/security.md)). The web app's pages for these arrive next.
