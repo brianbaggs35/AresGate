@@ -115,7 +115,7 @@ lint-frontend: ## ESLint, Prettier and vue-tsc
 lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI workflows)
 	docker run --rm -v "$(CURDIR):/work:ro" -w /work $(HADOLINT_IMAGE) hadolint Dockerfile
 	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh \
-		docker/apk-retry.sh .github/scripts/smoke-test.sh
+		docker/apk-retry.sh .github/scripts/smoke-test.sh .github/scripts/trivy-report.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code

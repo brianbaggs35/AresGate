@@ -296,10 +296,10 @@ jobs:
           SOURCE_SCAN_OUTCOME: ${{ steps.trivy-source.outcome }}
           IMAGE_SCAN_OUTCOME: ${{ steps.trivy-image.outcome }}
         run: |
-          if [[ "$SOURCE_SCAN_OUTCOME" != "success" || "$IMAGE_SCAN_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy found high or critical findings, or a scan failed."
-            exit 1
-          fi
+          status=0
+          ./.github/scripts/trivy-report.sh source "$SOURCE_SCAN_OUTCOME" trivy-source.sarif || status=1
+          ./.github/scripts/trivy-report.sh image "$IMAGE_SCAN_OUTCOME" trivy-image.sarif || status=1
+          exit "$status"
 
       - name: Start the stack
         run: docker compose up --detach --no-build --wait --wait-timeout 180
