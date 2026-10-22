@@ -49,8 +49,8 @@ async function load() {
   loadError.value = null
   try {
     status.value = await session.call(fetchTwoFactorStatus)
-  } catch (loadFailure) {
-    loadError.value = errorMessage(loadFailure)
+  } catch (statusError) {
+    loadError.value = errorMessage(statusError)
   }
 }
 
@@ -73,8 +73,8 @@ async function attempt(change: () => Promise<void>) {
   error.value = null
   try {
     await change()
-  } catch (failure) {
-    error.value = errorMessage(failure)
+  } catch (changeError) {
+    error.value = errorMessage(changeError)
     code.value = ''
     password.value = ''
   } finally {
@@ -298,7 +298,7 @@ onMounted(load)
         <v-btn variant="tonal" :prepend-icon="Copy" data-test="copy-codes" @click="copyCodes">
           Copy the codes
         </v-btn>
-        <span class="text-body-medium" role="status" data-test="copy-note">{{ copyNote }}</span>
+        <output class="text-body-medium" data-test="copy-note">{{ copyNote }}</output>
       </div>
       <v-checkbox
         v-model="saved"
