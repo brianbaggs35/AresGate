@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="AresGate: self-hosted home network security monitoring" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      The order Vuetify's CSS layers stack in. The first mention of a layer fixes its place, and
+      the build's first stylesheet is a component's, which would put vuetify-components below
+      vuetify-core; its reset would then win over components, e.g. every button's font.
+    -->
+    <style>
+      @layer vuetify-core, vuetify-components, vuetify-overrides, vuetify-utilities, vuetify-final;
+    </style>
+    <title>AresGate</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

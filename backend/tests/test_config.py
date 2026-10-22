@@ -1,0 +1,54 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from app import __version__
+from app.config import Settings, get_settings
+
+
+def test_defaults_target_bundled_postgres_socket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)  # no stray .env file
+    monkeypatch.delenv("ARESGATE_DATABASE_URL", raising=False)
+    monkeypatch.delenv("ARESGATE_ENVIRONMENT", raising=False)
+    settings = Settings()
+    assert settings.database_url == "postgresql+psycopg://aresgate@/aresgate?host=/run/postgresql"
+    assert settings.is_production
+    assert not settings.enable_docs
+
+
+def test_reads_prefixed_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ARESGATE_ENVIRONMENT", "development")
+    monkeypatch.setenv("ARESGATE_ENABLE_DOCS", "true")
+    settings = Settings()
+    assert settings.environment == "development"
+    assert not settings.is_production
+    assert settings.enable_docs
+
+
+def test_get_settings_is_cached() -> None:
+    assert get_settings() is get_settings()
+
+
+def test_version_comes_from_the_release_when_there_is_one() -> None:
+    assert Settings(release=None).version == __version__
+    assert Settings(release="1.4.0").version == "1.4.0"
+
+
+def test_public_origin_leaves_out_the_default_port() -> None:
+    assert Settings(server_name="ares.example.com", https_port=443).public_origin == (
+        "https://ares.example.com"
+    )
+    assert Settings(server_name="ares.example.com", https_port=9443).public_origin == (
+        "https://ares.example.com:9443"
+    )
+
+
+def test_port_must_be_a_real_port() -> None:
+    with pytest.raises(ValidationError):
+        Settings(https_port=0)
+    with pytest.raises(ValidationError):
+        Settings(https_port=70000)

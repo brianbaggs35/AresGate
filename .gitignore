@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# End-to-end test reports and coverage (make e2e), and the sign-ins global setup saves
+e2e-results/
+frontend/e2e/.auth/
+
+# Local config and runtime data
+.env
+data/
+backups/
+certs/*
+!certs/README.md
+.lego/
+*.log
+.DS_Store
+.vscode/
+.scannerwork/
