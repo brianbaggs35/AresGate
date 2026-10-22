@@ -1,0 +1,64 @@
+[project]
+name = "aresgate"
+version = "0.0.1"
+description = "Self-hosted home network security monitoring"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.159.1",
+    "psycopg[binary]>=3.3.6",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
+    "sqlalchemy>=2.1.6",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "httpx2>=2.16.0",
+    "pip-audit>=2.10.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing --cov-report=xml --cov-fail-under=95"
+
+[tool.coverage.run]
+branch = true
+# Measuring from backend/ itself makes coverage.xml name files app/…, so SonarQube can tell
+# same-named modules apart.
+source = ["."]
+omit = ["tests/*", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, and use made-up passwords and tokens.
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.pyright]
+include = ["app", "tests", "migrations", "../docker"]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

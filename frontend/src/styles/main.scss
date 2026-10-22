@@ -1,0 +1,18 @@
+:root {
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+html,
+body,
+.v-application {
+  font-family:
+    'Inter Variable',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
