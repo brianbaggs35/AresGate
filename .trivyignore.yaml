@@ -1,0 +1,11 @@
+# Findings Trivy reports that are deliberate. Each one says why; CI passes this file with
+# --ignorefile, and every other HIGH or CRITICAL finding fails the build.
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - Dockerfile
+    statement: >-
+      The container starts as root only so supervisord can start each program as its own
+      unprivileged user: Postgres as postgres, the API as aresgate, nginx workers as nginx.
+      docker-compose.yml drops every capability except the few needed to switch users,
+      forbids privilege escalation and makes the filesystem read-only.
