@@ -1,6 +1,6 @@
 #!/bin/sh
-# Checks the app secret key, waits for Postgres, applies migrations, then serves the API on
-# loopback for nginx.
+# Checks the app secret key, waits for Postgres, applies migrations, prints the setup code if
+# nobody has set AresGate up yet, then serves the API on loopback for nginx.
 set -eu
 cd /app/backend
 
@@ -8,6 +8,8 @@ cd /app/backend
 python -c 'from app.secret_key import check_or_exit; check_or_exit()'
 until pg_isready -q -h /run/postgresql; do sleep 1; done
 alembic upgrade head
+# A new code each time the container starts, until the account exists.
+python -c 'from app.security.setup_code import announce; announce()'
 
 if [ "${ARESGATE_MODE:-production}" = development ]; then
     exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
