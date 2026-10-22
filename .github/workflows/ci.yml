@@ -1,0 +1,326 @@
+# Checks every pull request and every push to master. Anything that fails here can be run
+# locally with the same command, from the directory the step names.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Actions are pinned to full commit SHAs so a moved or hijacked tag can't change what runs.
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: aresgate
+          POSTGRES_DB: aresgate
+          # A throwaway database only this job can reach, so no password is kept for it.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        # Check over TCP so the check can't pass while the init scripts' socket-only server runs.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U aresgate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # Same Python as the container image.
+          python-version: "3.14"
+          working-directory: backend
+
+      # Exactly the locked versions, as prebuilt wheels only, so installing runs none of the
+      # packages' own code. The steps after this run the tools from that environment as is.
+      - name: Install dependencies
+        run: |
+          uv sync --locked --no-build
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: Pyright
+        run: pyright
+
+      - name: Bandit
+        run: bandit -c pyproject.toml -r app migrations
+
+      - name: Dependency audit
+        run: pip-audit
+
+      - name: Migrations on Postgres 18
+        env:
+          ARESGATE_DATABASE_URL: postgresql+psycopg://aresgate@127.0.0.1:5432/aresgate
+        run: |
+          alembic upgrade head
+          # Fails if the models have changes no migration covers.
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+          # The newest migration can be applied again to a database that already has it, and
+          # changes nothing (see Database migrations in DOCS). The first migration's parent
+          # is `<base>`, which `alembic stamp` calls `base`.
+          parent="$(alembic show head | sed -n 's/^Parent: //p')"
+          alembic stamp "${parent/<base>/base}"
+          alembic upgrade head
+          alembic check
+
+      # After the migration checks, because the tests replace the schema with the models' own.
+      - name: Tests (95% minimum; 100% target) on Postgres 18
+        env:
+          ARESGATE_TEST_DATABASE_URL: postgresql+psycopg://aresgate@127.0.0.1:5432/aresgate
+        run: pytest
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Same Node as the image's frontend build stage.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Without running any package's install scripts; none of these need one.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: ESLint
+        run: npm run lint -- --max-warnings=0
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests (95% minimum; 100% target)
+        run: npm run coverage
+
+      - name: Dependency audit (fail on critical)
+        run: npm audit --audit-level=critical
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  repository:
+    name: Repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The workflows themselves, for mistakes GitHub would only report once they run.
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.12 -color
+
+      - name: Trivy scan of dependencies, secrets and configuration
+        id: trivy-source
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.0
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-source.sarif
+          exit-code: "1"
+        continue-on-error: true
+
+      # GitHub makes fork pull requests' tokens read-only, so scan them without uploading.
+      - name: Upload the scan to GitHub code scanning
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy-source.sarif
+          category: trivy-source
+
+      - name: Enforce the Trivy scan threshold
+        if: ${{ !cancelled() }}
+        env:
+          SOURCE_SCAN_OUTCOME: ${{ steps.trivy-source.outcome }}
+        run: |
+          if [[ "$SOURCE_SCAN_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy found high or critical findings, or the scan failed."
+            exit 1
+          fi
+
+  # SonarQube Cloud: bugs, code smells, security hotspots, duplication and coverage, held to
+  # its quality gate. It needs the SONAR_TOKEN secret (DOCS, Code quality); without it,
+  # as on pull requests from forks, the job is skipped.
+  sonarqube:
+    name: SonarQube
+    needs: [backend, frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Check for the SonarQube token
+        if: ${{ env.SONAR_TOKEN == '' }}
+        run: echo "::notice::SONAR_TOKEN isn't set, so the SonarQube analysis was skipped."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.SONAR_TOKEN != '' }}
+        with:
+          # The full history, so SonarQube can tell new code from old.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The web app's packages too, so the TypeScript analysis sees the same types and
+      # settings vue-tsc does.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ env.SONAR_TOKEN != '' }}
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the web app's packages
+        if: ${{ env.SONAR_TOKEN != '' }}
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Download the backend's coverage
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: backend-coverage
+          path: backend
+
+      - name: Download the frontend's coverage
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+      # Settings are in sonar-project.properties.
+      - name: SonarQube analysis and quality gate
+        id: scan
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        with:
+          args: -Dsonar.qualitygate.wait=true
+
+      # Whenever the analysis ran: why the quality gate failed, if it did, and the new code's open
+      # issues and security hotspots, so they can be fixed without opening SonarQube Cloud. Empty
+      # lists aren't shown. The quality gate lets code smells through, so a pull request with any
+      # open issue fails here instead, and none reach master.
+      - name: What SonarQube found
+        if: ${{ !cancelled() && (steps.scan.outcome == 'success' || steps.scan.outcome == 'failure') }}
+        env:
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          BASE_BRANCH: ${{ github.base_ref }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          project="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties)"
+          # All of a pull request is new code; on master, only what changed lately is.
+          if [[ -n "$PULL_REQUEST" ]]; then
+            scope="pullRequest=$PULL_REQUEST"
+            new_code=""
+          else
+            scope="branch=$BRANCH"
+            new_code="&sinceLeakPeriod=true"
+          fi
+          sonar() {
+            curl -sS -H "Authorization: Bearer $SONAR_TOKEN" "https://sonarcloud.io/api/$1&$scope"
+          }
+          # Prints the heading and the lines piped in, or nothing when there are none.
+          section() {
+            local heading="$1" lines
+            lines="$(cat)"
+            if [[ -n "$lines" ]]; then
+              printf '%s\n%s\n\n' "$heading" "$lines"
+            fi
+          }
+          # One line per issue: where it is, its rule and what to change.
+          list_issues() {
+            jq -r '
+              (.errors[]? | "  \(.msg)"),
+              (.issues[]? | "  \(.component | sub("^[^:]*:"; "")):\(.line // "-")  \(.rule)  \(.message)")'
+          }
+          sonar "qualitygates/project_status?projectKey=$project" | jq -r '
+            def grade: ["A", "B", "C", "D", "E"][tonumber - 1];
+            (.errors[]? | "  \(.msg)"),
+            (.projectStatus.conditions[]? | select(.status == "ERROR") |
+              if (.metricKey | endswith("_rating"))
+              then "  \(.metricKey) is \(.actualValue | grade), needs \(.errorThreshold | grade)"
+              else "  \(.metricKey) is \(.actualValue), needs \(if .comparator == "GT" then "at most" else "at least" end) \(.errorThreshold)"
+              end)' | section "Quality gate conditions not met:"
+          issues="$(sonar "issues/search?componentKeys=$project&issueStatuses=OPEN,CONFIRMED$new_code&ps=500")"
+          list_issues <<<"$issues" | section "Open issues in new code:"
+          sonar "hotspots/search?projectKey=$project&status=TO_REVIEW$new_code&ps=500" | jq -r '
+            (.errors[]? | "  \(.msg)"),
+            (.hotspots[]? | "  \(.component | sub("^[^:]*:"; "")):\(.line // "-")  \(.ruleKey)  \(.message)")' |
+            section "Security hotspots to review:"
+          # A pull request's analysis only has issues in its own changes, so the ones already on
+          # the branch it merges into are listed too, for fixing along the way.
+          if [[ -n "$PULL_REQUEST" ]]; then
+            curl -sS -H "Authorization: Bearer $SONAR_TOKEN" \
+              "https://sonarcloud.io/api/issues/search?componentKeys=$project&issueStatuses=OPEN,CONFIRMED&ps=500&branch=$BASE_BRANCH" |
+              list_issues | section "Open issues on $BASE_BRANCH:"
+          fi
+          # Marking an issue accepted or a false positive in SonarQube Cloud takes it off the list.
+          open_issues="$(jq '.paging.total // .total // 0' <<<"$issues")"
+          if [[ -n "$PULL_REQUEST" && "$open_issues" -gt 0 ]]; then
+            echo "::error::SonarQube found $open_issues open issues in this pull request. Fix them, or mark them accepted in SonarQube Cloud, before merging."
+            exit 1
+          fi
