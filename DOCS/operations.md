@@ -63,8 +63,9 @@ supplied. Either way the container hands the key only to the API, and takes `ARE
 out of the environment of everything else it runs. After changing `.env`, run `make up` (or `make pull`) again so the
 container is created with the new setting: `make restart` keeps the old one.
 
-Changing the key after AresGate has stored credentials makes those credentials unreadable, so
-only do it to bring back the key that encrypted them.
+Changing the key after AresGate has stored credentials makes those credentials, and the keys of
+authenticator apps, unreadable, so only do it to bring back the key that encrypted them. (If it
+is lost for good, [turn the second step off](#signing-in) and set it up again.)
 
 ### Restoring
 
@@ -141,8 +142,22 @@ it with the setup code from the log.
   ([Security](security.md)). It keeps a year of events; change that with
   `ARESGATE_AUDIT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. The API
   deletes older events when it starts and every six hours after that.
+- **Lost the phone and the recovery codes.** An account with an authenticator app can't finish
+  signing in without a code from it or a recovery code. If you have neither, turn the second
+  step off from the machine that runs AresGate, then sign in with the password and add the app
+  again:
+
+  ```sh
+  make two-factor-off ACCOUNT=<username>
+  ```
+
+  This removes the app's key and the recovery codes, ends every sign-in the account has, and
+  records an event in the audit log. The same applies if AresGate was restored with a different
+  app secret key than the one that encrypted the app's key: the key can't be opened, the
+  sign-in fails with an error in `make logs`, and turning the step off is the way out.
 - **Forgot the password.** There is no way to change or reset it from the web app yet. To start
-  over without losing anything else, delete the account and set up again:
+  over without losing anything else, delete the account (which also removes its authenticator
+  app and recovery codes) and set up again:
 
   ```sh
   make psql

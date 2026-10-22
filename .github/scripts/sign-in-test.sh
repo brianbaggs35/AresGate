@@ -3,8 +3,9 @@
 # code from the container's log, over HTTPS through nginx, with the browser's Origin header and
 # the session cookie. Then it checks that the sign-in survives a restart, that no new setup code
 # is printed once the account exists, that the system endpoint needs a sign-in, that a request's
-# ID is in the response and in both nginx's and the API's log, and that five wrong passwords lock
-# the account. Run it from the repository root against a container that has just started on
+# ID is in the response and in both nginx's and the API's log, that an authenticator app can be
+# added, is asked for when signing in (once for each code), and is turned off by the command for
+# someone who has lost it, and that five wrong passwords lock the account. Run it from the repository root against a container that has just started on
 # empty data, with the stack up and the ports in the environment, as the smoke test is.
 
 # The jq programs name their own variables ($u), which the shell must not expand.
@@ -50,6 +51,22 @@ expect() {
 
 json() {
     jq --null-input --compact-output "$@"
+}
+
+# totp SECRET [PERIODS_AHEAD]: the six digits an authenticator app shows for SECRET, worked out
+# here and not by the API, so the test doesn't rely on the code it is testing. A code is good once
+# and the API accepts the next period's too, so asking for one ahead gives a code that is not the
+# one the app was confirmed with.
+totp() {
+    python3 - "$1" "${2:-0}" <<'PY'
+import base64, hashlib, hmac, struct, sys, time
+
+counter = int(time.time()) // 30 + int(sys.argv[2])
+digest = hmac.new(base64.b32decode(sys.argv[1]), struct.pack(">Q", counter), hashlib.sha1).digest()
+offset = digest[-1] & 15
+number = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+print(f"{number % 10**6:06d}")
+PY
 }
 
 echo "A fresh install asks to be set up"
@@ -150,6 +167,96 @@ grep --quiet 'GET /api/no-such-page?a=1 HTTP' <<<"$logged" || fail "nginx's log 
 api_line="$(grep '"logger": "aresgate.request"' <<<"$logged" || true)"
 [[ "$api_line" = *'"path": "/api/no-such-page"'* ]] || fail "the API's log has no line with the request's ID"
 [[ "$api_line" != *'a=1'* ]] || fail "the API logged the query string: $api_line"
+
+echo "An authenticator app is added with a code from it, and then signing in asks for one"
+request GET /api/auth/session ""
+expect 200 "reading the session"
+csrf="$(jq --raw-output '.csrf_token' <<<"$body")"
+request POST /api/auth/two-factor/confirm "$(json '{code: "000000"}')" --header "X-CSRF-Token: $csrf"
+expect 409 "confirming before starting"
+request POST /api/auth/two-factor/enroll "" --header "X-CSRF-Token: $csrf"
+expect 201 "starting to add an authenticator app"
+secret="$(jq --raw-output '.secret' <<<"$body")"
+jq --exit-status --arg u "$username" '.otpauth_uri | startswith("otpauth://totp/AresGate:" + $u + "?")' <<<"$body" >/dev/null ||
+    fail "the QR code's address isn't for this account: $body"
+request POST /api/auth/two-factor/confirm "$(json '{code: "000000"}')" --header "X-CSRF-Token: $csrf"
+expect 422 "confirming with a wrong code"
+request POST /api/auth/two-factor/confirm "$(json --arg c "$(totp "$secret")" '{code: $c}')" --header "X-CSRF-Token: $csrf"
+expect 200 "confirming with the app's code"
+jq --exit-status '.recovery_codes | length == 10' <<<"$body" >/dev/null || fail "there aren't ten recovery codes: $body"
+mapfile -t recovery_codes < <(jq --raw-output '.recovery_codes[]' <<<"$body")
+request GET /api/auth/two-factor ""
+jq --exit-status '.enabled == true and .recovery_codes_left == 10' <<<"$body" >/dev/null || fail "the status says: $body"
+
+echo "The password alone no longer signs in; the app's code or a recovery code finishes it"
+request POST /api/auth/logout "" --header "X-CSRF-Token: $csrf"
+expect 204 "signing out"
+request POST /api/auth/login "$(json --arg u "$username" --arg p "$password" '{username: $u, password: $p}')"
+expect 200 "signing in with the password"
+jq --exit-status '.two_factor_required == true and (.challenge | length) > 0 and has("csrf_token") == false' <<<"$body" >/dev/null ||
+    fail "the password alone should only earn a challenge: $body"
+challenge="$(jq --raw-output '.challenge' <<<"$body")"
+if grep --quiet '__Host-aresgate_session' "$jar"; then
+    fail "a session cookie was set before the second step"
+fi
+request GET /api/auth/session ""
+expect 401 "reading the session before the second step"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" '{challenge: $h, code: "000000"}')"
+expect 401 "the second step with a wrong code"
+code="$(totp "$secret" 1)"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" --arg c "$code" '{challenge: $h, code: $c}')"
+expect 200 "the second step with the app's code"
+request GET /api/auth/session ""
+expect 200 "reading the session after the second step"
+csrf="$(jq --raw-output '.csrf_token' <<<"$body")"
+
+echo "A code works once"
+request POST /api/auth/logout "" --header "X-CSRF-Token: $csrf"
+expect 204 "signing out"
+request POST /api/auth/login "$(json --arg u "$username" --arg p "$password" '{username: $u, password: $p}')"
+challenge="$(jq --raw-output '.challenge' <<<"$body")"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" --arg c "$code" '{challenge: $h, code: $c}')"
+expect 401 "the second step with a code that was used"
+
+echo "A recovery code works once"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" --arg c "${recovery_codes[0]}" '{challenge: $h, code: $c}')"
+expect 200 "the second step with a recovery code"
+csrf="$(jq --raw-output '.csrf_token' <<<"$body")"
+request POST /api/auth/logout "" --header "X-CSRF-Token: $csrf"
+expect 204 "signing out"
+request POST /api/auth/login "$(json --arg u "$username" --arg p "$password" '{username: $u, password: $p}')"
+challenge="$(jq --raw-output '.challenge' <<<"$body")"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" --arg c "${recovery_codes[0]}" '{challenge: $h, code: $c}')"
+expect 401 "the second step with a recovery code that was used"
+request POST /api/auth/login/two-factor "$(json --arg h "$challenge" --arg c "${recovery_codes[1]}" '{challenge: $h, code: $c}')"
+expect 200 "the second step with another recovery code"
+request GET /api/auth/two-factor ""
+jq --exit-status '.recovery_codes_left == 8' <<<"$body" >/dev/null || fail "two recovery codes were used, but the status says: $body"
+
+echo "The command turns it off for someone who has lost the app and the codes, and ends their sign-ins"
+make two-factor-off ACCOUNT="$username" >/dev/null
+request GET /api/auth/session ""
+expect 401 "reading the session after the command"
+request POST /api/auth/login "$(json --arg u "$username" --arg p "$password" '{username: $u, password: $p}')"
+expect 200 "signing in with the password alone"
+jq --exit-status 'has("csrf_token") and (has("two_factor_required") | not)' <<<"$body" >/dev/null ||
+    fail "the password alone should sign in now: $body"
+if make two-factor-off ACCOUNT="$username" >/dev/null 2>&1; then
+    fail "the command turned off a second step that was already off"
+fi
+
+echo "The audit log has the second step, from the web and from the command, and none of its secrets"
+request GET "/api/audit/events?action=auth.two_factor_enabled&action=auth.two_factor_failed&action=auth.two_factor_disabled&limit=200" ""
+expect 200 "reading the second step's events"
+actions="$(jq --raw-output '[.events[].action] | sort | join(" ")' <<<"$body")"
+# Three failures: the wrong code, the code used twice and the recovery code used twice.
+[[ "$actions" = "auth.two_factor_disabled auth.two_factor_enabled auth.two_factor_failed auth.two_factor_failed auth.two_factor_failed" ]] ||
+    fail "the second step's events are: $actions"
+jq --exit-status '[.events[] | select(.action == "auth.two_factor_disabled" and .detail.by == "command_line" and .client_address == null and .user_agent == "command line")] | length == 1' \
+    <<<"$body" >/dev/null || fail "the command isn't in the audit log as itself: $body"
+for secret in "$secret" "$code" "${recovery_codes[@]}"; do
+    ! grep --quiet --fixed-strings "$secret" <<<"$body" || fail "the audit log shows a secret"
+done
 
 echo "Five wrong passwords lock the account, even for the right password"
 for _ in 1 2 3 4 5; do

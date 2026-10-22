@@ -38,6 +38,10 @@ class Action(StrEnum):
     LOGIN_SUCCEEDED = "auth.login_succeeded"
     LOGIN_FAILED = "auth.login_failed"
     LOGOUT = "auth.logout"
+    TWO_FACTOR_ENABLED = "auth.two_factor_enabled"
+    TWO_FACTOR_DISABLED = "auth.two_factor_disabled"
+    TWO_FACTOR_FAILED = "auth.two_factor_failed"
+    RECOVERY_CODES_CREATED = "auth.recovery_codes_created"
     EVENTS_PURGED = "audit.events_purged"
 
 

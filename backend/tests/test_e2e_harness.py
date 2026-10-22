@@ -130,7 +130,9 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     expected = {
         "audit_events": 0,
         "login_throttles": 0,
+        "recovery_codes": 0,
         "system_info": len(BASELINE_SYSTEM_INFO),
+        "totp_credentials": 0,
         "user_sessions": 0,
         "users": 1,
     }
@@ -154,6 +156,8 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
         "fixture": "baseline",
         "tables_emptied": [
             "user_sessions",
+            "totp_credentials",
+            "recovery_codes",
             "users",
             "system_info",
             "login_throttles",
