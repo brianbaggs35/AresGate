@@ -1,7 +1,7 @@
 # Audits the workflow files for the mistakes that make GitHub Actions exploitable: script
 # injection, tokens with more access than a job needs, unpinned actions, credentials left
 # in the checkout. Results appear under Security > Code scanning, and any finding fails
-# the check. Run the same audit locally with `uvx zizmor@1.31.1 .github/workflows`.
+# the check. Run the same audit locally with `uvx --no-build zizmor@1.31.1 .github/workflows`.
 name: Workflow security
 
 on:
@@ -36,7 +36,7 @@ jobs:
       - name: Audit the workflows for code scanning
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx zizmor@1.31.1 --format sarif --no-exit-codes .github/workflows > zizmor.sarif
+        run: uvx --no-build zizmor@1.31.1 --format sarif --no-exit-codes .github/workflows > zizmor.sarif
 
       # GitHub makes fork pull requests' tokens read-only, so those are audited without uploading.
       - name: Upload the audit to GitHub code scanning
@@ -49,4 +49,4 @@ jobs:
       - name: Fail on findings
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx zizmor@1.31.1 .github/workflows
+        run: uvx --no-build zizmor@1.31.1 .github/workflows
