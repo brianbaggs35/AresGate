@@ -63,6 +63,11 @@ echo 'ARESGATE_SECRET_KEY=too-short' >.env
 if start; then
     fail "the container started with a secret key that is too short"
 fi
-"${compose[@]}" logs --no-color | grep --quiet 'needs at least 32' ||
+# Read into a variable first: grep --quiet stops reading at the first match, which would make
+# `docker compose logs` fail with a broken pipe and, under pipefail, this check with it.
+logs="$("${compose[@]}" logs --no-color 2>&1)"
+if ! grep --quiet 'needs at least 32' <<<"$logs"; then
+    echo "$logs"
     fail "the log doesn't say the secret key is too short"
+fi
 echo "A key that is too short stops the container"
