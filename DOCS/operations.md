@@ -187,6 +187,17 @@ it with the setup code from the log.
   in the key), enter the code it shows, and save the ten recovery codes: they are shown once. The
   same card makes new recovery codes and turns the step off. Both ask for a code from the app or
   a recovery code, and turning it off asks for the password too.
+- **Adding a passkey.** On the Security page, Passkeys, choose *Add a passkey*, give it a name,
+  enter your password, and unlock the device when the browser asks. Then *Sign in with a
+  passkey* on the sign-in page needs nothing typed. A passkey takes the place of the password and
+  the authenticator app, so it asks for no code. Remove one from the same card (it asks for the
+  password); the device keeps its copy, which you can delete in its own settings.
+- **A passkey won't work.** A passkey belongs to the server name, so it only works when you
+  browse to `ARESGATE_SERVER_NAME` exactly as it is in `.env`: not an IP address, not another
+  name that points at the same server, and not after changing the name, which makes every
+  passkey useless (remove them and add them again; the password signs in meanwhile). Browsers
+  also want HTTPS, which is why the page can't be reached over plain HTTP. If the browser says
+  it can't make a passkey, use a recent Chrome, Edge, Firefox or Safari.
 - **Lost the phone and the recovery codes.** An account with an authenticator app can't finish
   signing in without a code from it or a recovery code. If you have neither, turn the second
   step off from the machine that runs AresGate, then sign in with the password and add the app

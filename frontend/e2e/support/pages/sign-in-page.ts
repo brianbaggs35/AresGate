@@ -17,6 +17,8 @@ export class SignInPage {
   readonly code: Locator
   readonly verify: Locator
   readonly startOver: Locator
+  /** The button that signs in with a passkey, for browsers that have them. */
+  readonly passkey: Locator
 
   constructor(private readonly page: Page) {
     this.title = page.getByRole('heading', { level: 1 })
@@ -30,6 +32,7 @@ export class SignInPage {
     this.code = page.getByLabel('Code', { exact: true })
     this.verify = page.getByTestId('verify')
     this.startOver = page.getByTestId('start-over')
+    this.passkey = page.getByTestId('sign-in-passkey')
   }
 
   async goto(path = '/sign-in'): Promise<void> {

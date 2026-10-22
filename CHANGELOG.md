@@ -56,6 +56,12 @@ Every release's notes are here, newest first. The format follows
 - `make rotate-secret-key` changes the app secret key and seals everything stored again with
   the new one, all or nothing, and leaves an event in the audit log. Recovery codes can't be
   carried over and are made again ([DOCS/operations.md](DOCS/operations.md)).
+- Passkeys: sign in with a fingerprint, a face or a device's PIN with nothing typed. A passkey
+  takes the place of the password and the authenticator app together (the device has to unlock
+  it itself), belongs to the server name, and is checked against a one-time challenge and a
+  sign-in count that must go up. The Security page adds and removes them (both ask for the
+  password), the sign-in page has a "Sign in with a passkey" button, and the audit log records
+  each ([DOCS/security.md](DOCS/security.md)).
 - Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
   that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`

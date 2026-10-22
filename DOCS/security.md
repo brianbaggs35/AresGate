@@ -113,14 +113,48 @@ see [SECURITY.md](../SECURITY.md).
   off with `make two-factor-off` ([Operations](operations.md#signing-in)). It ends the
   account's sign-ins and leaves an event in the audit log.
 
+**Passkeys**
+
+- A passkey signs in with the unlock a device already has, such as a fingerprint, a face or a
+  PIN, with nothing typed, not even the username. It takes the place of the password and of the
+  second step together, because the device has to unlock it itself (WebAuthn's "user
+  verification" is required, and a passkey a device doesn't unlock on its own is refused), so
+  an account with an authenticator app signs in with a passkey without a code.
+- The private key never leaves the device. AresGate keeps the public key, the passkey's name and
+  how often it has been used, so a copy of the database signs in nobody and there is nothing in
+  it to seal.
+- A passkey belongs to the server name (`ARESGATE_SERVER_NAME`). A browser offers it only on a
+  page served from that name, which is why a look-alike site can't ask for it. So an IP address
+  can't be used, and if you change the server name the passkeys stop working: remove them and
+  add them again. Browsers also want HTTPS, except at `localhost`.
+- Each sign-in asks the device to sign a random challenge. A challenge is good for five minutes
+  and for one try, right or wrong, so a recorded answer is no use. The answer has to come from
+  AresGate's own address, for this server name, with the user present and verified, and sign
+  what was asked. Keys of three kinds are taken (ES256, EdDSA and RS256, which covers every
+  device) and no attestation is asked for, because AresGate has no reason to care who made the
+  device.
+- A device's count of sign-ins has to go up, so a copy of a passkey that is used next to the
+  original is refused and recorded against the account. Devices that don't count, such as
+  synced passkeys that always report zero, are left alone.
+- Wrong answers count towards the address's lockout, like wrong passwords, and a locked address
+  is refused even a right passkey. They don't count against any account, because nobody has
+  said whose account they are after, so guessing at passkeys can't keep the owner out.
+- Adding a passkey and removing one need the password, so a sign-in left open on a borrowed
+  computer can't put its own passkey on the account or take away the ones the owner would use to
+  get back in. Wrong passwords there count towards the same lockout as at the sign-in page, and
+  say 403 and not 401, so the web app doesn't take them for the sign-in having ended.
+- An account can have 20 passkeys. The password still signs in, so a lost device costs nothing
+  but a trip to the Security page to remove its passkey.
+
 **The audit log**
 
 - Setting up, signing in (and every wrong guess), signing out and the log's own housekeeping are
   recorded, each with the time, the account, the address the request came from and the browser's
   name. Turning the second step on or off, wrong codes and new recovery codes are recorded too,
-  and so is the command that turns the step off. Storing or deleting a credential and changing
-  the app secret key are recorded as well. The features that follow (passkeys, settings
-  and stored credentials) add their own events.
+  and so is the command that turns the step off. Adding and removing a passkey, and signing in
+  with one, are recorded, and so is a passkey whose count went backwards. Storing or deleting a
+  credential and changing the app secret key are recorded as well. The features that follow
+  (settings and the integrations) add their own events.
 - The database refuses to change or delete an event, so a bug in AresGate can't rewrite
   history. The one exception is the clean-up that deletes events older than
   `ARESGATE_AUDIT_RETENTION_DAYS` (a year unless you change it), which records how many it
@@ -152,8 +186,6 @@ see [SECURITY.md](../SECURITY.md).
 
 These are being built, in this order, and are not in AresGate yet:
 
-- Passkeys as another second step. Until then an account without a second step is protected by
-  its password alone, so use a long one, and add an authenticator app on the Security page.
 - The pages where you enter the credentials for OPNsense, ntopng, Wazuh and AI providers. The
   store they will use is in AresGate already; you can replace a credential but never read it
   back.

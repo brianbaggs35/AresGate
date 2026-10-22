@@ -5,7 +5,13 @@ const answer = {
   id: 'AAAA',
   rawId: 'AAAA',
   type: 'public-key',
-  response: { clientDataJSON: 'BBBB', attestationObject: 'CCCC' },
+  response: {
+    clientDataJSON: 'BBBB',
+    attestationObject: 'CCCC',
+    authenticatorData: 'DDDD',
+    publicKeyAlgorithm: -7,
+    transports: ['internal'],
+  },
   clientExtensionResults: {},
 } satisfies RegistrationResponseJSON
 

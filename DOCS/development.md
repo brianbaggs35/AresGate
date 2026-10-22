@@ -37,7 +37,8 @@ plus the test harness, used only for tests).
 - Or run the pieces on this computer: `make dev-api` (needs `ARESGATE_DATABASE_URL` pointing at
   a Postgres, and makes a throwaway app secret key unless `ARESGATE_SECRET_KEY` is set, so
   anything it encrypts can't be read after you stop it) and `make dev-web`, which serves the web
-  app on `http://127.0.0.1:5173` and passes `/api` to the API. On an empty database, run
+  app on `http://127.0.0.1:5173` and passes `/api` to the API (browse to `http://localhost:5173`
+  to try passkeys, which can't be made for an IP address). On an empty database, run
   `uv run alembic upgrade head` in `backend/` first, and
   `uv run python -c 'from app.security.setup_code import announce; announce()'` to print a setup
   code. Outside production the API also accepts changes from pages on `http://localhost` and
