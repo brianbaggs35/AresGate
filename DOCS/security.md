@@ -86,6 +86,20 @@ see [SECURITY.md](../SECURITY.md).
   `action` (repeat it), `outcome`, `username`, `since` and `until`, a page at a time with
   `before` and `limit`. The web app's page for it arrives with the account pages.
 
+**Logs**
+
+- The API logs one JSON object per line and tags each with the ID of its request, which nginx
+  makes and passes on, so a problem can be followed through every layer.
+- Anything that looks like a secret is blanked out before it is written, in three ways: by
+  name (whatever follows `password`, `token`, `cookie`, `authorization`, `secret`, `api_key`,
+  `csrf`, `otp`, a setup or recovery code and the like), by shape (a password hash, a bearer
+  token, a private key, a setup code, the password in a database URL), and by value (the app
+  secret key, wherever it turns up). It's a last line of defence, such as for the parameters in a
+  database error, and the code still doesn't log secrets on purpose.
+- A request's line records its path and not its query string. A failure that isn't handled is
+  logged with its traceback, but the answer says only that something went wrong, with the
+  request's ID in the `X-Request-ID` header so it can be found in the log.
+
 ## Planned
 
 These are being built, in this order, and are not in AresGate yet:

@@ -1,15 +1,19 @@
 """FastAPI application factory."""
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-from app import retention
+from app import logs, retention
 from app.api import api_router
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
+from app.middleware import HEADER, RequestContext
+from app.models import utcnow
 from app.secret_key import load_secret_key
 
 
@@ -22,6 +26,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Checked when the server starts, so a missing or short key stops it with a clear
         # message instead of failing later, the first time something is encrypted.
         app.state.secret_key = load_secret_key(settings)
+        # Tests and the end-to-end harness leave logging as it is, so pytest can capture it.
+        if settings.environment != "test":
+            logs.configure(settings, secrets=[app.state.secret_key.get_secret_value()])
         # The tests and the end-to-end harness decide for themselves when the log is purged.
         purging = (
             None
@@ -35,6 +42,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 purging.cancel()
                 await asyncio.wait({purging})
 
+    async def server_error(request: Request, error: Exception) -> JSONResponse:
+        # What ends a request that failed, so the person who sees it can quote its ID. The error
+        # itself is logged, with the ID, after this.
+        return JSONResponse(
+            {"detail": "AresGate ran into a problem. Try again in a moment."},
+            status_code=500,
+            headers={HEADER: logs.request_id.get() or ""},
+        )
+
     app = FastAPI(
         title="AresGate API",
         version=settings.version,
@@ -43,6 +59,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url="/api/openapi.json" if docs else None,
     )
+    app.state.started_at = utcnow()
+    app.state.started_monotonic = time.monotonic()
+    app.add_middleware(RequestContext)
+    app.add_exception_handler(Exception, server_error)
     app.include_router(api_router, prefix="/api")
     app.dependency_overrides[get_settings] = lambda: settings
     return app

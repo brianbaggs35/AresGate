@@ -90,3 +90,14 @@ def test_the_audit_log_keeps_a_year_by_default() -> None:
 def test_the_audit_log_keeps_between_a_day_and_ten_years(days: int) -> None:
     with pytest.raises(ValidationError):
         Settings(audit_retention_days=days)
+
+def test_logs_are_json_at_info_by_default() -> None:
+    settings = Settings()
+
+    assert (settings.log_format, settings.log_level) == ("json", "info")
+
+
+@pytest.mark.parametrize("setting", [{"log_format": "xml"}, {"log_level": "chatty"}])
+def test_logs_come_in_the_formats_and_levels_that_exist(setting: dict[str, str]) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**setting)  # type: ignore[arg-type]

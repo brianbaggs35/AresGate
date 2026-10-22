@@ -2,9 +2,10 @@
 # Sets up a fresh AresGate container and signs in to it the way the web app does: with the setup
 # code from the container's log, over HTTPS through nginx, with the browser's Origin header and
 # the session cookie. Then it checks that the sign-in survives a restart, that no new setup code
-# is printed once the account exists, and that five wrong passwords lock the account. Run it
-# from the repository root against a container that has just started on empty data, with the
-# stack up and the ports in the environment, as the smoke test is.
+# is printed once the account exists, that the system endpoint needs a sign-in, that a request's
+# ID is in the response and in both nginx's and the API's log, and that five wrong passwords lock
+# the account. Run it from the repository root against a container that has just started on
+# empty data, with the stack up and the ports in the environment, as the smoke test is.
 
 # The jq programs name their own variables ($u), which the shell must not expand.
 # shellcheck disable=SC2016
@@ -130,6 +131,25 @@ jq --exit-status --arg u "$username" \
 for secret in "$code" "AAAA-AAAA-AAAA" "$password" "not the password"; do
     ! grep --quiet --fixed-strings "$secret" <<<"$body" || fail "the audit log shows a secret"
 done
+
+echo "The system endpoint is for someone who is signed in"
+request GET /api/system ""
+expect 200 "reading the system endpoint"
+jq --exit-status '.version != "" and .database.status == "ok" and .uptime_seconds >= 0' <<<"$body" >/dev/null ||
+    fail "the system endpoint says: $body"
+signed_out="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' "$origin/api/system")"
+[[ "$signed_out" = 401 ]] || fail "the system endpoint answered $signed_out to someone not signed in, not 401"
+
+echo "A request has an ID, which is in the response, in nginx's log and in the API's log"
+request_headers="$(curl --silent --insecure --dump-header - --output /dev/null "$origin/api/no-such-page?a=1")"
+request_id="$(grep --ignore-case '^x-request-id:' <<<"$request_headers" | tr -d '\r' | awk '{print $2}')"
+[[ "$request_id" =~ ^[0-9a-f]{32}$ ]] || fail "the response has no request ID: $request_headers"
+sleep 1
+logged="$(docker compose logs --no-color aresgate 2>&1 | grep --fixed-strings "$request_id" || true)"
+grep --quiet 'GET /api/no-such-page?a=1 HTTP' <<<"$logged" || fail "nginx's log has no line with the request's ID"
+api_line="$(grep '"logger": "aresgate.request"' <<<"$logged" || true)"
+[[ "$api_line" = *'"path": "/api/no-such-page"'* ]] || fail "the API's log has no line with the request's ID"
+[[ "$api_line" != *'a=1'* ]] || fail "the API logged the query string: $api_line"
 
 echo "Five wrong passwords lock the account, even for the right password"
 for _ in 1 2 3 4 5; do

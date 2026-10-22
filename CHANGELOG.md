@@ -31,6 +31,11 @@ Every release's notes are here, newest first. The format follows
 - An audit log of sign-ins (and wrong guesses), sign-outs and setup, kept for a year
   (`ARESGATE_AUDIT_RETENTION_DAYS`), which the database refuses to change or delete, listed by
   `GET /api/audit/events` with filters ([DOCS/security.md](DOCS/security.md)).
+- Logs as JSON lines, one per request plus the API's own messages, each tagged with a request ID
+  that nginx makes and that comes back in the `X-Request-ID` header, with secrets blanked out
+  before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`
+  and `ARESGATE_LOG_LEVEL` change how and how much.
+- `/api/system`, for someone signed in: AresGate's version, uptime and the database's version.
 
 ### Fixed
 
