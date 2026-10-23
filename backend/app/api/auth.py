@@ -62,12 +62,41 @@ def current_lockouts(db: Db, address: str, username: str, now: datetime) -> list
     ]
 
 
+def require_password(
+    db: Db, request: Request, auth: SignedIn, password: str, *, purpose: str
+) -> None:
+    """Refuses unless the password is right, since a sign-in left open on a borrowed computer
+    shouldn't be able to change how the account is secured. Wrong guesses count towards the
+    same lockout as at the sign-in page."""
+    now = utcnow()
+    address = client_address(request)
+    username = auth.user.username
+    if waits := current_lockouts(db, address, username, now):
+        raise too_many_attempts(max(waits))
+    if passwords.verify_password(password, auth.user.password_hash):
+        return
+    throttle.record_failure(db, Scope.ADDRESS, address, now)
+    throttle.record_failure(db, Scope.ACCOUNT, username, now)
+    detail: Detail = {"reason": "wrong_password", "while": purpose}
+    record_audit(db, request, Action.LOGIN_FAILED, Outcome.FAILURE, user=auth.user, detail=detail)
+    db.commit()
+    # Not 401, which the web app takes to mean the sign-in itself has ended.
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "The password isn't right.")
+
+
 def open_session(
-    db: Db, response: Response, user: User, settings: Settings, now: datetime
+    db: Db, request: Request, response: Response, user: User, settings: Settings, now: datetime
 ) -> SessionInfo:
     """Signs the user in: records the session, commits, and sets its cookie."""
     sessions.purge_ended(db, settings, now)
-    row, token = sessions.start(db, user, settings, now)
+    row, token = sessions.start(
+        db,
+        user,
+        settings,
+        now,
+        address=client_address(request),
+        user_agent=request.headers.get("user-agent"),
+    )
     db.commit()
     # No Max-Age, so the browser forgets it when it closes. The __Host- prefix makes browsers
     # accept it only from this exact host, over HTTPS, for the whole site.
@@ -121,7 +150,7 @@ def log_in(
     throttle.clear(db, Scope.ADDRESS, address)
     throttle.clear(db, Scope.ACCOUNT, username)
     record_audit(db, request, Action.LOGIN_SUCCEEDED, Outcome.SUCCESS, user=user)
-    return open_session(db, response, user, settings, now)
+    return open_session(db, request, response, user, settings, now)
 
 
 @router.post("/login/two-factor")
@@ -165,7 +194,7 @@ def log_in_with_second_step(
     if accepted.recovery_codes_left is not None:
         detail = {**detail, "recovery_codes_left": accepted.recovery_codes_left}
     record_audit(db, request, Action.LOGIN_SUCCEEDED, Outcome.SUCCESS, user=user, detail=detail)
-    return open_session(db, response, user, settings, now)
+    return open_session(db, request, response, user, settings, now)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

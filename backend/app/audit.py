@@ -38,6 +38,8 @@ class Action(StrEnum):
     LOGIN_SUCCEEDED = "auth.login_succeeded"
     LOGIN_FAILED = "auth.login_failed"
     LOGOUT = "auth.logout"
+    PASSWORD_CHANGED = "auth.password_changed"  # noqa: S105  # nosec B105: an event name
+    SESSIONS_ENDED = "auth.sessions_ended"
     TWO_FACTOR_ENABLED = "auth.two_factor_enabled"
     TWO_FACTOR_DISABLED = "auth.two_factor_disabled"
     TWO_FACTOR_FAILED = "auth.two_factor_failed"

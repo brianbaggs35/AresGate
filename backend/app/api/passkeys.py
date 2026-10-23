@@ -8,11 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app import audit
-from app.api.auth import SessionInfo, current_lockouts, open_session, too_many_attempts
+from app.api.auth import (
+    SessionInfo,
+    open_session,
+    require_password,
+    too_many_attempts,
+)
 from app.api.deps import Db, SettingsDep, SignedIn, client_address, record_audit, signed_in
 from app.audit import Action, Detail, Outcome
 from app.models import Passkey, User, utcnow
-from app.security import passkeys, passwords, throttle
+from app.security import passkeys, throttle
 from app.security.throttle import Scope
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -63,28 +68,6 @@ def _sign_in_detail(**facts: str) -> Detail:
     return {"method": "passkey", **facts}
 
 
-def _require_password(
-    db: Db, request: Request, auth: SignedIn, password: str, *, purpose: str
-) -> None:
-    """Refuses unless the password is right, since a sign-in left open on a borrowed computer
-    shouldn't be able to put its own passkey on the account. Wrong guesses count towards the
-    same lockout as at the sign-in page."""
-    now = utcnow()
-    address = client_address(request)
-    username = auth.user.username
-    if waits := current_lockouts(db, address, username, now):
-        raise too_many_attempts(max(waits))
-    if passwords.verify_password(password, auth.user.password_hash):
-        return
-    throttle.record_failure(db, Scope.ADDRESS, address, now)
-    throttle.record_failure(db, Scope.ACCOUNT, username, now)
-    detail: Detail = {"reason": "wrong_password", "while": purpose}
-    record_audit(db, request, Action.LOGIN_FAILED, Outcome.FAILURE, user=auth.user, detail=detail)
-    db.commit()
-    # Not 401, which the web app takes to mean the sign-in itself has ended.
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "The password isn't right.")
-
-
 @router.get("/passkeys")
 def list_passkeys(auth: Annotated[SignedIn, Depends(signed_in)], db: Db) -> list[PasskeyInfo]:
     return [PasskeyInfo.of(passkey) for passkey in passkeys.for_user(db, auth.user.id)]
@@ -99,7 +82,7 @@ def start_adding_passkey(
     settings: SettingsDep,
 ) -> Challenge:
     """What the browser asks a device to make a passkey from. It needs the password."""
-    _require_password(db, request, auth, body.password, purpose="adding_passkey")
+    require_password(db, request, auth, body.password, purpose="adding_passkey")
     try:
         challenge_id, options = passkeys.begin_registration(db, settings, auth.user, utcnow())
     except passkeys.TooMany as error:
@@ -169,7 +152,7 @@ def remove_passkey(
 ) -> None:
     """Forgets a passkey. It needs the password, so a borrowed sign-in can't take away the
     passkeys the owner would use to get back in."""
-    _require_password(db, request, auth, body.password, purpose="removing_passkey")
+    require_password(db, request, auth, body.password, purpose="removing_passkey")
     removed = passkeys.remove(db, auth.user.id, passkey_id)
     if removed is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no such passkey.")
@@ -242,4 +225,4 @@ def log_in_with_passkey(
         user=user,
         detail=_sign_in_detail(passkey=passkey.name),
     )
-    return open_session(db, response, user, settings, now)
+    return open_session(db, request, response, user, settings, now)

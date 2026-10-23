@@ -39,6 +39,10 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     # The latest this sign-in can last, however busy it is.
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Where it came from and what the browser called itself, so a person can tell their
+    # sign-ins apart. Sign-ins from before these were kept have neither.
+    address: Mapped[str | None] = mapped_column(String(64), default=None)
+    user_agent: Mapped[str | None] = mapped_column(String(256), default=None)
 
     user: Mapped[User] = relationship()
 
