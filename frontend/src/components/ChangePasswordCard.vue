@@ -39,10 +39,11 @@ const rules = {
 watch(current, () => (currentProblem.value = []))
 watch(next, () => (nextProblem.value = []))
 
-const saved = (ended: number) =>
-  ended === 0
-    ? 'Your password was changed.'
-    : `Your password was changed, and ${ended === 1 ? '1 other sign-in was' : `${ended.toString()} other sign-ins were`} ended.`
+function saved(ended: number): string {
+  if (ended === 0) return 'Your password was changed.'
+  const others = ended === 1 ? '1 other sign-in was' : `${ended.toString()} other sign-ins were`
+  return `Your password was changed, and ${others} ended.`
+}
 
 async function submit(event: SubmitEventPromise) {
   if (!(await isValid(event))) return
