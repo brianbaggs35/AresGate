@@ -8,6 +8,10 @@ services:
     build:
       context: .
       target: runtime
+      # `make up` says which commit this is and when it was built, for the status page.
+      args:
+        COMMIT: ${ARESGATE_BUILD_COMMIT:-}
+        BUILT_AT: ${ARESGATE_BUILD_TIME:-}
     image: ${ARESGATE_IMAGE:-aresgate}:${ARESGATE_VERSION:-latest}
     container_name: aresgate
     restart: unless-stopped
