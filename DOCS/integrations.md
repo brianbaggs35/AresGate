@@ -33,6 +33,31 @@ read. The card on the list shows the ones in use.
    the secret. The secret is shown once, so make a new key if it is lost.
 4. In AresGate, enter the address you open OPNsense at, and paste the key and the secret.
 
+### The firewall log
+
+Once OPNsense is connected, AresGate reads the firewall's log every 30 seconds and keeps each
+line as an event ([Stored events](operations.md#stored-events)): when it happened, the interface,
+what the firewall did with the traffic (`pass`, `block` and so on), which way it was going, the
+protocol, the addresses and ports, and the description of the rule that logged it. A block is
+recorded as low severity and anything else as info. The line as OPNsense gave it is kept too.
+
+- **What it reads.** The newest 1000 lines of `/api/diagnostics/firewall/log` each time, which
+  is more than a home firewall logs in 30 seconds. Lines the next read finds again are stored
+  once. Only the traffic your rules are set to log is in the log: in OPNsense, open
+  **Firewall, Rules** and turn on **Log** for the rules you want to see.
+- **What the user needs.** Two privileges in OPNsense: **Diagnostics: Logs: Firewall: Live
+  View**, which covers the log, and **Lobby: Dashboard**, which covers the system time and
+  is the one the connection check already needs. Without the first, the job shows the problem on
+  the Collection card.
+- **The time.** OPNsense's log gives each line's time in the firewall's own time zone, and the
+  older log format doesn't even say the year. So each time it reads, AresGate asks the firewall
+  for the time on its clock and takes the difference from its own, to the nearest quarter of an
+  hour, as the time zone. If the two clocks are more than five minutes apart after that, the
+  times in the log can't be trusted, so it stores nothing and says by how much on the Collection
+  card. Set the right time on whichever is wrong (**System, Settings, General** on OPNsense).
+- **Switching it off.** Switch off **Firewall and system** under Services on the OPNsense page.
+  The events that were stored are kept for their retention period.
+
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
 OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its own certificate
