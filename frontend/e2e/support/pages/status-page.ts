@@ -13,9 +13,13 @@ export class StatusPage {
   readonly aresgate: Locator
   readonly software: Locator
   readonly container: Locator
+  /** The integrations, and the worker and collectors, each in a card of its own. */
   readonly parts: Locator
   readonly partNames: Locator
   readonly partStates: Locator
+  readonly collectors: Locator
+  readonly collectorNames: Locator
+  readonly collectorStates: Locator
   /** The bars for what is used of memory and the disk. */
   readonly meters: Locator
   /** The text for a bug report, and copying it. */
@@ -37,8 +41,11 @@ export class StatusPage {
     this.software = page.getByTestId('status-software')
     this.container = page.getByTestId('status-container')
     this.parts = page.getByTestId('status-parts')
-    this.partNames = page.getByTestId('part-name')
-    this.partStates = page.getByTestId('part-state')
+    this.partNames = this.parts.getByTestId('part-name')
+    this.partStates = this.parts.getByTestId('part-state')
+    this.collectors = page.getByTestId('status-collectors')
+    this.collectorNames = this.collectors.getByTestId('part-name')
+    this.collectorStates = this.collectors.getByTestId('part-state')
     this.meters = page.getByTestId('usage-meter')
     this.report = page.getByTestId('status-report')
     this.diagnostics = page.getByTestId('diagnostics')
@@ -56,8 +63,13 @@ export class StatusPage {
     return this.page.getByTestId(`fact-${id}`).getByTestId('fact-value')
   }
 
-  /** One part's row, by its name. */
+  /** One integration's row, by its name. */
   part(name: string): Locator {
-    return this.page.getByTestId('part').filter({ hasText: name })
+    return this.parts.getByTestId('part').filter({ hasText: name })
+  }
+
+  /** The row of the worker or of one collector, by its name. */
+  collector(name: string): Locator {
+    return this.collectors.getByTestId('part').filter({ hasText: name })
   }
 }

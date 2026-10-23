@@ -1,7 +1,9 @@
 import { ApiError } from '@/api/client'
+import * as collectorsApi from '@/api/collectors'
 import * as integrationsApi from '@/api/integrations'
 import type { CheckReport, Integration } from '@/api/integrations'
 import { useSessionStore } from '@/stores/session'
+import { collector, report } from '@/test/collectors'
 import { call, integration, module, ntopngApi, opnsense } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import ConnectionCard from '@/components/ConnectionCard.vue'
@@ -46,6 +48,9 @@ async function open(
   const calls = vi
     .spyOn(integrationsApi, 'fetchCalls')
     .mockResolvedValue({ calls: [call()], next_before: null })
+  const collectors = vi
+    .spyOn(collectorsApi, 'fetchCollectors')
+    .mockResolvedValue(report([collector({ integration: key })]))
   const mounted = await mountWithPlugins(IntegrationView, {
     signedIn: 'admin',
     route: `/integrations/${key}`,
@@ -63,7 +68,7 @@ async function open(
     await mounted.wrapper.find('form').trigger('submit')
     await flushPromises()
   }
-  return { ...mounted, fetch, save, test, disconnect, calls, find, type, click, submit }
+  return { ...mounted, fetch, save, test, disconnect, calls, collectors, find, type, click, submit }
 }
 
 describe('IntegrationView', () => {
@@ -145,6 +150,27 @@ describe('IntegrationView', () => {
       expect(find('connection-zenarmor').exists()).toBe(true)
       expect(find('api-log').exists()).toBe(true)
       expect(calls).toHaveBeenCalledWith('opnsense', { limit: 25 })
+    })
+  })
+
+  describe('the collection', () => {
+    it('shows how the collectors are doing once it is connected', async () => {
+      const { find, collectors } = await open(working())
+      expect(find('collection').exists()).toBe(true)
+      expect(collectors).toHaveBeenCalledWith('ntopng')
+    })
+
+    it('has nothing to show before there is anything to collect from', async () => {
+      const { find, collectors } = await open(integration())
+      expect(find('collection').exists()).toBe(false)
+      expect(collectors).not.toHaveBeenCalled()
+    })
+
+    it('reloads after a test, which makes the collectors run', async () => {
+      const opened = await open(working())
+      opened.test.mockResolvedValue(passed())
+      await opened.click('test')
+      expect(opened.collectors).toHaveBeenCalledTimes(2)
     })
   })
 

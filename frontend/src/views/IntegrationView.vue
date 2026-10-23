@@ -14,6 +14,7 @@ import {
 } from '@/api/integrations'
 import ApiLog from '@/components/ApiLog.vue'
 import AppPage from '@/components/AppPage.vue'
+import CollectionCard from '@/components/CollectionCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ConnectionCard from '@/components/ConnectionCard.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -378,6 +379,13 @@ onMounted(load)
         AresGate forgets the addresses, settings and keys it has for {{ integration.name }}. Nothing
         changes on {{ integration.name }} itself, and you can connect it again later.
       </ConfirmDialog>
+
+      <CollectionCard
+        v-if="connected"
+        :integration="integration.key"
+        :connections="logConnections(integration)"
+        :refresh="requests"
+      />
 
       <ApiLog
         :integration="integration.key"

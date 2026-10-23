@@ -68,10 +68,12 @@ export type PartState = 'ok' | 'problem' | 'unknown' | 'off'
 export interface Part {
   key: string
   name: string
-  group: 'integration'
+  group: 'integration' | 'collector'
   state: PartState
   detail: string | null
   last_success_at: string | null
+  /** The integration whose page explains it, if it has one. */
+  integration: string | null
 }
 
 export interface StatusReport {

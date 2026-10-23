@@ -26,6 +26,20 @@ export function formatAgo(iso: string, now: number = Date.now(), locale?: string
   return formatter.format(Math.round(seconds / 60), 'minute')
 }
 
+/** When something is due ("in 5 minutes"), or "within a minute" once it is that close or past. */
+export function formatDue(iso: string, now: number = Date.now(), locale?: string): string {
+  if ((new Date(iso).getTime() - now) / 1000 < 60) return 'within a minute'
+  return formatAgo(iso, now, locale)
+}
+
+/** How long something took, from milliseconds: "340 ms" or "1.8 s", or minutes for a long one. */
+export function formatElapsed(milliseconds: number): string {
+  if (milliseconds < 1000) return `${milliseconds.toFixed(0)} ms`
+  const seconds = milliseconds / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)} s`
+  return `${Math.floor(seconds / 60).toString()} min ${Math.round(seconds % 60).toString()} s`
+}
+
 // The first that matches wins: Edge and Opera also say Chrome, and Chrome also says Safari.
 const BROWSERS: readonly (readonly [RegExp, string])[] = [
   [/Edg(?:e|A|iOS)?\//, 'Edge'],
