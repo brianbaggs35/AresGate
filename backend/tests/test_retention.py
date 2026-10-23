@@ -11,9 +11,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from app import audit, main, retention
 from app.audit import Action, Outcome
 from app.config import Settings
+from app.events import partitions as events_partitions
+from app.events import store as events
 from app.integrations.apilog import ApiLogRecorder
 from app.integrations.client import Call
-from app.models import ApiCall, AuditEvent
+from app.models import ApiCall, AuditEvent, Event
+from tests.helpers import new_event
 
 
 @pytest.fixture
@@ -55,6 +58,40 @@ def test_purging_also_deletes_the_api_log_entries_past_their_retention_period(
 
     session.expire_all()
     assert session.scalar(select(func.count()).select_from(ApiCall)) == 1
+
+
+def test_purging_also_deletes_the_events_past_their_retention_period(
+    session: Session,
+    settings: Settings,
+    new_session: Callable[[], Session],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    now = datetime.now(UTC)
+    stale = now - timedelta(days=settings.event_retention_days + 10)
+    events.record(session, settings, [new_event(occurred_at=now - timedelta(days=1))], now)
+    # Stored directly, because the store refuses an event that is already past its period.
+    events_partitions.ensure(session, [events_partitions.containing(stale)])
+    session.add(Event(**new_event(occurred_at=stale, identity=("stale",)).row(now)))
+    session.commit()
+
+    with caplog.at_level(logging.INFO):
+        retention.purge_once(settings, new_session)
+
+    session.expire_all()
+    assert session.scalar(select(func.count()).select_from(Event)) == 1
+    assert "dropped 1 old weeks of events" in caplog.text
+
+
+def test_purging_says_nothing_when_there_were_no_events_to_remove(
+    session: Session,
+    settings: Settings,
+    new_session: Callable[[], Session],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        retention.purge_once(settings, new_session)
+
+    assert "Removed" not in caplog.text
 
 
 class FakePurge:
