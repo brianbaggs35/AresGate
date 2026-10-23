@@ -167,5 +167,10 @@ FROM runtime-base AS runtime
 # The release workflow passes the release's version (e.g. 1.4.0), which Settings > System
 # shows; other builds report the version in backend/app/__init__.py.
 ARG RELEASE=""
+# Which commit this was built from and when, which the status page shows. Both are left empty by
+# a build that doesn't say, and then it shows neither.
+ARG COMMIT=""
+ARG BUILT_AT=""
 COPY --from=frontend-build /src/dist /usr/share/aresgate/www
-ENV ARESGATE_MODE=production ARESGATE_ENVIRONMENT=production ARESGATE_RELEASE=${RELEASE}
+ENV ARESGATE_MODE=production ARESGATE_ENVIRONMENT=production ARESGATE_RELEASE=${RELEASE} \
+    ARESGATE_COMMIT=${COMMIT} ARESGATE_BUILT_AT=${BUILT_AT}

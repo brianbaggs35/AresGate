@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr
+from pydantic import AwareDatetime, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app import __version__
@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # The version a release image was built as, which the release workflow stamps in from
     # the release's tag. Builds from source report the version in app/__init__.py.
     release: str | None = None
+    # Which commit the image was built from and when, which the status page shows. A release
+    # image has them stamped in; a build from source has no way to know, and shows neither.
+    commit: Annotated[str, Field(max_length=64)] | None = None
+    built_at: AwareDatetime | None = None
     # The bundled Postgres only listens on its unix socket, and the API connects with peer
     # auth, so there's no password (sonar-project.properties tells SonarQube so).
     database_url: str = "postgresql+psycopg://aresgate@/aresgate?host=/run/postgresql"
@@ -53,6 +57,12 @@ class Settings(BaseSettings):
     # How long the API log keeps a request made to an integration. It is much busier than the
     # audit log, and only useful while it is recent.
     api_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 30
+
+    @field_validator("release", "commit", "built_at", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """A build argument that wasn't given is an empty variable, which means it isn't set."""
+        return None if value == "" else value
 
     @property
     def version(self) -> str:
