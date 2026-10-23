@@ -2,10 +2,13 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
-from typing import ClassVar
+from datetime import UTC, datetime, timedelta
+from typing import Any, ClassVar
 
 import pytest
 
+from app.collectors.opnsense.firewall_log import parse
+from app.events.event import Severity
 from app.integrations import netguard, registry
 from e2e import stand_ins
 from e2e.stand_ins import Answer, Handler, Seen, StandIns, StubServer
@@ -19,7 +22,8 @@ def basic(user: str, password: str) -> str:
     return stand_ins._basic(user, password)  # pyright: ignore[reportPrivateUsage]
 
 
-def body(answer: Answer) -> object:
+def body(answer: Answer) -> Any:
+    """What an answer says, as JSON."""
     return json.loads(answer.body)
 
 
@@ -101,6 +105,66 @@ class TestOpnsense:
         assert body(handler(seen(paths["openvpn"], **self.credentials))) == {"status": "running"}
         assert handler(seen(paths["crowdsec"], **self.credentials)).status == 404
         assert handler(seen("/api/unknown", **self.credentials)).status == 404
+
+
+class TestOpnsenseTimeAndLog:
+    credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
+
+    def handler(self, **options: Any) -> Handler:
+        return stand_ins.opnsense("a-key", "a-secret", (), **options)
+
+    def test_its_clock_shows_the_time_the_way_opnsense_does(self) -> None:
+        answer = self.handler()(seen("/api/diagnostics/system/system_time", **self.credentials))
+
+        shown = body(answer)["datetime"]
+        words = shown.split()
+        assert len(words) == 6
+        assert words[4] == "XYZ"
+        assert datetime.strptime(" ".join([*words[1:4], words[5]]), "%b %d %H:%M:%S %Y")
+
+    def test_its_clock_can_be_in_another_time_zone(self) -> None:
+        zone = timedelta(hours=-3)
+        answer = self.handler(zone=zone)(
+            seen("/api/diagnostics/system/system_time", **self.credentials)
+        )
+
+        words = body(answer)["datetime"].split()
+        shown = datetime.strptime(" ".join([*words[1:4], words[5]]), "%b %d %H:%M:%S %Y")
+        difference = shown - (datetime.now(UTC) + zone).replace(tzinfo=None)
+        assert abs(difference) < timedelta(seconds=5)
+
+    def test_its_log_is_empty_unless_it_is_given_lines(self) -> None:
+        answer = self.handler()(seen("/api/diagnostics/firewall/log", **self.credentials))
+
+        assert (answer.status, body(answer)) == (200, [])
+
+    def test_its_log_has_the_lines_it_is_given_up_to_the_limit_asked_for(self) -> None:
+        lines = [{"action": "block"}, {"action": "pass"}, {"action": "block"}]
+        handler = self.handler(firewall_log=lines)
+
+        everything = handler(seen("/api/diagnostics/firewall/log", **self.credentials))
+        two = handler(seen("/api/diagnostics/firewall/log?limit=2", **self.credentials))
+
+        assert body(everything) == lines
+        assert body(two) == lines[:2]
+
+    def test_the_time_and_the_log_need_the_key_too(self) -> None:
+        for path in ("/api/diagnostics/system/system_time", "/api/diagnostics/firewall/log"):
+            assert self.handler()(seen(path)).status == 401
+
+
+class TestSampleFirewallLog:
+    def test_it_is_three_recent_lines_that_the_collector_reads_newest_first(self) -> None:
+        now = datetime.now(UTC)
+
+        events = parse(list(stand_ins.sample_firewall_log()), timedelta(0), now)
+
+        assert [event.severity for event in events] == [Severity.LOW, Severity.INFO, Severity.INFO]
+        assert [now - event.occurred_at < timedelta(seconds=30) for event in events] == [True] * 3
+        assert [event.occurred_at for event in events] == sorted(
+            (event.occurred_at for event in events), reverse=True
+        )
+        assert len({event.fingerprint for event in events}) == 3
 
 
 class TestZenarmor:
