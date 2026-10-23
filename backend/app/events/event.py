@@ -153,8 +153,8 @@ def _scrub(value: object) -> Any:
     if isinstance(value, Mapping):
         return {
             _scrub(str(key)): _scrub(item)
-            for key, item in cast("Mapping[object, object]", value).items()
+            for key, item in cast(Mapping[object, object], value).items()
         }
     if isinstance(value, Sequence | set | frozenset):
-        return [_scrub(item) for item in cast("Iterable[object]", value)]
+        return [_scrub(item) for item in cast(Iterable[object], value)]
     return str(value)
