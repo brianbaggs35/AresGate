@@ -164,6 +164,12 @@ def _current_migration(db: Session) -> str | None:
 # ---- The programs ------------------------------------------------------------------------
 
 
+def _field(line: str) -> tuple[str, str, str]:
+    """A line of the package list split at its first colon: the key, the colon (empty where there
+    is none) and the value."""
+    return line.partition(":")
+
+
 def packaged_version(name: str, database: Path = APK_DATABASE) -> str | None:
     """The version of a package of the container's operating system, such as 1.29.1, from the
     list Wolfi keeps of what it installed. Nothing is run to find it."""
@@ -172,7 +178,7 @@ def packaged_version(name: str, database: Path = APK_DATABASE) -> str | None:
     except OSError:
         return None
     for block in listing.split("\n\n"):
-        fields = dict(line.split(":", 1) for line in block.splitlines() if ":" in line)
+        fields = {key: value for key, found, value in map(_field, block.splitlines()) if found}
         if fields.get("P") == name and (version := fields.get("V")):
             # 1.29.1-r0 is the version and the package's revision of it.
             return version.rsplit("-r", 1)[0]
