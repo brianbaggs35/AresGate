@@ -108,6 +108,14 @@ Every release's notes are here, newest first. The format follows
   whether the worker itself is running. `GET /api/collectors` has the same. Setting
   `ARESGATE_COLLECTORS_ENABLED=false` keeps the worker running but idle
   ([DOCS/operations.md](DOCS/operations.md#the-collector-worker)).
+- Normalized event storage: what the collectors read is kept as events in one shape (time,
+  integration, kind, severity, addresses and ports, the rule that fired, a summary, a hash that
+  stops the same event being stored twice, and the program's own record), in a table for each
+  week so old events leave by dropping a table. They are kept for 30 days
+  (`ARESGATE_EVENT_RETENTION_DAYS`), or for as long as is set for an integration with
+  `PUT /api/events/storage/<integration>`, and `GET /api/events/storage` says how many each has
+  and how old the oldest is. The API removes the old ones when it starts and every six hours
+  ([DOCS/operations.md](DOCS/operations.md#stored-events)).
 
 ### Fixed
 
