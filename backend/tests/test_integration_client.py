@@ -180,8 +180,10 @@ def test_an_address_outside_the_home_network_is_refused_and_logged(serve: Serve)
     server = serve(lambda seen: Answer())
     log = Log()
 
+    where = target(server)
+
     with pytest.raises(CallFailed, match="isn't a private network address"):
-        request(target(server), log, "GET", "/x", policy=HOME_NETWORK)
+        request(where, log, "GET", "/x", policy=HOME_NETWORK)
 
     assert server.seen == []
     assert log.calls[0].status_code is None
@@ -206,8 +208,10 @@ def test_a_server_that_does_not_answer_in_time_is_given_up_on(serve: Serve) -> N
     server = serve(lambda seen: Answer(delay=1.0))
     log = Log()
 
+    where = target(server)
+
     with pytest.raises(CallFailed, match="didn't answer in time"):
-        request(target(server), log, "GET", "/x", deadline=0.2)
+        request(where, log, "GET", "/x", deadline=0.2)
 
     assert log.calls[0].error is not None
 
@@ -215,8 +219,11 @@ def test_a_server_that_does_not_answer_in_time_is_given_up_on(serve: Serve) -> N
 def test_a_server_that_hangs_up_is_not_taken_for_a_web_server(serve: Serve) -> None:
     server = serve(lambda seen: Answer(drop=True))
 
+    where = target(server)
+    log = Log()
+
     with pytest.raises(CallFailed, match="broke, or it isn't a web server"):
-        request(target(server), Log(), "GET", "/x")
+        request(where, log, "GET", "/x")
 
 
 def test_an_answer_that_is_too_big_is_not_read(
@@ -226,8 +233,10 @@ def test_an_answer_that_is_too_big_is_not_read(
     server = serve(lambda seen: Answer(body="x" * 5000))
     log = Log()
 
+    where = target(server)
+
     with pytest.raises(CallFailed, match="more than AresGate reads"):
-        request(target(server), log, "GET", "/x")
+        request(where, log, "GET", "/x")
 
     assert "more than AresGate reads" in str(log.calls[0].error)
 
@@ -235,8 +244,11 @@ def test_an_answer_that_is_too_big_is_not_read(
 def test_an_untrusted_certificate_says_how_to_trust_it(serve: Serve) -> None:
     server = serve(lambda seen: Answer(), make_certificate())
 
+    where = target(server)
+    log = Log()
+
     with pytest.raises(CallFailed, match=r"certificate isn't trusted \(.*self.signed") as raised:
-        request(target(server), Log(), "GET", "/x")
+        request(where, log, "GET", "/x")
 
     assert "pin the certificate's fingerprint" in str(raised.value)
     assert server.seen == []
@@ -256,8 +268,11 @@ def test_a_wrong_pinned_fingerprint_is_refused_and_logged(serve: Serve) -> None:
     server = serve(lambda seen: Answer(), make_certificate())
     log = Log()
 
+    pin = make_certificate().fingerprint
+    where = target(server, mode="pinned", pin=pin)
+
     with pytest.raises(CallFailed, match="isn't the pinned one"):
-        request(target(server, mode="pinned", pin=make_certificate().fingerprint), log, "GET", "/x")
+        request(where, log, "GET", "/x")
 
     assert server.seen == []
     assert "isn't the pinned one" in str(log.calls[0].error)
@@ -267,8 +282,10 @@ def test_https_to_a_plain_server_is_a_failed_secure_connection(serve: Serve) -> 
     server = serve(lambda seen: Answer())
     where = replace(target(server), origin=Origin("https", "127.0.0.1", server.port))
 
+    log = Log()
+
     with pytest.raises(CallFailed, match=r"The secure connection to 127\.0\.0\.1:\d+ failed"):
-        request(where, Log(), "GET", "/x")
+        request(where, log, "GET", "/x")
 
 
 def test_secrets_are_hidden_wherever_they_turn_up_in_a_message(
@@ -281,15 +298,10 @@ def test_secrets_are_hidden_wherever_they_turn_up_in_a_message(
 
     monkeypatch.setattr(netguard, "lookup_async", leaky)
     log = Log()
+    where = target(server, secrets={"api_secret": "hunter2hunter2", "short": "ab"})
 
     with pytest.raises(CallFailed) as raised:
-        request(
-            target(server, secrets={"api_secret": "hunter2hunter2", "short": "ab"}),
-            log,
-            "GET",
-            "/x",
-            hidden="tok-123456",
-        )
+        request(where, log, "GET", "/x", hidden="tok-123456")
 
     assert str(raised.value) == "Couldn't find *** or the token *** either"
     assert log.calls[0].error == "Couldn't find *** or the token *** either"
@@ -303,8 +315,11 @@ def test_a_short_value_is_not_hidden(serve: Serve, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(netguard, "lookup_async", says)
 
+    where = target(server, secrets={"a": "abc"})
+    log = Log()
+
     with pytest.raises(CallFailed) as raised:
-        request(target(server, secrets={"a": "abc"}), Log(), "GET", "/x", hidden="xy")
+        request(where, log, "GET", "/x", hidden="xy")
 
     assert str(raised.value) == "Couldn't find abc or xy or the ab in table"
 
@@ -335,8 +350,10 @@ def test_an_unexpected_error_is_logged_and_reported_without_its_details(
     monkeypatch.setattr(ApiClient, "_send", broken)
     log = Log()
 
+    where = target(server)
+
     with caplog.at_level(logging.ERROR), pytest.raises(CallFailed) as raised:
-        request(target(server), log, "GET", "/x")
+        request(where, log, "GET", "/x")
 
     assert str(raised.value) == "The request failed in a way AresGate didn't expect."
     assert "internal detail" not in str(log.calls[0].error)

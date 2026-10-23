@@ -181,8 +181,10 @@ def test_a_name_that_leads_nowhere_is_not_found(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(NotFound, match=r"Couldn't find fw\.example"):
         netguard.lookup("fw.example", 443)
+    lookup = netguard.lookup_async("fw.example", 443)
+
     with pytest.raises(NotFound, match=r"Couldn't find fw\.example"):
-        asyncio.run(netguard.lookup_async("fw.example", 443))
+        asyncio.run(lookup)
 
 
 def test_a_name_that_also_leads_somewhere_forbidden_is_refused(
@@ -190,17 +192,21 @@ def test_a_name_that_also_leads_somewhere_forbidden_is_refused(
 ) -> None:
     fake_lookup(monkeypatch, "192.168.1.5", "169.254.169.254")
 
+    origin = Origin("https", "fw.example", 443)
+
     with pytest.raises(Refused, match=r"fw.example is at 169.254.169.254, which is in a range"):
-        netguard.check_reachable(HOME_NETWORK, Origin("https", "fw.example", 443))
+        netguard.check_reachable(HOME_NETWORK, origin)
 
 
 def test_an_ip_address_is_checked_without_asking_dns() -> None:
     netguard.check_reachable(HOME_NETWORK, Origin("https", "192.168.1.1", 443))
     # What was typed in isn't "at" itself, and the metadata ranges are named as such.
+    loopback = Origin("https", "127.0.0.1", 443)
+    metadata = Origin("http", "169.254.169.254", 80)
     with pytest.raises(Refused, match=r"^127\.0\.0\.1 isn't a private network address"):
-        netguard.check_reachable(HOME_NETWORK, Origin("https", "127.0.0.1", 443))
+        netguard.check_reachable(HOME_NETWORK, loopback)
     with pytest.raises(Refused, match=r"^169\.254\.169\.254 is in a range cloud providers use"):
-        netguard.check_reachable(HOME_NETWORK, Origin("http", "169.254.169.254", 80))
+        netguard.check_reachable(HOME_NETWORK, metadata)
 
 
 def test_fingerprints_are_written_the_way_other_tools_show_them() -> None:
@@ -370,8 +376,10 @@ def test_a_pasted_certificate_authority_is_trusted(serve: Serve) -> None:
 def test_another_certificate_authority_is_not(serve: Serve) -> None:
     server = serve(ok, make_certificate())
 
+    another = make_certificate().pem
+
     with pytest.raises(httpx2.ConnectError):
-        fetch(server, mode="ca", ca_pem=make_certificate().pem)
+        fetch(server, mode="ca", ca_pem=another)
 
 
 def test_the_certificate_pinned_is_trusted_and_anything_else_is_not(serve: Serve) -> None:
@@ -425,8 +433,10 @@ def test_looking_at_a_certificate_respects_the_allowed_addresses(serve: Serve) -
     server = serve(ok, make_certificate())
     origin = netguard.parse_origin(server.url, allow_http=False)
 
+    lookup = netguard.look_up_certificate(HOME_NETWORK, origin)
+
     with pytest.raises(Refused, match="isn't a private network address"):
-        asyncio.run(netguard.look_up_certificate(HOME_NETWORK, origin))
+        asyncio.run(lookup)
 
 
 def test_looking_at_a_certificate_says_when_nothing_answers(serve: Serve) -> None:
@@ -434,8 +444,10 @@ def test_looking_at_a_certificate_says_when_nothing_answers(serve: Serve) -> Non
     origin = netguard.parse_origin(server.url, allow_http=False)
     server.stop()
 
+    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+
     with pytest.raises(Refused, match="Couldn't make a secure connection"):
-        asyncio.run(netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin))
+        asyncio.run(lookup)
 
 
 def test_looking_at_a_certificate_says_when_nothing_answers_in_time(
@@ -446,16 +458,21 @@ def test_looking_at_a_certificate_says_when_nothing_answers_in_time(
 
     monkeypatch.setattr(GuardedBackend, "connect_tcp", connect_tcp)
 
+    origin = Origin("https", "192.168.1.1", 443)
+    lookup = netguard.look_up_certificate(HOME_NETWORK, origin)
+
     with pytest.raises(Refused, match="didn't answer in time"):
-        asyncio.run(netguard.look_up_certificate(HOME_NETWORK, Origin("https", "192.168.1.1", 443)))
+        asyncio.run(lookup)
 
 
 def test_a_plain_web_server_has_no_certificate_to_look_at(serve: Serve) -> None:
     server = serve(ok)
     origin = Origin("https", "127.0.0.1", server.port)
 
+    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+
     with pytest.raises(Refused, match="Couldn't make a secure connection"):
-        asyncio.run(netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin))
+        asyncio.run(lookup)
 
 
 def no_certificate(stream: httpcore2.AsyncNetworkStream) -> None:
@@ -469,8 +486,10 @@ def test_a_system_that_presents_no_certificate_is_refused(
     origin = netguard.parse_origin(server.url, allow_http=False)
     monkeypatch.setattr(netguard, "peer_certificate", no_certificate)
 
+    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+
     with pytest.raises(Refused, match="didn't present a certificate"):
-        asyncio.run(netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin))
+        asyncio.run(lookup)
 
 
 def test_a_certificate_without_names_is_described_without_them() -> None:
