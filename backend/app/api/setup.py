@@ -75,4 +75,4 @@ def set_up(
     record_audit(db, request, Action.SETUP_COMPLETED, Outcome.SUCCESS, user=user)
     setup_code.consume(db)
     throttle.clear(db, Scope.SETUP, address)
-    return open_session(db, response, user, settings, now)
+    return open_session(db, request, response, user, settings, now)

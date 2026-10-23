@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api import (
+    account,
     audit,
     auth,
     credentials,
@@ -19,6 +20,7 @@ api_router = APIRouter(dependencies=[Depends(require_same_origin)])
 api_router.include_router(health.router)
 api_router.include_router(setup.router)
 api_router.include_router(auth.router)
+api_router.include_router(account.router)
 api_router.include_router(two_factor.router)
 api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)

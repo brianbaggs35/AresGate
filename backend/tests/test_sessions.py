@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.models import User, UserSession
 from app.security import sessions
+from e2e import factories
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 
@@ -146,3 +148,95 @@ def test_deleting_the_account_ends_its_sessions(
     session.commit()
 
     assert count(session) == 0
+
+
+def test_a_session_remembers_where_it_came_from(
+    session: Session, settings: Settings, account: User
+) -> None:
+    row, _ = sessions.start(
+        session, account, settings, NOW, address="192.168.1.20", user_agent="Firefox/130.0"
+    )
+
+    assert (row.address, row.user_agent) == ("192.168.1.20", "Firefox/130.0")
+
+
+def test_what_a_browser_says_about_itself_is_made_safe_and_cut_to_fit(
+    session: Session, settings: Settings, account: User
+) -> None:
+    row, _ = sessions.start(
+        session, account, settings, NOW, address="a" * 100, user_agent="Fire\nfox " + "x" * 300
+    )
+
+    assert row.address == "a" * 64
+    assert row.user_agent is not None
+    assert "\n" not in row.user_agent
+    assert len(row.user_agent) == 256
+
+
+def test_a_session_started_without_those_has_neither(
+    session: Session, settings: Settings, account: User
+) -> None:
+    row, _ = start(session, account, settings)
+
+    assert (row.address, row.user_agent) == (None, None)
+
+
+def test_the_live_sessions_are_those_not_yet_ended_and_the_busiest_comes_first(
+    session: Session, settings: Settings, account: User
+) -> None:
+    quiet, busy, idle, expired = (start(session, account, settings)[0] for _ in range(4))
+    quiet.last_seen_at = NOW - timedelta(minutes=1)
+    busy.last_seen_at = NOW
+    idle.last_seen_at = NOW - timedelta(minutes=settings.session_idle_minutes)
+    expired.expires_at = NOW
+    session.commit()
+
+    assert sessions.live_for(session, account, settings, NOW) == [busy, quiet]
+
+
+def test_another_accounts_sessions_are_not_the_users(
+    session: Session, settings: Settings, account: User
+) -> None:
+    other = factories.account(session, username="other")
+    session.commit()
+    start(session, other, settings)
+
+    assert sessions.live_for(session, account, settings, NOW) == []
+
+
+def test_one_of_a_users_sessions_can_be_ended(
+    session: Session, settings: Settings, account: User
+) -> None:
+    keep, end = (start(session, account, settings)[0] for _ in range(2))
+
+    assert sessions.end_one(session, account, end.id) == end
+    session.commit()
+
+    assert sessions.live_for(session, account, settings, NOW) == [keep]
+
+
+def test_another_accounts_session_cant_be_ended(
+    session: Session, settings: Settings, account: User
+) -> None:
+    other = factories.account(session, username="other")
+    session.commit()
+    theirs, _ = start(session, other, settings)
+
+    assert sessions.end_one(session, account, theirs.id) is None
+    assert sessions.end_one(session, account, uuid4()) is None
+    assert count(session) == 1
+
+
+def test_all_but_one_of_a_users_sessions_can_be_ended(
+    session: Session, settings: Settings, account: User
+) -> None:
+    other = factories.account(session, username="other")
+    session.commit()
+    keep, _, _ = (start(session, account, settings)[0] for _ in range(3))
+    start(session, other, settings)
+
+    assert sessions.end_all_but(session, account, keep) == 2
+    session.commit()
+
+    assert sessions.live_for(session, account, settings, NOW) == [keep]
+    assert count(session) == 2
