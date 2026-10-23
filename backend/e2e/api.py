@@ -22,8 +22,12 @@ from e2e.baseline import (
     FixtureName,
 )
 from e2e.coverage_report import CoverageReport, current_measurement, report
+from e2e.stand_ins import Kind, StandIns
 
 router = APIRouter(prefix="/__test__", tags=["test"])
+
+# The stand-ins a test has started. Putting the database back to a known state stops them.
+STAND_INS = StandIns()
 
 Db = Annotated[Session, Depends(get_session)]
 Measurement = Annotated[coverage.Coverage | None, Depends(current_measurement)]
@@ -70,6 +74,7 @@ class Loaded(BaseModel):
 
 
 def _load(db: Session, name: FixtureName) -> Loaded:
+    STAND_INS.stop_all()
     emptied = baseline.load(db, name)
     db.commit()
     return Loaded(fixture=name, tables_emptied=emptied)
@@ -125,6 +130,47 @@ def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     login = AccountLogin(username=user.username, password=body.password)
     db.commit()
     return login
+
+
+class StandInRequest(BaseModel):
+    kind: Kind
+    # What it accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
+    # `api_key` and `api_secret`.
+    token: str = ""
+    api_key: str = ""
+    api_secret: str = ""
+    # OPNsense only: the services (by key) that are installed and running on it.
+    services: list[str] = []
+
+
+class StandInRecord(BaseModel):
+    id: str
+    kind: Kind
+    url: str
+    # The SHA-256 fingerprint of its certificate, for the ones that have one.
+    fingerprint: str | None
+
+
+@router.post("/stand-ins", status_code=status.HTTP_201_CREATED)
+def start_stand_in(body: StandInRequest) -> StandInRecord:
+    """Starts a server on this machine that answers like an integration, for a test to connect to.
+    It runs until the next time the database is put back to a known state."""
+    running = STAND_INS.start(
+        body.kind,
+        token=body.token,
+        api_key=body.api_key,
+        api_secret=body.api_secret,
+        services=body.services,
+    )
+    return StandInRecord(
+        id=running.id, kind=running.kind, url=running.url, fingerprint=running.fingerprint
+    )
+
+
+@router.delete("/stand-ins", status_code=status.HTTP_204_NO_CONTENT)
+def stop_stand_ins() -> None:
+    """Stops every stand-in."""
+    STAND_INS.stop_all()
 
 
 @router.get("/coverage")
