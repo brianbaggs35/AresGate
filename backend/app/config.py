@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # audit log, and only useful while it is recent.
     api_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 30
 
+    # Whether the worker collects from the integrations. Turned off, it keeps running and says
+    # so on the status page, which is how to pause collecting without stopping the container.
+    collectors_enabled: bool = True
+
     @field_validator("release", "commit", "built_at", mode="before")
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:

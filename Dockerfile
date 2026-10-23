@@ -106,7 +106,8 @@ COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY docker/nginx/templates /etc/nginx/aresgate-templates
 COPY docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY docker/supervisor/conf.d /etc/supervisor/conf.d
-COPY --chmod=0755 docker/entrypoint.sh docker/start-api.sh docker/render-nginx-config.py \
+COPY --chmod=0755 docker/entrypoint.sh docker/start-api.sh docker/start-worker.sh \
+    docker/render-nginx-config.py \
     docker/healthcheck.py docker/exit-on-fatal.py docker/check-certificate.sh \
     docker/install-certificate.sh docker/reload-certificate.sh /app/docker/
 COPY backend/alembic.ini /app/backend/alembic.ini
@@ -155,7 +156,7 @@ COPY --from=frontend-e2e-build /src/dist /usr/share/aresgate/www
 COPY backend/e2e /app/backend/e2e
 COPY docker/e2e/coveragerc /app/docker/e2e/coveragerc
 COPY --chmod=0755 docker/e2e/start-api.sh /app/docker/e2e/start-api.sh
-COPY docker/e2e/api.conf /etc/supervisor/conf.d/api.conf
+COPY docker/e2e/api.conf docker/e2e/worker.conf /etc/supervisor/conf.d/
 RUN sed -i -e 's|zone=api:10m rate=20r/s;|zone=api:10m rate=500r/s;|' \
         -e 's|zone=auth:10m rate=10r/m;|zone=auth:10m rate=500r/s;|' /etc/nginx/nginx.conf \
     && grep -q 'zone=api:10m rate=500r/s;' /etc/nginx/nginx.conf \

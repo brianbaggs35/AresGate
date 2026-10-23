@@ -9,6 +9,7 @@ from app.models.auth import (
     UserSession,
 )
 from app.models.base import Base, UTCDateTime, utcnow
+from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
 from app.models.integrations import ApiCall, IntegrationConnection
 from app.models.passkeys import Passkey, PasskeyChallenge
@@ -18,6 +19,7 @@ __all__ = [
     "ApiCall",
     "AuditEvent",
     "Base",
+    "CollectorHealth",
     "IntegrationConnection",
     "LoginThrottle",
     "Passkey",
@@ -29,5 +31,6 @@ __all__ = [
     "UTCDateTime",
     "User",
     "UserSession",
+    "WorkerBeat",
     "utcnow",
 ]

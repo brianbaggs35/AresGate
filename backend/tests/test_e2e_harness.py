@@ -15,10 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import config as config_module
+from app.collectors import health
+from app.collectors.health import WORKER, WorkerState
 from app.config import Settings
 from app.db import get_session
-from app.integrations import netguard
-from app.models import SystemInfo, User
+from app.integrations import netguard, registry, service
+from app.integrations.service import Submission
+from app.models import CollectorHealth, SystemInfo, User, WorkerBeat, utcnow
 from app.security import passwords, setup_code
 from e2e import factories
 from e2e.api import STAND_INS
@@ -137,6 +140,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     e2e.post("/api/__test__/database/clean")
     expected = {
         "audit_events": 0,
+        "collector_health": 0,
         "credentials": 0,
         "integration_api_calls": 0,
         "integration_connections": 0,
@@ -148,6 +152,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "totp_credentials": 0,
         "user_sessions": 0,
         "users": 1,
+        "worker_beats": 0,
     }
     assert e2e.get("/api/__test__/database/counts").json() == expected
 
@@ -173,12 +178,14 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "recovery_codes",
             "passkeys",
             "passkey_challenges",
+            "worker_beats",
             "users",
             "system_info",
             "login_throttles",
             "integration_connections",
             "integration_api_calls",
             "credentials",
+            "collector_health",
             "audit_events",
         ],
     }
@@ -361,3 +368,72 @@ def test_the_production_app_cannot_start_a_stand_in(client: TestClient) -> None:
 
     assert started.status_code == 404
     assert stopped.status_code == 404
+
+
+# ---- Collectors ------------------------------------------------------------------------------
+
+
+def worker_status(e2e: TestClient, state: str) -> int:
+    return e2e.put("/api/__test__/collectors/worker", json={"state": state}).status_code
+
+
+def test_the_worker_can_be_made_to_look_running_stopped_or_absent(
+    e2e: TestClient, session: Session
+) -> None:
+    def beat() -> WorkerBeat | None:
+        session.expire_all()
+        return session.get(WorkerBeat, WORKER)
+
+    assert worker_status(e2e, "running") == 204
+    running = beat()
+    assert running is not None
+    assert health.worker_state(running, utcnow(), enabled=True) == WorkerState.RUNNING
+
+    assert worker_status(e2e, "stopped") == 204
+    stopped = beat()
+    assert stopped is not None
+    assert health.worker_state(stopped, utcnow(), enabled=True) == WorkerState.STOPPED
+
+    assert worker_status(e2e, "absent") == 204
+    assert beat() is None
+
+
+def test_a_worker_status_has_to_be_one_the_harness_knows(e2e: TestClient) -> None:
+    assert worker_status(e2e, "sideways") == 422
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_the_collectors_run_when_asked_against_the_stand_ins(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post("/api/__test__/stand-ins", json={"kind": "crowdsec", "api_key": "k"}).json()
+    service.save(
+        session,
+        settings,
+        netguard.HOME_NETWORK_AND_LOOPBACK,
+        registry.INTEGRATIONS["crowdsec"],
+        {
+            "lapi": Submission(
+                url=started["url"],
+                tls_mode="system",
+                tls_ca_pem=None,
+                tls_fingerprint=None,
+                options={},
+                secrets={"api_key": "k"},
+            )
+        },
+        utcnow(),
+    )
+    session.commit()
+
+    response = e2e.post("/api/__test__/collectors/run")
+
+    assert response.status_code == 204
+    session.expire_all()
+    [record] = session.scalars(select(CollectorHealth)).all()
+    assert (record.collector, record.integration, record.consecutive_failures) == (
+        "connection-check",
+        "crowdsec",
+        0,
+    )
+    assert record.last_success_at is not None

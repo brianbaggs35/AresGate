@@ -55,8 +55,8 @@ def is_container_made(settings: Settings) -> bool:
 
 
 def check_or_exit() -> None:
-    """For ``docker/start-api.sh``: stop with a plain message, rather than a traceback from
-    every worker, when there is no usable key."""
+    """For ``docker/start-api.sh`` and ``docker/start-worker.sh``: stop with a plain message,
+    rather than a traceback from every worker, when there is no usable key."""
     try:
         load_secret_key(get_settings())
     except SecretKeyError as error:
