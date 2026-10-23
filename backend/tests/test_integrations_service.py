@@ -80,7 +80,8 @@ def test_saving_keeps_the_settings_and_seals_the_secrets(
     assert secret(session, settings, "opnsense-api", "api_key") == "key-123456"
     assert secret(session, settings, "opnsense-api", "api_secret") == "secret-123456"
     sealed = session.scalars(select(StoredCredential.value_sealed)).all()
-    assert sealed and all("key-123456" not in value for value in sealed)
+    assert sealed
+    assert all("key-123456" not in value for value in sealed)
     assert service.secrets_set(session, "opnsense", "api") == ["api_key", "api_secret"]
 
 
@@ -419,8 +420,11 @@ def test_a_secret_that_cannot_be_opened_cannot_be_used(
     save(session, settings, OPNSENSE, {"api": opnsense_api()})
     row = service.rows_for(session, "opnsense")["api"]
 
+    wrong_key = _wrong_key(settings)
+    connection = OPNSENSE.connections[0]
+
     with pytest.raises(Incomplete, match="missing or can't be opened"):
-        service.load_target(session, _wrong_key(settings), OPNSENSE, OPNSENSE.connections[0], row)
+        service.load_target(session, wrong_key, OPNSENSE, connection, row)
 
 
 def _wrong_key(settings: Settings) -> Settings:

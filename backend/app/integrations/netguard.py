@@ -35,6 +35,8 @@ IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 MAX_URL = 255
+# How long, in seconds, looking at a device's certificate may wait for it to answer.
+LOOKUP_TIMEOUT = 10.0
 MAX_CA_PEM = 32768
 MAX_CA_CERTIFICATES = 10
 
@@ -390,16 +392,14 @@ def describe_certificate(der: bytes) -> CertificateInfo:
     )
 
 
-async def look_up_certificate(
-    policy: AddressPolicy, origin: Origin, timeout: float = 10.0
-) -> CertificateInfo:
+async def look_up_certificate(policy: AddressPolicy, origin: Origin) -> CertificateInfo:
     """Connects, takes the certificate the system presents and hangs up, without sending
     anything. Whatever is presented is accepted, because this is how someone gets to see it and
     decide whether to trust it."""
     where = f"{origin.host}:{origin.port}"
     try:
-        stream = await GuardedBackend(policy).connect_tcp(origin.host, origin.port, timeout)
-        secured = await stream.start_tls(_unverified_context(), origin.host, timeout)
+        stream = await GuardedBackend(policy).connect_tcp(origin.host, origin.port, LOOKUP_TIMEOUT)
+        secured = await stream.start_tls(_unverified_context(), origin.host, LOOKUP_TIMEOUT)
     except httpcore2.ConnectTimeout as error:
         raise Refused(f"{where} didn't answer in time.") from error
     except httpcore2.ConnectError as error:

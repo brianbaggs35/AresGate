@@ -296,7 +296,11 @@ def _forget(db: Session, definition: IntegrationDef, connection: ConnectionDef) 
 def disconnect(db: Session, definition: IntegrationDef) -> bool:
     """Forgets an integration's settings and secrets. The API log keeps its entries until they
     are old enough to go. False if there was nothing to forget. The caller commits."""
-    return any([_forget(db, definition, connection) for connection in definition.connections])
+    found = False
+    for connection in definition.connections:
+        # Every connection is forgotten, so this must not stop at the first one it finds.
+        found |= _forget(db, definition, connection)
+    return found
 
 
 def load_target(

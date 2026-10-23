@@ -14,6 +14,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 MAX_TEXT = 128
+API_KEY = "API key"
 
 
 class FieldKind(StrEnum):
@@ -221,7 +222,7 @@ OPNSENSE = IntegrationDef(
             url_example="https://192.168.1.1",
             allow_http=False,
             fields=(
-                FieldDef(key="api_key", label="API key", kind=FieldKind.SECRET),
+                FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),
                 FieldDef(key="api_secret", label="API secret", kind=FieldKind.SECRET),
             ),
             modules=OPNSENSE_MODULES,
@@ -243,7 +244,7 @@ OPNSENSE = IntegrationDef(
                     kind=FieldKind.TEXT,
                     help="The user name that Zenarmor's API asks every request to name.",
                 ),
-                FieldDef(key="api_key", label="API key", kind=FieldKind.SECRET),
+                FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),
             ),
         ),
     ),
@@ -380,7 +381,7 @@ CROWDSEC = IntegrationDef(
             summary="CrowdSec's local API, with a bouncer's API key.",
             url_example="http://192.168.1.4:8080",
             allow_http=True,
-            fields=(FieldDef(key="api_key", label="API key", kind=FieldKind.SECRET),),
+            fields=(FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),),
         ),
     ),
 )
@@ -424,20 +425,30 @@ def clean_options(
     for item in connection.fields:
         if item.kind is FieldKind.SECRET or not _applies(item, options):
             continue
-        value = given.get(item.key)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            value = item.default
-        if value is None:
-            problems[item.key] = "Enter a value."
-            continue
-        problem = _check(item, value)
-        if problem:
-            problems[item.key] = problem
-        else:
-            options[item.key] = int(value) if item.kind is FieldKind.NUMBER else str(value).strip()
+        try:
+            options[item.key] = _accept(item, given)
+        except _Invalid as invalid:
+            problems[item.key] = str(invalid)
     if problems:
         raise SettingsError(problems)
     return options
+
+
+class _Invalid(Exception):
+    """What is wrong with one field's value, in words for whoever filled it in."""
+
+
+def _accept(item: FieldDef, given: Mapping[str, str | int | None]) -> str | int:
+    """The field's value tidied, from what was given or else its default. Raises ``_Invalid``."""
+    value = given.get(item.key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        value = item.default
+    if value is None:
+        raise _Invalid("Enter a value.")
+    problem = _check(item, value)
+    if problem:
+        raise _Invalid(problem)
+    return int(value) if item.kind is FieldKind.NUMBER else str(value).strip()
 
 
 def _check(item: FieldDef, value: str | int) -> str | None:

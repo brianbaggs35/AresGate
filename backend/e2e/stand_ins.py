@@ -157,7 +157,8 @@ class StubServer:
             )
             chain.write_text(certificate.pem)
             key.write_text(certificate.key_pem)
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
             context.load_cert_chain(chain, key)
             self._server.socket = context.wrap_socket(self._server.socket, server_side=True)
         self._thread = threading.Thread(

@@ -356,5 +356,8 @@ def test_putting_the_database_back_stops_the_stand_ins_too(e2e: TestClient, rese
 
 
 def test_the_production_app_cannot_start_a_stand_in(client: TestClient) -> None:
-    assert client.post("/api/__test__/stand-ins", json={"kind": "ntopng"}).status_code == 404
-    assert client.delete("/api/__test__/stand-ins").status_code == 404
+    started = client.post("/api/__test__/stand-ins", json={"kind": "ntopng"})
+    stopped = client.delete("/api/__test__/stand-ins")
+
+    assert started.status_code == 404
+    assert stopped.status_code == 404

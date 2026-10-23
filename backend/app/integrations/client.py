@@ -233,16 +233,18 @@ class ApiClient:
         headers: Mapping[str, str] | None,
         auth: tuple[str, str] | None,
     ) -> Reply:
-        async with asyncio.timeout(self._deadline):
-            async with self._http.stream(
+        async with (
+            asyncio.timeout(self._deadline),
+            self._http.stream(
                 method, path, params=query, json=json_body, headers=headers, auth=auth
-            ) as response:
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body += chunk
-                    if len(body) > MAX_BODY:
-                        raise CallFailed("It answered with more than AresGate reads.")
-                return Reply(response.status_code, body.decode("utf-8", errors="replace"))
+            ) as response,
+        ):
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body += chunk
+                if len(body) > MAX_BODY:
+                    raise CallFailed("It answered with more than AresGate reads.")
+            return Reply(response.status_code, body.decode("utf-8", errors="replace"))
 
     async def _log(self, call: Call) -> None:
         try:

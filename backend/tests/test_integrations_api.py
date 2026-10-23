@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -51,12 +52,16 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
 def test_a_change_needs_the_security_token_and_an_origin_from_the_app(
     client: TestClient, csrf_token: str
 ) -> None:
-    assert client.put(f"{BASE}/crowdsec", json={"connections": {}}).status_code == 403
-    assert client.delete(f"{BASE}/crowdsec").status_code == 403
-    assert client.post(f"{BASE}/crowdsec/test").status_code == 403
+    saved = client.put(f"{BASE}/crowdsec", json={"connections": {}})
+    removed = client.delete(f"{BASE}/crowdsec")
+    tested = client.post(f"{BASE}/crowdsec/test")
     foreign = client.delete(
         f"{BASE}/crowdsec", headers={**headers(csrf_token), "Origin": OTHER_ORIGIN}
     )
+
+    assert saved.status_code == 403
+    assert removed.status_code == 403
+    assert tested.status_code == 403
     assert foreign.status_code == 403
 
 
@@ -80,7 +85,8 @@ def test_an_integration_describes_what_it_takes_to_connect(
 ) -> None:
     body = client.get(f"{BASE}/opnsense").json()
 
-    assert body["docs_url"].startswith("https://docs.opnsense.org")
+    docs_url: str = body["docs_url"]
+    assert urlsplit(docs_url).hostname == "docs.opnsense.org"
     assert body["setup"]
     assert body["status"] == "not_connected"
     assert [item["definition"]["key"] for item in body["connections"]] == ["api", "zenarmor"]
@@ -200,13 +206,16 @@ def test_disconnecting_forgets_it_and_says_so_in_the_audit_log(
 
     response = client.delete(f"{BASE}/crowdsec", headers=headers(csrf_token))
 
-    assert response.status_code == 204
-    assert client.get(f"{BASE}/crowdsec").json()["status"] == "not_connected"
-    assert credential_store.entries(session) == []
+    after = client.get(f"{BASE}/crowdsec").json()
+    again = client.delete(f"{BASE}/crowdsec", headers=headers(csrf_token))
     event = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
+
+    assert response.status_code == 204
+    assert after["status"] == "not_connected"
+    assert credential_store.entries(session) == []
     assert event is not None
     assert event.action == Action.INTEGRATION_DISCONNECTED
-    assert client.delete(f"{BASE}/crowdsec", headers=headers(csrf_token)).status_code == 404
+    assert again.status_code == 404
 
 
 def test_a_test_needs_the_integration_to_be_connected_first(

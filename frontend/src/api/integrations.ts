@@ -206,5 +206,6 @@ export function fetchCalls(key: string, query: CallQuery = {}): Promise<CallPage
     if (value !== undefined) parameters.set(name, String(value))
   }
   const text = parameters.toString()
-  return apiGet<CallPage>(path(key, `/calls${text ? `?${text}` : ''}`))
+  const suffix = text ? `?${text}` : ''
+  return apiGet<CallPage>(path(key, `/calls${suffix}`))
 }
