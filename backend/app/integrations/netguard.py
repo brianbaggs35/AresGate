@@ -411,3 +411,21 @@ async def look_up_certificate(policy: AddressPolicy, origin: Origin) -> Certific
     if der is None:
         raise Refused(f"{origin.host} didn't present a certificate.")
     return describe_certificate(der)
+
+
+def look_up_served_certificate(
+    host: str, port: int, server_name: str, timeout: float = LOOKUP_TIMEOUT
+) -> CertificateInfo | None:
+    """The certificate AresGate's own nginx presents for its name, as a browser would be shown
+    it, or None where nothing answers. It is accepted without being checked, as when looking up
+    an integration's, because the question is what it is, not whether to trust it: nothing is
+    sent over the connection."""
+    try:
+        with (
+            socket.create_connection((host, port), timeout) as plain,
+            _unverified_context().wrap_socket(plain, server_hostname=server_name) as secured,
+        ):
+            der = secured.getpeercert(binary_form=True)
+    except OSError:
+        return None
+    return describe_certificate(der) if der else None

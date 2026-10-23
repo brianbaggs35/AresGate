@@ -106,7 +106,9 @@ jobs:
 
       - name: Today's date, to refresh cached OS packages daily
         id: date
-        run: echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "today=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          echo "now=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       # Wolfi publishes package fixes all day, so every package in the image is upgraded when
       # it's built: nothing comes from a cached layer, and nothing is cached for next time.
@@ -123,6 +125,8 @@ jobs:
           sbom: false
           build-args: |
             RELEASE=${{ env.VERSION }}
+            COMMIT=${{ github.sha }}
+            BUILT_AT=${{ steps.date.outputs.now }}
             APK_REFRESH=${{ steps.date.outputs.today }}
             IMAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           labels: |

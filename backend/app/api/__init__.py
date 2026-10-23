@@ -11,6 +11,7 @@ from app.api import (
     integrations,
     passkeys,
     setup,
+    status,
     system,
     two_factor,
 )
@@ -26,4 +27,5 @@ api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
+api_router.include_router(status.router)
 api_router.include_router(system.router)

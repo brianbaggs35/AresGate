@@ -40,6 +40,30 @@ def test_version_comes_from_the_release_when_there_is_one() -> None:
     assert Settings(release="1.4.0").version == "1.4.0"
 
 
+def test_the_commit_and_build_time_are_known_only_when_the_build_said(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)  # no stray .env file
+    for name in ("RELEASE", "COMMIT", "BUILT_AT"):
+        monkeypatch.delenv(f"ARESGATE_{name}", raising=False)
+    assert Settings().commit is None
+    assert Settings().built_at is None
+
+    # An image built without the build arguments has them empty, which means they are not set.
+    for name in ("RELEASE", "COMMIT", "BUILT_AT"):
+        monkeypatch.setenv(f"ARESGATE_{name}", "")
+    blank = Settings()
+    assert (blank.release, blank.commit, blank.built_at) == (None, None, None)
+    assert blank.version == __version__
+
+    monkeypatch.setenv("ARESGATE_COMMIT", "0123456789abcdef")
+    monkeypatch.setenv("ARESGATE_BUILT_AT", "2026-10-22T08:30:00Z")
+    stamped = Settings()
+    assert stamped.commit == "0123456789abcdef"
+    assert stamped.built_at is not None
+    assert stamped.built_at.isoformat() == "2026-10-22T08:30:00+00:00"
+
+
 def test_public_origin_leaves_out_the_default_port() -> None:
     assert Settings(server_name="ares.example.com", https_port=443).public_origin == (
         "https://ares.example.com"

@@ -4,6 +4,8 @@ COMPOSE := docker compose
 DEV_COMPOSE := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 E2E_COMPOSE := $(COMPOSE) -f docker-compose.e2e.yml
 E2E_PORT := $${ARESGATE_E2E_PORT:-9443}
+# What the image is told about the build, for the status page. (A release's come from its workflow.)
+BUILD_ARGS := ARESGATE_BUILD_COMMIT="$$(git rev-parse HEAD 2>/dev/null)" ARESGATE_BUILD_TIME="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 HADOLINT_IMAGE := hadolint/hadolint:v2.15.1
@@ -31,7 +33,7 @@ help: ## Show this help
 
 ## ---- Run -----------------------------------------------------------------------
 up: ## Build and start AresGate in the background
-	$(COMPOSE) up -d --build || { echo; echo "The build failed. Trying once more with the whole log, saved to build.log. The steps that finished are kept."; set -o pipefail; $(COMPOSE) --progress=plain up -d --build 2>&1 | tee build.log; }
+	$(BUILD_ARGS) $(COMPOSE) up -d --build || { echo; echo "The build failed. Trying once more with the whole log, saved to build.log. The steps that finished are kept."; set -o pipefail; $(BUILD_ARGS) $(COMPOSE) --progress=plain up -d --build 2>&1 | tee build.log; }
 	@echo "AresGate is starting at https://$${ARESGATE_SERVER_NAME:-localhost}"
 
 pull: ## Download and start the release in .env's ARESGATE_IMAGE and ARESGATE_VERSION
@@ -46,7 +48,7 @@ restart: ## Restart AresGate (a renewed certificate needs only make cert-reload)
 	$(COMPOSE) restart
 
 rebuild: ## Rebuild the image from scratch and restart
-	$(COMPOSE) build --pull --no-cache
+	$(BUILD_ARGS) $(COMPOSE) build --pull --no-cache
 	$(COMPOSE) up -d --force-recreate
 
 logs: ## Follow the logs
