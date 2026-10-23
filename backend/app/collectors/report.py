@@ -11,6 +11,7 @@ from app.collectors.health import State, WorkerState
 from app.collectors.registry import find
 from app.config import Settings
 from app.integrations import registry
+from app.integrations.registry import ConnectionDef, IntegrationDef
 from app.models import CollectorHealth, WorkerBeat
 
 
@@ -47,53 +48,61 @@ class CollectorsOut(BaseModel):
     collectors: list[CollectorOut]
 
 
+def _worker(db: Session, now: datetime, enabled: bool) -> WorkerOut:
+    beat = db.get(WorkerBeat, health.WORKER)
+    return WorkerOut(
+        state=health.worker_state(beat, now, enabled),
+        started_at=beat.started_at if beat else None,
+        seen_at=beat.beat_at if beat else None,
+    )
+
+
+def _source(definition: IntegrationDef, connection: ConnectionDef) -> str:
+    """Where a collector reads from, for a page that lists those of several integrations."""
+    if len(definition.connections) > 1:
+        return f"{definition.name} · {connection.label}"
+    return definition.name
+
+
+def _collector(row: CollectorHealth, now: datetime) -> CollectorOut | None:
+    """A record as the API tells it, or None for one of something the product no longer has."""
+    collector = find(row.collector)
+    definition = registry.INTEGRATIONS.get(row.integration)
+    connection = definition.connection(row.connection) if definition else None
+    if collector is None or definition is None or connection is None:
+        return None
+    return CollectorOut(
+        collector=row.collector,
+        title=collector.title,
+        summary=collector.summary,
+        integration=row.integration,
+        connection=row.connection,
+        source=_source(definition, connection),
+        state=health.state_of(row, now),
+        interval_seconds=row.interval_seconds,
+        last_started_at=row.last_started_at,
+        last_finished_at=row.last_finished_at,
+        last_success_at=row.last_success_at,
+        last_duration_ms=row.last_duration_ms,
+        last_items=row.last_items,
+        last_error=row.last_error,
+        consecutive_failures=row.consecutive_failures,
+        next_run_at=row.next_run_at,
+    )
+
+
 def build(
     db: Session, settings: Settings, now: datetime, integration: str | None = None
 ) -> CollectorsOut:
     """The worker and each collector. With collecting turned off there are no collectors to
     report: what is left in the table is from before."""
-    beat = db.get(WorkerBeat, health.WORKER)
-    enabled = settings.collectors_enabled
-    worker = WorkerOut(
-        state=health.worker_state(beat, now, enabled),
-        started_at=beat.started_at if beat else None,
-        seen_at=beat.beat_at if beat else None,
+    worker = _worker(db, now, settings.collectors_enabled)
+    if not settings.collectors_enabled:
+        return CollectorsOut(worker=worker, collectors=[])
+    query = select(CollectorHealth).order_by(
+        CollectorHealth.integration, CollectorHealth.connection, CollectorHealth.collector
     )
-    collectors: list[CollectorOut] = []
-    if enabled:
-        query = select(CollectorHealth).order_by(
-            CollectorHealth.integration, CollectorHealth.connection, CollectorHealth.collector
-        )
-        if integration is not None:
-            query = query.where(CollectorHealth.integration == integration)
-        for row in db.scalars(query):
-            collector = find(row.collector)
-            definition = registry.INTEGRATIONS.get(row.integration)
-            connection = definition.connection(row.connection) if definition else None
-            if collector is None or definition is None or connection is None:
-                # What has since been taken out of the product; the worker deletes it soon.
-                continue
-            several = len(definition.connections) > 1
-            collectors.append(
-                CollectorOut(
-                    collector=row.collector,
-                    title=collector.title,
-                    summary=collector.summary,
-                    integration=row.integration,
-                    connection=row.connection,
-                    source=f"{definition.name} · {connection.label}"
-                    if several
-                    else definition.name,
-                    state=health.state_of(row, now),
-                    interval_seconds=row.interval_seconds,
-                    last_started_at=row.last_started_at,
-                    last_finished_at=row.last_finished_at,
-                    last_success_at=row.last_success_at,
-                    last_duration_ms=row.last_duration_ms,
-                    last_items=row.last_items,
-                    last_error=row.last_error,
-                    consecutive_failures=row.consecutive_failures,
-                    next_run_at=row.next_run_at,
-                )
-            )
-    return CollectorsOut(worker=worker, collectors=collectors)
+    if integration is not None:
+        query = query.where(CollectorHealth.integration == integration)
+    found = (_collector(row, now) for row in db.scalars(query))
+    return CollectorsOut(worker=worker, collectors=[item for item in found if item])
