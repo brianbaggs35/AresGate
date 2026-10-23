@@ -16,7 +16,7 @@ make             # lists every command
 
 | Folder | What is in it |
 | --- | --- |
-| `backend/app` | The API (FastAPI), its settings and database models, and `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule |
+| `backend/app` | The API (FastAPI), its settings and database models, `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule, and `app/events`, where what they read is stored |
 | `backend/migrations` | Database migrations (Alembic) |
 | `backend/tests` | The API's tests (pytest) |
 | `backend/e2e` | The test server's harness, used only by the end-to-end tests (see [frontend/e2e/README.md](../frontend/e2e/README.md)) |
@@ -95,6 +95,30 @@ The audit log's table refuses `UPDATE` and `DELETE` with a trigger (`app/models/
 the tests make through the models and the migration makes with its own copy of the SQL. Code that
 has to empty the tables, such as a test's cleanup or the end-to-end harness, calls
 `audit.allow_deletes(session)` first, in the same transaction.
+
+## Storing events from a collector
+
+A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them
+to `await context.record(events)`, which stores the ones that aren't stored yet and returns how
+many were new, for the run's item count.
+
+- `source` and `connection` are the integration's and the connection's keys, and `kind` is one
+  lowercase word (`alert`, `firewall`, `authentication`). They are the collector's own words and
+  are checked; everything else came from the other system and is cleaned on the way in: control
+  characters in text become spaces, what isn't an address or a port is dropped without losing
+  the event, and a record the database would refuse (NUL characters, NaN) is made acceptable.
+- `identity` is what makes it this event at the source: its id there, or else the facts that
+  together can't be anyone else's. Its hash and the event's time are the key that stops an event
+  read twice from being stored twice, so it must not hold anything that changes between reads.
+- `severity` is `Severity.INFO` to `Severity.CRITICAL`, which the web app shows as info, low,
+  medium, high and critical.
+- The table is partitioned by week of `occurred_at` (`app/events/partitions.py`), made on demand
+  under an advisory lock that the retention purge takes too, so a purge never drops a week an
+  event is being written into. That is why the primary key and the unique index both hold the
+  time, and why a foreign key to an event would need the time as well. Alembic is told to leave
+  the partitions out (`migrations/env.py`), so `alembic check` and autogenerate don't ask for
+  them to be dropped. Tests that store events get a clean set of partitions from the `session`
+  fixture.
 
 ## Dependencies
 

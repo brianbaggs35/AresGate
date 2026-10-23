@@ -198,6 +198,35 @@ the web app. They share the database and nothing else.
 - **Restarting.** The worker starts after the migrations are done, and supervisord restarts it
   if it stops. If it keeps failing, the container stops, as it does for the API.
 
+### Stored events
+
+What the collectors read from the integrations (a firewall block, an alert, a failed login) is
+kept as events, in one shape whatever program reported them: when it happened, which integration
+and connection, what kind it is, how serious, the addresses and ports, the rule that fired, a
+one-line summary and the program's own record of it. Reading the same thing twice, which
+overlapping requests do, stores it once. Nothing collects events yet; the collectors that do
+come with the integrations ([Integrations](integrations.md)).
+
+- **How long they're kept.** 30 days. Change that for everything with
+  `ARESGATE_EVENT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
+  integration can keep them for longer or shorter than that, which suits a busy firewall log and
+  a quiet alert log: signed in, `PUT /api/events/storage/opnsense` with `{"days": 7}` (or
+  `{"days": null}` to go back to the default) sets it, and `GET /api/events/storage` shows each
+  integration's setting, how many events it has and when the oldest happened. A page for this in
+  Settings comes later. Each change is in the audit log.
+- **How they go.** Events are stored in a table for each week, so the oldest leave by dropping a
+  table, which is instant and gives the disk back. The API removes what's past its retention
+  period when it starts and every six hours after that, as it does for the audit log: a week
+  that ended before even the longest period began is dropped whole, and what's left is deleted
+  by integration and time. Shortening a period takes effect at the next clean-up, and an event
+  that is already older than its integration keeps events isn't stored in the first place.
+- **What's in them.** An event keeps the program's own record, up to 64 KiB (a larger one is
+  replaced by its size), so it may hold addresses, host names and user names from your network.
+  It stays in the database and in its backups ([Backups](#backups)), and goes with the
+  integration's retention period.
+- **If the clock is wrong.** An event dated more than five minutes ahead of AresGate's clock is
+  stored as of now, so a wrong clock on another machine can't make a table for next year.
+
 ### Reading the logs
 
 The API writes one JSON object per line: the `time`, the `level`, the `logger`, the `message`,
