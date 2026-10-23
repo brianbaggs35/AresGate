@@ -441,6 +441,10 @@ def a_report(**changes: Any) -> status.StatusReport:
 
 def test_the_text_for_a_bug_report_has_the_facts_and_no_addresses() -> None:
     text = status.diagnostics(a_report())
+    database = (
+        "Database: PostgreSQL 18.1, 23.0 MB, 5 of 100 connections, migration 0008 "
+        "(this build expects 0008)"
+    )
 
     assert text.splitlines() == [
         "AresGate diagnostics",
@@ -448,8 +452,7 @@ def test_the_text_for_a_bug_report_has_the_facts_and_no_addresses() -> None:
         "Environment: production",
         "Up for: 3h 12m",
         "Python 3.14.8, nginx 1.29.1",
-        "Database: PostgreSQL 18.1, 23.0 MB, 5 of 100 connections, migration 0008 "
-        "(this build expects 0008)",
+        database,
         "Certificate: issued by CN=R11,O=Let's Encrypt, 2 names, 30 days left",
         "Memory: 312.0 MB of 2.0 GB",
         "Disk: 1.0 GB of 20.0 GB",

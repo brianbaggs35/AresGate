@@ -251,6 +251,7 @@ def cpu_count(cgroup: Path = CGROUP) -> float | None:
         if quota != "max":
             return round(int(quota) / int(period), 2)
     except OSError, ValueError:
+        # No limit file, or one that says something else: every CPU the computer has is there.
         pass
     return float(len(os.sched_getaffinity(0))) or None
 
