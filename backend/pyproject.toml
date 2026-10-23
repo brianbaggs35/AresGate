@@ -5,10 +5,13 @@ description = "Self-hosted home network security monitoring"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
+    "anyio>=4.15.1",
     "argon2-cffi>=25.1.0",
     "cryptography>=50.0.2",
     "fastapi>=0.159.1",
     "fido2>=2.2.1",
+    "httpcore2>=2.16.0",
+    "httpx2>=2.16.0",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",
@@ -19,7 +22,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "bandit>=1.9.4",
-    "httpx2>=2.16.0",
     "pip-audit>=2.10.1",
     "pyright>=1.1.414",
     "pytest>=9.1.1",

@@ -50,6 +50,9 @@ class Settings(BaseSettings):
 
     # How long the audit log keeps an event before the API deletes it.
     audit_retention_days: Annotated[int, Field(ge=1, le=3650)] = 365
+    # How long the API log keeps a request made to an integration. It is much busier than the
+    # audit log, and only useful while it is recent.
+    api_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 30
 
     @property
     def version(self) -> str:

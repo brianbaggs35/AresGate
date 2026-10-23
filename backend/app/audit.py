@@ -46,6 +46,9 @@ class Action(StrEnum):
     PASSKEY_REMOVED = "auth.passkey_removed"
     CREDENTIAL_STORED = "credential.stored"
     CREDENTIAL_DELETED = "credential.deleted"
+    INTEGRATION_CONNECTED = "integration.connected"
+    INTEGRATION_DISCONNECTED = "integration.disconnected"
+    INTEGRATION_TESTED = "integration.tested"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

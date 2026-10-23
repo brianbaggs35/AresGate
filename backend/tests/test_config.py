@@ -92,6 +92,16 @@ def test_the_audit_log_keeps_between_a_day_and_ten_years(days: int) -> None:
         Settings(audit_retention_days=days)
 
 
+def test_the_api_log_keeps_a_month_by_default() -> None:
+    assert Settings().api_log_retention_days == 30
+
+
+@pytest.mark.parametrize("days", [0, -1, 366])
+def test_the_api_log_keeps_between_a_day_and_a_year(days: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(api_log_retention_days=days)
+
+
 def test_logs_are_json_at_info_by_default() -> None:
     settings = Settings()
 
