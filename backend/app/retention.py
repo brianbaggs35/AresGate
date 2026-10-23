@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.config import Settings
+from app.events import retention as events
 from app.integrations import apilog
 from app.models import utcnow
 
@@ -20,12 +21,20 @@ INTERVAL = timedelta(hours=6)
 
 
 def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
-    """Deletes the audit events and the API log entries past their retention periods, and returns
-    how many audit events there were."""
+    """Deletes the audit events, the API log entries and the integrations' events past their
+    retention periods, and returns how many audit events there were."""
     with new_session() as db:
         now = utcnow()
         apilog.purge_expired(db, settings, now)
-        return audit.purge_expired(db, settings, now)
+        purged = audit.purge_expired(db, settings, now)
+        removed = events.purge_expired(db, settings, now)
+        if removed.deleted or removed.partitions_dropped:
+            logger.info(
+                "Removed %d events past their retention period and dropped %d old weeks of events",
+                removed.deleted,
+                removed.partitions_dropped,
+            )
+        return purged
 
 
 async def run(
@@ -37,7 +46,5 @@ async def run(
         try:
             await asyncio.to_thread(purge_once, settings, new_session)
         except Exception:
-            logger.exception(
-                "Couldn't delete the audit events and API log entries past their retention period"
-            )
+            logger.exception("Couldn't delete the logs and events past their retention period")
         await asyncio.sleep(interval.total_seconds())
