@@ -64,7 +64,6 @@ class Scheduler:
         enabled: bool = True,
         collectors: Sequence[Collector] = COLLECTORS,
         timing: Timing = Timing(),  # noqa: B008  # frozen, so one shared copy is safe
-        clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._settings = settings
         self._new_session = new_session
@@ -73,10 +72,9 @@ class Scheduler:
         self._enabled = enabled
         self._collectors = collectors
         self._timing = timing
-        self._clock = clock
         self._slots = asyncio.Semaphore(timing.slots)
         self._jobs: dict[store.JobKey, _Job] = {}
-        self._started = clock()
+        self._started = utcnow()
 
     # ---- Running forever ----------------------------------------------------------------
 
@@ -159,10 +157,10 @@ class Scheduler:
         """One run of a collector, kept in its health record. Returns how long to wait."""
         # Cleared as the run begins, so settings saved while it runs make it run again.
         wake.clear()
-        started = self._clock()
+        started = utcnow()
         async with self._slots:
             error, items = await self._attempt(item, started)
-        finished = self._clock()
+        finished = utcnow()
 
         def delay_after(failures: int) -> timedelta:
             return health.retry_delay(item.collector.interval, failures, self._timing.retry)
@@ -198,7 +196,7 @@ class Scheduler:
     def _sync(self) -> list[Wanted]:
         with self._new_session() as db:
             items = store.wanted(db, self._collectors)
-            store.sync(db, items, self._clock())
+            store.sync(db, items, utcnow())
             db.commit()
             return items
 
@@ -232,5 +230,5 @@ class Scheduler:
 
     def _beat(self) -> None:
         with self._new_session() as db:
-            store.beat(db, self._started, self._clock())
+            store.beat(db, self._started, utcnow())
             db.commit()
