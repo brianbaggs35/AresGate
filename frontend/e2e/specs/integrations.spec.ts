@@ -53,6 +53,24 @@ test.describe('integrations', () => {
     await expect(integration.guide.getByRole('list')).toBeHidden()
   })
 
+  test('says so when the list can’t be loaded, and loads it again on request', async ({
+    page,
+    integrations,
+  }) => {
+    let fail = true
+    await page.route('**/api/integrations', (route) => (fail ? route.abort() : route.continue()))
+    await integrations.goto()
+
+    await expect(integrations.loadError).toContainText("Can't reach AresGate.")
+    await expect(integrations.names).toHaveCount(0)
+
+    fail = false
+    await integrations.retry.click()
+
+    await expect(integrations.loadError).toHaveCount(0)
+    await expect(integrations.names).toHaveCount(4)
+  })
+
   test('says so for an integration that does not exist', async ({ page, integration }) => {
     await integration.goto('nothing')
 
@@ -268,6 +286,72 @@ test.describe('integrations', () => {
       await expect(integration.logCalls).toHaveCount(1)
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Not connected')
+    })
+  })
+
+  test.describe('when AresGate can’t be reached', () => {
+    test('says so for testing, saving and disconnecting, and changes nothing', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+      let fail = true
+      await page.route(/\/api\/integrations\/ntopng(\/test)?$/, (route) =>
+        fail && route.request().method() !== 'GET' ? route.abort() : route.continue(),
+      )
+
+      await integration.test.click()
+      await expect(integration.failure).toContainText("Can't reach AresGate.")
+      await expect(integration.status).toHaveText('Connected')
+
+      await integration.disconnect.click()
+      await integration.confirmDisconnect.click()
+      // The dialog closes either way, so what happened shows on the page behind it.
+      await expect(integration.confirmation).toBeHidden()
+      await expect(integration.failure).toContainText("Can't reach AresGate.")
+      await expect(integration.status).toHaveText('Connected')
+      await expect(integration.address('api')).toHaveValue(ntopng.url)
+
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.failure).toContainText("Can't reach AresGate.")
+
+      fail = false
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.failure).toHaveCount(0)
+    })
+
+    test('says so when the log can’t be loaded, and shows it again on request', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.logCalls).toHaveCount(1)
+      let fail = true
+      await page.route('**/api/integrations/ntopng/calls*', (route) =>
+        fail ? route.abort() : route.continue(),
+      )
+
+      await integration.logRefresh.click()
+      await expect(integration.logError).toContainText("Can't reach AresGate.")
+      await expect(integration.logCalls).toHaveCount(0)
+
+      fail = false
+      await integration.logRefresh.click()
+      await expect(integration.logError).toHaveCount(0)
+      await expect(integration.logCalls).toHaveCount(1)
     })
   })
 
