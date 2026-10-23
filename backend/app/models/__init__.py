@@ -11,6 +11,7 @@ from app.models.auth import (
 from app.models.base import Base, UTCDateTime, utcnow
 from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
+from app.models.events import Event, EventRetention
 from app.models.integrations import ApiCall, IntegrationConnection
 from app.models.passkeys import Passkey, PasskeyChallenge
 from app.models.system import SystemInfo
@@ -20,6 +21,8 @@ __all__ = [
     "AuditEvent",
     "Base",
     "CollectorHealth",
+    "Event",
+    "EventRetention",
     "IntegrationConnection",
     "LoginThrottle",
     "Passkey",

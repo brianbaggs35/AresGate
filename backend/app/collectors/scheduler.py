@@ -178,7 +178,7 @@ class Scheduler:
                 target, version = await asyncio.to_thread(self._load, item)
                 async with ApiClient(target, self._recorder, self._policy) as client:
                     outcome = await collector.collect(
-                        Context(target, client, started, version, self._new_session)
+                        Context(target, client, started, version, self._new_session, self._settings)
                     )
         except (CollectorFailed, service.Incomplete, Refused, CallFailed) as failure:
             return str(failure), None
