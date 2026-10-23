@@ -1,11 +1,8 @@
 import * as auditApi from '@/api/audit'
-import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
-import * as passkeysApi from '@/api/passkeys'
-import * as twoFactorApi from '@/api/two-factor'
 import { useSessionStore } from '@/stores/session'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import SecurityView from '@/views/SecurityView.vue'
+import ActivityView from '@/views/ActivityView.vue'
 
 const recorded: auditApi.AuditEvent = {
   id: 1,
@@ -18,23 +15,15 @@ const recorded: auditApi.AuditEvent = {
 }
 
 async function open() {
-  vi.spyOn(passkeysApi, 'fetchPasskeys').mockResolvedValue([])
-  vi.spyOn(twoFactorApi, 'fetchTwoFactorStatus').mockResolvedValue({
-    enabled: false,
-    recovery_codes_left: 0,
+  const mounted = await mountWithPlugins(ActivityView, {
+    route: '/settings/activity',
+    signedIn: 'admin',
   })
-  const mounted = await mountWithPlugins(SecurityView, { route: '/security', signedIn: 'admin' })
   await flushPromises()
   return mounted
 }
 
-describe('SecurityView', () => {
-  it('says who is signed in', async () => {
-    vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
-    const { wrapper } = await open()
-    expect(wrapper.find('[data-test="account-name"]').text()).toBe('admin')
-  })
-
+describe('ActivityView', () => {
   it('lists the 20 most recent events', async () => {
     const fetchRecent = vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([recorded])
     const { wrapper } = await open()
@@ -43,18 +32,9 @@ describe('SecurityView', () => {
     expect(wrapper.find('[data-test="no-activity"]').exists()).toBe(false)
   })
 
-  it('has the cards for passkeys and two-step verification between the account and the activity', async () => {
-    vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
-    const { wrapper } = await open()
-    const cards = wrapper
-      .findAll('[data-test$="-card"]')
-      .map((card) => card.attributes('data-test'))
-    expect(cards).toEqual(['account-card', 'passkeys-card', 'two-factor-card', 'activity-card'])
-  })
-
   it('shows a placeholder while it loads', async () => {
     vi.spyOn(auditApi, 'fetchRecentActivity').mockReturnValue(new Promise(() => {}))
-    const { wrapper } = await mountWithPlugins(SecurityView, { signedIn: 'admin' })
+    const { wrapper } = await mountWithPlugins(ActivityView, { signedIn: 'admin' })
     expect(wrapper.find('.v-skeleton-loader').exists()).toBe(true)
   })
 
@@ -84,29 +64,5 @@ describe('SecurityView', () => {
     )
     await open()
     expect(useSessionStore()).toMatchObject({ signedIn: false, expired: true })
-  })
-
-  it('signs out, and goes to the sign-in page', async () => {
-    vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
-    const logOut = vi.spyOn(authApi, 'logOut').mockResolvedValue()
-    const { wrapper, router } = await open()
-    await wrapper.find('[data-test="sign-out-here"]').trigger('click')
-    await flushPromises()
-    expect(logOut).toHaveBeenCalledWith('a-security-token')
-    await vi.waitFor(() => {
-      expect(router.currentRoute.value.name).toBe('sign-in')
-    })
-  })
-
-  it('says so when it can’t sign out', async () => {
-    vi.spyOn(auditApi, 'fetchRecentActivity').mockResolvedValue([])
-    vi.spyOn(authApi, 'logOut').mockRejectedValue(
-      new ApiError(0, "Can't reach AresGate.", 'offline'),
-    )
-    const { wrapper, router } = await open()
-    await wrapper.find('[data-test="sign-out-here"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain("Can't reach AresGate.")
-    expect(router.currentRoute.value.name).toBe('security')
   })
 })

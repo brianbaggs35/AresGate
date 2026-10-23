@@ -20,9 +20,74 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
-    test('the security page has no WCAG 2.2 AA problems', async ({ page, security, shell }) => {
+    test('the account settings page has no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+    }) => {
       await security.goto()
-      await expect(security.activities.first()).toBeVisible()
+      await expect(security.twoFactorOff).toBeVisible()
+      await expect(security.noPasskeys).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+    })
+
+    test('the password card, with what is wrong and what came of it, has no WCAG 2.2 AA problems', async ({
+      page,
+      security,
+      shell,
+      baseline,
+    }) => {
+      await security.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await security.changePassword.click()
+      await expect(security.passwordCard).toContainText('Enter your current password.')
+      await expectAccessible(page)
+
+      await security.changePasswordTo('not the right password', 'a different long phrase for tests')
+      await expect(security.passwordCard).toContainText("The password isn't right.")
+      await expectAccessible(page)
+
+      await security.currentPassword.fill(baseline.account.password)
+      await security.changePassword.click()
+      await expect(security.passwordChanged).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the sign-ins page, and the questions it asks, have no WCAG 2.2 AA problems', async ({
+      page,
+      signIns,
+      shell,
+      signInElsewhere,
+    }) => {
+      await signInElsewhere('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Firefox/130.0')
+      await signIns.goto()
+      await expect(signIns.signIns).toHaveCount(2)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await signIns.endButtons.click()
+      await expect(signIns.confirmTitle).toBeVisible()
+      await expectAccessible(page)
+      await signIns.cancel.click()
+      await expect(signIns.confirmTitle).toBeHidden()
+
+      await signIns.endOthers.click()
+      await expect(signIns.confirmTitle).toBeVisible()
+      await expectAccessible(page)
+      await signIns.confirm.click()
+      await expect(signIns.notice).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the activity page has no WCAG 2.2 AA problems', async ({ page, activity, shell }) => {
+      await activity.goto()
+      await expect(activity.entries.first()).toBeVisible()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 

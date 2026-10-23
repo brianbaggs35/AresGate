@@ -2,16 +2,21 @@ import { expect, type Locator, type Page } from '@playwright/test'
 
 import { authenticatorCode } from '../totp'
 
-/** What the signed-in person can see about their account and its recent activity. */
+/** The settings page for the account: who is signed in, the password, passkeys and two-step. */
 export class SecurityPage {
   readonly accountName: Locator
   readonly signOut: Locator
   /** Why signing out from this page failed. */
   readonly signOutError: Locator
-  /** One entry for each thing that happened. */
-  readonly activities: Locator
-  readonly activityError: Locator
-  readonly refresh: Locator
+
+  /** The card for the password: the three fields, the button, and what came of it. */
+  readonly passwordCard: Locator
+  readonly currentPassword: Locator
+  readonly newPassword: Locator
+  readonly confirmNewPassword: Locator
+  readonly changePassword: Locator
+  readonly passwordChanged: Locator
+  readonly passwordError: Locator
 
   /** The card for passkeys: the ones on the account ... */
   readonly passkeysCard: Locator
@@ -67,9 +72,13 @@ export class SecurityPage {
     this.accountName = page.getByTestId('account-name')
     this.signOut = page.getByTestId('sign-out-here')
     this.signOutError = page.getByTestId('sign-out-here-error')
-    this.activities = page.getByTestId('activity')
-    this.activityError = page.getByTestId('activity-error')
-    this.refresh = page.getByTestId('refresh-activity')
+    this.passwordCard = page.getByTestId('password-card')
+    this.currentPassword = page.getByLabel('Current password', { exact: true })
+    this.newPassword = page.getByLabel('New password', { exact: true })
+    this.confirmNewPassword = page.getByLabel('Confirm new password', { exact: true })
+    this.changePassword = page.getByTestId('change-password')
+    this.passwordChanged = page.getByTestId('password-changed')
+    this.passwordError = page.getByTestId('password-error')
     this.passkeysCard = page.getByTestId('passkeys-card')
     this.passkeyNames = page.getByTestId('passkey-name')
     this.passkeyDetails = page.getByTestId('passkey-details')
@@ -113,7 +122,15 @@ export class SecurityPage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/security')
+    await this.page.goto('/settings/account')
+  }
+
+  /** Changes the password the way a person would, typing the new one twice. */
+  async changePasswordTo(current: string, next: string): Promise<void> {
+    await this.currentPassword.fill(current)
+    await this.newPassword.fill(next)
+    await this.confirmNewPassword.fill(next)
+    await this.changePassword.click()
   }
 
   /** Adds a passkey the way a person would: a name and the password, then the device unlocks. */

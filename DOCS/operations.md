@@ -92,8 +92,8 @@ backup, because **older backups need the older key**.
 Two things to know:
 
 - **Recovery codes end.** They are kept as hashes made with the key and can't be made again
-  under a new one, so each account has to make new codes on the Security page. Its authenticator
-  app keeps working.
+  under a new one, so each account has to make new codes in Settings, on the Account page. Its
+  authenticator app keeps working.
 - **Do it when nobody is signing in.** For the moment between the data changing and the key file
   being replaced, a request that needs a sealed value can fail. Trying again works.
 
@@ -191,13 +191,19 @@ it with the setup code from the log.
   AresGate made to it, without secrets or query strings. It keeps 30 days; change that with
   `ARESGATE_API_LOG_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`
   ([Integrations](integrations.md)).
-- **Adding the second step.** On the Security page, Two-step verification, choose *Add an
-  authenticator app*. Scan the QR code with the app (or open the link on the same device, or type
-  in the key), enter the code it shows, and save the ten recovery codes: they are shown once. The
-  same card makes new recovery codes and turns the step off. Both ask for a code from the app or
-  a recovery code, and turning it off asks for the password too.
-- **Adding a passkey.** On the Security page, Passkeys, choose *Add a passkey*, give it a name,
-  enter your password, and unlock the device when the browser asks. Then *Sign in with a
+- **Adding the second step.** In Settings, on the Account page, Two-step verification, choose
+  *Add an authenticator app*. Scan the QR code with the app (or open the link on the same device,
+  or type in the key), enter the code it shows, and save the ten recovery codes: they are shown
+  once. The same card makes new recovery codes and turns the step off. Both ask for a code from
+  the app or a recovery code, and turning it off asks for the password too.
+- **Changing the password, and ending sign-ins.** In Settings, on the Account page, Password asks
+  for the current password and the new one twice. Changing it signs every other browser out, so
+  anyone who had the old one is out; this browser stays signed in. If you think someone else is
+  signed in, the Sign-ins page lists each browser with where it was and when it was last active,
+  and signs one (or all but this one) out. A forgotten password can't be reset from the web app:
+  see *Forgot the password* below.
+- **Adding a passkey.** In Settings, on the Account page, Passkeys, choose *Add a passkey*, give
+  it a name, enter your password, and unlock the device when the browser asks. Then *Sign in with a
   passkey* on the sign-in page needs nothing typed. A passkey takes the place of the password and
   the authenticator app, so it asks for no code. Remove one from the same card (it asks for the
   password); the device keeps its copy, which you can delete in its own settings.
@@ -220,9 +226,9 @@ it with the setup code from the log.
   records an event in the audit log. The same applies if AresGate was restored with a different
   app secret key than the one that encrypted the app's key: the key can't be opened, the
   sign-in fails with an error in `make logs`, and turning the step off is the way out.
-- **Forgot the password.** There is no way to change or reset it from the web app yet. To start
-  over without losing anything else, delete the account (which also removes its authenticator
-  app and recovery codes) and set up again:
+- **Forgot the password.** Settings changes a password you know, but nothing in the web app
+  resets one you don't yet. To start over without losing anything else, delete the account
+  (which also removes its authenticator app and recovery codes) and set up again:
 
   ```sh
   make psql
