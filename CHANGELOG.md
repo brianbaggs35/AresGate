@@ -116,6 +116,13 @@ Every release's notes are here, newest first. The format follows
   `PUT /api/events/storage/<integration>`, and `GET /api/events/storage` says how many each has
   and how old the oldest is. The API removes the old ones when it starts and every six hours
   ([DOCS/operations.md](DOCS/operations.md#stored-events)).
+- The first collector that stores events: OPNsense's firewall log, read every 30 seconds. Each
+  line becomes an event with its time, the interface, what the firewall did (a block is low
+  severity, anything else info), the direction, protocol, addresses and ports and the rule's
+  description, and the line itself is kept beside it. The firewall's log has no time zone, so
+  AresGate works the zone out from the firewall's clock and says so on the Collection card if the
+  two clocks are more than five minutes apart instead of storing times it can't trust
+  ([DOCS/integrations.md](DOCS/integrations.md#the-firewall-log)).
 
 ### Fixed
 
