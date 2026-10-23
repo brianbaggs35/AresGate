@@ -59,6 +59,7 @@ defineExpose({ focusTitle })
 .section-card__title {
   grid-column: 1;
   grid-row: 1;
+  margin: 0;
 }
 
 .section-card__title:focus {
