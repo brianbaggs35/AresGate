@@ -11,7 +11,9 @@ import {
   startAddingPasskey,
   type Passkey,
 } from '@/api/passkeys'
+import LoadError from '@/components/LoadError.vue'
 import PasswordField from '@/components/PasswordField.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import { describeBrowser, formatDateTime } from '@/format'
 import { isValid, vFocus } from '@/form'
 import { useSessionStore } from '@/stores/session'
@@ -32,7 +34,7 @@ const password = ref('')
 const target = ref<Passkey | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
-const title = ref<HTMLElement | null>(null)
+const card = ref<{ focusTitle: () => void } | null>(null)
 
 const required = (what: string) => (value: string) => value.trim() !== '' || `Enter ${what}.`
 
@@ -53,7 +55,7 @@ async function show(next: View) {
   password.value = ''
   name.value = next === 'adding' ? describeBrowser(navigator.userAgent) : ''
   await nextTick()
-  if (next === 'overview') title.value?.focus()
+  if (next === 'overview') card.value?.focusTitle()
 }
 
 /** Runs one of the card's changes, showing why it failed. A password that was refused isn't
@@ -108,8 +110,7 @@ onMounted(load)
 </script>
 
 <template>
-  <v-card class="pa-6 mb-6" data-test="passkeys-card">
-    <h2 ref="title" tabindex="-1" class="text-title-large mb-1">Passkeys</h2>
+  <SectionCard ref="card" title="Passkeys" data-test="passkeys-card">
     <v-alert v-if="error" type="error" variant="tonal" class="my-4" data-test="passkeys-error">
       {{ error }}
     </v-alert>
@@ -119,18 +120,14 @@ onMounted(load)
         Sign in by unlocking your device with a fingerprint, your face or its PIN, instead of typing
         a password. A passkey also takes the place of two-step verification.
       </p>
-      <v-alert
+      <LoadError
         v-if="loadError"
-        type="error"
-        variant="tonal"
+        :message="loadError"
+        retry-test-id="passkeys-retry"
         class="my-4"
         data-test="passkeys-load-error"
-      >
-        {{ loadError }}
-        <template #append>
-          <v-btn variant="text" data-test="passkeys-retry" @click="load">Try again</v-btn>
-        </template>
-      </v-alert>
+        @retry="load"
+      />
       <v-skeleton-loader v-else-if="!passkeys" type="list-item-two-line" />
       <template v-else>
         <ul v-if="passkeys.length" class="passkey-list mb-4" data-test="passkey-list">
@@ -245,7 +242,7 @@ onMounted(load)
         </div>
       </v-form>
     </template>
-  </v-card>
+  </SectionCard>
 </template>
 
 <style scoped>

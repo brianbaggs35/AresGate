@@ -87,13 +87,13 @@ defineProps<{
   gap: 0.5rem 0.75rem;
 }
 
-.page-header__title h1,
-.page-header__text p {
+.page-header__title h1 {
   margin: 0;
 }
 
-.page-header__text p {
-  margin-top: 0.25rem;
+.page-header__text p,
+.page-header__text :slotted(p) {
+  margin: 0.25rem 0 0;
 }
 
 .page-header__actions {

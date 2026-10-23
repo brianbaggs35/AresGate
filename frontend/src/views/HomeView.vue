@@ -2,6 +2,9 @@
 import { RefreshCw } from '@lucide/vue'
 import { computed, onMounted } from 'vue'
 
+import AppPage from '@/components/AppPage.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import { useHealthStore } from '@/stores/health'
 
 const store = useHealthStore()
@@ -22,12 +25,12 @@ onMounted(() => store.refresh())
 </script>
 
 <template>
-  <v-container class="py-8" max-width="720">
-    <v-card class="pa-6" data-test="status-card">
-      <h1 class="text-headline-medium mb-1">AresGate</h1>
-      <p class="text-body-large text-medium-emphasis mb-6">
-        Your home network's security analyst. Integrations and dashboards are on their way.
-      </p>
+  <AppPage width="narrow">
+    <PageHeader
+      title="AresGate"
+      description="Your home network's security analyst. Integrations and dashboards are on their way."
+    />
+    <SectionCard title="Status" data-test="status-card">
       <div class="d-flex flex-wrap ga-3 mb-6">
         <v-chip :color="api.color" variant="tonal" data-test="api-status">
           API: {{ api.label }}
@@ -46,6 +49,6 @@ onMounted(() => store.refresh())
       >
         Check again
       </v-btn>
-    </v-card>
-  </v-container>
+    </SectionCard>
+  </AppPage>
 </template>

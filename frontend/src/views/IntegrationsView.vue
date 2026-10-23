@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { RefreshCw } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import { fetchIntegrations, type IntegrationSummary } from '@/api/integrations'
+import AppPage from '@/components/AppPage.vue'
 import IntegrationCard from '@/components/IntegrationCard.vue'
+import LoadError from '@/components/LoadError.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -31,34 +33,26 @@ onMounted(load)
 </script>
 
 <template>
-  <v-container class="py-8" max-width="1000">
-    <header class="d-flex flex-wrap align-center justify-space-between ga-3 mb-6">
-      <div>
-        <h1 class="text-headline-medium mb-1">Integrations</h1>
-        <p class="text-body-large text-medium-emphasis">
-          The systems AresGate watches your network through. It only reads from them: it never
-          changes their settings.
+  <AppPage>
+    <PageHeader
+      title="Integrations"
+      description="The systems AresGate watches your network through. It only reads from them: it never changes their settings."
+    >
+      <template v-if="integrations" #actions>
+        <p class="text-body-large" data-test="integrations-count">
+          {{ integrations.filter(isSetUp).length }} of {{ integrations.length }} set up
         </p>
-      </div>
-      <p v-if="integrations" class="text-body-large" data-test="integrations-count">
-        {{ integrations.filter(isSetUp).length }} of {{ integrations.length }} set up
-      </p>
-    </header>
-
-    <v-alert v-if="error" type="error" variant="tonal" data-test="integrations-error">
-      {{ error }}
-      <template #append>
-        <v-btn
-          variant="text"
-          :prepend-icon="RefreshCw"
-          :loading="loading"
-          data-test="integrations-retry"
-          @click="load"
-        >
-          Try again
-        </v-btn>
       </template>
-    </v-alert>
+    </PageHeader>
+
+    <LoadError
+      v-if="error"
+      :message="error"
+      :loading="loading"
+      retry-test-id="integrations-retry"
+      data-test="integrations-error"
+      @retry="load"
+    />
 
     <v-row v-else-if="integrations" data-test="integrations-list">
       <v-col v-for="integration in integrations" :key="integration.key" cols="12" md="6">
@@ -71,5 +65,5 @@ onMounted(load)
         <v-skeleton-loader type="card" />
       </v-col>
     </v-row>
-  </v-container>
+  </AppPage>
 </template>

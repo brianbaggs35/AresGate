@@ -76,7 +76,7 @@ describe('IntegrationView', () => {
     it('says what it is, how it is and what it provides', async () => {
       const { find, wrapper } = await open(working())
       expect(wrapper.find('h1').text()).toBe('ntopng')
-      expect(find('integration-provides').text()).toBe('Who talks to whom on the network.')
+      expect(find('page-description').text()).toBe('Who talks to whom on the network.')
       expect(find('status').text()).toBe('Connected')
       expect(find('integration-last-success').text()).toMatch(/^Last successful call .+ ago$/)
       expect(find('integration-last-success').find('time').attributes('datetime')).toBe(
@@ -161,22 +161,22 @@ describe('IntegrationView', () => {
 
     it('says why it could not load, and tries again', async () => {
       const { fetch, find, click } = await open(new ApiError(0, "Can't reach AresGate.", 'offline'))
-      expect(find('integration-error-message').text()).toBe("Can't reach AresGate.")
-      expect(find('integration-error').find('h1').text()).toBe("Couldn't load this integration")
-      expect(find('integration-error').text()).toContain('See all integrations')
+      expect(find('load-error-message').text()).toBe("Can't reach AresGate.")
+      expect(find('page-heading').text()).toBe("Couldn't load this integration")
+      expect(find('back').attributes('href')).toBe('/integrations')
 
       fetch.mockResolvedValue(integration())
       await click('retry')
 
       expect(find('integration-error').exists()).toBe(false)
-      expect(find('integration-title').text()).toBe('ntopng')
+      expect(find('page-heading').text()).toBe('ntopng')
     })
 
     it('says so when there is no such integration, without offering to try again', async () => {
       const { find } = await open(new ApiError(404, 'There is no such integration.', 'not_found'), {
         key: 'nothing',
       })
-      expect(find('integration-error').find('h1').text()).toBe('There is no such integration')
+      expect(find('page-heading').text()).toBe('There is no such integration')
       expect(find('retry').exists()).toBe(false)
     })
 
@@ -191,7 +191,7 @@ describe('IntegrationView', () => {
       await router.push('/integrations/wazuh')
       await flushPromises()
       expect(fetch).toHaveBeenLastCalledWith('wazuh')
-      expect(find('integration-title').text()).toBe('Wazuh')
+      expect(find('page-heading').text()).toBe('Wazuh')
     })
   })
 

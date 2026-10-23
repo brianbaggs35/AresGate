@@ -74,9 +74,10 @@ test.describe('integrations', () => {
   test('says so for an integration that does not exist', async ({ page, integration }) => {
     await integration.goto('nothing')
 
-    await expect(integration.loadError).toContainText('There is no such integration')
+    await expect(integration.title).toHaveText('There is no such integration')
+    await expect(integration.loadError).toContainText('no such integration')
     await expect(integration.retry).toHaveCount(0)
-    await page.getByRole('link', { name: 'See all integrations' }).click()
+    await integration.back.click()
     await expect(page).toHaveURL('/integrations')
   })
 

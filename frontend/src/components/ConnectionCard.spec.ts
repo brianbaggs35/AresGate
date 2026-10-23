@@ -26,7 +26,7 @@ describe('ConnectionCard', () => {
   it('names the connection and says what it is', async () => {
     const { wrapper, find } = await open()
     expect(wrapper.find('h2').text()).toBe('REST API')
-    expect(find('connection-summary').text()).toBe('What REST API is.')
+    expect(find('section-description').text()).toBe('What REST API is.')
   })
 
   it('takes the address, and says where an example of one is', async () => {
