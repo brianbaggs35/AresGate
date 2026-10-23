@@ -20,10 +20,18 @@ __all__ = ["branch_labels", "depends_on", "down_revision", "revision"]
 
 def upgrade() -> None:
     # Sign-ins made before this have nothing to show, so both are optional.
-    op.add_column("user_sessions", sa.Column("address", sa.String(length=64), nullable=True))
-    op.add_column("user_sessions", sa.Column("user_agent", sa.String(length=256), nullable=True))
+    op.add_column(
+        "user_sessions",
+        sa.Column("address", sa.String(length=64), nullable=True),
+        if_not_exists=True,
+    )
+    op.add_column(
+        "user_sessions",
+        sa.Column("user_agent", sa.String(length=256), nullable=True),
+        if_not_exists=True,
+    )
 
 
 def downgrade() -> None:
-    op.drop_column("user_sessions", "user_agent")
-    op.drop_column("user_sessions", "address")
+    op.drop_column("user_sessions", "user_agent", if_exists=True)
+    op.drop_column("user_sessions", "address", if_exists=True)
