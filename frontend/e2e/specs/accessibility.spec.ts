@@ -85,6 +85,35 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the status page, and its warning, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      status,
+      shell,
+    }) => {
+      await status.goto()
+      await expect(status.fine).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // A part with a problem turns the all clear into a warning, and its row into an error.
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: 'a-valid-ntopng-token' })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill('the wrong token')
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Problem')
+      await status.goto()
+      await expect(status.attention).toBeVisible()
+      await expectAccessible(page)
+
+      await status.copy.click()
+      await expect(status.copied.or(status.copyFailed)).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the activity page has no WCAG 2.2 AA problems', async ({ page, activity, shell }) => {
       await activity.goto()
       await expect(activity.entries.first()).toBeVisible()

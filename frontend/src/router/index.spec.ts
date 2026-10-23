@@ -55,6 +55,13 @@ describe('router', () => {
     for (const module of modules) expect(module).toHaveProperty('default')
   })
 
+  it('shows the status page under its own title', async () => {
+    const page = await visit('/status')
+    expect(page.name).toBe('status')
+    expect(pageTitle(page)).toBe('Status')
+    expect(document.title).toBe('Status · AresGate')
+  })
+
   it('shows the settings pages under one title', async () => {
     for (const [path, name] of [
       ['/settings/account', 'settings-account'],

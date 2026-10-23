@@ -63,9 +63,10 @@ nothing like your username or the server's name. You are signed in as soon as th
 
 After that, AresGate asks you to sign in with that username and password. Your sign-in lasts
 until it has sat unused for 30 minutes, and ends when you choose **Sign out** from the account
-button at the top right. **Settings** is where the account lives. Its **Activity** page lists the
-most recent sign-ins, wrong guesses and sign-outs, so you can see whether anyone else has tried,
-and **Sign-ins** lists the browsers that are signed in now, so you can sign out any you don't
+button at the top right. **Status** shows what AresGate and the programs under it are doing,
+with a text to copy into a bug report. **Settings** is where the account lives. Its **Activity**
+page lists the most recent sign-ins, wrong guesses and sign-outs, so you can see whether anyone
+else has tried, and **Sign-ins** lists the browsers that are signed in now, so you can sign out any you don't
 recognise. **Account** changes the password and adds an authenticator app, so that signing in asks
 for a code from it as well as the password ([Operations](operations.md#signing-in)).
 

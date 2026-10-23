@@ -56,3 +56,25 @@ export function describeBrowser(userAgent: string | null): string {
   if (browser && system) return `${browser} on ${system}`
   return browser ?? system ?? 'Unknown device'
 }
+
+/** A size in bytes the way people say it ("1.5 GB"), in powers of 1024. */
+export function formatBytes(bytes: number): string {
+  let amount = bytes
+  for (const unit of ['B', 'KB', 'MB', 'GB']) {
+    if (amount < 1024)
+      return unit === 'B' ? `${amount.toFixed(0)} B` : `${amount.toFixed(1)} ${unit}`
+    amount /= 1024
+  }
+  return `${amount.toFixed(1)} TB`
+}
+
+/** How long something has been going ("3d 4h 12m"): hours only once there are hours, and so on. */
+export function formatDuration(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const parts = days ? [`${days.toString()}d`] : []
+  if (days || hours) parts.push(`${hours.toString()}h`)
+  parts.push(`${minutes.toString()}m`)
+  return parts.join(' ')
+}
