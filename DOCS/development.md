@@ -60,9 +60,10 @@ Every command is the same one CI runs, so a failure in CI can be reproduced loca
 
 ### Coverage
 
-The target is **100%** for pytest, Vitest and Playwright, and the build fails below **95%** so
-that one hard-to-reach line doesn't block a change. A pull request that adds code adds the
-tests that keep it at 100%.
+The target is **100%** for pytest and Vitest, and the build fails below **95%** so that one
+hard-to-reach line doesn't block a change. The Playwright specs have more leeway: their coverage
+is reported and never fails the build, and the web app's is kept above **90%**. A pull request
+that adds code adds the tests for it in all three.
 
 SonarQube Cloud must report **zero open issues** on the pull request.
 

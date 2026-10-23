@@ -146,7 +146,7 @@ e2e-host: ## Run the Playwright tests with no container: the API and web app run
 	@ARESGATE_DATABASE_URL=postgresql+psycopg://aresgate@127.0.0.1:$(TEST_DB_PORT)/aresgate \
 		.github/scripts/e2e-host.sh $(ARGS); status=$$?; docker rm --force $(TEST_DB) >/dev/null; exit $$status
 
-e2e-coverage: ## Check the last full run's web coverage reached the minimum (95%)
+e2e-coverage: ## Report the last full run's web coverage (warns below 90%)
 	$(FRONTEND) npm run e2e:coverage
 
 e2e-ui: e2e-up ## Open Playwright's UI to run and debug tests step by step

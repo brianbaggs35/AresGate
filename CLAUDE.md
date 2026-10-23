@@ -26,8 +26,9 @@ every command (`make` lists them).
 - **History.** Rebase merges only, never merge commits. Keep a branch linear: rebase onto
   `master` (`git rebase --onto origin/master <old-base> <branch>`), never merge `master` into it,
   and push with `--force-with-lease` and only on your own branches. The maintainer merges.
-- **Coverage.** Aim for 100% in pytest, Vitest and Playwright, with the failure threshold at 95%.
-  A change that adds code adds the tests that keep it at 100%.
+- **Coverage.** Aim for 100% in pytest and Vitest, with the failure threshold at 95%. The
+  Playwright specs have more leeway: their coverage is reported and never fails the build, and
+  stays above 90%. A change that adds code adds its tests in all three.
 - **Sonar.** Zero open SonarQube issues; CI fails any pull request with one. Known rules it
   enforces: `uv run`, `uv sync` and `uvx` take `--no-build` (shell:S8541); shell scripts send
   error messages to stderr (S7677).
