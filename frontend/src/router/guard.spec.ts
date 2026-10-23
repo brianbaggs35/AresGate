@@ -48,9 +48,9 @@ describe('route guard', () => {
 
   it('sends someone who is not signed in to the sign-in page, and remembers where they were going', async () => {
     state.signedOut()
-    const route = await goTo('/security?tab=activity')
+    const route = await goTo('/settings/account?tab=activity')
     expect(route.name).toBe('sign-in')
-    expect(route.query).toEqual({ next: '/security?tab=activity' })
+    expect(route.query).toEqual({ next: '/settings/account?tab=activity' })
   })
 
   it('has nothing to remember for the front page', async () => {
@@ -80,7 +80,7 @@ describe('route guard', () => {
   it('lets someone who is signed in see every page, and sends them away from the sign-in page', async () => {
     state.signedIn()
     expect((await goTo('/')).name).toBe('home')
-    expect((await goTo('/security')).name).toBe('security')
+    expect((await goTo('/settings/account')).name).toBe('settings-account')
     expect((await goTo('/no/such/page')).name).toBe('not-found')
     expect((await goTo('/sign-in')).name).toBe('home')
   })
@@ -89,7 +89,7 @@ describe('route guard', () => {
     state.signedIn()
     const router = guarded()
     await router.push('/')
-    await router.push('/security')
+    await router.push('/settings/account')
     expect(authApi.fetchSetupRequired).toHaveBeenCalledTimes(1)
   })
 
@@ -100,8 +100,8 @@ describe('route guard', () => {
     setup.mockResolvedValue(false)
     vi.spyOn(authApi, 'fetchSession').mockResolvedValue(info)
     const router = guarded()
-    await router.push('/security')
-    expect(router.currentRoute.value.name).toBe('security')
+    await router.push('/settings/account')
+    expect(router.currentRoute.value.name).toBe('settings-account')
     expect(useSessionStore().error).toBe("Can't reach AresGate.")
     await router.push('/')
     expect(useSessionStore().error).toBeNull()
@@ -111,17 +111,17 @@ describe('route guard', () => {
 
 describe('landingPage', () => {
   it.each([
-    ['/security', '/security'],
-    ['/security?tab=activity#top', '/security?tab=activity#top'],
+    ['/settings/account', '/settings/account'],
+    ['/settings/account?tab=activity#top', '/settings/account?tab=activity#top'],
   ])('goes back to %s', (next, landing) => {
     expect(landingPage({ next })).toBe(landing)
   })
 
   it.each([
     ['nothing', {}],
-    ['a list', { next: ['/security', '/'] }],
+    ['a list', { next: ['/settings/account', '/'] }],
     ['an empty address', { next: '' }],
-    ['a relative address', { next: 'security' }],
+    ['a relative address', { next: 'settings/account' }],
     ['another site', { next: 'https://example.com/' }],
     ['another site without a scheme', { next: '//example.com/' }],
     ['another site with a backslash', { next: '/\\example.com/' }],

@@ -61,14 +61,17 @@ describe('App', () => {
   })
 
   it('goes to the sign-in page, and on from there, when the sign-in ends', async () => {
-    const { router } = await mountWithPlugins(App, { route: '/security', signedIn: 'admin' })
+    const { router } = await mountWithPlugins(App, {
+      route: '/settings/account',
+      signedIn: 'admin',
+    })
     await flushPromises()
     const session = useSessionStore()
     session.expired = true
     await vi.waitFor(() => {
       expect(router.currentRoute.value.name).toBe('sign-in')
     })
-    expect(router.currentRoute.value.query).toEqual({ next: '/security' })
+    expect(router.currentRoute.value.query).toEqual({ next: '/settings/account' })
 
     // Signing in again isn't a reason to move.
     session.expired = false
@@ -89,7 +92,7 @@ describe('App', () => {
       })
       const { wrapper, router } = await mountWithPlugins(App, { width: 1280 })
       guardRoutes(router)
-      await router.push('/security?tab=activity')
+      await router.push('/settings/account?tab=activity')
       await flushPromises()
       expect(wrapper.find('[data-test="startup-error"]').text()).toContain("Can't reach AresGate.")
       expect(wrapper.find('.app-drawer').exists()).toBe(false)
@@ -97,7 +100,7 @@ describe('App', () => {
       await wrapper.find('[data-test="retry"]').trigger('click')
       await flushPromises()
       expect(wrapper.find('[data-test="startup-error"]').exists()).toBe(false)
-      expect(router.currentRoute.value.fullPath).toBe('/security?tab=activity')
+      expect(router.currentRoute.value.fullPath).toBe('/settings/account?tab=activity')
       expect(wrapper.find('.app-drawer').exists()).toBe(true)
     })
   })

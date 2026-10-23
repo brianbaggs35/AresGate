@@ -82,6 +82,12 @@ Every release's notes are here, newest first. The format follows
   write-only, and every request is kept in an API log without secrets or query strings for
   `ARESGATE_API_LOG_RETENTION_DAYS` days ([DOCS/integrations.md](DOCS/integrations.md)).
 
+- A Settings area in the web app, which replaces the Security page: **Account** (who is signed
+  in, changing the password, passkeys and two-step verification), **Sign-ins** (the browsers that
+  are signed in, with a button to sign out one or all the others) and **Activity**. Changing the
+  password ends every other sign-in. The pages are tabs on a phone and a list at the side
+  elsewhere ([DOCS/security.md](DOCS/security.md)).
+
 ### Fixed
 
 - Signing in with a username containing a NUL character no longer ends in a server error.

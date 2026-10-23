@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleUser, LogOut, ShieldCheck } from '@lucide/vue'
+import { CircleUser, LogOut, Settings } from '@lucide/vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -43,10 +43,10 @@ async function signOut() {
       <v-list density="compact" role="menu" aria-label="Account" tabindex="-1">
         <v-list-item
           role="menuitem"
-          :prepend-icon="ShieldCheck"
-          title="Security"
-          :to="{ name: 'security' }"
-          data-test="user-security"
+          :prepend-icon="Settings"
+          title="Settings"
+          :to="{ name: 'settings-account' }"
+          data-test="user-settings"
         />
         <v-list-item
           role="menuitem"

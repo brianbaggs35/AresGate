@@ -161,4 +161,73 @@ test.describe('layout on a phone', () => {
       expect(overflow).toBeLessThanOrEqual(0)
     })
   })
+
+  test('the settings pages fit the screen without scrolling sideways', async ({
+    page,
+    security,
+    signIns,
+    activity,
+  }) => {
+    for (const [name, show, ready] of [
+      ['account', () => security.goto(), security.twoFactorOff],
+      ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
+      ['activity', () => activity.goto(), activity.entries.first()],
+    ] as const) {
+      await show()
+      await expect(ready, name).toBeVisible()
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+      expect(overflow, name).toBeLessThanOrEqual(0)
+    }
+  })
+
+  test('lists the settings pages as tabs across the top, above the page', async ({
+    security,
+    settings,
+  }) => {
+    await security.goto()
+    await expect(security.passwordCard).toBeVisible()
+
+    await expect(settings.nav.locator('.v-tabs')).toHaveCount(1)
+    const [account, signIns, activity, card] = await Promise.all([
+      settings.accountLink.boundingBox(),
+      settings.signInsLink.boundingBox(),
+      settings.activityLink.boundingBox(),
+      security.passwordCard.boundingBox(),
+    ])
+    // Side by side, and above the card.
+    expect(signIns?.x).toBeGreaterThan(account?.x ?? 0)
+    expect(activity?.x).toBeGreaterThan(signIns?.x ?? 0)
+    expect(signIns?.y).toBe(account?.y)
+    expect((account?.y ?? 0) + (account?.height ?? 0)).toBeLessThanOrEqual(card?.y ?? 0)
+  })
+
+  test('changes page with the tabs', async ({ page, security, settings, signIns }) => {
+    await security.goto()
+
+    await settings.signInsLink.click()
+
+    await expect(page).toHaveURL('/settings/sign-ins')
+    await expect(signIns.card).toBeVisible()
+    await expect(settings.signInsLink).toHaveAttribute('aria-current', 'page')
+  })
+
+  test('keeps the settings buttons clear of the bottom bar', async ({
+    shell,
+    signIns,
+    signInElsewhere,
+  }) => {
+    await signInElsewhere('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Firefox/130.0')
+    await signIns.goto()
+    await expect(signIns.endOthers).toBeVisible()
+
+    await signIns.endButtons.scrollIntoViewIfNeeded()
+
+    const bar = await shell.menu.boundingBox()
+    const button = await signIns.endButtons.boundingBox()
+    expect((button?.y ?? 0) + (button?.height ?? 0)).toBeLessThanOrEqual(bar?.y ?? 0)
+  })
 })

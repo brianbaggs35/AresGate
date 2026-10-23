@@ -44,12 +44,12 @@ describe('SignInView', () => {
 
   it('goes on to the page that was asked for', async () => {
     vi.spyOn(authApi, 'logIn').mockResolvedValue(info)
-    const { type, submit, router } = await open('/sign-in?next=/security')
+    const { type, submit, router } = await open('/sign-in?next=/settings/account')
     await type('username', 'admin')
     await type('password', 'a long enough phrase')
     await submit()
     await vi.waitFor(() => {
-      expect(router.currentRoute.value.name).toBe('security')
+      expect(router.currentRoute.value.name).toBe('settings-account')
     })
   })
 
@@ -156,11 +156,11 @@ describe('SignInView', () => {
 
     it('goes on to the page that was asked for', async () => {
       vi.spyOn(authApi, 'logInWithCode').mockResolvedValue(info)
-      const { type, router, submit } = await passwordAccepted('/sign-in?next=/security')
+      const { type, router, submit } = await passwordAccepted('/sign-in?next=/settings/account')
       await type('code', 'K7QD-3MWX-9HPA')
       await submit()
       await vi.waitFor(() => {
-        expect(router.currentRoute.value.name).toBe('security')
+        expect(router.currentRoute.value.name).toBe('settings-account')
       })
     })
 
@@ -273,11 +273,11 @@ describe('SignInView', () => {
 
     it('goes on to the page that was asked for', async () => {
       answerSignIn()
-      const { wrapper, router } = await openWithPasskeys('/sign-in?next=/security')
+      const { wrapper, router } = await openWithPasskeys('/sign-in?next=/settings/account')
       await wrapper.find('[data-test="sign-in-passkey"]').trigger('click')
       await flushPromises()
       await vi.waitFor(() => {
-        expect(router.currentRoute.value.name).toBe('security')
+        expect(router.currentRoute.value.name).toBe('settings-account')
       })
     })
 

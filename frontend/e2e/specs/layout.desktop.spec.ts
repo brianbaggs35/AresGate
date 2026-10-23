@@ -76,6 +76,26 @@ test.describe('layout on a computer', () => {
       })
       .toBeGreaterThanOrEqual(0)
   })
+
+  test('lists the settings pages at the side of the page, not across the top', async ({
+    security,
+    settings,
+  }) => {
+    await security.goto()
+    await expect(security.passwordCard).toBeVisible()
+
+    await expect(settings.nav.locator('.v-tabs')).toHaveCount(0)
+    const nav = await settings.nav.boundingBox()
+    const card = await security.passwordCard.boundingBox()
+    expect(nav?.x).toBeLessThan(card?.x ?? 0)
+    expect((nav?.x ?? 0) + (nav?.width ?? 0)).toBeLessThanOrEqual(card?.x ?? 0)
+    // The pages are listed one under another.
+    const [first, second] = await Promise.all([
+      settings.accountLink.boundingBox(),
+      settings.signInsLink.boundingBox(),
+    ])
+    expect(second?.y).toBeGreaterThan(first?.y ?? 0)
+  })
 })
 
 test.describe('layout on a tablet', () => {
@@ -113,5 +133,23 @@ test.describe('layout on a tablet', () => {
 
     expect(overflow).toBeLessThanOrEqual(0)
     expect((await overview.card.boundingBox())?.width).toBeGreaterThan(300)
+  })
+
+  test('puts the settings pages in tabs above the page, since the list would take its room', async ({
+    page,
+    security,
+    settings,
+  }) => {
+    await security.goto()
+    await expect(security.passwordCard).toBeVisible()
+
+    await expect(settings.nav.locator('.v-tabs')).toHaveCount(1)
+    const nav = await settings.nav.boundingBox()
+    const card = await security.passwordCard.boundingBox()
+    expect((nav?.y ?? 0) + (nav?.height ?? 0)).toBeLessThanOrEqual(card?.y ?? 0)
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 })

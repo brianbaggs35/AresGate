@@ -41,12 +41,12 @@ test.describe('signing in', () => {
   })
 
   test('goes on to the page that was asked for', async ({ page, signIn, security, baseline }) => {
-    await page.goto('/security')
-    await expect(page).toHaveURL('/sign-in?next=/security')
+    await page.goto('/settings/account')
+    await expect(page).toHaveURL('/sign-in?next=/settings/account')
 
     await signIn.signIn(baseline.account)
 
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
     await expect(security.accountName).toHaveText(baseline.account.username)
   })
 
@@ -161,16 +161,16 @@ test.describe('staying signed in', () => {
     baseline,
   }) => {
     await page.goto('/')
-    await expect(shell.securityLink).toBeVisible()
+    await expect(shell.settingsLink).toBeVisible()
     // Cleaning the database ends every sign-in, as the idle limit would.
     await harness.clean()
 
-    await shell.securityLink.click()
+    await shell.settingsLink.click()
 
-    await expect(page).toHaveURL('/sign-in?next=/security')
+    await expect(page).toHaveURL('/sign-in?next=/settings/account')
     await expect(signIn.endedNotice).toContainText('Your sign-in ended')
     await signIn.signIn(baseline.account)
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
     await expect(security.accountName).toBeVisible()
   })
 })
@@ -184,11 +184,11 @@ test.describe('signing out', () => {
     await expect(page).toHaveURL('/sign-in')
     await expect(signIn.title).toBeVisible()
     // The sign-in is really over: the app asks again.
-    await page.goto('/security')
-    await expect(page).toHaveURL('/sign-in?next=/security')
+    await page.goto('/settings/account')
+    await expect(page).toHaveURL('/sign-in?next=/settings/account')
   })
 
-  test('ends the sign-in from the security page', async ({ page, security, signIn }) => {
+  test('ends the sign-in from the account settings page', async ({ page, security, signIn }) => {
     await security.goto()
 
     await security.signOut.click()
@@ -210,7 +210,7 @@ test.describe('signing out', () => {
     await expect(page).toHaveURL('/')
   })
 
-  test('says so when the security page can’t sign out, and stays where it is', async ({
+  test('says so when the account settings page can’t sign out, and stays where it is', async ({
     page,
     security,
   }) => {
@@ -220,6 +220,6 @@ test.describe('signing out', () => {
     await security.signOut.click()
 
     await expect(security.signOutError).toContainText("Can't reach AresGate.")
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
   })
 })

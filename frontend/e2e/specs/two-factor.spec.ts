@@ -87,13 +87,13 @@ test.describe('adding an authenticator app', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(shown.join('\n'))
   })
 
-  test('shows the new events in the activity list', async ({ security }) => {
+  test('shows the new events in the activity list', async ({ security, activity }) => {
     await security.goto()
     await security.addAuthenticator()
 
-    await security.refresh.click()
+    await activity.goto()
 
-    await expect(security.activities.first()).toContainText('Two-step verification was turned on')
+    await expect(activity.entries.first()).toContainText('Two-step verification was turned on')
   })
 
   test('says why it can’t tell whether it is on, and tries again', async ({ page, security }) => {
@@ -143,13 +143,13 @@ test.describe('signing in with an authenticator app', () => {
     await security.goto()
     const { secret } = await security.addAuthenticator()
     await shell.signOutFromMenu()
-    await page.goto('/security')
-    await expect(page).toHaveURL('/sign-in?next=/security')
+    await page.goto('/settings/account')
+    await expect(page).toHaveURL('/sign-in?next=/settings/account')
 
     await signIn.signIn(baseline.account)
     await signIn.enterCode(authenticatorCode(secret, 1))
 
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
   })
 
   test('says when the code is wrong, and lets another be tried', async ({
@@ -303,6 +303,7 @@ test.describe('changing it', () => {
   test('turns off with the password and a code, and then the password alone signs in', async ({
     page,
     security,
+    activity,
     shell,
     signIn,
     overview,
@@ -317,8 +318,8 @@ test.describe('changing it', () => {
     await security.confirmTurnOff.click()
 
     await expect(security.twoFactorOff).toBeVisible()
-    await security.refresh.click()
-    await expect(security.activities.first()).toContainText('Two-step verification was turned off')
+    await activity.goto()
+    await expect(activity.entries.first()).toContainText('Two-step verification was turned off')
     await shell.signOutFromMenu()
     await signIn.signIn(baseline.account)
     await expect(page).toHaveURL('/')
