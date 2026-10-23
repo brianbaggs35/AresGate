@@ -47,6 +47,13 @@ def _networks(*cidrs: str) -> tuple[IPNetwork, ...]:
     return tuple(ipaddress.ip_network(cidr) for cidr in cidrs)
 
 
+def _unmapped(address: IPAddress) -> IPAddress:
+    """An IPv4 address written the IPv6 way (``::ffff:10.0.0.1``) is the IPv4 address."""
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        return address.ipv4_mapped
+    return address
+
+
 @dataclass(frozen=True)
 class AddressPolicy:
     """Which addresses AresGate may connect to: those in ``allowed``, except any in ``refused``."""
@@ -55,11 +62,13 @@ class AddressPolicy:
     refused: tuple[IPNetwork, ...] = ()
 
     def allows(self, address: IPAddress) -> bool:
-        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
-            address = address.ipv4_mapped
-        return any(address in network for network in self.allowed) and not any(
-            address in network for network in self.refused
-        )
+        address = _unmapped(address)
+        return any(address in network for network in self.allowed) and not self.refuses(address)
+
+    def refuses(self, address: IPAddress) -> bool:
+        """Whether the address is one that stays refused however far ``allowed`` reaches."""
+        address = _unmapped(address)
+        return any(address in network for network in self.refused)
 
 
 # What cloud providers answer on to tell a machine about itself, and so what a stolen request
@@ -176,9 +185,16 @@ def allowed_addresses(
     refused outright, even when it also leads somewhere that is."""
     for address in addresses:
         if not policy.allows(address):
+            # An address that was typed in is not "at" itself.
+            subject = f"{address}" if host == str(address) else f"{host} is at {address}, which"
+            reason = (
+                "is in a range cloud providers use for their metadata services"
+                if policy.refuses(address)
+                else "isn't a private network address"
+            )
             raise Refused(
-                f"{host} is at {address}, which isn't a private network address, so AresGate "
-                "won't connect to it. Integrations have to be on your own network."
+                f"{subject} {reason}, so AresGate won't connect to it. Integrations have to be "
+                "on your own network."
             )
     return addresses
 

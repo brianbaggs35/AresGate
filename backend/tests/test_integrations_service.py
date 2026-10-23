@@ -297,7 +297,13 @@ def test_an_address_that_is_not_on_the_home_network_is_refused(
         {"api": opnsense_api(url="https://169.254.169.254")},
     )
 
-    assert "isn't a private network address" in found["api.url"]
+    assert "metadata services" in found["api.url"]
+    assert (
+        "isn't a private network address"
+        in problems(session, settings, OPNSENSE, {"api": opnsense_api(url="https://8.8.8.8")})[
+            "api.url"
+        ]
+    )
     assert set(found) == {"api.url"}
 
 
