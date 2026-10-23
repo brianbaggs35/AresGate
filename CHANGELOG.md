@@ -97,6 +97,17 @@ Every release's notes are here, newest first. The format follows
   ([DOCS/operations.md](DOCS/operations.md#logs-and-health)).
 - The image now records which commit it was built from and when (`make up` and the release
   workflow pass them in), so the Status page can say which build is running.
+- The collector worker: a program of its own in the container, next to the API, that reads from
+  the integrations on a schedule. Each job runs on its own timer for each connection, waits
+  longer after every failure (30 seconds, then 1 minute, doubling up to its normal interval),
+  stops after its timeout, and goes through the same client as the settings pages, so the
+  address checks, certificate checks and API log are the same. The first job is a connection
+  check every five minutes, which keeps an integration's status and the services found on it
+  current without anyone pressing Test. Each job's last run, next run and last error are shown
+  on the integration's page (a **Collection** card) and on the Status page, which also says
+  whether the worker itself is running. `GET /api/collectors` has the same. Setting
+  `ARESGATE_COLLECTORS_ENABLED=false` keeps the worker running but idle
+  ([DOCS/operations.md](DOCS/operations.md#the-collector-worker)).
 
 ### Fixed
 

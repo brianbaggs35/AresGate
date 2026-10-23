@@ -16,7 +16,7 @@ make             # lists every command
 
 | Folder | What is in it |
 | --- | --- |
-| `backend/app` | The API (FastAPI), its settings and database models |
+| `backend/app` | The API (FastAPI), its settings and database models, and `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule |
 | `backend/migrations` | Database migrations (Alembic) |
 | `backend/tests` | The API's tests (pytest) |
 | `backend/e2e` | The test server's harness, used only by the end-to-end tests (see [frontend/e2e/README.md](../frontend/e2e/README.md)) |

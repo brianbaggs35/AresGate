@@ -201,6 +201,20 @@ see [SECURITY.md](../SECURITY.md).
 - The container's figures come from the kernel's files (`/proc` and the cgroup), and nginx's
   version from the package database. AresGate runs no other program to find them out.
 
+**The collector worker**
+
+- It is a separate process in the container, run as the same unprivileged user as the API, that
+  makes requests to the integrations and listens on nothing, so it adds no way in.
+- It uses the same client as the settings pages, which refuses addresses outside your home
+  network (and the cloud metadata address), applies the certificate settings you chose, follows
+  no redirects, limits how large an answer can be and how long a request takes, and blanks
+  secrets out of every message and log line. Its credentials come from the same encrypted store
+  and are opened only for the length of a run.
+- Each job has a timeout, only a few run at once, and a failing one backs off, so a broken or
+  slow integration can't use up the container's resources. What an integration answered is kept
+  to a short description, as in the API log, and shown as plain text.
+- `GET /api/collectors` is for whoever is signed in, and says no more than the Status page.
+
 **Logs**
 
 - The API logs one JSON object per line and tags each with the ID of its request, which nginx
