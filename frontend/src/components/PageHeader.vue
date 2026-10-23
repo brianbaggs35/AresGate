@@ -92,8 +92,8 @@ defineProps<{
   margin: 0;
 }
 
-.page-header__text p,
-.page-header__text :slotted(p) {
+/* :deep reaches the paragraphs that a page puts in the slot, as well as the description's. */
+.page-header__text :deep(p) {
   margin: 0.25rem 0 0;
 }
 
