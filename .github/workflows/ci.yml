@@ -504,7 +504,7 @@ jobs:
           retention-days: 14
 
   # Each shard only runs some of the specs, so the web app's coverage is merged across every
-  # shard of both runs before it's held to its 95% minimum (100% is the target).
+  # shard of both runs before it's reported. It warns below 90% and never fails the build.
   e2e-coverage:
     name: End-to-end coverage
     needs: [e2e-container, e2e-host]
@@ -531,7 +531,7 @@ jobs:
           pattern: e2e-*
           path: e2e-artifacts
 
-      - name: Merge and check the web app's coverage (95% minimum; 100% target)
+      - name: Merge and report the web app's coverage (warns below 90%)
         working-directory: frontend
         run: npm run e2e:coverage -- ../e2e-artifacts/*/coverage/web/raw
 

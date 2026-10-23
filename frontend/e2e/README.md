@@ -24,7 +24,7 @@ make e2e-up            # keep the test container running (with the baseline load
 make e2e-ui            # ... and write specs in Playwright's UI,
 make e2e-codegen       # ... or record one by clicking through the app
 make e2e-report        # open the last run's HTML report
-make e2e-coverage      # check the last full run's coverage reached its minimum
+make e2e-coverage      # report the last full run's web coverage
 make e2e-down          # stop the container and throw its data away
 ```
 
@@ -86,16 +86,17 @@ test('shows that the API is up', async ({ overview }) => {
 
 ## Coverage
 
-The aim is 100% of the web app's source and the API's, with a minimum of 95%, as for the unit
-tests.
+The unit tests are held to 100% (the build fails below 95%). The end-to-end specs have more
+leeway: their coverage is reported and never fails a build, and the aim is to keep the web app's
+above 90%. A change that adds code adds the specs that exercise it in the browser.
 
 - The web app's coverage comes from Chromium and is mapped back to `src/` through the test
   build's inline source maps. `npm run e2e:coverage` merges the raw data of one run, or of every
-  shard and both servers in CI, and fails below the minimum for lines, statements and functions
-  (`ARESGATE_E2E_COVERAGE_MIN`, 95 by default). Branches are reported only, because a few
-  defensive ones can only be reached by a unit test.
+  shard and both servers in CI, and prints a warning when lines, statements or functions are
+  below 90%. Branches are reported only, because a few defensive ones can only be reached by a
+  unit test.
 - The API runs under coverage.py, and the report (`GET /api/__test__/coverage`) is saved with
-  the rest in `e2e-results/coverage`. It is not held to a minimum: the unit tests do that, and some
+  the rest in `e2e-results/coverage`. It isn't held to a minimum either: the unit tests do that, and some
   of the API is only used by features that don't exist yet.
 
 Set `ARESGATE_E2E_COVERAGE=off` to skip collecting coverage while debugging a spec.
@@ -103,5 +104,5 @@ Set `ARESGATE_E2E_COVERAGE=off` to skip collecting coverage while debugging a sp
 ## In CI
 
 `End-to-end in the container` and `End-to-end on the runner` each run the specs in two shards;
-`End-to-end coverage` merges all four shards' web coverage and holds it to the minimum. Each
+`End-to-end coverage` merges all four shards' web coverage and reports it. Each
 shard uploads its HTML report, and traces, screenshots and videos of failures, as an artifact.

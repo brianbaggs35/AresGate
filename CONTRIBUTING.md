@@ -10,8 +10,9 @@ change before you spend time on a large one.
    commit message and the pull request's title with the same `AR-<number>`. Mention only that
    ticket's key; to refer to another, write "ticket 12".
 3. Run `make lint` and `make test` (and `make e2e` for anything you can see in the browser). Add
-   tests for what you add: the target is 100% coverage for pytest, Vitest and Playwright, and the
-   build fails below 95%.
+   tests for what you add, in pytest, Vitest and Playwright: the target is 100% coverage for
+   pytest and Vitest (the build fails below 95%), and the end-to-end specs keep the web app's
+   above 90% (reported, never a failure).
 4. Open a pull request with the template filled in. CI must be green, including SonarQube Cloud
    with no open issues. Keep your branch linear by rebasing, not merging `master` into it. A
    maintainer merges by rebasing.

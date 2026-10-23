@@ -9,9 +9,9 @@ import type { ApiCoverage } from './harness'
  * End-to-end coverage: which of the web app's source the tests ran (from Chromium's own
  * coverage, mapped back to src/ through the test build's source maps) and which of the API's
  * code (measured by coverage.py inside the test server). Reports land in e2e-results/coverage.
- * `npm run e2e:coverage` holds the web app's to a minimum once every spec has run; a run of just
- * some of them, or of one shard, isn't expected to reach it. Set ARESGATE_E2E_COVERAGE=off to
- * skip collecting any.
+ * `npm run e2e:coverage` reports the web app's once every spec has run, and warns below 90%; a
+ * run of just some of them, or of one shard, isn't expected to reach it. Set
+ * ARESGATE_E2E_COVERAGE=off to skip collecting any.
  */
 
 const RESULTS = path.resolve(import.meta.dirname, '../../e2e-results/coverage')

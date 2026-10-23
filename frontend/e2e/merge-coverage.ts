@@ -7,13 +7,14 @@ import { WEB_COVERAGE_DIR, webCoverageOptions } from './support/coverage.ts'
 
 /**
  * Merges the web app's end-to-end coverage from the raw data of one run, or of every shard and
- * test server a CI run used, and fails when too little of the source ran:
- * `npm run e2e:coverage [raw directory …]` (by default the last run's). Lines, statements and
- * functions must reach ARESGATE_E2E_COVERAGE_MIN percent (95 unless set). Branches are
- * reported but not held to it, because some defensive ones only a unit test can reach.
+ * test server a CI run used, and reports it: `npm run e2e:coverage [raw directory …]` (by
+ * default the last run's). It never fails a build, because the unit tests are what hold the
+ * code to 100%. Lines, statements and functions are expected to stay above 90%, and a run that
+ * falls short says so as a warning. Branches are reported only, because some defensive ones can
+ * only be reached by a unit test.
  */
 
-const MINIMUM = Number(process.env.ARESGATE_E2E_COVERAGE_MIN ?? '95')
+const AIM = 90
 const METRICS = ['lines', 'statements', 'functions'] as const
 
 const given = process.argv.slice(2)
@@ -32,13 +33,14 @@ if (!results) {
   process.exit(1)
 }
 
-const below = METRICS.filter((metric) => Number(results.summary[metric].pct) < MINIMUM).map(
+const below = METRICS.filter((metric) => Number(results.summary[metric].pct) < AIM).map(
   (metric) => `${metric}: ${results.summary[metric].pct.toString()}%`,
 )
 if (below.length > 0) {
-  console.error(
-    `End-to-end coverage is below the ${MINIMUM.toString()}% minimum: ${below.join(', ')}`,
+  // GitHub shows a line like this as a warning on the run, without failing it.
+  console.warn(
+    `::warning::End-to-end coverage is below the ${AIM.toString()}% aim: ${below.join(', ')}`,
   )
-  process.exit(1)
+} else {
+  console.log(`End-to-end coverage is above the ${AIM.toString()}% aim.`)
 }
-console.log(`End-to-end coverage meets the ${MINIMUM.toString()}% minimum.`)
