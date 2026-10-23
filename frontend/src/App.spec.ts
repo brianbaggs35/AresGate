@@ -97,7 +97,11 @@ describe('App', () => {
       expect(wrapper.find('[data-test="startup-error"]').text()).toContain("Can't reach AresGate.")
       expect(wrapper.find('.app-drawer').exists()).toBe(false)
 
+      const replace = vi.spyOn(router, 'replace')
       await wrapper.find('[data-test="retry"]').trigger('click')
+      await flushPromises()
+      // The retry ends when it has gone back to the page, so wait for that to be over.
+      await replace.mock.results[0]?.value
       await flushPromises()
       expect(wrapper.find('[data-test="startup-error"]').exists()).toBe(false)
       expect(router.currentRoute.value.fullPath).toBe('/settings/account?tab=activity')
