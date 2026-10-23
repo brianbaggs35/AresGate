@@ -532,24 +532,39 @@ describe('IntegrationView', () => {
   })
 
   describe('disconnecting', () => {
-    it('asks first, and moves the keyboard to the question', async () => {
+    const inDialog = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+    /** Vuetify keeps a dialog's content once it has been shown, and only hides it. */
+    const isOpen = () =>
+      document.querySelector('.v-overlay--active [data-test="confirm-dialog"]') !== null
+    const choose = async (selector: string) => {
+      inDialog(selector)!.click()
+      await flushPromises()
+    }
+
+    it('asks first', async () => {
       const opened = await open(working())
-      expect(opened.find('confirmation').exists()).toBe(false)
+      expect(isOpen()).toBe(false)
 
       await opened.click('disconnect')
 
-      expect(opened.find('confirmation').text()).toContain('Disconnect ntopng?')
-      expect(opened.find('confirmation').text()).toContain('Nothing changes on ntopng itself')
-      expect(document.activeElement).toBe(opened.find('confirmation').element)
+      expect(inDialog('confirm-title')?.textContent).toBe('Disconnect ntopng?')
+      expect(inDialog('confirm-message')?.textContent).toContain('Nothing changes on ntopng itself')
+      expect(inDialog('confirm-accept')?.className).toContain('bg-error')
       expect(opened.disconnect).not.toHaveBeenCalled()
     })
 
     it('gives the keyboard back when it is cancelled', async () => {
       const opened = await open(working())
+      ;(opened.find('disconnect').element as HTMLElement).focus()
       await opened.click('disconnect')
-      await opened.click('cancel-disconnect')
-      expect(opened.find('confirmation').exists()).toBe(false)
-      expect(document.activeElement).toBe(opened.find('disconnect').element)
+
+      await choose('confirm-cancel')
+
+      await vi.waitFor(() => {
+        expect(isOpen()).toBe(false)
+        expect(document.activeElement).toBe(opened.find('disconnect').element)
+      })
     })
 
     it('forgets the connection, and shows it as it is now', async () => {
@@ -558,10 +573,12 @@ describe('IntegrationView', () => {
       await opened.click('disconnect')
       opened.fetch.mockResolvedValue(integration())
 
-      await opened.click('confirm-disconnect')
+      await choose('confirm-accept')
 
       expect(opened.disconnect).toHaveBeenCalledWith('ntopng', TOKEN)
-      expect(opened.find('confirmation').exists()).toBe(false)
+      await vi.waitFor(() => {
+        expect(isOpen()).toBe(false)
+      })
       expect(opened.find('notice').text()).toBe(
         'ntopng is disconnected. AresGate forgot its addresses and keys.',
       )
@@ -571,16 +588,18 @@ describe('IntegrationView', () => {
       expect(opened.wrapper.find('.v-expansion-panel--active').exists()).toBe(true)
     })
 
-    it('says why it could not', async () => {
+    it('says why it could not, on the page', async () => {
       const opened = await open(working())
       opened.disconnect.mockRejectedValue(new ApiError(404, "It isn't connected.", 'not_found'))
       await opened.click('disconnect')
 
-      await opened.click('confirm-disconnect')
+      await choose('confirm-accept')
 
+      await vi.waitFor(() => {
+        expect(isOpen()).toBe(false)
+      })
       expect(opened.find('failure').text()).toBe("It isn't connected.")
       expect(opened.find('notice').exists()).toBe(false)
-      expect(opened.find('confirm-disconnect').attributes('disabled')).toBeUndefined()
     })
 
     it('does not let anything else be done while it is going', async () => {
@@ -594,10 +613,10 @@ describe('IntegrationView', () => {
         }),
       )
       await opened.click('disconnect')
-      await opened.click('confirm-disconnect')
+      await choose('confirm-accept')
       expect(opened.find('test').attributes('disabled')).toBeDefined()
       expect(opened.find('save').attributes('disabled')).toBeDefined()
-      expect(opened.find('cancel-disconnect').attributes('disabled')).toBeDefined()
+      expect(inDialog('confirm-cancel')?.hasAttribute('disabled')).toBe(true)
       opened.fetch.mockResolvedValue(integration())
       finish()
       await flushPromises()

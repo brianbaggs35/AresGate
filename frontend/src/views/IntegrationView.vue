@@ -13,6 +13,7 @@ import {
   type Integration,
 } from '@/api/integrations'
 import ApiLog from '@/components/ApiLog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ConnectionCard from '@/components/ConnectionCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import { formatAgo, formatDateTime } from '@/format'
@@ -56,8 +57,6 @@ const requests = ref(0)
 const guide = ref<number | undefined>(undefined)
 
 const summary = ref<HTMLElement | null>(null)
-const confirmation = ref<HTMLElement | null>(null)
-const disconnectButton = ref<{ $el: HTMLElement } | null>(null)
 
 const connected = computed(() => integration.value?.status !== 'not_connected')
 const changed = computed(() => JSON.stringify(drafts.value) !== untouched.value)
@@ -176,7 +175,6 @@ async function disconnect(current: Integration) {
   clearFeedback()
   try {
     await session.change((token) => disconnectIntegration(key.value, token))
-    confirming.value = false
     adopt(await session.call(() => fetchIntegration(key.value)))
     guide.value = 0
     notice.value = `${current.name} is disconnected. AresGate forgot its addresses and keys.`
@@ -184,20 +182,10 @@ async function disconnect(current: Integration) {
     failure.value = errorMessage(error)
   } finally {
     busy.value = null
+    // Closed either way, so what happened shows on the page behind it.
+    confirming.value = false
   }
 }
-
-async function cancelDisconnect() {
-  confirming.value = false
-  await nextTick()
-  disconnectButton.value?.$el.focus()
-}
-
-watch(confirming, async (asking) => {
-  if (!asking) return
-  await nextTick()
-  confirmation.value?.focus()
-})
 
 watch(key, () => {
   integration.value = null
@@ -369,7 +357,6 @@ onMounted(load)
           <v-spacer />
           <v-btn
             v-if="connected"
-            ref="disconnectButton"
             variant="text"
             color="error"
             :prepend-icon="Unplug"
@@ -389,32 +376,17 @@ onMounted(load)
         </p>
       </form>
 
-      <div v-if="confirming" ref="confirmation" tabindex="-1" class="mt-6" data-test="confirmation">
-        <v-alert type="warning" variant="tonal" :title="`Disconnect ${integration.name}?`">
-          <p class="mb-3">
-            AresGate forgets the addresses, settings and keys it has for {{ integration.name }}.
-            Nothing changes on {{ integration.name }} itself, and you can connect it again later.
-          </p>
-          <div class="d-flex flex-wrap ga-3">
-            <v-btn
-              color="error"
-              :loading="busy === 'disconnecting'"
-              data-test="confirm-disconnect"
-              @click="disconnect(integration)"
-            >
-              Disconnect
-            </v-btn>
-            <v-btn
-              variant="text"
-              :disabled="busy === 'disconnecting'"
-              data-test="cancel-disconnect"
-              @click="cancelDisconnect"
-            >
-              Cancel
-            </v-btn>
-          </div>
-        </v-alert>
-      </div>
+      <ConfirmDialog
+        v-model="confirming"
+        :title="`Disconnect ${integration.name}?`"
+        confirm-label="Disconnect"
+        destructive
+        :busy="busy === 'disconnecting'"
+        @confirm="disconnect(integration)"
+      >
+        AresGate forgets the addresses, settings and keys it has for {{ integration.name }}. Nothing
+        changes on {{ integration.name }} itself, and you can connect it again later.
+      </ConfirmDialog>
 
       <ApiLog
         :integration="integration.key"
