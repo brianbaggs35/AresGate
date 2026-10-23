@@ -67,10 +67,14 @@ test.describe('layout on a computer', () => {
     await shell.menuWidthToggle.click()
     await shell.expectMenuWidth('rail')
 
-    const menu = await shell.menu.boundingBox()
-    const card = await overview.card.boundingBox()
-
-    expect(card?.x).toBeGreaterThanOrEqual((menu?.x ?? 0) + (menu?.width ?? 0))
+    // The menu and the page glide to their new places together, so look until they have arrived.
+    await expect
+      .poll(async () => {
+        const menu = await shell.menu.boundingBox()
+        const card = await overview.card.boundingBox()
+        return (card?.x ?? 0) - ((menu?.x ?? 0) + (menu?.width ?? 0))
+      })
+      .toBeGreaterThanOrEqual(0)
   })
 })
 
