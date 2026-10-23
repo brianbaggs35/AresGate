@@ -11,6 +11,7 @@ export class AppShell {
   readonly menu: Locator
   /** The places in the menu. */
   readonly overviewLink: Locator
+  readonly integrationsLink: Locator
   readonly securityLink: Locator
   /** The account's button in the bar, which opens the menu with Sign out in it. */
   readonly userMenu: Locator
@@ -34,6 +35,7 @@ export class AppShell {
     this.logo = page.getByRole('link', { name: 'AresGate' })
     this.menu = page.getByRole('navigation', { name: 'Main' })
     this.overviewLink = page.getByTestId('nav-home')
+    this.integrationsLink = page.getByTestId('nav-integrations')
     this.securityLink = page.getByTestId('nav-security')
     this.userMenu = page.getByTestId('user-menu')
     this.signOut = page.getByTestId('sign-out')

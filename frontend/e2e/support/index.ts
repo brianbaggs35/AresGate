@@ -6,9 +6,13 @@ export {
   type BaselineData,
   type FixtureName,
   type Loaded,
+  type StandIn,
+  type StandInRequest,
   type SystemInfoRecord,
 } from './harness'
 export { AppShell, type ThemeChoice } from './pages/app-shell'
+export { IntegrationPage } from './pages/integration-page'
+export { IntegrationsPage } from './pages/integrations-page'
 export { OverviewPage } from './pages/overview-page'
 export { SecurityPage } from './pages/security-page'
 export { SetupPage } from './pages/setup-page'

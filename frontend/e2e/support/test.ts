@@ -3,6 +3,8 @@ import { test as base } from '@playwright/test'
 import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
 import { AppShell } from './pages/app-shell'
+import { IntegrationPage } from './pages/integration-page'
+import { IntegrationsPage } from './pages/integrations-page'
 import { OverviewPage } from './pages/overview-page'
 import { SecurityPage } from './pages/security-page'
 import { SetupPage } from './pages/setup-page'
@@ -13,6 +15,8 @@ export interface AresGateFixtures {
   /** The logo and the theme switcher that every page has. */
   shell: AppShell
   overview: OverviewPage
+  integrations: IntegrationsPage
+  integration: IntegrationPage
   signIn: SignInPage
   setup: SetupPage
   security: SecurityPage
@@ -66,6 +70,14 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   overview: async ({ page }, use) => {
     await use(new OverviewPage(page))
+  },
+
+  integrations: async ({ page }, use) => {
+    await use(new IntegrationsPage(page))
+  },
+
+  integration: async ({ page }, use) => {
+    await use(new IntegrationPage(page))
   },
 
   signIn: async ({ page }, use) => {
