@@ -8,10 +8,12 @@ for ``session_idle_minutes``, or ``session_max_hours`` after it began, whichever
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
+from app.audit import clean
 from app.config import Settings
 from app.models import User, UserSession
 
@@ -30,7 +32,15 @@ def expires_at(row: UserSession, settings: Settings) -> datetime:
     return min(idle_limit, row.expires_at)
 
 
-def start(db: Session, user: User, settings: Settings, now: datetime) -> tuple[UserSession, str]:
+def start(
+    db: Session,
+    user: User,
+    settings: Settings,
+    now: datetime,
+    *,
+    address: str | None = None,
+    user_agent: str | None = None,
+) -> tuple[UserSession, str]:
     """Signs the user in. Returns the session and the token for its cookie, which is the only
     time the token exists. The caller commits."""
     token = secrets.token_urlsafe(32)
@@ -41,6 +51,8 @@ def start(db: Session, user: User, settings: Settings, now: datetime) -> tuple[U
         created_at=now,
         last_seen_at=now,
         expires_at=now + timedelta(hours=settings.session_max_hours),
+        address=clean(address, 64),
+        user_agent=clean(user_agent, 256),
     )
     db.add(row)
     return row, token
@@ -65,6 +77,45 @@ def find(db: Session, token: str, settings: Settings, now: datetime) -> UserSess
 def end(db: Session, row: UserSession) -> None:
     db.delete(row)
     db.commit()
+
+
+def live_for(db: Session, user: User, settings: Settings, now: datetime) -> list[UserSession]:
+    """The user's sign-ins that are still good, the one used most recently first."""
+    idle_limit = now - timedelta(minutes=settings.session_idle_minutes)
+    return list(
+        db.scalars(
+            select(UserSession)
+            .where(
+                UserSession.user_id == user.id,
+                UserSession.expires_at > now,
+                UserSession.last_seen_at > idle_limit,
+            )
+            .order_by(UserSession.last_seen_at.desc())
+        )
+    )
+
+
+def end_one(db: Session, user: User, session_id: UUID) -> UserSession | None:
+    """Ends one of the user's sign-ins, or returns None when there's no such one. The caller
+    commits."""
+    row = db.scalar(
+        select(UserSession).where(UserSession.id == session_id, UserSession.user_id == user.id)
+    )
+    if row is not None:
+        db.delete(row)
+    return row
+
+
+def end_all_but(db: Session, user: User, keep: UserSession) -> int:
+    """Ends every one of the user's sign-ins except one, and says how many there were. The
+    caller commits."""
+    return (
+        db.connection()
+        .execute(
+            delete(UserSession).where(UserSession.user_id == user.id, UserSession.id != keep.id)
+        )
+        .rowcount
+    )
 
 
 def purge_ended(db: Session, settings: Settings, now: datetime) -> None:
