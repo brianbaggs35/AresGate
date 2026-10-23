@@ -33,6 +33,18 @@ export class IntegrationPage {
   readonly confirmDisconnect: Locator
   readonly cancelDisconnect: Locator
 
+  /** How the collectors that read from it are doing. */
+  readonly collection: Locator
+  readonly collectionWorker: Locator
+  readonly collectionEmpty: Locator
+  readonly collectionError: Locator
+  readonly collectionRefresh: Locator
+  readonly collectionRetry: Locator
+  readonly collectors: Locator
+  readonly collectorStates: Locator
+  readonly collectorTimings: Locator
+  readonly collectorErrors: Locator
+
   /** The API log. */
   readonly log: Locator
   readonly logCalls: Locator
@@ -67,6 +79,17 @@ export class IntegrationPage {
     this.confirmation = page.getByTestId('confirm-dialog')
     this.confirmDisconnect = page.getByTestId('confirm-accept')
     this.cancelDisconnect = page.getByTestId('confirm-cancel')
+
+    this.collection = page.getByTestId('collection')
+    this.collectionWorker = page.getByTestId('collection-worker')
+    this.collectionEmpty = page.getByTestId('collection-empty')
+    this.collectionError = page.getByTestId('collection-error')
+    this.collectionRefresh = page.getByTestId('collection-refresh')
+    this.collectionRetry = page.getByTestId('collection-retry')
+    this.collectors = page.getByTestId('collector')
+    this.collectorStates = page.getByTestId('collector-state')
+    this.collectorTimings = page.getByTestId('collector-timing')
+    this.collectorErrors = page.getByTestId('collector-error')
 
     this.log = page.getByTestId('api-log')
     this.logCalls = page.getByTestId('log-call')

@@ -4,6 +4,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  Clock,
   Plug,
   ScanSearch,
   ShieldBan,
@@ -12,6 +13,7 @@ import {
 import type { IconProps } from 'vuetify'
 
 import type { Problem } from '@/api/client'
+import type { CollectorState } from '@/api/collectors'
 import type {
   Connection,
   ConnectionDefinition,
@@ -52,6 +54,14 @@ export const STATUS: Readonly<Record<Status, Appearance>> = {
   untested: { label: 'Not tested yet', color: 'warning', icon: CircleDashed },
   connected: { label: 'Connected', color: 'success', icon: CircleCheck },
   problem: { label: 'Problem', color: 'error', icon: CircleAlert },
+}
+
+/** How each state of a collector looks. */
+export const COLLECTOR_STATE: Readonly<Record<CollectorState, Appearance>> = {
+  waiting: { label: 'Waiting', color: undefined, icon: CircleDashed },
+  ok: { label: 'Working', color: 'success', icon: CircleCheck },
+  problem: { label: 'Problem', color: 'error', icon: CircleAlert },
+  late: { label: 'Late', color: 'warning', icon: Clock },
 }
 
 /** How each state of a service looks. */

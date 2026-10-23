@@ -56,6 +56,27 @@ test.describe('test harness', () => {
     expect(counts.users).toBe(1)
   })
 
+  test('makes the collector worker look running, stopped or never seen', async ({ harness }) => {
+    expect((await harness.rowCounts()).worker_beats).toBe(0)
+
+    await harness.setWorker('running')
+    expect((await harness.rowCounts()).worker_beats).toBe(1)
+
+    await harness.setWorker('stopped')
+    expect((await harness.rowCounts()).worker_beats).toBe(1)
+
+    await harness.setWorker('absent')
+    expect((await harness.rowCounts()).worker_beats).toBe(0)
+  })
+
+  test('runs the collectors when asked, and has nothing to do while nothing is connected', async ({
+    harness,
+  }) => {
+    await harness.runCollectors()
+
+    expect((await harness.rowCounts()).collector_health).toBe(0)
+  })
+
   test('never touches the migration history', async ({ harness }) => {
     const { tables_emptied: emptied } = await harness.clean()
 

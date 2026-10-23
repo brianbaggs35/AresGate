@@ -55,6 +55,7 @@ function healthy(): statusApi.StatusReport {
         state: 'ok',
         detail: null,
         last_success_at: new Date(Date.now() - 5 * MINUTE).toISOString(),
+        integration: 'opnsense',
       },
       {
         key: 'wazuh',
@@ -63,6 +64,25 @@ function healthy(): statusApi.StatusReport {
         state: 'off',
         detail: 'Not connected.',
         last_success_at: null,
+        integration: 'wazuh',
+      },
+      {
+        key: 'worker',
+        name: 'Collector worker',
+        group: 'collector',
+        state: 'ok',
+        detail: null,
+        last_success_at: new Date(Date.now() - 10_000).toISOString(),
+        integration: null,
+      },
+      {
+        key: 'connection-check/opnsense/api',
+        name: 'OPNsense: Connection check',
+        group: 'collector',
+        state: 'ok',
+        detail: null,
+        last_success_at: new Date(Date.now() - 2 * MINUTE).toISOString(),
+        integration: 'opnsense',
       },
     ],
     diagnostics: 'AresGate diagnostics\nVersion: 0.0.1',
@@ -111,7 +131,12 @@ async function open(report: statusApi.StatusReport | Error = healthy()) {
         .findAll(`[data-test="${card}"] dl > div`)
         .map((row) => [row.find('dt').text(), row.find('dd').text()]),
     )
-  return { ...mounted, fetch, find, texts, facts }
+  /** What the parts in one card say, by the part of each row asked for. */
+  const partTexts = (card: string, selector: string) =>
+    mounted.wrapper
+      .findAll(`[data-test="${card}"] [data-test="${selector}"]`)
+      .map((item) => item.text())
+  return { ...mounted, fetch, find, texts, facts, partTexts }
 }
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -195,15 +220,15 @@ describe('StatusView', () => {
       expect(wrapper.find('[data-test="usage-meter"]').text()).toContain('2.0 GB of 8.0 GB · 25%')
     })
 
-    it('lists the parts with how each is doing', async () => {
-      const { find, texts, wrapper } = await open()
+    it('lists the integrations with how each is doing', async () => {
+      const { find, partTexts, wrapper } = await open()
       expect(find('status-parts').exists()).toBe(true)
-      expect(texts('part-name')).toEqual(['OPNsense', 'Wazuh'])
-      expect(texts('part-state')).toEqual(['Working', 'Off'])
-      const details = texts('part-detail')
+      expect(partTexts('status-parts', 'part-name')).toEqual(['OPNsense', 'Wazuh'])
+      expect(partTexts('status-parts', 'part-state')).toEqual(['Working', 'Off'])
+      const details = partTexts('status-parts', 'part-detail')
       expect(details[0]).toMatch(/^Last worked 5 minutes ago$/)
       expect(details[1]).toBe('Not connected.')
-      const links = wrapper.findAll('[data-test="part-open"]')
+      const links = wrapper.findAll('[data-test="status-parts"] [data-test="part-open"]')
       expect(links.map((link) => link.attributes('href'))).toEqual([
         '/integrations/opnsense',
         '/integrations/wazuh',
@@ -211,60 +236,16 @@ describe('StatusView', () => {
       expect(links[0]?.attributes('aria-label')).toBe('Open OPNsense')
     })
 
-    it.each([
-      ['ok', 'Working'],
-      ['problem', 'Problem'],
-      ['unknown', 'Not tested yet'],
-      ['off', 'Off'],
-    ] as const)('says a part in the state %s is "%s"', async (state, label) => {
-      const report = healthy()
-      report.parts = [
-        {
-          key: 'wazuh',
-          name: 'Wazuh',
-          group: 'integration',
-          state,
-          detail: null,
-          last_success_at: null,
-        },
-      ]
-      const { texts } = await open(report)
-      expect(texts('part-state')).toEqual([label])
-    })
-
-    it('shows why a part has a problem, and when it last worked', async () => {
-      const report = healthy()
-      report.parts = [
-        {
-          key: 'wazuh',
-          name: 'Wazuh',
-          group: 'integration',
-          state: 'problem',
-          detail: 'The certificate was refused.',
-          last_success_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
-        },
-      ]
-      const { texts } = await open(report)
-      expect(texts('part-detail')).toEqual([
-        'The certificate was refused. · Last worked 3 hours ago',
+    it('lists the worker and the collectors in a card of their own', async () => {
+      const { partTexts, wrapper } = await open()
+      expect(partTexts('status-collectors', 'part-name')).toEqual([
+        'Collector worker',
+        'OPNsense: Connection check',
       ])
-    })
-
-    it('says nothing about a part that has nothing to say', async () => {
-      const report = healthy()
-      report.parts = [
-        {
-          key: 'wazuh',
-          name: 'Wazuh',
-          group: 'integration',
-          state: 'ok',
-          detail: null,
-          last_success_at: null,
-        },
-      ]
-      const { find } = await open(report)
-      expect(find('part-name').text()).toBe('Wazuh')
-      expect(find('part-detail').exists()).toBe(false)
+      expect(partTexts('status-collectors', 'part-state')).toEqual(['Working', 'Working'])
+      // Only the collector that reads from an integration leads to its page.
+      const links = wrapper.findAll('[data-test="status-collectors"] [data-test="part-open"]')
+      expect(links.map((link) => link.attributes('href'))).toEqual(['/integrations/opnsense'])
     })
 
     it('says what it can when it is running from source', async () => {
@@ -362,7 +343,31 @@ describe('StatusView', () => {
     it('says which part has a problem', async () => {
       const report = healthy()
       report.parts[0]!.state = 'problem'
+      report.parts[3]!.state = 'problem'
+      // The collector's trouble is the integration's, so it is not said twice.
       expect(await items(report)).toEqual(['OPNsense has a problem.'])
+    })
+
+    it('says when the worker has stopped', async () => {
+      const report = healthy()
+      report.parts[2]!.state = 'problem'
+      expect(await items(report)).toEqual(['Collector worker has a problem.'])
+    })
+
+    it('says when a collector has a problem that its integration does not show', async () => {
+      const report = healthy()
+      report.parts[3]!.state = 'problem'
+      expect(await items(report)).toEqual(['OPNsense: Connection check has a problem.'])
+    })
+
+    it('does not mistake the trouble of another integration for a collector’s own', async () => {
+      const report = healthy()
+      report.parts[1]!.state = 'problem'
+      report.parts[3]!.state = 'problem'
+      expect(await items(report)).toEqual([
+        'Wazuh has a problem.',
+        'OPNsense: Connection check has a problem.',
+      ])
     })
 
     it('says when AresGate runs behind this computer', async () => {
@@ -400,14 +405,14 @@ describe('StatusView', () => {
 
   describe('asking again', () => {
     it('reads the report again when asked to', async () => {
-      const { fetch, find, texts } = await open()
+      const { fetch, find, partTexts } = await open()
       const next = healthy()
       next.parts[0]!.state = 'problem'
       fetch.mockResolvedValue(next)
       await find('status-refresh').trigger('click')
       await flushPromises()
       expect(fetch).toHaveBeenCalledTimes(2)
-      expect(texts('part-state')).toEqual(['Problem', 'Off'])
+      expect(partTexts('status-parts', 'part-state')).toEqual(['Problem', 'Off'])
     })
 
     it('says so when it cannot be read, and tries again', async () => {

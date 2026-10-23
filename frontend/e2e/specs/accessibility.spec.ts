@@ -105,8 +105,12 @@ for (const theme of ['light', 'dark'] as const) {
       await integration.field('api', 'token').fill('the wrong token')
       await integration.save.click()
       await expect(integration.status).toHaveText('Problem')
+      // The collector worker and a collector with a problem are listed too.
+      await harness.setWorker('running')
+      await harness.runCollectors()
       await status.goto()
       await expect(status.attention).toBeVisible()
+      await expect(status.collectorStates).toHaveText(['Working', 'Problem'])
       await expectAccessible(page)
 
       await status.copy.click()
@@ -350,6 +354,15 @@ for (const theme of ['light', 'dark'] as const) {
       await integration.field('api', 'token').fill('a-valid-token')
       await integration.save.click()
       await expect(integration.status).toHaveText('Connected')
+      await expectAccessible(page)
+
+      // The collection card, whether the worker has reported in or not, and with a job listed.
+      await expect(integration.collectionWorker).toBeVisible()
+      await expectAccessible(page)
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+      await expect(integration.collectorStates).toHaveText('Working')
       await expectAccessible(page)
 
       await integration.disconnect.click()

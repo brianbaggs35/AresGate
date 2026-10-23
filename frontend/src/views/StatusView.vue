@@ -1,38 +1,23 @@
 <script setup lang="ts">
-import {
-  ChevronRight,
-  CircleAlert,
-  CircleCheck,
-  CircleDashed,
-  Copy,
-  RefreshCw,
-  Unplug,
-} from '@lucide/vue'
+import { Copy, RefreshCw } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
-import { fetchStatus, type Part, type PartState, type StatusReport } from '@/api/status'
+import { fetchStatus, type Part, type StatusReport } from '@/api/status'
 import AppPage from '@/components/AppPage.vue'
 import FactList from '@/components/FactList.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import PartList from '@/components/PartList.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import UsageMeter from '@/components/UsageMeter.vue'
-import { formatAgo, formatBytes, formatDateTime, formatDuration } from '@/format'
+import { formatBytes, formatDateTime, formatDuration } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
 /** A computer's clock more than this far from AresGate's is worth saying so. */
 const CLOCK_TOLERANCE_SECONDS = 60
 /** A certificate this close to its end is worth saying so. */
 const CERTIFICATE_WARNING_DAYS = 14
-
-/** How each state of a part looks, always with words and a shape as well as a colour. */
-const PART_STATES = {
-  ok: { label: 'Working', color: 'success', icon: CircleCheck },
-  problem: { label: 'Problem', color: 'error', icon: CircleAlert },
-  unknown: { label: 'Not tested yet', color: 'warning', icon: CircleDashed },
-  off: { label: 'Off', color: undefined, icon: Unplug },
-} as const satisfies Record<PartState, object>
 
 const session = useSessionStore()
 
@@ -88,12 +73,6 @@ function certificateEnds(days: number): string {
   return `expires in ${days.toString()} ${days === 1 ? 'day' : 'days'}`
 }
 
-/** What a part says about itself, and when it last worked. */
-const partNote = (part: Part) =>
-  [part.detail, part.last_success_at && `Last worked ${formatAgo(part.last_success_at)}`]
-    .filter(Boolean)
-    .join(' · ')
-
 /** What needs a look, in words. Nothing here means everything checks out. */
 const attention = computed(() => {
   const current = report.value as StatusReport
@@ -109,14 +88,25 @@ const attention = computed(() => {
   if (certificate && certificate.days_left <= CERTIFICATE_WARNING_DAYS) {
     found.push(`The certificate ${certificateEnds(certificate.days_left)}.`)
   }
+  // A collector whose integration is already named is the same trouble said again.
+  const failing = new Set(
+    current.parts
+      .filter((part) => part.group === 'integration' && part.state === 'problem')
+      .map((part) => part.integration),
+  )
   for (const part of current.parts) {
-    if (part.state === 'problem') found.push(`${part.name} has a problem.`)
+    const repeated = part.group === 'collector' && failing.has(part.integration)
+    if (part.state === 'problem' && !repeated) found.push(`${part.name} has a problem.`)
   }
   if (Math.abs(clockSkew.value) > CLOCK_TOLERANCE_SECONDS) {
     found.push(`AresGate's clock is ${clockSummary(clockSkew.value)}.`)
   }
   return found
 })
+
+/** The parts of one group, in the order the API lists them. */
+const partsOf = (group: Part['group']) =>
+  (report.value as StatusReport).parts.filter((part) => part.group === group)
 
 const aresgateFacts = computed(() => {
   const { aresgate } = report.value as StatusReport
@@ -306,45 +296,19 @@ onMounted(load)
       </SectionCard>
 
       <SectionCard
-        title="Parts"
-        description="Each part of AresGate that can work or not."
+        title="Integrations"
+        description="The systems AresGate watches the network through."
         data-test="status-parts"
       >
-        <ul class="status__parts">
-          <li v-for="part in report.parts" :key="part.key" class="status__part" data-test="part">
-            <div class="status__part-text">
-              <div class="text-body-large">
-                <span data-test="part-name">{{ part.name }}</span>
-                <v-chip
-                  :color="PART_STATES[part.state].color"
-                  :prepend-icon="PART_STATES[part.state].icon"
-                  size="small"
-                  variant="tonal"
-                  class="ml-2"
-                  data-test="part-state"
-                >
-                  {{ PART_STATES[part.state].label }}
-                </v-chip>
-              </div>
-              <div
-                v-if="partNote(part)"
-                class="text-body-medium text-medium-emphasis"
-                data-test="part-detail"
-              >
-                {{ partNote(part) }}
-              </div>
-            </div>
-            <v-btn
-              variant="text"
-              :append-icon="ChevronRight"
-              :to="{ name: 'integration', params: { key: part.key } }"
-              :aria-label="`Open ${part.name}`"
-              data-test="part-open"
-            >
-              Open
-            </v-btn>
-          </li>
-        </ul>
+        <PartList :parts="partsOf('integration')" />
+      </SectionCard>
+
+      <SectionCard
+        title="Collectors"
+        description="The worker, and the jobs it runs on a schedule to read from each integration."
+        data-test="status-collectors"
+      >
+        <PartList :parts="partsOf('collector')" />
       </SectionCard>
 
       <SectionCard
@@ -396,29 +360,6 @@ onMounted(load)
   flex-direction: column;
   gap: 1rem;
   margin-top: 1rem;
-}
-
-.status__parts {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.status__part {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0;
-}
-
-.status__part + .status__part {
-  border-top: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
-}
-
-.status__part-text {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .status__copy {

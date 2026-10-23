@@ -9,6 +9,7 @@ export {
   type StandIn,
   type StandInRequest,
   type SystemInfoRecord,
+  type WorkerPulse,
 } from './harness'
 export { ActivityPage } from './pages/activity-page'
 export { AppShell, type ThemeChoice } from './pages/app-shell'

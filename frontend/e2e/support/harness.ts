@@ -65,6 +65,10 @@ export interface StandIn {
   fingerprint: string | null
 }
 
+/** How the collector worker looks to the status page: it reported in just now, it did a while
+ * ago and has gone quiet, or it never has. */
+export type WorkerPulse = 'running' | 'stopped' | 'absent'
+
 export interface ApiCoverage {
   percent_covered: number
   /** An HTML report and an LCOV file, paths relative to backend/ and contents in base64. */
@@ -170,6 +174,23 @@ export class Harness {
     return this.api
       .post('/api/__test__/stand-ins', { data: request })
       .then((response) => readJson<StandIn>(response, `Starting a ${request.kind} stand-in`))
+  }
+
+  /** Runs every collector once, now, and answers when they have all finished. The worker does
+   * nothing of its own in the tests, so collecting happens when a spec says. */
+  async runCollectors(): Promise<void> {
+    const response = await this.api.post('/api/__test__/collectors/run')
+    if (!response.ok()) {
+      throw new Error(`Running the collectors failed with ${response.status()}`)
+    }
+  }
+
+  /** Makes the collector worker look like it is running, has stopped or has never reported in. */
+  async setWorker(state: WorkerPulse): Promise<void> {
+    const response = await this.api.put('/api/__test__/collectors/worker', { data: { state } })
+    if (!response.ok()) {
+      throw new Error(`Setting the worker to ${state} failed with ${response.status()}`)
+    }
   }
 
   /** The API's coverage so far, or null when the API isn't measuring it. */

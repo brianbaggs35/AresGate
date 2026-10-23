@@ -41,6 +41,81 @@ test.describe('status page', () => {
     await expect(page).toHaveURL('/integrations/wazuh')
   })
 
+  test('lists the collector worker, which has not reported in yet', async ({ status }) => {
+    await status.goto()
+
+    await expect(status.collectorNames).toHaveText(['Collector worker'])
+    await expect(status.collectorStates).toHaveText(['Waiting'])
+    await expect(status.collector('Collector worker')).toContainText("Hasn't reported in yet.")
+    await expect(status.collector('Collector worker').getByTestId('part-open')).toHaveCount(0)
+    await expect(status.fine).toBeVisible()
+  })
+
+  test('shows the worker working, and says when it has stopped', async ({ harness, status }) => {
+    await harness.setWorker('running')
+    await status.goto()
+
+    await expect(status.collectorStates).toHaveText(['Working'])
+    await expect(status.fine).toBeVisible()
+
+    await harness.setWorker('stopped')
+    await status.refresh.click()
+
+    await expect(status.collectorStates).toHaveText(['Problem'])
+    await expect(status.collector('Collector worker')).toContainText('nothing is being collected')
+    await expect(status.attentionItems).toHaveText(['Collector worker has a problem.'])
+  })
+
+  test('lists a collector for each connected integration once it has run, and opens its page', async ({
+    page,
+    harness,
+    integration,
+    status,
+  }) => {
+    const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+    await integration.goto('ntopng')
+    await integration.address('api').fill(ntopng.url)
+    await integration.field('api', 'token').fill(TOKEN)
+    await integration.save.click()
+    await expect(integration.status).toHaveText('Connected')
+    await harness.setWorker('running')
+    await harness.runCollectors()
+
+    await status.goto()
+
+    await expect(status.collectorNames).toHaveText(['Collector worker', 'ntopng: Connection check'])
+    await expect(status.collectorStates).toHaveText(['Working', 'Working'])
+    await expect(status.collector('ntopng: Connection check')).toContainText('Last worked just now')
+    await expect(status.fine).toBeVisible()
+
+    await status.collector('ntopng: Connection check').getByRole('link').click()
+
+    await expect(page).toHaveURL('/integrations/ntopng')
+  })
+
+  test('says a failing collector once, together with its integration', async ({
+    harness,
+    integration,
+    status,
+  }) => {
+    const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+    await integration.goto('ntopng')
+    await integration.address('api').fill(ntopng.url)
+    await integration.field('api', 'token').fill('the wrong token')
+    await integration.save.click()
+    await expect(integration.status).toHaveText('Problem')
+    await harness.setWorker('running')
+    await harness.runCollectors()
+
+    await status.goto()
+
+    await expect(status.collector('ntopng: Connection check')).toContainText('Problem')
+    await expect(status.collector('ntopng: Connection check')).toContainText(
+      'ntopng redirected to its login page',
+    )
+    await expect(status.attentionItems).toHaveText(['ntopng has a problem.'])
+  })
+
   test('shows a part that works, and one with a problem, and asks again on request', async ({
     harness,
     integration,

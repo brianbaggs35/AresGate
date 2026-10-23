@@ -3,7 +3,9 @@ import {
   formatAgo,
   formatBytes,
   formatDateTime,
+  formatDue,
   formatDuration,
+  formatElapsed,
   formatTimestamp,
 } from '@/format'
 
@@ -113,5 +115,39 @@ describe('formatDuration', () => {
     [2 * 86400 + 4 * 3600 + 30 * 60, '2d 4h 30m'],
   ])('says %d seconds as %s', (seconds, said) => {
     expect(formatDuration(seconds)).toBe(said)
+  })
+})
+
+describe('formatDue', () => {
+  const now = Date.parse('2026-03-04T12:00:00Z')
+
+  it.each([
+    ['2026-03-04T11:00:00Z', 'within a minute'],
+    ['2026-03-04T12:00:30Z', 'within a minute'],
+    ['2026-03-04T12:05:00Z', 'in 5 minutes'],
+    ['2026-03-04T15:00:00Z', 'in 3 hours'],
+  ])('puts %s as %s', (iso, words) => {
+    expect(formatDue(iso, now, 'en-US')).toBe(words)
+  })
+
+  it('counts from now unless told when now is', () => {
+    expect(
+      formatDue(new Date(Date.now() + 2 * 3600 * 1000).toISOString(), undefined, 'en-US'),
+    ).toBe('in 2 hours')
+  })
+})
+
+describe('formatElapsed', () => {
+  it.each([
+    [0, '0 ms'],
+    [340, '340 ms'],
+    [999, '999 ms'],
+    [1000, '1.0 s'],
+    [1840, '1.8 s'],
+    [59_000, '59.0 s'],
+    [60_000, '1 min 0 s'],
+    [125_000, '2 min 5 s'],
+  ])('says %d milliseconds as %s', (milliseconds, said) => {
+    expect(formatElapsed(milliseconds)).toBe(said)
   })
 })

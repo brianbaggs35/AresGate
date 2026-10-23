@@ -164,6 +164,84 @@ test.describe('integrations', () => {
       await expect(integration.logCalls).toHaveCount(1)
     })
 
+    test('shows how the collectors reading from it are doing', async ({ harness, integration }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      // There is nothing to collect from until it is connected.
+      await expect(integration.collection).toHaveCount(0)
+
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+
+      await expect(integration.collection).toBeVisible()
+      await expect(integration.collectionWorker).toContainText("hasn't reported in yet")
+      await expect(integration.collectionEmpty).toContainText('Nothing is being collected')
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectionWorker).toHaveCount(0)
+      await expect(integration.collectors).toHaveCount(1)
+      await expect(integration.collectors).toContainText('Connection check')
+      await expect(integration.collectorStates).toHaveText('Working')
+      await expect(integration.collectorTimings).toContainText('Last ran just now')
+      await expect(integration.collectorTimings).toContainText('next run in 5 minutes')
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // The collector's check is in the log with the ones made from this page.
+      await integration.logRefresh.click()
+      await expect(integration.logCalls).toHaveCount(2)
+    })
+
+    test('says why a collector failed, and that the worker has stopped', async ({
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill('the wrong token')
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Problem')
+      await harness.setWorker('stopped')
+      await harness.runCollectors()
+
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectionWorker).toContainText('has stopped reporting in')
+      await expect(integration.collectorStates).toHaveText('Problem')
+      await expect(integration.collectorErrors).toContainText('ntopng redirected to its login page')
+    })
+
+    test('says so when the collectors can’t be loaded, and shows them again on request', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      let fail = true
+      await page.route('**/api/collectors**', (route) => (fail ? route.abort() : route.continue()))
+
+      await integration.collectionRefresh.click()
+      await expect(integration.collectionError).toContainText("Can't reach AresGate.")
+      await expect(integration.collectors).toHaveCount(0)
+
+      fail = false
+      await integration.collectionRetry.click()
+
+      await expect(integration.collectionError).toHaveCount(0)
+      await expect(integration.collectors).toHaveCount(1)
+    })
+
     test('fixing the token and saving again makes it work', async ({ harness, integration }) => {
       const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
       await integration.goto('ntopng')
