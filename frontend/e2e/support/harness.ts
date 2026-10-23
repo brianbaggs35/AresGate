@@ -42,6 +42,29 @@ export interface SystemInfoRecord {
   updated_at: string
 }
 
+/** The kinds of integration a stand-in can answer like. */
+export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec'
+
+/** What a stand-in accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
+ * `api_key` and `api_secret` (and the keys of the `services` it has installed and running). */
+export interface StandInRequest {
+  kind: StandInKind
+  token?: string
+  api_key?: string
+  api_secret?: string
+  services?: string[]
+}
+
+/** A server on the test machine that answers like an integration. */
+export interface StandIn {
+  id: string
+  kind: StandInKind
+  /** Where to connect to it. */
+  url: string
+  /** Its certificate's SHA-256 fingerprint, for the ones that have a certificate of their own. */
+  fingerprint: string | null
+}
+
 export interface ApiCoverage {
   percent_covered: number
   /** An HTML report and an LCOV file, paths relative to backend/ and contents in base64. */
@@ -140,6 +163,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/account', { data: record })
       .then((response) => readJson<Credentials>(response, 'Making an account'))
+  }
+
+  /** Starts a server that answers like an integration. It runs until the next test's clean. */
+  standIn(request: StandInRequest): Promise<StandIn> {
+    return this.api
+      .post('/api/__test__/stand-ins', { data: request })
+      .then((response) => readJson<StandIn>(response, `Starting a ${request.kind} stand-in`))
   }
 
   /** The API's coverage so far, or null when the API isn't measuring it. */

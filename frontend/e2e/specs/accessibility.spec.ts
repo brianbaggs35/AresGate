@@ -213,6 +213,88 @@ for (const theme of ['light', 'dark'] as const) {
 
       await expectAccessible(page)
     })
+
+    test('the integrations list has no WCAG 2.2 AA problems', async ({
+      page,
+      integrations,
+      shell,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.names).toHaveCount(4)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+    })
+
+    test('an integration, with its mistakes and its log, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      shell,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: 'a-valid-token' })
+      await integration.goto('ntopng')
+      await expect(integration.title).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await integration.address('api').fill('http://8.8.8.8:3000')
+      await integration.field('api', 'token').fill('a-token')
+      await integration.save.click()
+      await expect(integration.problems).toBeVisible()
+      await expectAccessible(page)
+
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill('the wrong token')
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.logCalls).toHaveCount(1)
+      await expectAccessible(page)
+
+      await integration.field('api', 'token').fill('a-valid-token')
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+      await expectAccessible(page)
+
+      await integration.disconnect.click()
+      await expect(integration.confirmation).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('OPNsense, with its certificate, services and Zenarmor, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      shell,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: 'a-key',
+        api_secret: 'a-secret',
+        services: ['suricata', 'openvpn'],
+      })
+      await integration.goto('opnsense')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill('a-key')
+      await integration.field('api', 'api_secret').fill('a-secret')
+      await integration.tlsMode('api', 'pinned').check()
+      await integration.lookUp('api').click()
+      await expect(integration.found('api')).toBeVisible()
+      await expectAccessible(page)
+
+      await integration.trust('api').click()
+      await integration.save.click()
+      await expect(integration.module('api', 'Suricata')).toContainText('Running')
+      await expectAccessible(page)
+
+      await integration.useConnection('zenarmor').check()
+      await expect(integration.address('zenarmor')).toBeVisible()
+      await expectAccessible(page)
+    })
   })
 }
 

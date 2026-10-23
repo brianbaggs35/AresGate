@@ -69,6 +69,12 @@ test('shows that the API is up', async ({ overview }) => {
   table gets a
   factory in `backend/e2e/factories.py` and an endpoint in `backend/e2e/api.py`, so specs can make
   records on demand; give the baseline the rows every spec can rely on in `baseline.py`.
+- **`harness.standIn()`** starts a stand-in for an integration inside the test server's process
+  (`kind` is `ntopng`, `crowdsec`, `opnsense` or `zenarmor`) and returns its `url` (and, for the
+  ones that use TLS, its certificate's `fingerprint`), so a spec can connect, test and pin a
+  certificate for real without OPNsense or ntopng. It answers what the product's documentation
+  says it does, for the key or token the spec gives it, and `harness.clean()` stops them. The
+  `integrations` and `integration` fixtures are the list and the detail page.
 - **`authenticator`** is the passkey device every page has, made of software (Chromium's virtual
   authenticator, `support/virtual-authenticator.ts`). It unlocks itself, so a test adds a passkey
   and signs in with it without a prompt to click through, and `setUnlockable(false)` makes it
