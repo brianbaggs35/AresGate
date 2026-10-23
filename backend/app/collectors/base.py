@@ -1,0 +1,81 @@
+"""What a collector is: one regular job that reads from one kind of connection.
+
+A collector holds no state. It is handed everything it needs for one run in a ``Context``: the
+connection with its secrets opened, a client that checks the address, the certificate and logs
+every request (the same one the settings pages use), and a way to write to the database."""
+
+import asyncio
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import ClassVar
+
+from sqlalchemy.orm import Session
+
+from app.integrations.client import ApiClient, Target
+
+
+class CollectorFailed(Exception):
+    """A run that didn't work. The message says why, for whoever reads the status page, so it
+    holds nothing secret."""
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """What a run that worked came to."""
+
+    # How many things it collected, for a collector that counts them.
+    items: int | None = None
+
+
+@dataclass(frozen=True)
+class Context:
+    """Everything a collector gets for one run."""
+
+    target: Target
+    client: ApiClient
+    # When the run began.
+    now: datetime
+    # When the connection's settings were last saved, as of loading them. A collector that keeps
+    # what it learned about the connection checks that this still holds first, so an answer from
+    # the old settings never lands on the new ones.
+    settings_version: datetime
+    new_session: Callable[[], Session]
+
+    async def save[T](self, work: Callable[[Session], T]) -> T:
+        """Runs ``work`` with a session of its own, off the event loop, and commits it."""
+        return await asyncio.to_thread(self._save, work)
+
+    def _save[T](self, work: Callable[[Session], T]) -> T:
+        with self.new_session() as db:
+            result = work(db)
+            db.commit()
+            return result
+
+
+class Collector(ABC):
+    """A job to run on every connection it applies to."""
+
+    # What its health record and the status page call it: lowercase words and hyphens.
+    key: ClassVar[str]
+    title: ClassVar[str]
+    # One sentence on what it does, for the integration's page.
+    summary: ClassVar[str]
+    # How long after a run that worked the next one starts.
+    interval: ClassVar[timedelta]
+    # A run that takes longer than this is stopped and counts as a failure.
+    timeout: ClassVar[timedelta]
+    # Which connections it applies to; left out, it applies to every one.
+    integration: ClassVar[str | None] = None
+    connection: ClassVar[str | None] = None
+    # The module it reads from. It doesn't run on a connection that has switched the module off.
+    module: ClassVar[str | None] = None
+
+    @classmethod
+    def reads(cls, integration: str, connection: str) -> bool:
+        return cls.integration in (None, integration) and cls.connection in (None, connection)
+
+    @abstractmethod
+    async def collect(self, context: Context) -> Outcome:
+        """One run. Raises ``CollectorFailed`` when it can't do its job."""

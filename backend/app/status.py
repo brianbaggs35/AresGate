@@ -94,15 +94,17 @@ class ContainerInfo(BaseModel):
 
 
 class Part(BaseModel):
-    """One part of AresGate that can be healthy or not. Integrations now; collectors, AI
-    providers, notification channels and background jobs join them as they are built."""
+    """One part of AresGate that can be healthy or not. Integrations and collectors now; AI
+    providers and notification channels join them as they are built."""
 
     key: str
     name: str
-    group: Literal["integration"]
+    group: Literal["integration", "collector"]
     state: State
     detail: str | None
     last_success_at: AwareDatetime | None
+    # The integration whose page explains it, if it has one.
+    integration: str | None = None
 
 
 class StatusReport(BaseModel):

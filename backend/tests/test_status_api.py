@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app import __version__, status
 from app.config import Settings, get_settings
 from app.integrations import netguard
-from app.models import IntegrationConnection, User, utcnow
+from app.models import CollectorHealth, IntegrationConnection, User, WorkerBeat, utcnow
 
 BASE = "/api/status"
 
@@ -143,11 +143,11 @@ def test_it_measures_the_container(client: TestClient, csrf_token: str) -> None:
 def test_it_lists_every_integration_even_with_none_connected(
     client: TestClient, csrf_token: str
 ) -> None:
-    parts = get(client)["parts"]
+    parts = [part for part in get(client)["parts"] if part["group"] == "integration"]
 
     assert [part["key"] for part in parts] == ["opnsense", "ntopng", "wazuh", "crowdsec"]
     for part in parts:
-        assert part["group"] == "integration"
+        assert part["integration"] == part["key"]
         assert part["state"] == "off"
         assert part["detail"] == "Not connected."
         assert part["last_success_at"] is None
@@ -170,6 +170,125 @@ def test_it_says_how_each_integration_is_doing(
     assert parts["wazuh"]["state"] == "unknown"
     assert parts["wazuh"]["detail"] == "Saved, but not tested yet."
     assert parts["opnsense"]["state"] == "off"
+
+
+def health_row(session: Session, integration: str, key: str, **changes: object) -> CollectorHealth:
+    row = CollectorHealth(
+        collector="connection-check",
+        integration=integration,
+        connection=key,
+        interval_seconds=300,
+        consecutive_failures=0,
+        updated_at=utcnow(),
+    )
+    for name, value in changes.items():
+        setattr(row, name, value)
+    session.add(row)
+    session.commit()
+    return row
+
+
+def beat(session: Session, seen: datetime) -> None:
+    session.add(WorkerBeat(name="collectors", started_at=seen, beat_at=seen))
+    session.commit()
+
+
+def test_it_says_the_collector_worker_has_not_reported_in_yet(
+    client: TestClient, csrf_token: str
+) -> None:
+    parts = [part for part in get(client)["parts"] if part["group"] == "collector"]
+
+    assert parts == [
+        {
+            "key": "worker",
+            "name": "Collector worker",
+            "group": "collector",
+            "state": "unknown",
+            "detail": "Hasn't reported in yet.",
+            "last_success_at": None,
+            "integration": None,
+        }
+    ]
+
+
+def test_it_says_whether_the_collector_worker_is_alive(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    beat(session, utcnow())
+
+    [worker] = [part for part in get(client)["parts"] if part["key"] == "worker"]
+
+    assert (worker["state"], worker["detail"]) == ("ok", None)
+    assert worker["last_success_at"] is not None
+
+
+def test_it_says_when_the_collector_worker_has_stopped(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    beat(session, utcnow() - timedelta(minutes=5))
+
+    [worker] = [part for part in get(client)["parts"] if part["key"] == "worker"]
+
+    assert worker["state"] == "problem"
+    assert (
+        worker["detail"]
+        == "Hasn't reported in for a minute or more, so nothing is being collected."
+    )
+
+
+def test_it_says_when_collecting_is_turned_off(
+    app: FastAPI, client: TestClient, csrf_token: str, settings: Settings, session: Session
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: settings.model_copy(
+        update={"collectors_enabled": False}
+    )
+    health_row(session, "ntopng", "api")
+
+    parts = [part for part in get(client)["parts"] if part["group"] == "collector"]
+
+    assert [(part["key"], part["state"]) for part in parts] == [("worker", "off")]
+    assert "ARESGATE_COLLECTORS_ENABLED" in parts[0]["detail"]
+
+
+def test_it_says_how_each_collector_is_doing(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    now = utcnow()
+    beat(session, now)
+    health_row(
+        session,
+        "ntopng",
+        "api",
+        last_finished_at=now,
+        last_success_at=now,
+        next_run_at=now + timedelta(minutes=5),
+    )
+    health_row(
+        session, "crowdsec", "lapi", consecutive_failures=2, last_error="It refused the key."
+    )
+    health_row(session, "opnsense", "api")
+    health_row(
+        session,
+        "wazuh",
+        "manager",
+        last_finished_at=now - timedelta(hours=1),
+        next_run_at=now - timedelta(minutes=50),
+    )
+
+    parts = {part["key"]: part for part in get(client)["parts"] if part["group"] == "collector"}
+
+    ok = parts["connection-check/ntopng/api"]
+    assert (ok["name"], ok["state"], ok["detail"]) == ("ntopng: Connection check", "ok", None)
+    assert ok["integration"] == "ntopng"
+    assert ok["last_success_at"] is not None
+    problem = parts["connection-check/crowdsec/lapi"]
+    assert (problem["state"], problem["detail"]) == ("problem", "It refused the key.")
+    waiting = parts["connection-check/opnsense/api"]
+    assert (waiting["state"], waiting["detail"]) == ("unknown", "Hasn't run yet.")
+    late = parts["connection-check/wazuh/manager"]
+    assert late["state"] == "problem"
+    assert late["name"] == "Wazuh · Manager API: Connection check"
+    assert "Is the collector worker running?" in late["detail"]
 
 
 def test_it_holds_no_secret_and_no_address_in_the_text_for_a_bug_report(

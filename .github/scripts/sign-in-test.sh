@@ -5,8 +5,10 @@
 # is printed once the account exists, that the system endpoint needs a sign-in, that a request's
 # ID is in the response and in both nginx's and the API's log, that an authenticator app can be
 # added, is asked for when signing in (once for each code), and is turned off by the command for
-# someone who has lost it, and that five wrong passwords lock the account. Run it from the repository root against a container that has just started on
-# empty data, with the stack up and the ports in the environment, as the smoke test is.
+# someone who has lost it, that five wrong passwords lock the account, and that the collector
+# worker has started and reports in. Run it from the repository root against a container that has
+# just started on empty data, with the stack up and the ports in the environment, as the smoke
+# test is.
 
 # The jq programs name their own variables ($u), which the shell must not expand.
 # shellcheck disable=SC2016
@@ -179,6 +181,20 @@ jq --exit-status '.version != "" and .database.status == "ok" and .uptime_second
     fail "the system endpoint says: $body"
 signed_out="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' "$origin/api/system")"
 [[ "$signed_out" = 401 ]] || fail "the system endpoint answered $signed_out to someone not signed in, not 401"
+
+echo "The collector worker has started and reports in"
+# It waits for the migrations, then says so every 15 seconds. The container's own health check
+# doesn't cover it, so this is what shows its program is wired up.
+for _ in $(seq 30); do
+    request GET /api/collectors ""
+    expect 200 "reading the collectors"
+    if jq --exit-status '.worker.state == "running"' <<<"$body" >/dev/null; then
+        break
+    fi
+    sleep 2
+done
+jq --exit-status '.worker.state == "running" and .worker.started_at != null' <<<"$body" >/dev/null ||
+    fail "the collector worker hasn't reported in: $body"
 
 echo "A request has an ID, which is in the response, in nginx's log and in the API's log"
 request_headers="$(curl --silent --insecure --dump-header - --output /dev/null "$origin/api/no-such-page?a=1")"

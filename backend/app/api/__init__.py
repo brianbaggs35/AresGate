@@ -6,6 +6,7 @@ from app.api import (
     account,
     audit,
     auth,
+    collectors,
     credentials,
     health,
     integrations,
@@ -26,6 +27,7 @@ api_router.include_router(two_factor.router)
 api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
+api_router.include_router(collectors.router)
 api_router.include_router(audit.router)
 api_router.include_router(status.router)
 api_router.include_router(system.router)

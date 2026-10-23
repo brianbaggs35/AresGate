@@ -4,15 +4,21 @@ They put the database back to a known state, make extra records and hand over th
 coverage. Only ``e2e.main`` mounts them.
 """
 
-from datetime import datetime
-from typing import Annotated
+from datetime import datetime, timedelta
+from typing import Annotated, Literal
 
 import coverage
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import delete
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.deps import SettingsDep
+from app.collectors.health import WORKER
+from app.collectors.scheduler import Scheduler
 from app.db import get_session
+from app.integrations.apilog import ApiLogRecorder
+from app.models import WorkerBeat, utcnow
 from e2e import baseline, factories
 from e2e.baseline import (
     BASELINE_ACCOUNT,
@@ -171,6 +177,38 @@ def start_stand_in(body: StandInRequest) -> StandInRecord:
 def stop_stand_ins() -> None:
     """Stops every stand-in."""
     STAND_INS.stop_all()
+
+
+def collector_scheduler(request: Request, settings: SettingsDep, db: Db) -> Scheduler:
+    """A scheduler on the same database as the request, and allowed the addresses the stand-ins
+    have (the product's own is not)."""
+    new_session = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+    return Scheduler(
+        settings, new_session, ApiLogRecorder(new_session), request.app.state.address_policy
+    )
+
+
+@router.post("/collectors/run", status_code=status.HTTP_204_NO_CONTENT)
+async def run_collectors(scheduler: Annotated[Scheduler, Depends(collector_scheduler)]) -> None:
+    """Runs every collector once, now, and answers when they have all finished. The worker does
+    nothing of its own in the tests, so a test decides when collecting happens."""
+    await scheduler.run_once()
+
+
+class WorkerStatus(BaseModel):
+    # Running reported in just now, stopped last did a while ago, and absent never has.
+    state: Literal["running", "stopped", "absent"]
+
+
+@router.put("/collectors/worker", status_code=status.HTTP_204_NO_CONTENT)
+def set_worker_status(body: WorkerStatus, db: Db) -> None:
+    """Makes the worker look like it is running, has stopped or has never reported in."""
+    db.execute(delete(WorkerBeat))
+    if body.state != "absent":
+        now = utcnow()
+        seen = now if body.state == "running" else now - timedelta(minutes=10)
+        db.add(WorkerBeat(name=WORKER, started_at=now - timedelta(hours=1), beat_at=seen))
+    db.commit()
 
 
 @router.get("/coverage")
