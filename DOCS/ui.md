@@ -12,6 +12,8 @@ something they don't do, change the part (or add a new one) rather than styling 
 | `PageHeader` | The one `h1` of the page, what it is for, and the actions that belong to the whole page. A page under another has a way back above its title (`back`). It can carry an icon and a badge (the integration pages show their status there). |
 | `SectionCard` | Every group of settings, every list and every panel: a title, what it is for, actions beside the title, then the content. |
 | `StatTile` | One number that matters with its name and a line of context. It leads to where the number comes from when given `to`. |
+| `FactList` | Facts as labelled values (the versions on the Status page): the label beside its value where there is room, and above it on a phone. |
+| `UsageMeter` | How much of something is used: a bar that turns amber from 75% and red from 90%, with the figures in words so the meaning never rests on colour. |
 
 ## States
 

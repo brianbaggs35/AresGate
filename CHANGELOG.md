@@ -87,6 +87,16 @@ Every release's notes are here, newest first. The format follows
   are signed in, with a button to sign out one or all the others) and **Activity**. Changing the
   password ends every other sign-in. The pages are tabs on a phone and a list at the side
   elsewhere ([DOCS/security.md](DOCS/security.md)).
+- A **Status** page in the web app, and `GET /api/status` behind it, for when something seems
+  wrong: AresGate's version, commit, build time and uptime, the versions of Python, nginx and
+  PostgreSQL, the database's size, connections and migration, the TLS certificate browsers are
+  shown and how long it has left, the container's CPUs, load, memory and disk, and the clock
+  compared with the browser's. Each integration is listed as a part that works, has a problem or
+  is off, with a link to its page, and anything that needs a look is said first. A card holds
+  the same facts as text for a bug report, with addresses left out, and a button to copy it
+  ([DOCS/operations.md](DOCS/operations.md#logs-and-health)).
+- The image now records which commit it was built from and when (`make up` and the release
+  workflow pass them in), so the Status page can say which build is running.
 
 ### Fixed
 

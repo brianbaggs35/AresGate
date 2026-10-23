@@ -27,11 +27,6 @@ CGROUP = Path("/sys/fs/cgroup")
 PROC = Path("/proc")
 DATA_DIRECTORY = Path("/data")
 
-# A computer's clock more than this far from this one's is worth saying so.
-CLOCK_TOLERANCE_SECONDS = 60
-# A certificate this close to the end is worth saying so.
-CERTIFICATE_WARNING_DAYS = 14
-
 State = Literal["ok", "problem", "unknown", "off"]
 
 

@@ -1,4 +1,11 @@
-import { describeBrowser, formatAgo, formatDateTime, formatTimestamp } from '@/format'
+import {
+  describeBrowser,
+  formatAgo,
+  formatBytes,
+  formatDateTime,
+  formatDuration,
+  formatTimestamp,
+} from '@/format'
 
 const AGENTS = {
   chromeWindows:
@@ -79,5 +86,32 @@ describe('formatAgo', () => {
     expect(
       formatAgo(new Date(Date.now() - 2 * 3600 * 1000).toISOString(), undefined, 'en-US'),
     ).toBe('2 hours ago')
+  })
+})
+
+describe('formatBytes', () => {
+  it.each([
+    [0, '0 B'],
+    [1023, '1023 B'],
+    [1024, '1.0 KB'],
+    [1536 * 1024, '1.5 MB'],
+    [3 * 1024 ** 3, '3.0 GB'],
+    [5 * 1024 ** 4, '5.0 TB'],
+  ])('says %d as %s', (bytes, said) => {
+    expect(formatBytes(bytes)).toBe(said)
+  })
+})
+
+describe('formatDuration', () => {
+  it.each([
+    [0, '0m'],
+    [59, '0m'],
+    [60 * 12, '12m'],
+    [3600, '1h 0m'],
+    [3 * 3600 + 5 * 60, '3h 5m'],
+    [86400, '1d 0h 0m'],
+    [2 * 86400 + 4 * 3600 + 30 * 60, '2d 4h 30m'],
+  ])('says %d seconds as %s', (seconds, said) => {
+    expect(formatDuration(seconds)).toBe(said)
   })
 })

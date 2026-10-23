@@ -186,6 +186,21 @@ see [SECURITY.md](../SECURITY.md).
   `action` (repeat it), `outcome`, `username`, `since` and `until`, a page at a time with
   `before` and `limit`. The web app's Settings area shows the latest 20 on its Activity page.
 
+**The status page**
+
+- `GET /api/status` is for whoever is signed in. It holds versions, sizes, states and times and
+  no secret: what an integration last reported is shown as the integration wrote it, which is
+  text from another system, so the web app prints it as plain text and nothing more.
+- The text made for bug reports replaces the URLs, IP addresses and host names in what an
+  integration reported, so it can be pasted into a public issue without giving away where
+  anything is on your network.
+- To tell you which certificate browsers are shown, the API opens a TLS connection to nginx on
+  the container's own loopback address and reads the certificate without checking it, because
+  the question is what it is and not whether to trust it. Nothing is sent over that connection,
+  and it never leaves the container.
+- The container's figures come from the kernel's files (`/proc` and the cgroup), and nginx's
+  version from the package database. AresGate runs no other program to find them out.
+
 **Logs**
 
 - The API logs one JSON object per line and tags each with the ID of its request, which nginx

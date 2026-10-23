@@ -42,6 +42,12 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/status',
+    name: 'status',
+    component: () => import('@/views/StatusView.vue'),
+    meta: { title: 'Status' },
+  },
+  {
     // The pages of the Settings area share a list (tabs on a phone) and belong to the one place
     // in the menu.
     path: '/settings',
