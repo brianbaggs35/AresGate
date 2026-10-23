@@ -13,8 +13,10 @@ import {
   type Enrollment,
   type TwoFactorStatus,
 } from '@/api/two-factor'
+import LoadError from '@/components/LoadError.vue'
 import PasswordField from '@/components/PasswordField.vue'
 import QrCode from '@/components/QrCode.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import { isValid, vFocus } from '@/form'
 import { useSessionStore } from '@/stores/session'
 
@@ -37,7 +39,7 @@ const saved = ref(false)
 const copyNote = ref<string | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
-const title = ref<HTMLElement | null>(null)
+const card = ref<{ focusTitle: () => void } | null>(null)
 const codesTitle = ref<HTMLElement | null>(null)
 
 const required = (what: string) => (value: string) => value.trim() !== '' || `Enter ${what}.`
@@ -62,7 +64,7 @@ async function show(next: View) {
   code.value = ''
   password.value = ''
   await nextTick()
-  if (next === 'overview') title.value?.focus()
+  if (next === 'overview') card.value?.focusTitle()
   if (next === 'codes') codesTitle.value?.focus()
 }
 
@@ -146,8 +148,7 @@ onMounted(load)
 </script>
 
 <template>
-  <v-card class="pa-6 mb-6" data-test="two-factor-card">
-    <h2 ref="title" tabindex="-1" class="text-title-large mb-1">Two-step verification</h2>
+  <SectionCard ref="card" title="Two-step verification" data-test="two-factor-card">
     <v-alert v-if="error" type="error" variant="tonal" class="my-4" data-test="two-factor-error">
       {{ error }}
     </v-alert>
@@ -200,18 +201,14 @@ onMounted(load)
     </template>
 
     <template v-else-if="view === 'overview'">
-      <v-alert
+      <LoadError
         v-if="loadError"
-        type="error"
-        variant="tonal"
+        :message="loadError"
+        retry-test-id="two-factor-retry"
         class="my-4"
         data-test="two-factor-load-error"
-      >
-        {{ loadError }}
-        <template #append>
-          <v-btn variant="text" data-test="two-factor-retry" @click="load">Try again</v-btn>
-        </template>
-      </v-alert>
+        @retry="load"
+      />
       <v-skeleton-loader v-else-if="!status" type="list-item-two-line" />
       <template v-else-if="status.enabled">
         <p class="text-body-medium text-medium-emphasis mb-4">
@@ -377,7 +374,7 @@ onMounted(load)
         </div>
       </v-form>
     </template>
-  </v-card>
+  </SectionCard>
 </template>
 
 <style scoped>

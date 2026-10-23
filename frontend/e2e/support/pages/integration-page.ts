@@ -43,9 +43,9 @@ export class IntegrationPage {
   readonly logClear: Locator
 
   constructor(private readonly page: Page) {
-    this.title = page.getByTestId('integration-title')
+    this.title = page.getByTestId('page-heading')
     this.status = page.getByTestId('status')
-    this.provides = page.getByTestId('integration-provides')
+    this.provides = page.getByTestId('page-description')
     this.lastSuccess = page.getByTestId('integration-last-success')
     this.docs = page.getByTestId('docs')
     this.back = page.getByTestId('back')

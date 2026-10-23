@@ -6,7 +6,11 @@ import { useRouter } from 'vue-router'
 import { fetchRecentActivity, type AuditEvent } from '@/api/audit'
 import { errorMessage } from '@/api/client'
 import ActivityList from '@/components/ActivityList.vue'
+import AppPage from '@/components/AppPage.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import PasskeysCard from '@/components/PasskeysCard.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import TwoFactorCard from '@/components/TwoFactorCard.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -46,9 +50,13 @@ onMounted(loadActivity)
 </script>
 
 <template>
-  <v-container class="py-8" max-width="720">
-    <v-card class="pa-6 mb-6" data-test="account-card">
-      <h2 class="text-title-large mb-1">Your account</h2>
+  <AppPage width="narrow">
+    <PageHeader
+      title="Security"
+      description="Your account, how you sign in, and what has happened lately."
+    />
+
+    <SectionCard title="Your account" data-test="account-card">
       <p class="text-body-large mb-4">
         Signed in as <strong data-test="account-name">{{ session.username }}</strong>
       </p>
@@ -64,15 +72,18 @@ onMounted(loadActivity)
       <v-btn variant="tonal" :prepend-icon="LogOut" data-test="sign-out-here" @click="signOut">
         Sign out
       </v-btn>
-    </v-card>
+    </SectionCard>
 
     <PasskeysCard />
 
     <TwoFactorCard />
 
-    <v-card class="pa-6" data-test="activity-card">
-      <div class="d-flex align-center justify-space-between ga-3 mb-1">
-        <h2 class="text-title-large">Recent activity</h2>
+    <SectionCard
+      title="Recent activity"
+      description="Sign-ins, wrong guesses and sign-outs, and changes to passkeys and two-step verification. If something here wasn't you, change your password."
+      data-test="activity-card"
+    >
+      <template #actions>
         <v-btn
           variant="text"
           :prepend-icon="RefreshCw"
@@ -82,19 +93,13 @@ onMounted(loadActivity)
         >
           Refresh
         </v-btn>
-      </div>
-      <p class="text-body-medium text-medium-emphasis mb-2">
-        Sign-ins, wrong guesses and sign-outs, and changes to passkeys and two-step verification. If
-        something here wasn't you, change your password.
-      </p>
+      </template>
       <v-alert v-if="error" type="error" variant="tonal" data-test="activity-error">
         {{ error }}
       </v-alert>
       <ActivityList v-else-if="events?.length" :events="events" />
-      <p v-else-if="events" class="text-body-large py-4" data-test="no-activity">
-        Nothing has happened yet.
-      </p>
+      <EmptyState v-else-if="events" title="Nothing has happened yet." data-test="no-activity" />
       <v-skeleton-loader v-else type="list-item-two-line, list-item-two-line, list-item-two-line" />
-    </v-card>
-  </v-container>
+    </SectionCard>
+  </AppPage>
 </template>

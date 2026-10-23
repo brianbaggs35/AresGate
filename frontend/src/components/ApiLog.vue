@@ -4,6 +4,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import { fetchCalls, type Call, type CallQuery } from '@/api/integrations'
+import EmptyState from '@/components/EmptyState.vue'
+import LoadError from '@/components/LoadError.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import { formatTimestamp } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
@@ -121,9 +124,12 @@ onMounted(() => load())
 </script>
 
 <template>
-  <v-card class="pa-6" data-test="api-log">
-    <div class="d-flex align-center justify-space-between ga-3 mb-1">
-      <h2 class="text-title-large">API log</h2>
+  <SectionCard
+    title="API log"
+    description="Every request AresGate makes to this system, newest first. Secrets and query strings are never recorded, and what the system answered is shown as plain text, since it can't be trusted. Old requests are deleted automatically."
+    data-test="api-log"
+  >
+    <template #actions>
       <v-btn
         variant="text"
         :prepend-icon="RefreshCw"
@@ -133,12 +139,7 @@ onMounted(() => load())
       >
         Refresh
       </v-btn>
-    </div>
-    <p class="text-body-medium text-medium-emphasis mb-4">
-      Every request AresGate makes to this system, newest first. Secrets and query strings are never
-      recorded, and what the system answered is shown as plain text, since it can't be trusted. Old
-      requests are deleted automatically.
-    </p>
+    </template>
 
     <div class="api-log__filters">
       <v-select
@@ -176,12 +177,15 @@ onMounted(() => load())
       />
     </div>
 
-    <v-alert v-if="error" type="error" variant="tonal" class="mt-4" data-test="log-error">
-      {{ error }}
-      <template #append>
-        <v-btn variant="text" data-test="log-retry" @click="load()">Try again</v-btn>
-      </template>
-    </v-alert>
+    <LoadError
+      v-if="error"
+      :message="error"
+      :loading="loading"
+      retry-test-id="log-retry"
+      class="mt-4"
+      data-test="log-error"
+      @retry="load()"
+    />
     <template v-if="calls?.length">
       <ul class="api-log__calls" data-test="log-calls">
         <li v-for="call in calls" :key="call.id" class="api-call" data-test="log-call">
@@ -222,14 +226,20 @@ onMounted(() => load())
       class="mt-2"
       type="list-item-two-line, list-item-two-line, list-item-two-line"
     />
-    <div v-else-if="calls" class="py-4" data-test="log-empty">
-      <p v-if="filtered" class="text-body-large mb-2">No requests match these filters.</p>
-      <p v-else class="text-body-large">AresGate hasn't made a request to this system yet.</p>
+    <EmptyState
+      v-else-if="calls"
+      :title="
+        filtered
+          ? 'No requests match these filters.'
+          : `AresGate hasn't made a request to this system yet.`
+      "
+      data-test="log-empty"
+    >
       <v-btn v-if="filtered" variant="tonal" data-test="log-clear" @click="clearFilters">
         Clear the filters
       </v-btn>
-    </div>
-  </v-card>
+    </EmptyState>
+  </SectionCard>
 </template>
 
 <style scoped>

@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import type { Connection } from '@/api/integrations'
 import ModuleList from '@/components/ModuleList.vue'
 import SecretField from '@/components/SecretField.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import TlsSettings from '@/components/TlsSettings.vue'
 import { formatAgo, formatDateTime } from '@/format'
@@ -48,16 +49,14 @@ function secret(key: string): string {
 </script>
 
 <template>
-  <v-card class="pa-6" :data-test="`connection-${definition.key}`">
-    <div class="connection__head">
-      <div class="connection__title">
-        <h2 class="text-title-large">{{ definition.label }}</h2>
-        <p class="text-body-medium text-medium-emphasis" data-test="connection-summary">
-          {{ definition.summary }}
-        </p>
-      </div>
-      <StatusChip v-if="saved" :status="connection.status" data-test="connection-status" />
-    </div>
+  <SectionCard
+    :title="definition.label"
+    :description="definition.summary"
+    :data-test="`connection-${definition.key}`"
+  >
+    <template v-if="saved" #actions>
+      <StatusChip :status="connection.status" data-test="connection-status" />
+    </template>
 
     <template v-if="definition.optional">
       <v-switch
@@ -207,28 +206,10 @@ function secret(key: string): string {
         class="connection__section"
       />
     </div>
-  </v-card>
+  </SectionCard>
 </template>
 
 <style scoped>
-.connection__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.connection__title {
-  flex: 1 1 16rem;
-  min-width: 0;
-}
-
-.connection__title p {
-  margin: 0;
-}
-
 .connection__body {
   margin-top: 1rem;
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ExternalLink, FlaskConical, Plug, Unplug } from '@lucide/vue'
+import { ExternalLink, FlaskConical, Plug, Unplug } from '@lucide/vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -13,8 +13,11 @@ import {
   type Integration,
 } from '@/api/integrations'
 import ApiLog from '@/components/ApiLog.vue'
+import AppPage from '@/components/AppPage.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ConnectionCard from '@/components/ConnectionCard.vue'
+import LoadError from '@/components/LoadError.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import { formatAgo, formatDateTime } from '@/format'
 import {
@@ -30,6 +33,8 @@ import {
 import { useSessionStore } from '@/stores/session'
 
 /** What the page is doing, so only one thing is asked of the API at a time. */
+const BACK = { to: { name: 'integrations' }, label: 'All integrations' }
+
 type Busy = 'saving' | 'testing' | 'disconnecting'
 
 const route = useRoute()
@@ -198,31 +203,22 @@ onMounted(load)
 </script>
 
 <template>
-  <v-container class="py-6" max-width="900">
-    <v-btn
-      variant="text"
-      :prepend-icon="ArrowLeft"
-      :to="{ name: 'integrations' }"
-      class="mb-2 ml-n3"
-      data-test="back"
-    >
-      All integrations
-    </v-btn>
-
-    <v-card v-if="loadError" class="pa-6" data-test="integration-error">
-      <h1 class="text-headline-small mb-2">
-        {{ loadError.missing ? 'There is no such integration' : "Couldn't load this integration" }}
-      </h1>
-      <p class="text-body-large mb-4" data-test="integration-error-message">
-        {{ loadError.message }}
-      </p>
-      <div class="d-flex flex-wrap ga-3">
-        <v-btn v-if="!loadError.missing" color="primary" data-test="retry" @click="load">
-          Try again
-        </v-btn>
-        <v-btn variant="tonal" :to="{ name: 'integrations' }">See all integrations</v-btn>
-      </div>
-    </v-card>
+  <AppPage>
+    <template v-if="loadError">
+      <PageHeader
+        :title="
+          loadError.missing ? 'There is no such integration' : `Couldn't load this integration`
+        "
+        :back="BACK"
+      />
+      <LoadError
+        :message="loadError.message"
+        :can-retry="!loadError.missing"
+        retry-test-id="retry"
+        data-test="integration-error"
+        @retry="load"
+      />
+    </template>
 
     <v-skeleton-loader
       v-else-if="!integration"
@@ -231,51 +227,45 @@ onMounted(load)
     />
 
     <template v-else>
-      <header class="integration__head">
-        <span class="integration__icon" aria-hidden="true">
+      <PageHeader :title="integration.name" :description="integration.provides" :back="BACK">
+        <template #icon>
           <component :is="integrationIcon(integration.icon)" :size="30" />
-        </span>
-        <div class="integration__intro">
-          <div class="d-flex flex-wrap align-center ga-3">
-            <h1 class="text-headline-medium" data-test="integration-title">
-              {{ integration.name }}
-            </h1>
-            <StatusChip :status="integration.status" />
-          </div>
-          <p class="text-body-large text-medium-emphasis mt-1" data-test="integration-provides">
-            {{ integration.provides }}
-          </p>
-          <p
-            v-if="integration.last_success_at"
-            class="text-body-medium text-medium-emphasis"
-            data-test="integration-last-success"
-          >
-            Last successful call
-            <time
-              :datetime="integration.last_success_at"
-              :title="formatDateTime(integration.last_success_at)"
-              >{{ formatAgo(integration.last_success_at) }}</time
-            >
-          </p>
-        </div>
-        <v-btn
-          :href="integration.docs_url"
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="text"
-          :append-icon="ExternalLink"
-          :aria-label="`${integration.name} documentation (opens in a new tab)`"
-          data-test="docs"
+        </template>
+        <template #badge>
+          <StatusChip :status="integration.status" />
+        </template>
+        <p
+          v-if="integration.last_success_at"
+          class="text-body-medium text-medium-emphasis"
+          data-test="integration-last-success"
         >
-          Documentation
-        </v-btn>
-      </header>
+          Last successful call
+          <time
+            :datetime="integration.last_success_at"
+            :title="formatDateTime(integration.last_success_at)"
+            >{{ formatAgo(integration.last_success_at) }}</time
+          >
+        </p>
+        <template #actions>
+          <v-btn
+            :href="integration.docs_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="text"
+            :append-icon="ExternalLink"
+            :aria-label="`${integration.name} documentation (opens in a new tab)`"
+            data-test="docs"
+          >
+            Documentation
+          </v-btn>
+        </template>
+      </PageHeader>
 
-      <v-alert v-if="notice" type="success" variant="tonal" class="mb-6" data-test="notice">
+      <v-alert v-if="notice" type="success" variant="tonal" data-test="notice">
         {{ notice }}
       </v-alert>
 
-      <v-expansion-panels v-model="guide" class="mb-6" data-test="guide">
+      <v-expansion-panels v-model="guide" data-test="guide">
         <v-expansion-panel title="How to get what you need" elevation="0" border>
           <v-expansion-panel-text>
             <ol class="integration__steps text-body-large">
@@ -287,11 +277,12 @@ onMounted(load)
 
       <form
         id="integration-form"
+        class="integration__form"
         novalidate
         data-test="integration-form"
         @submit.prevent="save(integration)"
       >
-        <div v-show="hasProblems" ref="summary" tabindex="-1" class="mb-6" data-test="problems">
+        <div v-show="hasProblems" ref="summary" tabindex="-1" data-test="problems">
           <v-alert type="error" variant="tonal" title="Some settings need fixing">
             The fields are marked below.
             <template v-if="otherProblems.length">
@@ -309,7 +300,6 @@ onMounted(load)
           :integration="integration.key"
           :connection="connection"
           :problems="problems[connection.definition.key] ?? {}"
-          class="mb-6"
         />
 
         <v-alert
@@ -317,7 +307,6 @@ onMounted(load)
           :type="report.ok ? 'success' : 'error'"
           variant="tonal"
           :title="report.ok ? 'The test passed' : 'The test failed'"
-          class="mb-6"
           data-test="report"
         >
           <ul class="integration__checks">
@@ -329,51 +318,53 @@ onMounted(load)
             </li>
           </ul>
         </v-alert>
-        <v-alert v-if="failure" type="error" variant="tonal" class="mb-6" data-test="failure">
+        <v-alert v-if="failure" type="error" variant="tonal" data-test="failure">
           {{ failure }}
         </v-alert>
 
-        <div class="integration__actions">
-          <v-btn
-            type="submit"
-            color="primary"
-            :prepend-icon="Plug"
-            :loading="busy === 'saving' || busy === 'testing'"
-            :disabled="busy === 'disconnecting'"
-            data-test="save"
+        <div class="integration__footer">
+          <div class="integration__actions">
+            <v-btn
+              type="submit"
+              color="primary"
+              :prepend-icon="Plug"
+              :loading="busy === 'saving' || busy === 'testing'"
+              :disabled="busy === 'disconnecting'"
+              data-test="save"
+            >
+              {{ connected ? 'Save and test' : 'Connect' }}
+            </v-btn>
+            <v-btn
+              v-if="connected"
+              variant="tonal"
+              :prepend-icon="FlaskConical"
+              :disabled="busy !== null || changed"
+              data-test="test"
+              @click="test"
+            >
+              Test connection
+            </v-btn>
+            <v-spacer />
+            <v-btn
+              v-if="connected"
+              variant="text"
+              color="error"
+              :prepend-icon="Unplug"
+              :disabled="busy !== null"
+              data-test="disconnect"
+              @click="confirming = true"
+            >
+              Disconnect
+            </v-btn>
+          </div>
+          <p
+            v-if="connected && changed"
+            class="text-body-medium text-medium-emphasis"
+            data-test="unsaved"
           >
-            {{ connected ? 'Save and test' : 'Connect' }}
-          </v-btn>
-          <v-btn
-            v-if="connected"
-            variant="tonal"
-            :prepend-icon="FlaskConical"
-            :disabled="busy !== null || changed"
-            data-test="test"
-            @click="test"
-          >
-            Test connection
-          </v-btn>
-          <v-spacer />
-          <v-btn
-            v-if="connected"
-            variant="text"
-            color="error"
-            :prepend-icon="Unplug"
-            :disabled="busy !== null"
-            data-test="disconnect"
-            @click="confirming = true"
-          >
-            Disconnect
-          </v-btn>
+            You have changes that aren't saved. Save and test applies them.
+          </p>
         </div>
-        <p
-          v-if="connected && changed"
-          class="text-body-medium text-medium-emphasis mt-2"
-          data-test="unsaved"
-        >
-          You have changes that aren't saved. Save and test applies them.
-        </p>
       </form>
 
       <ConfirmDialog
@@ -392,44 +383,22 @@ onMounted(load)
         :integration="integration.key"
         :connections="logConnections(integration)"
         :refresh="requests"
-        class="mt-8"
       />
     </template>
-  </v-container>
+  </AppPage>
 </template>
 
 <style scoped>
-.integration__head {
+.integration__form {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.integration__icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 3.75rem;
-  height: 3.75rem;
-  border-radius: 16px;
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-}
-
-.integration__intro {
-  flex: 1 1 18rem;
-  min-width: 0;
-}
-
-.integration__intro h1,
-.integration__intro p {
-  margin: 0;
-}
-
-.integration__intro p {
-  margin-top: 0.25rem;
+.integration__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .integration__steps {
