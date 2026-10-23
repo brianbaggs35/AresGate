@@ -36,16 +36,16 @@ def fact(value: object, limit: int = 60) -> str:
     return audit.clean(str(value), limit) or "unknown"
 
 
-def _object(value: object) -> dict[str, object] | None:
+def as_object(value: object) -> dict[str, object] | None:
     """The members of a JSON object, or None if the value isn't one."""
     return cast("dict[str, object]", value) if isinstance(value, dict) else None
 
 
-def _array(value: object) -> list[object] | None:
+def as_array(value: object) -> list[object] | None:
     return cast("list[object]", value) if isinstance(value, list) else None
 
 
-def _problem(reply: Reply, product: str) -> Verdict | None:
+def problem(reply: Reply, product: str) -> Verdict | None:
     """Why a reply isn't a good one, or None if it is."""
     status = reply.status
     if reply.ok:
@@ -71,7 +71,7 @@ def _problem(reply: Reply, product: str) -> Verdict | None:
     return Verdict(False, f"{product} answered HTTP {status}.")
 
 
-def _unexpected(product: str) -> Verdict:
+def unexpected(product: str) -> Verdict:
     return Verdict(False, f"It answered, but the answer doesn't look like {product}'s.")
 
 
@@ -84,7 +84,7 @@ def service_state(reply: Reply) -> ModuleState:
         return ModuleState.NO_ACCESS
     if not reply.ok:
         return ModuleState.UNKNOWN
-    data = _object(reply.json())
+    data = as_object(reply.json())
     words = [value.lower() for value in data.values() if isinstance(value, str)] if data else []
     if any("running" in word for word in words):
         return ModuleState.RUNNING
@@ -100,12 +100,12 @@ async def opnsense(client: ApiClient, target: Target) -> Verdict:
     reply = await client.request(
         "GET", "/api/diagnostics/system/system_information", auth=credentials
     )
-    if bad := _problem(reply, "OPNsense"):
+    if bad := problem(reply, "OPNsense"):
         return bad
-    data = _object(reply.json())
+    data = as_object(reply.json())
     if data is None:
-        return _unexpected("OPNsense")
-    versions = _array(data.get("versions"))
+        return unexpected("OPNsense")
+    versions = as_array(data.get("versions"))
     message = f"OPNsense answered: {fact(versions[0])}." if versions else "OPNsense answered."
     states: dict[str, ModuleState] = {}
     for module in OPNSENSE_MODULES:
@@ -136,10 +136,10 @@ async def zenarmor(client: ApiClient, target: Target) -> Verdict:
         query={"user": str(target.options["user"])},
         auth=(target.secrets["api_key"], ""),
     )
-    if bad := _problem(reply, "Zenarmor"):
+    if bad := problem(reply, "Zenarmor"):
         return bad
     if reply.json() is None:
-        return _unexpected("Zenarmor")
+        return unexpected("Zenarmor")
     return Verdict(True, "Zenarmor's API accepted the key.")
 
 
@@ -163,15 +163,15 @@ async def ntopng(client: ApiClient, target: Target) -> Verdict:
             "ntopng redirected to its login page, which it does when the login is refused. "
             "Check the token, or the username and password.",
         )
-    if bad := _problem(reply, "ntopng"):
+    if bad := problem(reply, "ntopng"):
         return bad
-    data = _object(reply.json())
-    interfaces = _array(data.get("rsp")) if data else None
+    data = as_object(reply.json())
+    interfaces = as_array(data.get("rsp")) if data else None
     if interfaces is None:
-        return _unexpected("ntopng")
+        return unexpected("ntopng")
     found: dict[int, str] = {}
     for entry in interfaces:
-        item = _object(entry)
+        item = as_object(entry)
         if item and isinstance(item.get("ifid"), int):
             found[cast("int", item["ifid"])] = fact(item.get("ifname", item.get("name", "")))
     wanted = int(target.options["interface_id"])
@@ -193,19 +193,19 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
         query={"raw": "true"},
         auth=(str(target.options["username"]), target.secrets["password"]),
     )
-    if bad := _problem(signed_in, "The Wazuh manager"):
+    if bad := problem(signed_in, "The Wazuh manager"):
         return bad
     token = signed_in.text.strip()
     if not token or len(token) > 4096 or any(character.isspace() for character in token):
-        return _unexpected("the Wazuh manager")
+        return unexpected("the Wazuh manager")
     client.hide(token)
     reply = await client.request("GET", "/", headers={"Authorization": f"Bearer {token}"})
-    if bad := _problem(reply, "The Wazuh manager"):
+    if bad := problem(reply, "The Wazuh manager"):
         return bad
-    data = _object(reply.json())
-    info = _object(data.get("data")) if data else None
+    data = as_object(reply.json())
+    info = as_object(data.get("data")) if data else None
     if info is None or "api_version" not in info:
-        return _unexpected("the Wazuh manager")
+        return unexpected("the Wazuh manager")
     return Verdict(True, f"The Wazuh manager answered: API version {fact(info['api_version'])}.")
 
 
@@ -216,12 +216,12 @@ async def wazuh_indexer(client: ApiClient, target: Target) -> Verdict:
         "/",
         auth=(str(target.options["username"]), target.secrets["password"]),
     )
-    if bad := _problem(reply, "The Wazuh indexer"):
+    if bad := problem(reply, "The Wazuh indexer"):
         return bad
-    data = _object(reply.json())
-    version = _object(data.get("version")) if data else None
+    data = as_object(reply.json())
+    version = as_object(data.get("version")) if data else None
     if version is None or "number" not in version:
-        return _unexpected("the Wazuh indexer")
+        return unexpected("the Wazuh indexer")
     return Verdict(True, f"The Wazuh indexer answered: version {fact(version['number'])}.")
 
 
@@ -234,10 +234,10 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
         query={"ip": DOCUMENTATION_ADDRESS},
         headers={"X-Api-Key": target.secrets["api_key"]},
     )
-    if bad := _problem(reply, "CrowdSec"):
+    if bad := problem(reply, "CrowdSec"):
         return bad
     if reply.text.strip() != "null" and not isinstance(reply.json(), list):
-        return _unexpected("CrowdSec")
+        return unexpected("CrowdSec")
     return Verdict(True, "CrowdSec's local API accepted the key.")
 
 

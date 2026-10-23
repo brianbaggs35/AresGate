@@ -539,6 +539,37 @@ test.describe('integrations', () => {
       ])
     })
 
+    test('reads its firewall log as a second job beside the connection check', async ({
+      harness,
+      integration,
+    }) => {
+      const firewall = await harness.standIn({ kind: 'opnsense', api_key: KEY, api_secret: SECRET })
+      await integration.goto('opnsense')
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill(KEY)
+      await integration.field('api', 'api_secret').fill(SECRET)
+      await integration.tlsMode('api', 'pinned').check()
+      await integration.lookUp('api').click()
+      await integration.trust('api').click()
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(2)
+      await expect(integration.collectors.nth(0)).toContainText('Connection check')
+      await expect(integration.collectors.nth(1)).toContainText('Firewall log')
+      await expect(integration.collectorStates).toHaveText(['Working', 'Working'])
+      await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // The three lines in the firewall's log are kept once, however often they are read.
+      expect((await harness.rowCounts()).events).toBe(3)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).events).toBe(3)
+    })
+
     test('a certificate lookup says why it could not be done', async ({ integration }) => {
       await integration.goto('opnsense')
       await integration.address('api').fill('https://203.0.113.5')

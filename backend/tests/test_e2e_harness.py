@@ -441,3 +441,42 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
         0,
     )
     assert record.last_success_at is not None
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_the_collectors_read_the_firewall_log_of_the_opnsense_stand_in(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={"kind": "opnsense", "api_key": "k", "api_secret": "s"},
+    ).json()
+    service.save(
+        session,
+        settings,
+        netguard.HOME_NETWORK_AND_LOOPBACK,
+        registry.INTEGRATIONS["opnsense"],
+        {
+            "api": Submission(
+                url=started["url"],
+                tls_mode="pinned",
+                tls_ca_pem=None,
+                tls_fingerprint=started["fingerprint"],
+                options={},
+                secrets={"api_key": "k", "api_secret": "s"},
+            )
+        },
+        utcnow(),
+    )
+    session.commit()
+
+    for _ in range(2):
+        assert e2e.post("/api/__test__/collectors/run").status_code == 204
+
+    session.expire_all()
+    records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
+    assert sorted(records) == ["connection-check", "opnsense-firewall-log"]
+    assert records["opnsense-firewall-log"].consecutive_failures == 0
+    # The second run read the same three lines and found them stored already.
+    assert records["opnsense-firewall-log"].last_items == 0
+    assert e2e.get("/api/__test__/database/counts").json()["events"] == 3

@@ -11,13 +11,14 @@ import json
 import ssl
 import tempfile
 import threading
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from cryptography import x509
@@ -220,9 +221,65 @@ def crowdsec(api_key: str) -> Handler:
     return handle
 
 
-def opnsense(api_key: str, api_secret: str, services: Collection[str]) -> Handler:
+def _opnsense_time(zone: timedelta) -> str:
+    """The time as OPNsense shows it, which is PHP's ``D M j G:i:s T Y``, in a time zone that is
+    ``zone`` ahead of UTC."""
+    now = datetime.now(UTC) + zone
+    return f"{now:%a %b} {now.day} {now.hour}:{now:%M:%S} XYZ {now:%Y}"
+
+
+# What the sample firewall log holds: the action, interface, protocol, source address and port,
+# destination address and port, and the description of the rule.
+_SAMPLE_LINES = (
+    ("block", "igb0", "tcp", "198.51.100.7", "51514", "192.0.2.10", "443", "Default deny"),
+    ("pass", "igb1", "udp", "192.0.2.20", "40000", "192.0.2.1", "53", "Allow DNS"),
+    ("pass", "igb1", "tcp", "192.0.2.21", "40001", "203.0.113.9", "443", "Allow web"),
+)
+
+
+def sample_firewall_log() -> list[dict[str, str]]:
+    """Three lines of an OPNsense firewall log from the last half a minute, newest first, in the
+    form its API answers with: a block of traffic from outside, then two passes."""
+    now = datetime.now(UTC)
+    log: list[dict[str, str]] = []
+    for number, line in enumerate(_SAMPLE_LINES):
+        action, interface, protocol, source, source_port, destination, destination_port, label = (
+            line
+        )
+        log.append(
+            {
+                "__timestamp__": f"{now - timedelta(seconds=5 * (number + 1)):%Y-%m-%dT%H:%M:%S}",
+                "__host__": "fw.home.arpa",
+                "__digest__": f"{number:032x}",
+                "rid": f"{number:032x}",
+                "rulenr": str(number + 1),
+                "interface": interface,
+                "action": action,
+                "dir": "in",
+                "ipversion": "4",
+                "protonum": "6" if protocol == "tcp" else "17",
+                "protoname": protocol,
+                "src": source,
+                "srcport": source_port,
+                "dst": destination,
+                "dstport": destination_port,
+                "label": label,
+            }
+        )
+    return log
+
+
+def opnsense(
+    api_key: str,
+    api_secret: str,
+    services: Collection[str],
+    *,
+    firewall_log: Sequence[Mapping[str, str]] = (),
+    zone: timedelta = timedelta(0),
+) -> Handler:
     """OPNsense's API with one key and secret. The services named are installed and running; the
-    others answer 404, as a plugin that isn't installed does."""
+    others answer 404, as a plugin that isn't installed does. It has a clock in a time zone that
+    is ``zone`` ahead of UTC, and the lines given in its firewall log, newest first."""
     expected = _basic(api_key, api_secret)
     paths = {module.path: module.key for module in OPNSENSE_MODULES if module.path}
 
@@ -231,6 +288,11 @@ def opnsense(api_key: str, api_secret: str, services: Collection[str]) -> Handle
             return _json({"status": 401, "message": "Authentication Failed"}, 401)
         if seen.path == "/api/diagnostics/system/system_information":
             return _json({"name": "fw.home.arpa", "versions": ["OPNsense 25.7.1-amd64"]})
+        if seen.path == "/api/diagnostics/system/system_time":
+            return _json({"uptime": "1 day, 02:03:04", "datetime": _opnsense_time(zone)})
+        if seen.path == "/api/diagnostics/firewall/log":
+            limit = parse_qs(urlsplit(seen.target).query).get("limit", ["0"])[0]
+            return _json(list(firewall_log)[: int(limit) or None])
         if paths.get(seen.path) in services:
             return _json({"status": "running"})
         return _json({"status": 404, "message": "Not found"}, 404)
@@ -284,7 +346,7 @@ class StandIns:
         handlers: dict[Kind, Handler] = {
             "ntopng": ntopng(token),
             "crowdsec": crowdsec(api_key),
-            "opnsense": opnsense(api_key, api_secret, services),
+            "opnsense": opnsense(api_key, api_secret, services, firewall_log=sample_firewall_log()),
             "zenarmor": zenarmor(api_key),
         }
         certificate = make_certificate("fw.home.arpa") if kind in ("opnsense", "zenarmor") else None
