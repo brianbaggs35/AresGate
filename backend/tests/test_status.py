@@ -49,13 +49,20 @@ def test_the_database_says_what_it_is_and_how_busy(session: Session) -> None:
     assert found.migration_head == "0008"
 
 
+# The test database may or may not have been through the migrations (CI migrates it first), so
+# these two start from no record of them. The session is rolled back, which puts it back.
+
+
 def test_a_database_that_migrations_did_not_make_has_no_migration(session: Session) -> None:
+    session.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
     assert status.database_info(session, "0008").migration is None
     # The failed question did not spoil the session for the next one.
     assert session.scalar(text("SELECT 1")) == 1
 
 
 def test_the_database_says_which_migration_it_is_at(session: Session) -> None:
+    session.execute(text("DROP TABLE IF EXISTS alembic_version"))
     session.execute(text("CREATE TABLE alembic_version (version_num varchar(32) NOT NULL)"))
     session.execute(text("INSERT INTO alembic_version VALUES ('0007')"))
 
