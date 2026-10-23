@@ -25,8 +25,8 @@ being built in this order. Nothing here is ready to protect a network yet.
 
 | | |
 | --- | --- |
-| **Built** | The single hardened container (nginx with TLS 1.3, the API, PostgreSQL and the web app), the status page, light and dark themes, the test, scanning and release pipeline, first-run setup and sign-in (API and pages), an audit log, a second step with an authenticator app, passkeys, and an encrypted store for credentials |
-| **Next** | The integration pages that use the credential store |
+| **Built** | The single hardened container (nginx with TLS 1.3, the API, PostgreSQL and the web app), the status page, light and dark themes, the test, scanning and release pipeline, first-run setup and sign-in (API and pages), an audit log, a second step with an authenticator app, passkeys, an encrypted store for credentials, and the integration pages (OPNsense, ntopng, Wazuh, CrowdSec) with an API log |
+| **Next** | The dashboard, threat pages and the collectors that feed them |
 | **Then** | Connecting OPNsense, ntopng and Wazuh, and an overview dashboard (Suricata and CrowdSec are planned after those) |
 | **Goal** | An AI analyst that reads that data around the clock, explains what it finds, and suggests what to do. It starts read-only: it never changes your firewall |
 
@@ -54,6 +54,7 @@ published release instead of building it, and updating.
 | --- | --- |
 | [Quick start](DOCS/quick-start.md) | Install, configure and update AresGate |
 | [Operations](DOCS/operations.md) | Where the data is, backups and restores, logs, certificates |
+| [Integrations](DOCS/integrations.md) | Connecting OPNsense (with Suricata, CrowdSec, OpenVPN, Zenarmor and more), ntopng, Wazuh and CrowdSec |
 | [Security](DOCS/security.md) | How AresGate is hardened and how it is checked |
 | [Development](DOCS/development.md) | Working on the code, running the tests, how changes are made |
 | [Releasing](DOCS/releasing.md) | How releases and images are published, and how to verify one |
