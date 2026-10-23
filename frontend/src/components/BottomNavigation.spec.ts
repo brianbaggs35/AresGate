@@ -18,6 +18,12 @@ describe('BottomNavigation', () => {
     expect(overview.classes()).toContain('v-btn--active')
   })
 
+  it('keeps Integrations marked on the page of one of them', async () => {
+    const { wrapper } = await open('/integrations/opnsense')
+    expect(wrapper.find('[data-test="nav-integrations"]').classes()).toContain('v-btn--active')
+    expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')
+  })
+
   it('marks nothing on a page that is not in the menu', async () => {
     const { wrapper } = await open('/no/such/page')
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')

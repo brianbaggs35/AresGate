@@ -5,6 +5,27 @@ export function formatDateTime(iso: string, locale?: string): string {
   )
 }
 
+/** A moment as people read it, down to the second, for a log. */
+export function formatTimestamp(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(
+    new Date(iso),
+  )
+}
+
+/** How long ago a moment was, in words ("5 minutes ago"), or "just now" within a minute. */
+export function formatAgo(iso: string, now: number = Date.now(), locale?: string): string {
+  const seconds = (new Date(iso).getTime() - now) / 1000
+  if (Math.abs(seconds) < 60) return 'just now'
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  for (const [unit, size] of [
+    ['day', 86400],
+    ['hour', 3600],
+  ] as const) {
+    if (Math.abs(seconds) >= size) return formatter.format(Math.round(seconds / size), unit)
+  }
+  return formatter.format(Math.round(seconds / 60), 'minute')
+}
+
 // The first that matches wins: Edge and Opera also say Chrome, and Chrome also says Safari.
 const BROWSERS: readonly (readonly [RegExp, string])[] = [
   [/Edg(?:e|A|iOS)?\//, 'Edge'],

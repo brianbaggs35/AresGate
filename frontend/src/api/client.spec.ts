@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost, errorMessage } from '@/api/client'
+import { ApiError, apiDelete, apiGet, apiPost, apiPut, errorMessage } from '@/api/client'
 
 function respond(body: unknown, init: ResponseInit = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body)
@@ -63,6 +63,37 @@ describe('apiGet', () => {
     })
   })
 
+  it('keeps where each problem was, without the body they were in', async () => {
+    respond(
+      {
+        detail: [
+          { loc: ['body', 'connections', 'api', 'url'], msg: 'Not private.', type: 'value_error' },
+          { loc: ['query', 'limit', 1], msg: 'Too big.', type: 'less_than_equal' },
+          { loc: 'nowhere', msg: 'Not a list.' },
+          { loc: ['body', 'x'] },
+          'text',
+        ],
+      },
+      { status: 422 },
+    )
+    expect(await failure(apiGet('/x'))).toMatchObject({
+      status: 422,
+      problems: [
+        { path: ['connections', 'api', 'url'], message: 'Not private.' },
+        { path: ['query', 'limit', '1'], message: 'Too big.' },
+      ],
+    })
+  })
+
+  it('has no problems to list for any other refusal', async () => {
+    respond({ detail: [{ loc: ['body', 'x'], msg: 'No.' }] }, { status: 400 })
+    expect(await failure(apiGet('/x'))).toMatchObject({ status: 400, problems: [] })
+    respond({ detail: 'Words.' }, { status: 422 })
+    expect(await failure(apiGet('/x'))).toMatchObject({ status: 422, problems: [] })
+    respond({ detail: { not: 'a list' } }, { status: 422 })
+    expect(await failure(apiGet('/x'))).toMatchObject({ status: 422, problems: [] })
+  })
+
   it.each([
     ['a body that is not JSON', 'oops'],
     ['a body that is not an object', ['x']],
@@ -114,6 +145,53 @@ describe('apiPost', () => {
       status: 429,
       code: 'rate_limited',
       message: 'Too many attempts. Try again in 1 minute.',
+    })
+  })
+})
+
+describe('apiPut', () => {
+  it('replaces with JSON, and the security token', async () => {
+    respond({ saved: true })
+    await expect(apiPut('/integrations/ntopng', { a: 1 }, 'a-token')).resolves.toEqual({
+      saved: true,
+    })
+    expect(fetch).toHaveBeenCalledWith('/api/integrations/ntopng', {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': 'a-token',
+      },
+      body: '{"a":1}',
+      credentials: 'same-origin',
+    })
+  })
+
+  it('fails like the others do', async () => {
+    respond({ detail: 'There is no such integration.' }, { status: 404 })
+    expect(await failure(apiPut('/integrations/x', {}))).toMatchObject({
+      status: 404,
+      code: 'not_found',
+    })
+  })
+})
+
+describe('apiDelete', () => {
+  it('removes, with the security token and nothing else to send', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    await expect(apiDelete('/integrations/ntopng', 'a-token')).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith('/api/integrations/ntopng', {
+      method: 'DELETE',
+      headers: { Accept: 'application/json', 'X-CSRF-Token': 'a-token' },
+      credentials: 'same-origin',
+    })
+  })
+
+  it('works without a token, and fails like the others do', async () => {
+    respond({ detail: "It isn't connected." }, { status: 404 })
+    expect(await failure(apiDelete('/integrations/ntopng'))).toMatchObject({
+      status: 404,
+      message: "It isn't connected.",
     })
   })
 })
