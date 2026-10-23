@@ -1,14 +1,21 @@
 import { expect, test } from '../support'
 
-test.describe('security page', () => {
-  test('is in the menu, and says who is signed in', async ({ page, shell, security, baseline }) => {
+test.describe('settings area', () => {
+  test('is in the menu, opens on the account page, and says who is signed in', async ({
+    page,
+    shell,
+    settings,
+    security,
+    baseline,
+  }) => {
     await page.goto('/')
 
-    await shell.securityLink.click()
+    await shell.settingsLink.click()
 
-    await expect(page).toHaveURL('/security')
-    await expect(page).toHaveTitle('Security · AresGate')
-    await expect(shell.securityLink).toHaveAttribute('aria-current', 'page')
+    await expect(page).toHaveURL('/settings/account')
+    await expect(page).toHaveTitle('Settings · AresGate')
+    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+    await expect(settings.heading).toHaveText('Settings')
     await expect(security.accountName).toHaveText(baseline.account.username)
   })
 
@@ -16,54 +23,79 @@ test.describe('security page', () => {
     await page.goto('/')
 
     await shell.userMenu.click()
-    await page.getByTestId('user-security').click()
+    await page.getByTestId('user-settings').click()
 
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
   })
 
-  test('lists the sign-in that just happened, with where it was from', async ({
-    security,
-    baseline,
-  }) => {
-    await security.goto()
+  test('opens on the account page when only /settings is asked for', async ({ page, settings }) => {
+    await settings.goto()
 
-    await expect(security.activities.first()).toContainText(
-      `Signed in · ${baseline.account.username}`,
-    )
-    await expect(security.activities.first()).toContainText('Chrome')
+    await expect(page).toHaveURL('/settings/account')
   })
 
-  test('shows a wrong guess as a failure, newest first', async ({
+  test('still opens the account page from the old address of the Security page', async ({
     page,
     security,
-    signIn,
-    shell,
-    baseline,
   }) => {
-    await page.goto('/')
-    await shell.signOutFromMenu()
-    await signIn.signIn({ ...baseline.account, password: 'not the right password' })
-    await expect(signIn.error).toBeVisible()
-    await signIn.signIn(baseline.account)
-    await expect(page).toHaveURL('/')
+    await page.goto('/security')
 
-    await security.goto()
-
-    await expect(security.activities.nth(0)).toContainText('Signed in')
-    await expect(security.activities.nth(1)).toContainText('Sign-in failed')
-    await expect(security.activities.nth(1).getByRole('img', { name: 'Failed' })).toBeVisible()
+    await expect(page).toHaveURL('/settings/account')
+    await expect(security.passwordCard).toBeVisible()
   })
 
-  test('says why the activity can’t be listed, and tries again', async ({ page, security }) => {
-    let fail = true
-    await page.route('**/api/audit/events*', (route) => (fail ? route.abort() : route.continue()))
+  test('lists every page of the area, and marks the one that is open', async ({
+    page,
+    shell,
+    settings,
+    signIns,
+    activity,
+    security,
+  }) => {
     await security.goto()
-    await expect(security.activityError).toContainText("Can't reach AresGate.")
+    await expect(settings.nav).toBeVisible()
+    await expect(settings.accountLink).toHaveAttribute('aria-current', 'page')
+    await expect(settings.signInsLink).not.toHaveAttribute('aria-current', 'page')
 
-    fail = false
-    await security.refresh.click()
+    await settings.signInsLink.click()
+    await expect(page).toHaveURL('/settings/sign-ins')
+    await expect(signIns.card).toBeVisible()
+    await expect(settings.signInsLink).toHaveAttribute('aria-current', 'page')
+    await expect(settings.accountLink).not.toHaveAttribute('aria-current', 'page')
 
-    await expect(security.activityError).toHaveCount(0)
-    await expect(security.activities.first()).toBeVisible()
+    await settings.activityLink.click()
+    await expect(page).toHaveURL('/settings/activity')
+    await expect(activity.entries.first()).toBeVisible()
+    await expect(settings.activityLink).toHaveAttribute('aria-current', 'page')
+
+    await settings.accountLink.click()
+    await expect(page).toHaveURL('/settings/account')
+    await expect(security.passwordCard).toBeVisible()
+    // Settings stays marked in the menu, whichever page of it is open.
+    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+  })
+
+  test('keeps Settings marked in the menu on every page of the area', async ({
+    shell,
+    signIns,
+    activity,
+  }) => {
+    await signIns.goto()
+    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+
+    await activity.goto()
+    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+  })
+
+  test('asks for the cards in order: who, password, passkeys, two-step verification', async ({
+    security,
+  }) => {
+    await security.goto()
+
+    const cards = [security.passwordCard, security.passkeysCard, security.twoFactorCard]
+    const tops = await Promise.all(cards.map(async (card) => (await card.boundingBox())?.y ?? 0))
+
+    expect(tops).toEqual([...tops].sort((a, b) => a - b))
+    await expect(security.accountName).toBeVisible()
   })
 })

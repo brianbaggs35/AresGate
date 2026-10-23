@@ -1,14 +1,17 @@
-import { test as base } from '@playwright/test'
+import { test as base, type BrowserContext, type Page } from '@playwright/test'
 
 import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
+import { ActivityPage } from './pages/activity-page'
 import { AppShell } from './pages/app-shell'
 import { IntegrationPage } from './pages/integration-page'
 import { IntegrationsPage } from './pages/integrations-page'
 import { OverviewPage } from './pages/overview-page'
 import { SecurityPage } from './pages/security-page'
+import { SettingsPage } from './pages/settings-page'
 import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
+import { SignInsPage } from './pages/sign-ins-page'
 import { VirtualAuthenticator } from './virtual-authenticator'
 
 export interface AresGateFixtures {
@@ -19,11 +22,20 @@ export interface AresGateFixtures {
   integration: IntegrationPage
   signIn: SignInPage
   setup: SetupPage
+  /** The account settings page: the password, passkeys and two-step verification. */
   security: SecurityPage
+  settings: SettingsPage
+  signIns: SignInsPage
+  activity: ActivityPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
   signedIn: boolean
+  /**
+   * Signs in as the baseline account from another browser, with its own cookies and the user
+   * agent given, and returns that browser's page. Each is closed when the test ends.
+   */
+  signInElsewhere: (userAgent: string) => Promise<Page>
   /** Puts the database back to the baseline before every test, so none depends on another. */
   freshDatabase: undefined
   /** Collects the web app's coverage in Chromium, for every test. */
@@ -90,6 +102,41 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   security: async ({ page }, use) => {
     await use(new SecurityPage(page))
+  },
+
+  settings: async ({ page }, use) => {
+    await use(new SettingsPage(page))
+  },
+
+  signIns: async ({ page }, use) => {
+    await use(new SignInsPage(page))
+  },
+
+  activity: async ({ page }, use) => {
+    await use(new ActivityPage(page))
+  },
+
+  signInElsewhere: async ({ browser, baseURL, baseline }, use) => {
+    if (!baseURL) throw new Error('playwright.config.ts needs a baseURL')
+    const origin = new URL(baseURL).origin
+    const contexts: BrowserContext[] = []
+    await use(async (userAgent) => {
+      const context = await browser.newContext({
+        baseURL,
+        ignoreHTTPSErrors: true,
+        locale: 'en-US',
+        timezoneId: 'UTC',
+        userAgent,
+      })
+      contexts.push(context)
+      const response = await context.request.post('/api/auth/login', {
+        data: baseline.account,
+        headers: { Origin: origin },
+      })
+      await readJson(response, 'Signing in from another browser')
+      return context.newPage()
+    })
+    await Promise.all(contexts.map((context) => context.close()))
   },
 
   // Automatic, because without a device to answer, a browser with nobody at it waits for a

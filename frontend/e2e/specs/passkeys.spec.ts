@@ -99,18 +99,18 @@ test.describe('adding a passkey', () => {
     await expect(security.newPasskeyName).toHaveCount(0)
   })
 
-  test('is recorded in the activity', async ({ security, baseline }) => {
+  test('is recorded in the activity', async ({ security, activity, baseline }) => {
     await security.goto()
     await security.addPasskeyNamed('Test laptop', baseline.account.password)
 
-    await security.refresh.click()
+    await activity.goto()
 
-    await expect(security.activities.first()).toContainText('A passkey was added')
+    await expect(activity.entries.first()).toContainText('A passkey was added')
   })
 })
 
 test.describe('removing a passkey', () => {
-  test('forgets it, after the password', async ({ security, baseline }) => {
+  test('forgets it, after the password', async ({ security, activity, baseline }) => {
     await security.goto()
     await security.addPasskeyNamed('Old phone', baseline.account.password)
     await expect(security.removePasskeyButtons).toHaveAccessibleName('Remove Old phone')
@@ -121,8 +121,8 @@ test.describe('removing a passkey', () => {
     await security.confirmRemovePasskey.click()
 
     await expect(security.noPasskeys).toBeVisible()
-    await security.refresh.click()
-    await expect(security.activities.first()).toContainText('A passkey was removed')
+    await activity.goto()
+    await expect(activity.entries.first()).toContainText('A passkey was removed')
   })
 
   test('says when the password is wrong, and keeps the passkey', async ({ security, baseline }) => {
@@ -163,6 +163,7 @@ test.describe('signing in with a passkey', () => {
   test('goes on to the page that was asked for, and is noted as used', async ({
     page,
     security,
+    activity,
     shell,
     signIn,
     baseline,
@@ -171,14 +172,14 @@ test.describe('signing in with a passkey', () => {
     await security.addPasskeyNamed('Test laptop', baseline.account.password)
     await shell.signOutFromMenu()
 
-    await signIn.goto('/sign-in?next=/security')
+    await signIn.goto('/sign-in?next=/settings/account')
     await signIn.passkey.click()
 
-    await expect(page).toHaveURL('/security')
+    await expect(page).toHaveURL('/settings/account')
     await expect(security.passkeyDetails).toContainText('Last used')
     await expect(security.passkeyDetails).not.toContainText('Never used')
-    await security.refresh.click()
-    await expect(security.activities.first()).toContainText('Signed in')
+    await activity.goto()
+    await expect(activity.entries.first()).toContainText('Signed in')
   })
 
   test('goes straight in even when an authenticator app is on', async ({

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Plug, ShieldCheck } from '@lucide/vue'
+import { LayoutDashboard, Plug, Settings } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A place in the menu. */
@@ -16,5 +16,5 @@ export const BOTTOM_BAR_LIMIT = 5
 export const navItems: readonly NavItem[] = [
   { route: 'home', title: 'Overview', icon: LayoutDashboard },
   { route: 'integrations', title: 'Integrations', icon: Plug },
-  { route: 'security', title: 'Security', icon: ShieldCheck },
+  { route: 'settings', title: 'Settings', icon: Settings },
 ]

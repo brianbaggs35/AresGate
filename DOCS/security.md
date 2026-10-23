@@ -79,6 +79,18 @@ see [SECURITY.md](../SECURITY.md).
 - Every change the web app asks for must say it came from AresGate's own address (the `Origin`
   header, which browsers always send and a page on another website can't change), and carry a
   security token that is different for each sign-in and that only AresGate's pages are given.
+- Changing the password needs the current one, so a sign-in left open on a borrowed computer
+  can't change it. The new one has to pass the same rules as a new account's, and not be the one
+  in use. It ends every other sign-in in the same step, so a stolen sign-in doesn't survive it,
+  and the audit log records it with how many were ended. A wrong current password counts towards
+  the same lockout as at the sign-in page, and says 403 and not 401, so the web app doesn't
+  take it for the sign-in having ended.
+- Each sign-in keeps the address and browser name it was made from (cut short and stripped of
+  control characters, as the audit log's are), and `GET /api/auth/sessions` lists the live ones
+  for the account, with the one asking marked. Any other can be ended
+  (`POST /api/auth/sessions/{id}/end`), or all of them at once
+  (`POST /api/auth/sessions/end-others`); neither can end the sign-in that asks, since signing
+  out does that. Only a sign-in's hash is stored, so nothing listed can be used to take it over.
 - Five wrong passwords in a row lock the account for a minute, and each wrong one after that
   doubles the wait, up to an hour. The same happens to an address that has made five wrong
   attempts, whatever names it tried, and to the setup code. While locked, even the right
@@ -150,7 +162,7 @@ see [SECURITY.md](../SECURITY.md).
   get back in. Wrong passwords there count towards the same lockout as at the sign-in page, and
   say 403 and not 401, so the web app doesn't take them for the sign-in having ended.
 - An account can have 20 passkeys. The password still signs in, so a lost device costs nothing
-  but a trip to the Security page to remove its passkey.
+  but a trip to Settings to remove its passkey.
 
 **The audit log**
 
@@ -172,7 +184,7 @@ see [SECURITY.md](../SECURITY.md).
   can't forge a line.
 - The list is for whoever is signed in: `GET /api/audit/events`, newest first, filtered by
   `action` (repeat it), `outcome`, `username`, `since` and `until`, a page at a time with
-  `before` and `limit`. The web app's Security page shows the latest 20.
+  `before` and `limit`. The web app's Settings area shows the latest 20 on its Activity page.
 
 **Logs**
 
@@ -195,7 +207,7 @@ These are being built, in this order, and are not in AresGate yet:
 - The pages where you enter the credentials for OPNsense, ntopng, Wazuh and AI providers. The
   store they will use is in AresGate already; you can replace a credential but never read it
   back.
-- Logging that redacts secrets, and the audit log's page in the web app.
+- Logging that redacts secrets.
 - An AI analyst that only reads at first. Hosted AI providers will get addresses and host names
   replaced with stand-ins.
 

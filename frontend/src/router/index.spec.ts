@@ -42,12 +42,34 @@ describe('router', () => {
   })
 
   it('lazy-loads every view module', async () => {
-    const loaders = routes
-      .flatMap((route) => route.children ?? [route])
+    const records = routes.flatMap((route) => [route, ...(route.children ?? [])])
+    const loaders = records
       .map((route) => route.component)
       .filter((component): component is () => Promise<unknown> => typeof component === 'function')
-    expect(loaders).toHaveLength(routes.flatMap((route) => route.children ?? [route]).length)
+    // A route shows a view, goes on to one that does, or only groups others under one address.
+    const grouping = (route: (typeof records)[number]) => route.children && !route.component
+    expect(loaders).toHaveLength(
+      records.filter((route) => !route.redirect && !grouping(route)).length,
+    )
     const modules = await Promise.all(loaders.map((load) => load()))
     for (const module of modules) expect(module).toHaveProperty('default')
+  })
+
+  it('shows the settings pages under one title', async () => {
+    for (const [path, name] of [
+      ['/settings/account', 'settings-account'],
+      ['/settings/sign-ins', 'settings-sign-ins'],
+      ['/settings/activity', 'settings-activity'],
+    ] as const) {
+      const page = await visit(path)
+      expect(page.name).toBe(name)
+      expect(pageTitle(page)).toBe('Settings')
+    }
+    expect(document.title).toBe('Settings · AresGate')
+  })
+
+  it('opens the account settings from the settings address, and from the old security one', async () => {
+    expect((await visit('/settings')).name).toBe('settings-account')
+    expect((await visit('/security')).name).toBe('settings-account')
   })
 })

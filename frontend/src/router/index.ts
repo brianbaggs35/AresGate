@@ -42,11 +42,32 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/security',
-    name: 'security',
-    component: () => import('@/views/SecurityView.vue'),
-    meta: { title: 'Security' },
+    // The pages of the Settings area share a list (tabs on a phone) and belong to the one place
+    // in the menu.
+    path: '/settings',
+    component: () => import('@/views/SettingsView.vue'),
+    meta: { title: 'Settings' },
+    children: [
+      { path: '', name: 'settings', redirect: { name: 'settings-account' } },
+      {
+        path: 'account',
+        name: 'settings-account',
+        component: () => import('@/views/AccountView.vue'),
+      },
+      {
+        path: 'sign-ins',
+        name: 'settings-sign-ins',
+        component: () => import('@/views/SignInsView.vue'),
+      },
+      {
+        path: 'activity',
+        name: 'settings-activity',
+        component: () => import('@/views/ActivityView.vue'),
+      },
+    ],
   },
+  // The Security page became the Settings area's Account page.
+  { path: '/security', redirect: { name: 'settings-account' } },
   {
     path: '/setup',
     name: 'setup',

@@ -9,7 +9,7 @@ import { flushPromises, mountWithPlugins } from '@/test/mount'
 async function open() {
   const mounted = await mountWithPlugins(UserMenu, {
     withApp: true,
-    route: '/security',
+    route: '/settings/account',
     signedIn: 'admin',
   })
   await mounted.wrapper.find('[data-test="user-menu"]').trigger('click')
@@ -29,7 +29,7 @@ describe('UserMenu', () => {
   it('says who is signed in, and links to the security page', async () => {
     await open()
     expect(item('user-name')?.textContent).toContain('Signed in as admin')
-    expect(item('user-security')?.getAttribute('href')).toBe('/security')
+    expect(item('user-settings')?.getAttribute('href')).toBe('/settings/account')
   })
 
   it('signs out, and goes to the sign-in page', async () => {
@@ -53,7 +53,7 @@ describe('UserMenu', () => {
     await flushPromises()
     expect(item('sign-out-error')?.textContent).toContain("Can't reach AresGate.")
     expect(useSessionStore().signedIn).toBe(true)
-    expect(router.currentRoute.value.name).toBe('security')
+    expect(router.currentRoute.value.name).toBe('settings-account')
 
     // The message goes away by itself after a few seconds.
     wrapper.findComponent(VSnackbar).vm.$emit('update:modelValue', false)
