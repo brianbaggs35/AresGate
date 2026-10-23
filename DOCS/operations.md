@@ -187,6 +187,10 @@ it with the setup code from the log.
   ([Security](security.md)). It keeps a year of events; change that with
   `ARESGATE_AUDIT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. The API
   deletes older events when it starts and every six hours after that.
+- **What an integration was asked.** Each integration's page has an API log of every request
+  AresGate made to it, without secrets or query strings. It keeps 30 days; change that with
+  `ARESGATE_API_LOG_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`
+  ([Integrations](integrations.md)).
 - **Adding the second step.** On the Security page, Two-step verification, choose *Add an
   authenticator app*. Scan the QR code with the app (or open the link on the same device, or type
   in the key), enter the code it shows, and save the ten recovery codes: they are shown once. The

@@ -73,6 +73,14 @@ Every release's notes are here, newest first. The format follows
   before anything is written ([DOCS/operations.md](DOCS/operations.md)). `ARESGATE_LOG_FORMAT`
   and `ARESGATE_LOG_LEVEL` change how and how much.
 - `/api/system`, for someone signed in: AresGate's version, uptime and the database's version.
+- Integration pages: one card for each of OPNsense, ntopng, Wazuh and CrowdSec showing what it
+  provides, whether it is connected and when AresGate last reached it, and a page for each to
+  connect, test and disconnect it. OPNsense's page finds the services that run on it (Suricata,
+  CrowdSec, OpenVPN, WireGuard, IPsec, Unbound, Dnsmasq, Kea and more) and has an optional
+  Zenarmor connection. Addresses must be on a private network and are never redirected, the
+  certificate is checked (or trusted by a pasted authority or a pinned fingerprint), secrets are
+  write-only, and every request is kept in an API log without secrets or query strings for
+  `ARESGATE_API_LOG_RETENTION_DAYS` days ([DOCS/integrations.md](DOCS/integrations.md)).
 
 ### Fixed
 
