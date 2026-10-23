@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app import audit, main, retention
 from app.audit import Action, Outcome
 from app.config import Settings
-from app.models import AuditEvent
+from app.integrations.apilog import ApiLogRecorder
+from app.integrations.client import Call
+from app.models import ApiCall, AuditEvent
 
 
 @pytest.fixture
@@ -39,6 +41,20 @@ def test_purging_deletes_what_is_past_the_retention_period(
 
     # The recent event stays, and the purge itself is in the log.
     assert remaining(session) == 2
+
+
+def test_purging_also_deletes_the_api_log_entries_past_their_retention_period(
+    session: Session, settings: Settings, new_session: Callable[[], Session]
+) -> None:
+    now = datetime.now(UTC)
+    for age in (settings.api_log_retention_days + 1, 1):
+        call = Call(now - timedelta(days=age), "opnsense", "api", "GET", "/x", 200, 5, None)
+        asyncio.run(ApiLogRecorder(new_session)(call))
+
+    retention.purge_once(settings, new_session)
+
+    session.expire_all()
+    assert session.scalar(select(func.count()).select_from(ApiCall)) == 1
 
 
 class FakePurge:

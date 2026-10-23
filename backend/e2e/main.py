@@ -6,6 +6,7 @@ The e2e image and CI serve it with ``uvicorn e2e.main:create_e2e_app --factory``
 from fastapi import FastAPI
 
 from app.config import Settings, get_settings
+from app.integrations import netguard
 from app.main import create_app
 from e2e.api import router
 
@@ -19,5 +20,7 @@ def create_e2e_app(settings: Settings | None = None) -> FastAPI:
             "can erase all the data."
         )
     app = create_app(settings)
+    # Stand-ins for the integrations run on the test server's own machine.
+    app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.include_router(router, prefix="/api")
     return app

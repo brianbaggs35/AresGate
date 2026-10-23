@@ -14,6 +14,7 @@ from app import logs, retention
 from app.api import api_router
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
+from app.integrations import netguard
 from app.middleware import HEADER, RequestContext
 from app.models import utcnow
 from app.secret_key import load_secret_key
@@ -72,6 +73,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.started_at = utcnow()
     app.state.started_monotonic = time.monotonic()
+    # Integrations have to be on the home network. (The end-to-end harness allows stand-ins on
+    # its own machine instead; the product never does.)
+    app.state.address_policy = netguard.HOME_NETWORK
     app.add_middleware(RequestContext)
     app.add_exception_handler(Exception, server_error)
     app.add_exception_handler(RequestValidationError, invalid_request)

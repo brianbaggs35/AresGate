@@ -10,8 +10,11 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import audit, cli, db
+from app.api.integrations import api_log_recorder
 from app.config import Settings
 from app.db import get_session
+from app.integrations import netguard
+from app.integrations.apilog import ApiLogRecorder
 from app.main import create_app
 from app.models import Base, User
 from app.security import passwords
@@ -24,6 +27,7 @@ from tests.helpers import (
     TEST_DATABASE_URL,
     TEST_SECRET_KEY,
 )
+from tests.stubs import Certificate, Handler, Serve, StubServer
 
 
 def pytest_configure() -> None:
@@ -74,7 +78,7 @@ def session(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def app(settings: Settings, session: Session) -> FastAPI:
+def app(settings: Settings, session: Session, engine: Engine) -> FastAPI:
     def request_session() -> Iterator[Session]:
         # Like a real request's session, anything not committed is rolled back at the end.
         try:
@@ -84,6 +88,12 @@ def app(settings: Settings, session: Session) -> FastAPI:
 
     app = create_app(settings)
     app.dependency_overrides[get_session] = request_session
+    # The API log is written in sessions of its own, on the test database.
+    app.dependency_overrides[api_log_recorder] = lambda: ApiLogRecorder(
+        sessionmaker(bind=engine, expire_on_commit=False)
+    )
+    # Stand-ins for integrations run on this machine.
+    app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     return app
 
 
@@ -142,3 +152,18 @@ def untouched_logging() -> Iterator[None]:
         logger.handlers[:] = handlers
         logger.setLevel(level)
         logger.propagate = propagate
+
+
+@pytest.fixture
+def serve() -> Iterator[Serve]:
+    """Starts web servers on this machine that answer like an integration, and stops them after."""
+    started: list[StubServer] = []
+
+    def start(handler: Handler, certificate: Certificate | None = None) -> StubServer:
+        server = StubServer(handler, certificate)
+        started.append(server)
+        return server
+
+    yield start
+    for server in started:
+        server.stop()

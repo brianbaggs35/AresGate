@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import config as config_module
 from app.config import Settings
 from app.db import get_session
+from app.integrations import netguard
 from app.models import SystemInfo, User
 from app.security import passwords, setup_code
 from e2e import factories
@@ -63,6 +64,10 @@ def test_the_harness_refuses_to_run_outside_a_test_server(
     elsewhere = settings.model_copy(update={"environment": environment})
     with pytest.raises(RuntimeError, match="ARESGATE_ENVIRONMENT=test"):
         create_e2e_app(elsewhere)
+
+
+def test_the_harness_lets_integrations_run_on_the_same_machine(harness: FastAPI) -> None:
+    assert harness.state.address_policy is netguard.HOME_NETWORK_AND_LOOPBACK
 
 
 def test_the_harness_takes_its_settings_from_the_environment(
@@ -130,6 +135,8 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     expected = {
         "audit_events": 0,
         "credentials": 0,
+        "integration_api_calls": 0,
+        "integration_connections": 0,
         "login_throttles": 0,
         "passkey_challenges": 0,
         "passkeys": 0,
@@ -166,6 +173,8 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "users",
             "system_info",
             "login_throttles",
+            "integration_connections",
+            "integration_api_calls",
             "credentials",
             "audit_events",
         ],
