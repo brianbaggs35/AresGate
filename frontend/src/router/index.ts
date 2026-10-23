@@ -24,6 +24,24 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Overview' },
   },
   {
+    // The list, and a page for each integration. Both belong to the one place in the menu.
+    path: '/integrations',
+    children: [
+      {
+        path: '',
+        name: 'integrations',
+        component: () => import('@/views/IntegrationsView.vue'),
+        meta: { title: 'Integrations' },
+      },
+      {
+        path: ':key',
+        name: 'integration',
+        component: () => import('@/views/IntegrationView.vue'),
+        meta: { title: 'Integrations' },
+      },
+    ],
+  },
+  {
     path: '/security',
     name: 'security',
     component: () => import('@/views/SecurityView.vue'),

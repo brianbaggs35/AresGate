@@ -31,11 +31,22 @@ describe('router', () => {
     expect(pageTitle({ meta: {} })).toBeUndefined()
   })
 
+  it('shows the integrations, and each one’s page, under one title', async () => {
+    const list = await visit('/integrations')
+    expect(list.name).toBe('integrations')
+    expect(pageTitle(list)).toBe('Integrations')
+    const one = await visit('/integrations/opnsense')
+    expect(one.name).toBe('integration')
+    expect(one.params.key).toBe('opnsense')
+    expect(document.title).toBe('Integrations · AresGate')
+  })
+
   it('lazy-loads every view module', async () => {
     const loaders = routes
+      .flatMap((route) => route.children ?? [route])
       .map((route) => route.component)
       .filter((component): component is () => Promise<unknown> => typeof component === 'function')
-    expect(loaders).toHaveLength(routes.length)
+    expect(loaders).toHaveLength(routes.flatMap((route) => route.children ?? [route]).length)
     const modules = await Promise.all(loaders.map((load) => load()))
     for (const module of modules) expect(module).toHaveProperty('default')
   })

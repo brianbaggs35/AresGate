@@ -23,6 +23,9 @@ const TITLES: Readonly<Record<string, string>> = {
   'credential.deleted': 'A credential was deleted',
   'system.secret_key_rotated': 'The app secret key was changed',
   'audit.events_purged': 'Old activity was removed',
+  'integration.connected': 'An integration was connected',
+  'integration.disconnected': 'An integration was disconnected',
+  'integration.tested': 'An integration was tested',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

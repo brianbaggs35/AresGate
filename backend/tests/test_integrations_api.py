@@ -70,7 +70,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
     assert [item["key"] for item in listed] == ["opnsense", "ntopng", "wazuh", "crowdsec"]
     assert listed[0]["name"] == "OPNsense"
     assert "firewall" in listed[0]["provides"]
-    assert listed[0]["icon"].startswith("mdi-")
+    assert [item["icon"] for item in listed] == ["firewall", "traffic", "alerts", "threats"]
     assert all(item["status"] == "not_connected" for item in listed)
     assert all(item["last_success_at"] is None and item["services"] == [] for item in listed)
 

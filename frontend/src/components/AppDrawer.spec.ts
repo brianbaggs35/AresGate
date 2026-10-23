@@ -28,6 +28,18 @@ describe('AppDrawer', () => {
     expect(overview.classes()).toContain('v-list-item--active')
   })
 
+  it('keeps Integrations marked on the page of one of them', async () => {
+    const { wrapper } = await mountWithPlugins(AppDrawer, {
+      withApp: true,
+      width: COMPUTER,
+      route: '/integrations/opnsense',
+    })
+    expect(wrapper.find('[data-test="nav-integrations"]').classes()).toContain(
+      'v-list-item--active',
+    )
+    expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-list-item--active')
+  })
+
   it('shows the labels on a computer', async () => {
     const { wrapper } = await open(COMPUTER)
     expect(wrapper.find('.v-navigation-drawer--rail').exists()).toBe(false)

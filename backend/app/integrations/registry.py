@@ -110,6 +110,7 @@ class IntegrationDef(BaseModel):
     name: str
     # What it gives AresGate to work with.
     provides: str
+    # The kind of thing it is, as one word ("firewall"): the web app picks the picture.
     icon: str
     docs_url: str
     # How to get what the fields ask for, in the product's own terms.
@@ -195,7 +196,7 @@ OPNSENSE = IntegrationDef(
         "The firewall's health, interfaces and traffic, gateways, firewall log, and ARP and DHCP "
         "tables, and the services that run on it: Suricata, CrowdSec, OpenVPN, Zenarmor and more."
     ),
-    icon="mdi-wall-fire",
+    icon="firewall",
     docs_url="https://docs.opnsense.org/development/how-tos/api.html",
     setup=(
         "In OPNsense, open System, Access, Users and make a user for AresGate, or edit one.",
@@ -252,7 +253,7 @@ NTOPNG = IntegrationDef(
     key="ntopng",
     name="ntopng",
     provides="Live traffic: hosts, flows and throughput on the interface ntopng watches.",
-    icon="mdi-chart-timeline-variant",
+    icon="traffic",
     docs_url="https://www.ntop.org/guides/ntopng/api/rest/api_v2.html",
     setup=(
         "In ntopng, edit the user AresGate will use and generate its User Authentication Token. "
@@ -319,7 +320,7 @@ WAZUH = IntegrationDef(
     provides=(
         "Security alerts and agent health from the manager, and the alert history from the indexer."
     ),
-    icon="mdi-shield-search",
+    icon="alerts",
     docs_url="https://documentation.wazuh.com/current/user-manual/api/getting-started.html",
     setup=(
         "Manager: in the Wazuh dashboard, create an API user for AresGate (Server management, "
@@ -362,7 +363,7 @@ CROWDSEC = IntegrationDef(
     key="crowdsec",
     name="CrowdSec",
     provides="The ban decisions CrowdSec has made, from its local API.",
-    icon="mdi-shield-account",
+    icon="threats",
     docs_url="https://docs.crowdsec.net/docs/local_api/authentication/",
     setup=(
         "Where CrowdSec runs, run cscli bouncers add aresgate. It prints an API key once. A "

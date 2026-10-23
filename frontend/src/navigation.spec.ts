@@ -3,7 +3,7 @@ import { routes } from '@/router'
 
 describe('navigation', () => {
   it('opens a route that exists from every item', () => {
-    const names = routes.map((route) => route.name)
+    const names = routes.flatMap((route) => route.children ?? [route]).map((route) => route.name)
     for (const item of navItems) expect(names).toContain(item.route)
   })
 

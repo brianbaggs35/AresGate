@@ -60,6 +60,9 @@ describe('ActivityList', () => {
       'credential.deleted',
       'system.secret_key_rotated',
       'audit.events_purged',
+      'integration.connected',
+      'integration.disconnected',
+      'integration.tested',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -80,6 +83,9 @@ describe('ActivityList', () => {
       'A credential was deleted',
       'The app secret key was changed',
       'Old activity was removed',
+      'An integration was connected',
+      'An integration was disconnected',
+      'An integration was tested',
     ])
   })
 

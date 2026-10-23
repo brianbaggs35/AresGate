@@ -1,4 +1,4 @@
-import { describeBrowser, formatDateTime } from '@/format'
+import { describeBrowser, formatAgo, formatDateTime, formatTimestamp } from '@/format'
 
 const AGENTS = {
   chromeWindows:
@@ -50,5 +50,34 @@ describe('formatDateTime', () => {
     const formatted = formatDateTime(moment, 'en-US')
     expect(formatted).toMatch(/Mar 4, 2026/)
     expect(formatted).toMatch(/\d{1,2}:30/)
+  })
+})
+
+describe('formatTimestamp', () => {
+  it('includes the seconds', () => {
+    expect(formatTimestamp('2026-03-04T15:30:45Z', 'en-US')).toMatch(/Mar 4, 2026.*:30:45/)
+  })
+})
+
+describe('formatAgo', () => {
+  const now = Date.parse('2026-03-04T12:00:00Z')
+
+  it.each([
+    ['2026-03-04T12:00:00Z', 'just now'],
+    ['2026-03-04T11:59:30Z', 'just now'],
+    ['2026-03-04T11:55:00Z', '5 minutes ago'],
+    ['2026-03-04T11:59:00Z', '1 minute ago'],
+    ['2026-03-04T09:00:00Z', '3 hours ago'],
+    ['2026-03-02T12:00:00Z', '2 days ago'],
+    ['2026-03-03T12:00:00Z', 'yesterday'],
+    ['2026-03-04T12:10:00Z', 'in 10 minutes'],
+  ])('puts %s as %s', (iso, words) => {
+    expect(formatAgo(iso, now, 'en-US')).toBe(words)
+  })
+
+  it('counts from now unless told when now is', () => {
+    expect(
+      formatAgo(new Date(Date.now() - 2 * 3600 * 1000).toISOString(), undefined, 'en-US'),
+    ).toBe('2 hours ago')
   })
 })
