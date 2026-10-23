@@ -23,8 +23,10 @@ class TestWhatAnEventNeeds:
             new_event(**{field: value})
 
     def test_the_time_needs_a_time_zone(self) -> None:
+        naive = datetime(2026, 10, 23, 12, 0)
+
         with pytest.raises(ValueError, match="time zone"):
-            new_event(occurred_at=datetime(2026, 10, 23, 12, 0))
+            new_event(occurred_at=naive)
 
     def test_it_needs_something_that_says_which_event_it_is(self) -> None:
         with pytest.raises(ValueError, match="which event"):
@@ -43,8 +45,11 @@ class TestWhatAnEventNeeds:
 
 class TestTheFingerprint:
     def test_the_same_event_has_the_same_one(self) -> None:
-        assert new_event().fingerprint == new_event().fingerprint
-        assert len(new_event().fingerprint) == 64
+        first = new_event()
+        second = new_event()
+
+        assert first.fingerprint == second.fingerprint
+        assert len(first.fingerprint) == 64
 
     def test_it_depends_on_the_source_and_on_each_part(self) -> None:
         assert fingerprint("wazuh", ("a", "b")) != fingerprint("ntopng", ("a", "b"))
