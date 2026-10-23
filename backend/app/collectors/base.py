@@ -6,14 +6,18 @@ every request (the same one the settings pages use), and a way to write to the d
 
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import ClassVar
 
 from sqlalchemy.orm import Session
 
+from app.config import Settings
+from app.events import store
+from app.events.event import NewEvent
 from app.integrations.client import ApiClient, Target
+from app.models import utcnow
 
 
 class CollectorFailed(Exception):
@@ -42,6 +46,13 @@ class Context:
     # the old settings never lands on the new ones.
     settings_version: datetime
     new_session: Callable[[], Session]
+    settings: Settings
+
+    async def record(self, events: Sequence[NewEvent]) -> int:
+        """Stores the events a run read, in a session of its own, and returns how many were new:
+        one stored already, or older than its source keeps events, is skipped, so reading the
+        same window twice is harmless."""
+        return await self.save(lambda db: store.record(db, self.settings, events, utcnow()))
 
     async def save[T](self, work: Callable[[Session], T]) -> T:
         """Runs ``work`` with a session of its own, off the event loop, and commits it."""

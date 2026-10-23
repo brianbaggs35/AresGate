@@ -1,10 +1,12 @@
 import os
 import secrets
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.events.event import NewEvent, Severity
 from app.models import User, utcnow
 from app.security import totp, two_factor
 
@@ -32,3 +34,18 @@ def turn_on_two_factor(
     assert codes is not None
     session.commit()
     return secret, codes
+
+
+def new_event(**changes: object) -> NewEvent:
+    """An event as a collector would hand it over, with whatever is given changed."""
+    fields: dict[str, Any] = {
+        "source": "wazuh",
+        "connection": "indexer",
+        "kind": "alert",
+        "severity": Severity.MEDIUM,
+        "occurred_at": utcnow(),
+        "identity": ("alert-1",),
+        "summary": "sshd: authentication failed",
+        **changes,
+    }
+    return NewEvent(**fields)

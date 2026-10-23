@@ -20,6 +20,7 @@ from app.integrations.service import Submission
 from app.models import (
     ApiCall,
     CollectorHealth,
+    Event,
     IntegrationConnection,
     WorkerBeat,
     utcnow,
@@ -27,9 +28,12 @@ from app.models import (
 from app.security import credential_store
 from app.security.credential_store import Kind
 from e2e.stand_ins import crowdsec
+from tests.helpers import new_event
 from tests.stubs import Serve
 
 SECRET = "a-very-secret-api-key-for-tests"
+# What a run reads is the same every time, so reading it again finds nothing new.
+WHEN = utcnow()
 FAST = Timing(
     tick=timedelta(milliseconds=20),
     retry=timedelta(milliseconds=10),
@@ -97,6 +101,23 @@ class Saving(Hourly):
     async def collect(self, context: Context) -> Outcome:
         found = await context.save(lambda db: len(list(db.scalars(select(IntegrationConnection)))))
         return Outcome(items=found)
+
+
+class Reporting(Hourly):
+    key = "reporting"
+
+    async def collect(self, context: Context) -> Outcome:
+        target = context.target
+        found = [
+            new_event(
+                source=target.integration,
+                connection=target.connection,
+                occurred_at=WHEN,
+                identity=(number,),
+            )
+            for number in range(2)
+        ]
+        return Outcome(items=await context.record(found))
 
 
 class OnlyOpnsense(Hourly):
@@ -295,6 +316,23 @@ def test_a_run_says_how_many_things_it_found(
 
     found = {record.collector: record.last_items for record in health_rows(session)}
     assert found == {"counting": 7, "saving": 2}
+
+
+def test_a_collector_stores_the_events_it_read_and_reading_them_again_adds_none(
+    session: Session, settings: Settings, engine: Engine, serve: Serve
+) -> None:
+    connect(session, settings, serve(crowdsec(SECRET)).url)
+    scheduler = make(settings, engine, Reporting())
+
+    asyncio.run(scheduler.run_once())
+    first = the_health(session).last_items
+    asyncio.run(scheduler.run_once())
+    second = the_health(session).last_items
+
+    assert (first, second) == (2, 0)
+    session.expire_all()
+    events = session.scalars(select(Event).order_by(Event.id)).all()
+    assert [(item.source, item.connection) for item in events] == [("crowdsec", "lapi")] * 2
 
 
 def test_a_collector_that_declines_gives_its_reason(
