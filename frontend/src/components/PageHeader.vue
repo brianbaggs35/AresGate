@@ -21,6 +21,7 @@ defineProps<{
       variant="text"
       :prepend-icon="ArrowLeft"
       :to="back.to"
+      exact
       class="page-header__back"
       data-test="back"
     >

@@ -19,6 +19,11 @@ const WIDTHS = { narrow: 720, regular: 960, wide: 1320 } as const
 </template>
 
 <style scoped>
+/* Pages start at the same place whatever their width, so titles don't jump between them. */
+.app-page {
+  margin-inline: 0;
+}
+
 .app-page__stack {
   display: flex;
   flex-direction: column;

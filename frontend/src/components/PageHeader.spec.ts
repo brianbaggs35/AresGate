@@ -50,4 +50,12 @@ describe('PageHeader', () => {
       expect(router.currentRoute.value.name).toBe('integrations')
     })
   })
+
+  it('is not marked as where you are while you are on a page below it', async () => {
+    const { wrapper } = await mountWithPlugins(PageHeader, {
+      route: '/integrations/ntopng',
+      props: { title: 'ntopng', back: { to: { name: 'integrations' }, label: 'All integrations' } },
+    })
+    expect(wrapper.find('[data-test="back"]').classes()).not.toContain('v-btn--active')
+  })
 })
