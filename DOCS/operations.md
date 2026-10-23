@@ -138,9 +138,33 @@ the backup or a newer one:
   is for the wrong name.
 - `make shell` opens a shell in the container, and `make psql` a database shell.
 
-The status page (the first page you see) shows whether the API and the database are up. Once
-you're signed in, the API's `/api/system` endpoint also reports AresGate's version, how long it
-has been running and PostgreSQL's version.
+The Overview page (the first page you see) shows whether the API and the database are up. Once
+you're signed in, the **Status** page in the menu says more, and is the place to look first when
+something seems wrong. It shows:
+
+- **AresGate**: the version, the commit and time it was built from (set by `make up` and by the
+  release workflow, and "Not recorded" where AresGate runs from source), and how long it has
+  been running.
+- **Software**: Python, nginx and PostgreSQL's versions, the database's size and connections,
+  and the migration it is at next to the one this version expects. They differ while an update
+  is half done, or when an older image is started on newer data, and the page says so.
+- **Certificate**: the one nginx shows browsers for your server name, who issued it and how many
+  days it has left. It warns from 14 days before the end.
+- **Container**: the CPUs it may use, the load, how much of its memory limit (or the computer's
+  memory, where there is no limit) and of the data disk is in use, and whether its clock agrees
+  with the computer you are browsing from. A clock that is a minute or more off is flagged,
+  since sign-ins and certificates depend on time.
+- **Parts**: each integration as working, having a problem (with the last error), not yet
+  tested or off, and when it last worked. More parts will be listed here as they're built.
+
+The **For a bug report** card has the same facts as plain text and a **Copy** button. It has
+versions, sizes, states and times, and never an address, a name or a secret: URLs, IP addresses
+and host names in what an integration reported are replaced. Paste it into an issue when you
+[report a problem](../CONTRIBUTING.md), after a look to be sure it holds nothing you'd rather
+keep private.
+
+The same facts are available to a signed-in client as `GET /api/status`, and `/api/system` has
+the version, how long AresGate has been running and PostgreSQL's version.
 
 ### Reading the logs
 

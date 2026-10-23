@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/settings-page'
 import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
 import { SignInsPage } from './pages/sign-ins-page'
+import { StatusPage } from './pages/status-page'
 import { VirtualAuthenticator } from './virtual-authenticator'
 
 export interface AresGateFixtures {
@@ -27,6 +28,7 @@ export interface AresGateFixtures {
   settings: SettingsPage
   signIns: SignInsPage
   activity: ActivityPage
+  status: StatusPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
@@ -114,6 +116,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   activity: async ({ page }, use) => {
     await use(new ActivityPage(page))
+  },
+
+  status: async ({ page }, use) => {
+    await use(new StatusPage(page))
   },
 
   signInElsewhere: async ({ browser, baseURL, baseline }, use) => {

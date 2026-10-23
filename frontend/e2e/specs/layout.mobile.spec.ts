@@ -64,6 +64,44 @@ test.describe('layout on a phone', () => {
     expect(room).toBeGreaterThanOrEqual(bar?.height ?? Infinity)
   })
 
+  test.describe('status', () => {
+    test('the page fits the screen, with every place still in the bottom bar', async ({
+      page,
+      shell,
+      status,
+    }) => {
+      await status.goto()
+      await expect(status.fine).toBeVisible()
+      await expect(status.diagnostics).toBeVisible()
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBeLessThanOrEqual(0)
+      const viewport = page.viewportSize()
+      const card = await status.aresgate.boundingBox()
+      expect(card?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
+      // Four places share the bar, each wide enough to tap.
+      for (const link of [
+        shell.overviewLink,
+        shell.integrationsLink,
+        shell.statusLink,
+        shell.settingsLink,
+      ]) {
+        expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
+      }
+    })
+
+    test('puts a fact above its value, so long ones have the width', async ({ status }) => {
+      await status.goto()
+      await expect(status.aresgate).toBeVisible()
+
+      const label = await status.aresgate.getByTestId('fact-label').first().boundingBox()
+      const value = await status.fact('version').boundingBox()
+      expect(value?.y).toBeGreaterThan((label?.y ?? 0) + (label?.height ?? 0) - 1)
+    })
+  })
+
   test.describe('integrations', () => {
     const overflow = (page: Page) =>
       page.evaluate(

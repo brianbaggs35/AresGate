@@ -11,6 +11,20 @@ test.describe('layout on a computer', () => {
     expect(box?.width).toBeLessThanOrEqual(720)
   })
 
+  test('the status page stays a readable column, with a fact beside its value', async ({
+    status,
+  }) => {
+    await status.goto()
+    await expect(status.aresgate).toBeVisible()
+
+    const card = await status.aresgate.boundingBox()
+    const label = await status.aresgate.getByTestId('fact-label').first().boundingBox()
+    const value = await status.fact('version').boundingBox()
+
+    expect(card?.width).toBeLessThanOrEqual(960)
+    expect(value?.x).toBeGreaterThan((label?.x ?? 0) + (label?.width ?? 0) - 1)
+  })
+
   test('shows the menu at the side, with names, and the logo above it', async ({
     shell,
     overview,
