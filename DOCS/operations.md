@@ -154,8 +154,11 @@ something seems wrong. It shows:
   memory, where there is no limit) and of the data disk is in use, and whether its clock agrees
   with the computer you are browsing from. A clock that is a minute or more off is flagged,
   since sign-ins and certificates depend on time.
-- **Parts**: each integration as working, having a problem (with the last error), not yet
-  tested or off, and when it last worked. More parts will be listed here as they're built.
+- **Integrations**: each one as working, having a problem (with the last error), not yet
+  tested or off, and when it last worked.
+- **Collectors**: the worker and each job it runs ([below](#the-collector-worker)), with the same
+  states, and the reason when one fails. A job whose integration is already listed with a
+  problem isn't listed again at the top of the page.
 
 The **For a bug report** card has the same facts as plain text and a **Copy** button. It has
 versions, sizes, states and times, and never an address, a name or a secret: URLs, IP addresses
@@ -165,6 +168,35 @@ keep private.
 
 The same facts are available to a signed-in client as `GET /api/status`, and `/api/system` has
 the version, how long AresGate has been running and PostgreSQL's version.
+
+### The collector worker
+
+Reading from the integrations on a schedule is done by the worker, a program of its own in the
+container (`docker/start-worker.sh`, started by supervisord next to the API). Keeping it apart
+means a slow or unreachable integration, or a bug in one collector, can't slow down or take down
+the web app. They share the database and nothing else.
+
+- **What it does.** For each connected integration it runs the jobs that apply to it. Today
+  that is a connection check every five minutes, which does what **Test connection** does and
+  keeps the integration's status and the services found on it up to date. A job that fails is
+  tried again after 30 seconds, then 1 minute, then 2, and so on, but never later than its normal
+  interval, and it's stopped if it takes too long. Connecting an integration starts its jobs
+  within seconds, saving its settings again runs them straight away, and disconnecting it stops
+  them. At most four jobs run at the same time.
+- **What it asks.** Every request goes through the same client as the settings pages, so the
+  same rules apply (only addresses on your home network, the certificate settings you chose,
+  no redirects followed) and each request is in the integration's API log. It opens nothing for
+  the network to connect to: it only makes requests.
+- **Where to look.** An integration's page has a **Collection** card with each job's state,
+  when it last ran and how long it took, when it runs next and why it failed. The Status page
+  lists the worker and the jobs. A worker that hasn't reported in for a minute is shown as a
+  problem; it reports every 15 seconds. `make logs` shows what it logs, as the API does.
+- **Pausing it.** Set `ARESGATE_COLLECTORS_ENABLED=false` in `.env`, then `make up` or
+  `make restart`. The worker keeps running and reporting in, and does nothing else, and the
+  Status page says collecting is off. The jobs' history is kept, and shown again when it's
+  turned back on.
+- **Restarting.** The worker starts after the migrations are done, and supervisord restarts it
+  if it stops. If it keeps failing, the container stops, as it does for the API.
 
 ### Reading the logs
 

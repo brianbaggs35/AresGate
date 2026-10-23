@@ -118,8 +118,10 @@ connection and time, and shows older requests on request.
 - Requests are deleted automatically after `ARESGATE_API_LOG_RETENTION_DAYS` days (30 by
   default; see [`.env.example`](../.env.example)).
 
-The same recording client will carry the collectors that read from these systems on a schedule,
-so what they ask shows up here too.
+The collectors that read from these systems on a schedule use the same recording client, so what
+they ask shows up here too. The page's **Collection** card says how each of those jobs is doing:
+when it last ran, how long it took, when it runs next and, if it failed, why
+([operations.md](operations.md#the-collector-worker)).
 
 ## How accurate this is
 
