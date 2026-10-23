@@ -1,8 +1,10 @@
 """The end-to-end tests' harness: the baseline, cleaning the database and making records."""
 
 import base64
+import socket
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import coverage
 import pytest
@@ -19,6 +21,7 @@ from app.integrations import netguard
 from app.models import SystemInfo, User
 from app.security import passwords, setup_code
 from e2e import factories
+from e2e.api import STAND_INS
 from e2e.baseline import (
     BASELINE_ACCOUNT,
     BASELINE_SYSTEM_INFO,
@@ -285,3 +288,73 @@ def test_an_account_can_be_made_to_order(e2e: TestClient, session: Session) -> N
     assert sorted(usernames(session)) == sorted(["chosen", invented.json()["username"]])
     stored = session.scalars(select(User).where(User.username == "chosen")).one()
     assert passwords.verify_password("kept as given", stored.password_hash)
+
+
+@pytest.fixture
+def stand_ins() -> Iterator[None]:
+    yield
+    STAND_INS.stop_all()
+
+
+def reachable(url: str) -> bool:
+    try:
+        with socket.create_connection((urlsplit(url).hostname or "", urlsplit(url).port or 0), 2):
+            return True
+    except OSError:
+        return False
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_a_stand_in_can_be_started_for_a_test_to_connect_to(e2e: TestClient) -> None:
+    plain = e2e.post("/api/__test__/stand-ins", json={"kind": "ntopng", "token": "a-token"})
+    secure = e2e.post(
+        "/api/__test__/stand-ins",
+        json={
+            "kind": "opnsense",
+            "api_key": "a-key",
+            "api_secret": "a-secret",
+            "services": ["suricata"],
+        },
+    )
+
+    assert plain.status_code == secure.status_code == 201
+    assert plain.json()["kind"] == "ntopng"
+    assert plain.json()["url"].startswith("http://127.0.0.1:")
+    assert plain.json()["fingerprint"] is None
+    assert secure.json()["url"].startswith("https://127.0.0.1:")
+    assert secure.json()["fingerprint"].count(":") == 31
+    assert reachable(plain.json()["url"])
+    assert reachable(secure.json()["url"])
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_a_stand_in_of_a_kind_that_does_not_exist_is_refused(e2e: TestClient) -> None:
+    response = e2e.post("/api/__test__/stand-ins", json={"kind": "nothing"})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_the_stand_ins_can_be_stopped(e2e: TestClient) -> None:
+    started = e2e.post("/api/__test__/stand-ins", json={"kind": "crowdsec", "api_key": "k"}).json()
+
+    response = e2e.delete("/api/__test__/stand-ins")
+
+    assert response.status_code == 204
+    assert not reachable(started["url"])
+
+
+@pytest.mark.usefixtures("stand_ins")
+@pytest.mark.parametrize("reset", ["/database/clean", "/fixtures/fresh-install"])
+def test_putting_the_database_back_stops_the_stand_ins_too(e2e: TestClient, reset: str) -> None:
+    started = e2e.post("/api/__test__/stand-ins", json={"kind": "crowdsec", "api_key": "k"}).json()
+    assert reachable(started["url"])
+
+    e2e.post(f"/api/__test__{reset}")
+
+    assert not reachable(started["url"])
+
+
+def test_the_production_app_cannot_start_a_stand_in(client: TestClient) -> None:
+    assert client.post("/api/__test__/stand-ins", json={"kind": "ntopng"}).status_code == 404
+    assert client.delete("/api/__test__/stand-ins").status_code == 404
