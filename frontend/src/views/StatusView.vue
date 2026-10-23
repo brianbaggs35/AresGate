@@ -357,7 +357,7 @@ onMounted(load)
             Copy
           </v-btn>
         </template>
-        <div role="status" class="mb-3">
+        <output class="status__copy">
           <v-alert
             v-if="copied === true"
             type="success"
@@ -376,8 +376,8 @@ onMounted(load)
           >
             Your browser wouldn't copy it. Select the text below and copy it yourself.
           </v-alert>
-        </div>
-        <pre class="status__diagnostics text-body-medium" tabindex="0" data-test="diagnostics">{{
+        </output>
+        <pre class="status__diagnostics text-body-medium" data-test="diagnostics">{{
           report.diagnostics
         }}</pre>
       </SectionCard>
@@ -421,10 +421,14 @@ onMounted(load)
   overflow-wrap: anywhere;
 }
 
+.status__copy {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
 .status__diagnostics {
   margin: 0;
   padding: 0.75rem 1rem;
-  overflow-x: auto;
   border-radius: 8px;
   background: rgb(var(--v-theme-surface-variant), 0.4);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
