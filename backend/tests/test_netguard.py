@@ -190,15 +190,16 @@ def test_a_name_that_also_leads_somewhere_forbidden_is_refused(
 ) -> None:
     fake_lookup(monkeypatch, "192.168.1.5", "169.254.169.254")
 
-    with pytest.raises(Refused, match=r"fw.example is at 169.254.169.254, which isn't a private"):
+    with pytest.raises(Refused, match=r"fw.example is at 169.254.169.254, which is in a range"):
         netguard.check_reachable(HOME_NETWORK, Origin("https", "fw.example", 443))
 
 
 def test_an_ip_address_is_checked_without_asking_dns() -> None:
     netguard.check_reachable(HOME_NETWORK, Origin("https", "192.168.1.1", 443))
-    with pytest.raises(Refused, match=r"127\.0\.0\.1, which isn't a private"):
+    # What was typed in isn't "at" itself, and the metadata ranges are named as such.
+    with pytest.raises(Refused, match=r"^127\.0\.0\.1 isn't a private network address"):
         netguard.check_reachable(HOME_NETWORK, Origin("https", "127.0.0.1", 443))
-    with pytest.raises(Refused, match=r"169\.254\.169\.254"):
+    with pytest.raises(Refused, match=r"^169\.254\.169\.254 is in a range cloud providers use"):
         netguard.check_reachable(HOME_NETWORK, Origin("http", "169.254.169.254", 80))
 
 
@@ -301,7 +302,7 @@ def fetch(
 def test_a_request_to_an_address_that_is_not_allowed_is_never_made(serve: Serve) -> None:
     server = serve(ok)
 
-    with pytest.raises(Refused, match=r"127\.0\.0\.1, which isn't a private"):
+    with pytest.raises(Refused, match=r"127\.0\.0\.1 isn't a private"):
         fetch(server, policy=HOME_NETWORK)
 
     assert server.seen == []
