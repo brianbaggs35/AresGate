@@ -5,15 +5,60 @@ web server with TLS.
 
 ## What you need
 
-- A computer that stays on, with [Docker](https://docs.docker.com/get-docker/) and Docker
-  Compose. Anything that runs Docker will do; the image is published for amd64 and arm64.
-- `make`, which runs the short commands below. (Without it, every target in the `Makefile` is a
-  `docker compose` command you can run yourself.)
+- A computer that stays on, with [Docker](https://docs.docker.com/get-docker/). The published
+  image supports amd64 and arm64.
+- Docker Compose and `make` only if you want to build from source or use the helper commands
+  below.
 - A name for the server on your network, such as `aresgate.example.com`, pointing at its address.
   Use the same name every time you browse to it. Passkeys only work at the name they were
   created for, and not at an IP address, and stop working if you change the name.
 
+## Run a published image without source code
+
+The release image contains the web app, API, database and web server; you do not need to clone
+the repository or build anything. This starts the latest release, publishes HTTPS on port 443
+and HTTP-to-HTTPS redirection on port 80, and keeps the database and settings in a Docker volume:
+
+```sh
+docker run --pull=always --detach \
+  --name aresgate \
+  --restart unless-stopped \
+  --publish 443:8443 \
+  --publish 80:8080 \
+  --add-host host.docker.internal:host-gateway \
+  --env ARESGATE_SERVER_NAME=aresgate.example.com \
+  --env ARESGATE_HTTPS_PORT=443 \
+  --mount type=volume,source=aresgate-data,target=/data \
+  --read-only \
+  --tmpfs /run \
+  --tmpfs /tmp \
+  --tmpfs /var/cache/nginx \
+  --tmpfs /etc/nginx/conf.d \
+  --tmpfs /etc/nginx/aresgate \
+  --cap-drop ALL \
+  --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE \
+  --cap-add FOWNER \
+  --cap-add SETGID \
+  --cap-add SETUID \
+  --cap-add KILL \
+  --security-opt no-new-privileges:true \
+  ghcr.io/brianbaggs35/aresgate:latest
+```
+
+Set `ARESGATE_SERVER_NAME` to the name you will use in your browser. If ports 80 or 443 are
+already in use, change the host side of `--publish`; when changing the HTTPS port, also set
+`ARESGATE_HTTPS_PORT` to that host port. Docker's `EXPOSE` metadata alone does not publish ports,
+so omitting `--publish` makes the container unreachable from the host.
+
+The container creates a self-signed certificate on first start. To use your own certificate,
+mount a folder containing `fullchain.pem` and `privkey.pem` at `/certs` with
+`--mount type=bind,source=/path/to/certs,target=/certs,readonly`. Follow the setup-code
+instructions below with `docker logs aresgate`.
+
 ## Install
+
+To build AresGate from source with Compose instead:
 
 ```sh
 git clone https://github.com/brianbaggs35/AresGate.git
@@ -147,20 +192,22 @@ Set `ARESGATE_ACME_RESOLVERS=1.1.1.1:53` in `.env` to have it look there instead
 
 ## Run a published release instead of building it
 
-Releases are published as images (see [Releasing](releasing.md)). To run one, add these to
+If you have cloned the repository, releases can also be started with `make pull`. Set these in
 `.env`, using the repository's name in lowercase and a version from its releases:
 
 ```sh
 ARESGATE_IMAGE=ghcr.io/brianbaggs35/aresgate
-ARESGATE_VERSION=0.0.1
+ARESGATE_VERSION=0.0.2
 ```
 
 and run `make pull` instead of `make up`. This is the way to run AresGate on a server that
-shouldn't have build tools.
+shouldn't have build tools. To run without a checkout at all, use the `docker run` command above.
 
 ## Update
 
-- From a release: set a newer `ARESGATE_VERSION` in `.env` and run `make pull`.
+- From a release without a checkout: run `docker rm -f aresgate`, then run the command above
+  again with the updated image tag. The `aresgate-data` volume is kept. From a release with a
+  checkout: set a newer `ARESGATE_VERSION` in `.env` and run `make pull`.
 - From the source: `git pull`, then `make up` (or `make rebuild` to rebuild every layer, which
   also fetches the newest security fixes for the operating system's packages).
 

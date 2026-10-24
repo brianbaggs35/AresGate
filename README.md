@@ -32,7 +32,10 @@ being built in this order. Nothing here is ready to protect a network yet.
 
 ## Quick start
 
-You need [Docker](https://docs.docker.com/get-docker/) with Compose, and `make`.
+You can run a published release with Docker alone; no source checkout or image build is needed.
+The [quick-start guide](DOCS/quick-start.md#run-a-published-image-without-source-code) has the
+`docker run` command. To build from source instead, you need [Docker](https://docs.docker.com/get-docker/)
+with Compose and `make`.
 
 ```sh
 git clone https://github.com/brianbaggs35/AresGate.git
