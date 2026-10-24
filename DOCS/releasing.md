@@ -34,8 +34,10 @@ When both pass, it joins the two images into one multi-platform image and tags i
 | `v1.4.0` | `1.4.0`, `1.4`, `1` and `latest` |
 | `v1.4.0-rc.1` (pre-release) | `1.4.0-rc.1` only, so `latest` stays on the newest stable release |
 
-It then signs the image's **build provenance** and an **SBOM** for each CPU (they're stored with
-the image and in the repository's attestations), and attaches the SBOMs to the release as
+It then signs the image's **build provenance** and an **SBOM** for each CPU. These attestations
+are stored in the repository's attestations, not as registry tags: registry-attached attestation
+artifacts can appear in the package UI as `sha256-...` pull commands even though they aren't
+container images. The SBOMs are also attached to the release as
 `aresgate-<version>-linux-<arch>.spdx.json`.
 
 ## Checking an image
@@ -50,7 +52,7 @@ gh attestation verify oci://ghcr.io/<owner>/<repo>:1.4.0 --repo <owner>/<repo>
 
 Because only a published release runs it, a change to the workflow or its script isn't tried in a
 pull request: CI lints it (actionlint and zizmor), and ShellCheck checks the script, but the first
-real run is a release. After changing it, publish a pre-release such as `v0.0.1-rc.1` to try it,
+real run is a release. After changing it, publish a pre-release such as `v0.0.2-rc.1` to try it,
 and delete that release and its tag afterwards if you like.
 
 ## Making the image public

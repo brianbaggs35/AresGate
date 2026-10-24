@@ -4,7 +4,20 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## 0.0.2
+
+### Added
+
+- Instructions for running a published image directly with Docker, without cloning the source
+  repository or building the image ([DOCS/quick-start.md](DOCS/quick-start.md)).
+
+### Fixed
+
+- Keep build provenance and SBOM attestations in GitHub's attestation store instead of publishing
+  them as `sha256-...` registry tags that appear to be pullable images
+  ([DOCS/releasing.md](DOCS/releasing.md)).
+
+## 0.0.1
 
 ### Added
 
