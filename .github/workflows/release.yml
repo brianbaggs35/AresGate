@@ -222,6 +222,8 @@ jobs:
           sbom: false
           build-args: |
             RELEASE=${{ env.VERSION }}
+            COMMIT=${{ github.sha }}
+            BUILT_AT=${{ steps.date.outputs.now }}
             APK_REFRESH=${{ steps.date.outputs.today }}
             IMAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           labels: |
