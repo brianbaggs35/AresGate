@@ -114,7 +114,9 @@ with a text to copy into a bug report. **Settings** is where the account lives. 
 page lists the most recent sign-ins, wrong guesses and sign-outs, so you can see whether anyone
 else has tried, and **Sign-ins** lists the browsers that are signed in now, so you can sign out any you don't
 recognise. **Account** changes the password and adds an authenticator app, so that signing in asks
-for a code from it as well as the password ([Operations](operations.md#signing-in)).
+for a code from it as well as the password ([Operations](operations.md#signing-in)). **Data** shows
+how much of what the integrations report is stored, and lets you keep each one's events and
+measurements for longer or shorter ([Operations](operations.md#stored-events)).
 
 The code changes each time the container starts until the account exists, and stops working
 once it has been used, so a later start prints no code. If you lose the code, `make restart`

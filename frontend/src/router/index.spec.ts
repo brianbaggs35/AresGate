@@ -67,6 +67,7 @@ describe('router', () => {
       ['/settings/account', 'settings-account'],
       ['/settings/sign-ins', 'settings-sign-ins'],
       ['/settings/activity', 'settings-activity'],
+      ['/settings/data', 'settings-data'],
     ] as const) {
       const page = await visit(path)
       expect(page.name).toBe(name)

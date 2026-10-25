@@ -205,11 +205,13 @@ test.describe('layout on a phone', () => {
     security,
     signIns,
     activity,
+    data,
   }) => {
     for (const [name, show, ready] of [
       ['account', () => security.goto(), security.twoFactorOff],
       ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
       ['activity', () => activity.goto(), activity.entries.first()],
+      ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()
       await expect(ready, name).toBeVisible()

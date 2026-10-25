@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { useId, watch } from 'vue'
+import { useId } from 'vue'
+
+import { useKeyboardReturn } from '@/dialog'
 
 /**
  * Asks before something that can't be undone, in a dialog that every page uses the same way: it
@@ -22,18 +24,7 @@ const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ confirm: [] }>()
 
 const titleId = useId()
-/** What had the keyboard when the dialog opened. */
-let opener: HTMLElement | null = null
-
-watch(open, (opening) => {
-  // Buttons are HTML elements, and that is what has the keyboard when a dialog is asked for.
-  if (opening) opener = document.activeElement as HTMLElement | null
-})
-
-function giveBackTheKeyboard() {
-  opener?.focus()
-  opener = null
-}
+const giveBackTheKeyboard = useKeyboardReturn(open)
 </script>
 
 <template>

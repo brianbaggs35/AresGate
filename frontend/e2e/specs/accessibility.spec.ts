@@ -85,6 +85,33 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the data page, and its questions, have no WCAG 2.2 AA problems', async ({
+      page,
+      data,
+      shell,
+    }) => {
+      await data.goto()
+      await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(4)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await data.source(data.eventsCard, 'OPNsense').getByTestId('retention-change').click()
+      await expect(data.dialogTitle).toBeVisible()
+      await expectAccessible(page)
+
+      await data.useDays.check()
+      await data.days.fill('0')
+      await data.save.click()
+      await expect(data.dialog).toContainText('Enter a whole number of days')
+      await expectAccessible(page)
+
+      await data.days.fill('90')
+      await data.save.click()
+      await expect(data.eventsCard.getByTestId('retention-notice')).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the status page, and its warning, have no WCAG 2.2 AA problems', async ({
       page,
       harness,

@@ -9,7 +9,7 @@ import { settingsSections } from '@/settings'
   <AppPage>
     <PageHeader
       title="Settings"
-      description="Your account, where you are signed in, and what has happened on this install."
+      description="Your account, where you are signed in, what has happened on this install, and how long its data is kept."
     />
     <div class="settings">
       <SettingsNav :sections="settingsSections" />

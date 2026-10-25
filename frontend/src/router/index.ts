@@ -70,6 +70,11 @@ export const routes: RouteRecordRaw[] = [
         name: 'settings-activity',
         component: () => import('@/views/ActivityView.vue'),
       },
+      {
+        path: 'data',
+        name: 'settings-data',
+        component: () => import('@/views/DataView.vue'),
+      },
     ],
   },
   // The Security page became the Settings area's Account page.

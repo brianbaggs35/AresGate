@@ -1,8 +1,12 @@
-import { expect, test, type Harness, type IntegrationPage } from '../support'
+import {
+  connectFirewall,
+  expect,
+  FIREWALL_KEY as KEY,
+  FIREWALL_SECRET as SECRET,
+  test,
+} from '../support'
 
 const TOKEN = 'a-valid-ntopng-token'
-const KEY = 'a-valid-key'
-const SECRET = 'a-valid-secret'
 
 test.describe('integrations', () => {
   test('lists a card for each, which opens its own page', async ({
@@ -471,28 +475,6 @@ test.describe('integrations', () => {
   })
 
   /** Connects OPNsense to a stand-in with these services installed, pinning its certificate. */
-  async function connectFirewall(
-    harness: Harness,
-    integration: IntegrationPage,
-    services: string[],
-  ): Promise<void> {
-    const firewall = await harness.standIn({
-      kind: 'opnsense',
-      api_key: KEY,
-      api_secret: SECRET,
-      services,
-    })
-    await integration.goto('opnsense')
-    await integration.address('api').fill(firewall.url)
-    await integration.field('api', 'api_key').fill(KEY)
-    await integration.field('api', 'api_secret').fill(SECRET)
-    await integration.tlsMode('api', 'pinned').check()
-    await integration.lookUp('api').click()
-    await integration.trust('api').click()
-    await integration.save.click()
-    await expect(integration.status).toHaveText('Connected')
-  }
-
   test.describe('OPNsense', () => {
     test('pins its own certificate, finds the services that run on it and reads from them', async ({
       page,

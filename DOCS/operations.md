@@ -214,10 +214,11 @@ OPNsense's [firewall log](integrations.md#the-firewall-log) and
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_EVENT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
   integration can keep them for longer or shorter than that, which suits a busy firewall log and
-  a quiet alert log: signed in, `PUT /api/events/storage/opnsense` with `{"days": 7}` (or
-  `{"days": null}` to go back to the default) sets it, and `GET /api/events/storage` shows each
-  integration's setting, how many events it has and when the oldest happened. A page for this in
-  Settings comes later. Each change is in the audit log.
+  a quiet alert log. **Settings**, then **Data**, shows each integration's setting, how many
+  events it has and when the oldest happened, and **Change** sets it, asking first if that
+  removes events already stored. The same is `PUT /api/events/storage/opnsense` with
+  `{"days": 7}` (or `{"days": null}` to go back to the default) and `GET /api/events/storage`
+  when signed in. Each change is in the audit log.
 - **How they go.** Events are stored in a table for each week, so the oldest leave by dropping a
   table, which is instant and gives the disk back. The API removes what's past its retention
   period when it starts and every six hours after that, as it does for the audit log: a week
@@ -244,9 +245,10 @@ the integrations.
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_METRIC_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
   integration can keep them for longer or shorter, apart from how long it keeps its events:
-  signed in, `PUT /api/metrics/storage/opnsense` with `{"days": 90}` (or `{"days": null}` to go
-  back to the default) sets it, and `GET /api/metrics/storage` shows each integration's setting,
-  how many samples it has and when the oldest was read. Each change is in the audit log.
+  the **Measurements** card on the **Data** page in Settings shows and sets it, or, signed in,
+  `PUT /api/metrics/storage/opnsense` with `{"days": 90}` (or `{"days": null}` to go back to the
+  default) sets it, and `GET /api/metrics/storage` shows each integration's setting, how many
+  samples it has and when the oldest was read. Each change is in the audit log.
 - **How much room they take.** About 100 bytes a reading, with its indexes. A firewall with two
   interfaces and one gateway gives about 28 readings a minute, which is about 130 MB over the
   default 30 days. Each interface adds seven readings a minute and each gateway four.

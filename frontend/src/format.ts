@@ -92,3 +92,13 @@ export function formatDuration(seconds: number): string {
   parts.push(`${minutes.toString()}m`)
   return parts.join(' ')
 }
+
+/** A number of days in words: "1 day" or "30 days". */
+export function formatDays(days: number): string {
+  return `${days.toString()} ${days === 1 ? 'day' : 'days'}`
+}
+
+/** A count the way people read it, with the separators of their language: "12,408". */
+export function formatCount(count: number, locale?: string): string {
+  return new Intl.NumberFormat(locale).format(count)
+}
