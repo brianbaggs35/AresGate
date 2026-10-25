@@ -130,6 +130,7 @@ class TestProcessorUse:
             {"headers": ["CPU: busy"]},
             {"headers": ["CPU:  0.0% user, 140.0% idle"]},
             {"headers": ["Hello CPU: 3.0% idle"]},
+            {"headers": ["CPU: " + "1" * 50_000 + "% busy"]},
         ],
     )
     def test_without_the_line_that_says_where_the_time_went_there_is_nothing(
