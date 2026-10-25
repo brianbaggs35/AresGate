@@ -66,6 +66,7 @@ describe('ActivityList', () => {
       'integration.disconnected',
       'integration.tested',
       'events.retention_changed',
+      'metrics.retention_changed',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -92,6 +93,7 @@ describe('ActivityList', () => {
       'An integration was disconnected',
       'An integration was tested',
       'How long events are kept was changed',
+      'How long metrics are kept was changed',
     ])
   })
 

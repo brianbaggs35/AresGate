@@ -12,6 +12,7 @@ from app import audit
 from app.config import Settings
 from app.events import retention as events
 from app.integrations import apilog
+from app.metrics import retention as metrics
 from app.models import utcnow
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,8 @@ INTERVAL = timedelta(hours=6)
 
 
 def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
-    """Deletes the audit events, the API log entries and the integrations' events past their
-    retention periods, and returns how many audit events there were."""
+    """Deletes the audit events, the API log entries and the integrations' events and samples
+    past their retention periods, and returns how many audit events there were."""
     with new_session() as db:
         now = utcnow()
         apilog.purge_expired(db, settings, now)
@@ -33,6 +34,14 @@ def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
                 "Removed %d events past their retention period and dropped %d old weeks of events",
                 removed.deleted,
                 removed.partitions_dropped,
+            )
+        measured = metrics.purge_expired(db, settings, now)
+        if measured.deleted or measured.partitions_dropped:
+            logger.info(
+                "Removed %d metric samples past their retention period and dropped %d old weeks"
+                " of samples",
+                measured.deleted,
+                measured.partitions_dropped,
             )
         return purged
 

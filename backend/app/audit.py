@@ -52,6 +52,7 @@ class Action(StrEnum):
     INTEGRATION_DISCONNECTED = "integration.disconnected"
     INTEGRATION_TESTED = "integration.tested"
     EVENT_RETENTION_CHANGED = "events.retention_changed"
+    METRIC_RETENTION_CHANGED = "metrics.retention_changed"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

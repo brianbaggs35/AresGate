@@ -6,11 +6,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.events import partitions, retention
-from app.events.partitions import Partition
+from app.events import retention
 from app.events.retention import Retention
 from app.events.store import record
 from app.models import Event, EventRetention
+from app.partitions import EVENTS, Partition
 from tests.helpers import new_event
 
 # A Friday, in the week that begins on Monday 19 October.
@@ -26,8 +26,8 @@ def add(session: Session, source: str, age: timedelta) -> None:
         occurred_at=NOW - age,
         identity=(source, str(age)),
     )
-    partitions.lock(session)
-    partitions.ensure(session, [partitions.containing(event.occurred_at)])
+    EVENTS.lock(session)
+    EVENTS.ensure(session, [EVENTS.containing(event.occurred_at)])
     session.add(Event(**event.row(NOW)))
     session.flush()
 
@@ -155,7 +155,7 @@ class TestPurging:
 
         purged = retention.purge_expired(session, settings, NOW)
 
-        assert partitions.existing(session) == [Partition(datetime(2026, 10, 19, tzinfo=UTC))]
+        assert EVENTS.existing(session) == [Partition("events", datetime(2026, 10, 19, tzinfo=UTC))]
         # It went with its table, so it wasn't deleted row by row.
         assert purged == retention.Purged(deleted=0, partitions_dropped=1)
 
@@ -183,7 +183,7 @@ class TestPurging:
         purged = retention.purge_expired(session, settings, NOW)
 
         assert purged == retention.Purged(deleted=1, partitions_dropped=1)
-        assert partitions.existing(session) == [Partition(datetime(2026, 10, 19, tzinfo=UTC))]
+        assert EVENTS.existing(session) == [Partition("events", datetime(2026, 10, 19, tzinfo=UTC))]
 
     def test_the_week_now_is_kept_even_when_it_is_empty(
         self, session: Session, settings: Settings
@@ -193,14 +193,14 @@ class TestPurging:
 
         retention.purge_expired(session, settings, NOW)
 
-        assert partitions.existing(session) == [Partition(datetime(2026, 10, 19, tzinfo=UTC))]
+        assert EVENTS.existing(session) == [Partition("events", datetime(2026, 10, 19, tzinfo=UTC))]
 
     def test_a_week_ahead_is_not_dropped(self, session: Session, settings: Settings) -> None:
-        partitions.ensure(session, [Partition(datetime(2026, 10, 26, tzinfo=UTC))])
+        EVENTS.ensure(session, [Partition("events", datetime(2026, 10, 26, tzinfo=UTC))])
 
         retention.purge_expired(session, settings, NOW)
 
-        assert partitions.existing(session) == [Partition(datetime(2026, 10, 26, tzinfo=UTC))]
+        assert EVENTS.existing(session) == [Partition("events", datetime(2026, 10, 26, tzinfo=UTC))]
 
     def test_there_is_nothing_to_do_without_events(
         self, session: Session, settings: Settings

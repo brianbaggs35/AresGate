@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
+from app.models.retention import SourceRetention
 
 
 class Event(Base):
@@ -27,7 +28,7 @@ class Event(Base):
     them all, and the program's own record is kept beside it.
 
     The table is split into one partition for each week of ``occurred_at`` (see
-    ``app/events/partitions.py``), so old events leave by dropping a table instead of by deleting
+    ``app/partitions.py``), so old events leave by dropping a table instead of by deleting
     rows. That is why the key and the unique index both hold the time. Nothing is made for a week
     until an event of that week arrives; the migration makes only the table they go in."""
 
@@ -72,13 +73,9 @@ class Event(Base):
     raw: Mapped[dict[str, Any] | None] = mapped_column(JSONB, default=None)
 
 
-class EventRetention(Base):
+class EventRetention(SourceRetention):
     """How long one source's events are kept, when that isn't the default. A source without a
     row here keeps them for ``ARESGATE_EVENT_RETENTION_DAYS``."""
 
     __tablename__ = "event_retention"
     __table_args__ = (CheckConstraint("days BETWEEN 1 AND 3650", name="days"),)
-
-    source: Mapped[str] = mapped_column(String(32), primary_key=True)
-    days: Mapped[int] = mapped_column(Integer)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

@@ -22,7 +22,7 @@ MAX_SIGNATURE = 256
 MAX_PROTOCOL = 16
 
 # Lowercase words, digits and hyphens: what an integration, a connection and a kind are called.
-_KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 
 class Severity(IntEnum):
@@ -64,9 +64,9 @@ class NewEvent:
 
     def __post_init__(self) -> None:
         for name, value in (("source", self.source), ("connection", self.connection)):
-            if not _KEY.match(value):
+            if not KEY.match(value):
                 raise ValueError(f"An event's {name} is a short lowercase name, not {value!r}.")
-        if not _KEY.match(self.kind):
+        if not KEY.match(self.kind):
             raise ValueError(f"An event's kind is a short lowercase name, not {self.kind!r}.")
         if self.occurred_at.tzinfo is None:
             raise ValueError("An event's time must have a time zone.")
