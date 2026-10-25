@@ -444,12 +444,12 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
 
 
 @pytest.mark.usefixtures("stand_ins")
-def test_the_collectors_read_the_firewall_log_of_the_opnsense_stand_in(
+def test_the_collectors_read_the_firewall_log_and_alerts_of_the_opnsense_stand_in(
     e2e: TestClient, session: Session, settings: Settings
 ) -> None:
     started = e2e.post(
         "/api/__test__/stand-ins",
-        json={"kind": "opnsense", "api_key": "k", "api_secret": "s"},
+        json={"kind": "opnsense", "api_key": "k", "api_secret": "s", "services": ["suricata"]},
     ).json()
     service.save(
         session,
@@ -475,8 +475,14 @@ def test_the_collectors_read_the_firewall_log_of_the_opnsense_stand_in(
 
     session.expire_all()
     records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
-    assert sorted(records) == ["connection-check", "opnsense-firewall-log"]
-    assert records["opnsense-firewall-log"].consecutive_failures == 0
-    # The second run read the same three lines and found them stored already.
+    assert sorted(records) == [
+        "connection-check",
+        "opnsense-firewall-log",
+        "opnsense-suricata-alerts",
+    ]
+    assert [item.consecutive_failures for item in records.values()] == [0, 0, 0]
+    # The second run read the same lines and alerts and found them stored already.
     assert records["opnsense-firewall-log"].last_items == 0
-    assert e2e.get("/api/__test__/database/counts").json()["events"] == 3
+    assert records["opnsense-suricata-alerts"].last_items == 0
+    # Three lines of the firewall's log and two alerts.
+    assert e2e.get("/api/__test__/database/counts").json()["events"] == 5

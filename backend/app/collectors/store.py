@@ -12,7 +12,7 @@ from app import audit
 from app.collectors.base import Collector
 from app.collectors.health import WORKER
 from app.integrations import registry
-from app.integrations.registry import ConnectionDef, IntegrationDef
+from app.integrations.registry import ConnectionDef, IntegrationDef, ModuleState
 from app.models import CollectorHealth, IntegrationConnection, WorkerBeat
 
 MAX_ERROR = 500
@@ -38,7 +38,8 @@ class Wanted:
 def wanted(db: Session, collectors: Iterable[Collector]) -> list[Wanted]:
     """Every collector that applies to a saved connection, in a steady order. A connection that
     is no longer one AresGate knows (the integration was dropped from the product) is skipped,
-    and so is a module that has been switched off."""
+    and so is a module that has been switched off or that testing the connection found isn't
+    installed. A module nobody has tested yet gets its collectors, which say what's wrong."""
     result: list[Wanted] = []
     rows = db.scalars(
         select(IntegrationConnection).order_by(
@@ -55,6 +56,7 @@ def wanted(db: Session, collectors: Iterable[Collector]) -> list[Wanted]:
             for item in collectors
             if item.reads(row.integration, row.connection)
             and item.module not in row.disabled_modules
+            and row.module_states.get(item.module or "") != ModuleState.NOT_INSTALLED
         )
     return result
 

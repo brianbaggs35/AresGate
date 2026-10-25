@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 import pytest
 
 from app.collectors.opnsense.firewall_log import parse
+from app.collectors.opnsense.suricata_alerts import parse as parse_alerts
 from app.events.event import Severity
 from app.integrations import netguard, registry
 from e2e import stand_ins
@@ -151,6 +152,67 @@ class TestOpnsenseTimeAndLog:
     def test_the_time_and_the_log_need_the_key_too(self) -> None:
         for path in ("/api/diagnostics/system/system_time", "/api/diagnostics/firewall/log"):
             assert self.handler()(seen(path)).status == 401
+
+
+class TestOpnsenseSuricataAlerts:
+    credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
+    alerts: ClassVar[list[dict[str, object]]] = [{"alert": "one"}, {"alert": "two"}]
+
+    def handler(self, services: tuple[str, ...] = ("suricata",)) -> Handler:
+        return stand_ins.opnsense("a-key", "a-secret", services, suricata_alerts=self.alerts)
+
+    @staticmethod
+    def search(rows: object | None = None, method: str = "POST") -> Seen:
+        body = b"" if rows is None else json.dumps({"rowCount": rows}).encode()
+        return Seen(
+            method, "/api/ids/service/query_alerts", TestOpnsenseSuricataAlerts.credentials, body
+        )
+
+    def test_a_search_answers_with_the_alerts_up_to_the_rows_asked_for(self) -> None:
+        everything = self.handler()(self.search(10))
+        one = self.handler()(self.search(1))
+
+        assert (everything.status, body(everything)["rows"]) == (200, self.alerts)
+        assert body(everything)["rowCount"] == 2
+        assert body(one)["rows"] == self.alerts[:1]
+
+    @pytest.mark.parametrize("asked", [None, 0, -1, "ten", 1.5])
+    def test_a_search_that_doesnt_say_how_many_rows_gets_all_of_them(self, asked: object) -> None:
+        answer = self.handler()(self.search(asked))
+
+        assert body(answer)["rows"] == self.alerts
+
+    def test_a_search_with_a_body_that_isnt_json_gets_all_of_them_too(self) -> None:
+        asked = Seen("POST", "/api/ids/service/query_alerts", self.credentials, b"rowCount=1")
+
+        assert body(self.handler()(asked))["rows"] == self.alerts
+
+    def test_asked_any_other_way_it_answers_with_an_empty_list_as_opnsense_does(self) -> None:
+        answer = self.handler()(self.search(10, method="GET"))
+
+        assert (answer.status, body(answer)) == (200, [])
+
+    def test_without_suricata_it_is_not_there(self) -> None:
+        answer = self.handler(())(self.search(10))
+
+        assert answer.status == 404
+
+    def test_it_needs_the_key_too(self) -> None:
+        asked = Seen("POST", "/api/ids/service/query_alerts", {}, b"")
+
+        assert self.handler()(asked).status == 401
+
+
+class TestSampleSuricataAlerts:
+    def test_they_are_two_recent_alerts_that_the_collector_reads(self) -> None:
+        events = parse_alerts(list(stand_ins.sample_suricata_alerts()))
+
+        assert [event.severity for event in events] == [Severity.MEDIUM, Severity.LOW]
+        now = datetime.now(UTC)
+        assert all(
+            timedelta(0) < now - event.occurred_at < timedelta(minutes=1) for event in events
+        )
+        assert len({event.fingerprint for event in events}) == 2
 
 
 class TestSampleFirewallLog:

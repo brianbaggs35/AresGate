@@ -269,17 +269,64 @@ def sample_firewall_log() -> list[dict[str, str]]:
     return log
 
 
+def sample_suricata_alerts() -> list[dict[str, object]]:
+    """Two alerts of OPNsense's intrusion detection from the last minute, newest first, in the
+    form its API gives them: Suricata's own record with the signature, its number and what was
+    done flattened onto it."""
+    now = datetime.now(UTC)
+    alerts: list[dict[str, object]] = []
+    for number, (signature, sid, action, source) in enumerate(
+        (
+            ("ET SCAN Potential SSH Scan", 2001219, "allowed", "198.51.100.7"),
+            ("ET MALWARE Known Bad Checkin", 2024897, "blocked", "203.0.113.50"),
+        )
+    ):
+        moment = now - timedelta(seconds=20 * (number + 1))
+        alerts.append(
+            {
+                "timestamp": f"{moment:%Y-%m-%dT%H:%M:%S.%f}+0000",
+                "flow_id": 1000000000000000 + number,
+                "in_iface": "igb0",
+                "event_type": "alert",
+                "src_ip": source,
+                "src_port": 51000 + number,
+                "dest_ip": "192.0.2.10",
+                "dest_port": 22,
+                "proto": "TCP",
+                "alert": signature,
+                "alert_sid": sid,
+                "alert_action": action,
+                "payload": "c2VjcmV0",
+                "filepos": 4096 * (number + 1),
+                "fileid": "",
+            }
+        )
+    return alerts
+
+
+def _rows_asked(body: bytes) -> int:
+    """How many rows a search asks for, which OPNsense gives all of (up to 9999) if it isn't
+    said."""
+    try:
+        asked = json.loads(body)["rowCount"]
+    except ValueError, KeyError, TypeError:
+        return 9999
+    return asked if isinstance(asked, int) and asked > 0 else 9999
+
+
 def opnsense(
     api_key: str,
     api_secret: str,
     services: Collection[str],
     *,
     firewall_log: Sequence[Mapping[str, str]] = (),
+    suricata_alerts: Sequence[Mapping[str, object]] = (),
     zone: timedelta = timedelta(0),
 ) -> Handler:
     """OPNsense's API with one key and secret. The services named are installed and running; the
     others answer 404, as a plugin that isn't installed does. It has a clock in a time zone that
-    is ``zone`` ahead of UTC, and the lines given in its firewall log, newest first."""
+    is ``zone`` ahead of UTC, the lines given in its firewall log, newest first, and, if Suricata
+    is installed, the alerts given."""
     expected = _basic(api_key, api_secret)
     paths = {module.path: module.key for module in OPNSENSE_MODULES if module.path}
 
@@ -293,6 +340,12 @@ def opnsense(
         if seen.path == "/api/diagnostics/firewall/log":
             limit = parse_qs(urlsplit(seen.target).query).get("limit", ["0"])[0]
             return _json(list(firewall_log)[: int(limit) or None])
+        if seen.path == "/api/ids/service/query_alerts" and "suricata" in services:
+            # A search is a POST: asked any other way, OPNsense answers with an empty list.
+            if seen.method != "POST":
+                return _json([])
+            rows = list(suricata_alerts)[: _rows_asked(seen.body)]
+            return _json({"filters": {}, "rows": rows, "rowCount": len(rows), "current": 1})
         if paths.get(seen.path) in services:
             return _json({"status": "running"})
         return _json({"status": 404, "message": "Not found"}, 404)
@@ -346,7 +399,13 @@ class StandIns:
         handlers: dict[Kind, Handler] = {
             "ntopng": ntopng(token),
             "crowdsec": crowdsec(api_key),
-            "opnsense": opnsense(api_key, api_secret, services, firewall_log=sample_firewall_log()),
+            "opnsense": opnsense(
+                api_key,
+                api_secret,
+                services,
+                firewall_log=sample_firewall_log(),
+                suricata_alerts=sample_suricata_alerts(),
+            ),
             "zenarmor": zenarmor(api_key),
         }
         certificate = make_certificate("fw.home.arpa") if kind in ("opnsense", "zenarmor") else None

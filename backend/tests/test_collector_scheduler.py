@@ -464,6 +464,25 @@ def test_a_collector_is_not_wanted_where_its_module_is_switched_off(session: Ses
     ]
 
 
+def test_a_collector_is_not_wanted_where_its_module_was_found_not_to_be_installed(
+    session: Session,
+) -> None:
+    saved_row(session, "opnsense", "api", module_states={"suricata": "not_installed"})
+    saved_row(session, "wazuh", "manager", module_states={"suricata": "stopped"})
+    saved_row(session, "wazuh", "indexer", module_states={"something-else": "not_installed"})
+    saved_row(session, "ntopng", "api")
+
+    found = store.wanted(session, [NeedsSuricata()])
+
+    # A module that is stopped, one whose neighbour isn't installed and one nobody has tested
+    # yet still get their collectors.
+    assert [item.key for item in found] == [
+        ("needs-suricata", "ntopng", "api"),
+        ("needs-suricata", "wazuh", "indexer"),
+        ("needs-suricata", "wazuh", "manager"),
+    ]
+
+
 def test_a_connection_that_is_no_longer_known_is_left_alone(session: Session) -> None:
     saved_row(session, "dropped-from-the-product", "api")
     saved_row(session, "opnsense", "no-such-connection")
