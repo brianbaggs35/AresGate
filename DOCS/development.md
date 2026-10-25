@@ -16,7 +16,7 @@ make             # lists every command
 
 | Folder | What is in it |
 | --- | --- |
-| `backend/app` | The API (FastAPI), its settings and database models, `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule, and `app/events`, where what they read is stored |
+| `backend/app` | The API (FastAPI), its settings and database models, `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule, and `app/events` and `app/metrics`, where the events and the numbers they read are stored |
 | `backend/migrations` | Database migrations (Alembic) |
 | `backend/tests` | The API's tests (pytest) |
 | `backend/e2e` | The test server's harness, used only by the end-to-end tests (see [frontend/e2e/README.md](../frontend/e2e/README.md)) |
@@ -112,13 +112,34 @@ many were new, for the run's item count.
   read twice from being stored twice, so it must not hold anything that changes between reads.
 - `severity` is `Severity.INFO` to `Severity.CRITICAL`, which the web app shows as info, low,
   medium, high and critical.
-- The table is partitioned by week of `occurred_at` (`app/events/partitions.py`), made on demand
+- The table is partitioned by week of `occurred_at` (`app/partitions.py`), made on demand
   under an advisory lock that the retention purge takes too, so a purge never drops a week an
   event is being written into. That is why the primary key and the unique index both hold the
   time, and why a foreign key to an event would need the time as well. Alembic is told to leave
   the partitions out (`migrations/env.py`), so `alembic check` and autogenerate don't ask for
   them to be dropped. Tests that store events get a clean set of partitions from the `session`
   fixture.
+
+## Storing samples from a collector
+
+A collector that reads numbers makes a `NewSample` (`app/metrics/sample.py`) for each and hands
+them to `await context.record_samples(samples)`, which stores the ones that aren't stored yet
+and returns how many were new.
+
+- `source` and `connection` are the integration's and the connection's keys, `name` is what is
+  measured in lowercase words joined by dots or underscores (`system.load_1m`,
+  `interface.bytes_in`), and `labels` (at most eight) tell one series from another of the same
+  name, such as `{"interface": "igc0"}`. The names are the collector's own and are checked; a
+  label's value came from the other system and is cleaned on the way in. Keep a label to
+  something with a few values: each different set of labels is a series of its own.
+- A series (`metric_series`) is made the first time one of its samples is stored, and goes when
+  its last sample does, so the samples (`metric_samples`) hold only the series' number, the time
+  and the value. The same series at the same moment is stored once.
+- The samples are partitioned by week of `sampled_at` and kept the same way as events, with the
+  same code: `app/partitions.py` makes and drops the weeks, and `app/retained.py` holds how long
+  each source keeps its rows and purges what is past it. A table that uses them says which
+  columns hold the time and the source, and what to run after a purge (`app/metrics/retention.py`
+  forgets the series left without samples).
 
 ## Dependencies
 

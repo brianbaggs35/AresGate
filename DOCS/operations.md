@@ -231,6 +231,29 @@ OPNsense's [firewall log](integrations.md#the-firewall-log) and
 - **If the clock is wrong.** An event dated more than five minutes ahead of AresGate's clock is
   stored as of now, so a wrong clock on another machine can't make a table for next year.
 
+### Stored metrics
+
+The numbers the collectors measure (a firewall's load, the traffic through an interface) are kept
+as samples: one number, read from one connection at one moment, under the name of what it
+measures (`system.load_1m`) and the labels that tell it apart from the same thing measured
+elsewhere (`interface: igc0`). Reading the same moment twice stores it once, and a reading that
+isn't a number is left out. Nothing stores metrics yet; the collectors that do come with the
+integrations.
+
+- **How long they're kept.** 30 days. Change that for everything with
+  `ARESGATE_METRIC_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
+  integration can keep them for longer or shorter, apart from how long it keeps its events:
+  signed in, `PUT /api/metrics/storage/opnsense` with `{"days": 90}` (or `{"days": null}` to go
+  back to the default) sets it, and `GET /api/metrics/storage` shows each integration's setting,
+  how many samples it has and when the oldest was read. Each change is in the audit log.
+- **How they go.** Samples are stored in a table for each week, and leave the way events do: the
+  API removes what's past its retention period when it starts and every six hours after that,
+  dropping a week that ended before even the longest period began and deleting the rest by
+  integration and time. A measured thing that has no samples left is forgotten with them.
+  Shortening a period takes effect at the next clean-up.
+- **If the clock is wrong.** A sample dated more than five minutes ahead of AresGate's clock is
+  stored as of now.
+
 ### Reading the logs
 
 The API writes one JSON object per line: the `time`, the `level`, the `logger`, the `message`,

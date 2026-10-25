@@ -6,6 +6,13 @@ Every release's notes are here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Storage for the numbers the integrations measure over time, such as a firewall's load or an
+  interface's traffic, for the collectors that read them to save and the charts to draw. Each is
+  kept for 30 days unless `ARESGATE_METRIC_RETENTION_DAYS` says otherwise, or an integration is
+  given a period of its own, as for events ([DOCS/operations.md](DOCS/operations.md)).
+
 ### Fixed
 
 - Every build of the image now gets the newest fix of every package, as
