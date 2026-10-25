@@ -58,13 +58,37 @@ recorded as low severity and anything else as info. The line as OPNsense gave it
 - **Switching it off.** Switch off **Firewall and system** under Services on the OPNsense page.
   The events that were stored are kept for their retention period.
 
+### Suricata alerts
+
+If Suricata (OPNsense's intrusion detection) is installed, AresGate reads its alerts every
+minute and keeps each as an event ([Stored events](operations.md#stored-events)): the signature
+that matched, the interface, the protocol, the addresses and ports, and what Suricata did about
+it. An alert it let through is recorded as medium severity and one it blocked (in intrusion
+prevention mode) as low. OPNsense's query leaves out Suricata's own severity and category, so
+that is all AresGate can go by.
+
+- **What it reads.** The newest 500 alerts of `/api/ids/service/query_alerts` each time, which
+  is a search that changes nothing. Alerts the next read finds again are stored once. The record
+  is kept as OPNsense gave it, except for the packet that set the alert off and the stream
+  around it (`payload`, `packet` and the like), which stay on the firewall.
+- **What the user needs.** **Services: Intrusion Detection** in OPNsense. It covers all of
+  `/api/ids/`, so unlike most of what AresGate reads it also allows changing the rules; AresGate
+  only searches the alerts, but make the user for AresGate with only the privileges it needs.
+- **When it runs.** Only if testing the connection found Suricata installed, so a firewall
+  without it has no such job, and AresGate starts one within a few minutes of the plugin being
+  installed. Switch off **Suricata** under Services on the OPNsense page to leave it alone. The
+  alerts that were stored are kept for their retention period.
+- **Nothing in the list.** An alert log that doesn't exist yet is an empty list, so a quiet
+  network and a Suricata that has never alerted look the same. If OPNsense can't ask Suricata at
+  all (it answers with nothing), the Collection card says so.
+
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
 OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its own certificate
 settings. Leave it off if you don't use Zenarmor.
 
 **Suricata** has no API outside OPNsense: it is the intrusion detection plugin, and it appears
-under Services. **CrowdSec** on OPNsense is read the same way. A CrowdSec that runs anywhere
+under Services; its alerts are read as above. **CrowdSec** on OPNsense is read the same way. A CrowdSec that runs anywhere
 else (a Raspberry Pi, a server) is the separate **CrowdSec** integration below.
 
 ## ntopng
