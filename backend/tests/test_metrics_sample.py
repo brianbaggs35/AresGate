@@ -31,8 +31,10 @@ class TestWhatASampleNeeds:
         assert new_sample(name=name).name == name
 
     def test_the_time_needs_a_time_zone(self) -> None:
+        naive = datetime(2026, 10, 25, 12, 0)
+
         with pytest.raises(ValueError, match="time zone"):
-            new_sample(sampled_at=datetime(2026, 10, 25, 12, 0))
+            new_sample(sampled_at=naive)
 
     @pytest.mark.parametrize("label", ["", "Interface", "1st", "inter-face", "x" * 33])
     def test_a_labels_name_is_a_short_lowercase_name(self, label: str) -> None:
