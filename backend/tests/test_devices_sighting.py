@@ -165,5 +165,7 @@ class TestWhatASightingNeeds:
             NewSighting(mac, NOW)
 
     def test_the_time_needs_a_time_zone(self) -> None:
+        naive = datetime(2026, 10, 25, 12, 0)
+
         with pytest.raises(ValueError, match="time zone"):
-            NewSighting(MAC, datetime(2026, 10, 25, 12, 0))
+            NewSighting(MAC, naive)
