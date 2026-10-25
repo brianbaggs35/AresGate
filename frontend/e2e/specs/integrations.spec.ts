@@ -572,28 +572,34 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      // Suricata isn't installed on this one, so it has no job for its alerts. The jobs are
-      // listed by name.
-      await expect(integration.collectors).toHaveCount(6)
+      // Suricata, Dnsmasq and Kea aren't installed on this one, so it has no jobs for their
+      // alerts and leases. The jobs are listed by name.
+      await expect(integration.collectors).toHaveCount(7)
       await expect(integration.collectors).toContainText([
         'Connection check',
+        'Devices (ARP table)',
         'Processor use',
         'Firewall log',
         'Gateways',
         'Interface traffic',
         'System health',
       ])
-      await expect(integration.collectorStates).toHaveText(new Array(6).fill('Working'))
-      await expect(integration.collectorTimings.nth(2)).toContainText('next run within a minute')
+      await expect(integration.collectorStates).toHaveText(new Array(7).fill('Working'))
+      await expect(integration.collectorTimings.nth(3)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
       // The three lines in the firewall's log are kept once, however often they are read.
       expect((await harness.rowCounts()).events).toBe(3)
       // What it measures is read again each time: 14 numbers for two interfaces, 9 for its
       // health, 4 for its gateway and 1 for its processors.
       expect((await harness.rowCounts()).metric_samples).toBe(28)
+      // The three devices in its ARP table, each with its address, however often it is read.
+      expect((await harness.rowCounts()).devices).toBe(3)
+      expect((await harness.rowCounts()).device_addresses).toBe(3)
       await harness.runCollectors()
       expect((await harness.rowCounts()).events).toBe(3)
       expect((await harness.rowCounts()).metric_samples).toBe(56)
+      expect((await harness.rowCounts()).devices).toBe(3)
+      expect((await harness.rowCounts()).device_addresses).toBe(3)
     })
 
     test('reads the alerts of Suricata as well when it is installed', async ({
@@ -606,14 +612,47 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      await expect(integration.collectors).toHaveCount(7)
-      await expect(integration.collectors.nth(5)).toContainText('Suricata alerts')
-      await expect(integration.collectorStates).toHaveText(new Array(7).fill('Working'))
+      await expect(integration.collectors).toHaveCount(8)
+      await expect(integration.collectors.nth(6)).toContainText('Suricata alerts')
+      await expect(integration.collectorStates).toHaveText(new Array(8).fill('Working'))
       await expect(integration.collectorErrors).toHaveCount(0)
       // Three lines of the firewall's log and two alerts, kept once however often they are read.
       expect((await harness.rowCounts()).events).toBe(5)
       await harness.runCollectors()
       expect((await harness.rowCounts()).events).toBe(5)
+    })
+
+    test('lists the devices that hold leases from its DHCP servers as well when they are installed', async ({
+      harness,
+      integration,
+    }) => {
+      await connectFirewall(harness, integration, ['dnsmasq', 'kea'])
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(9)
+      await expect(integration.collectors).toContainText([
+        'Connection check',
+        'Devices (ARP table)',
+        'Processor use',
+        'Devices (Dnsmasq leases)',
+        'Firewall log',
+        'Gateways',
+        'Interface traffic',
+        'Devices (Kea leases)',
+        'System health',
+      ])
+      await expect(integration.collectorStates).toHaveText(new Array(9).fill('Working'))
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // Three in the ARP table, a printer with a lease from Dnsmasq (and the laptop that is in
+      // the table too) and a camera with one from Kea: five devices, however often they are
+      // listed.
+      expect((await harness.rowCounts()).devices).toBe(5)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).devices).toBe(5)
+      expect((await harness.rowCounts()).device_addresses).toBe(5)
     })
 
     test('a certificate lookup says why it could not be done', async ({ integration }) => {

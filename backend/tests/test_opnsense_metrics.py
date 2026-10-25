@@ -1,11 +1,8 @@
-import asyncio
-import json
-from collections.abc import Callable, Mapping
 from typing import Any
 
 import pytest
 from sqlalchemy import Engine, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.collectors import registry as collectors
 from app.collectors.base import Collector
@@ -14,17 +11,13 @@ from app.collectors.opnsense.gateway_status import GatewayStatus
 from app.collectors.opnsense.interface_traffic import InterfaceTraffic, interfaces
 from app.collectors.opnsense.readings import leading_number, number
 from app.collectors.opnsense.system_health import SystemHealth, uptime_seconds
-from app.collectors.scheduler import Scheduler
 from app.config import Settings
-from app.integrations import netguard, registry, service
-from app.integrations.apilog import ApiLogRecorder
-from app.integrations.service import Submission
-from app.models import CollectorHealth, MetricSample, MetricSeries, utcnow
+from app.models import MetricSample, MetricSeries, utcnow
 from e2e import stand_ins
 from e2e.stand_ins import opnsense
-from tests.stubs import Answer, Certificate, Seen, Serve, make_certificate
+from tests.opnsense import KEY, SECRET, answering, collect, health, routed, run
+from tests.stubs import Serve
 
-KEY, SECRET = "firewall-key", "firewall-secret"
 TIME = "/api/diagnostics/system/system_time"
 RESOURCES = "/api/diagnostics/system/system_resources"
 DISK = "/api/diagnostics/system/system_disk"
@@ -177,60 +170,6 @@ class TestInterfaces:
         }
 
 
-def routed(replies: Mapping[str, object]) -> Callable[[Seen], Answer]:
-    """A firewall that answers the paths given and says 404 to the others."""
-
-    def handle(seen: Seen) -> Answer:
-        if seen.path in replies:
-            return Answer(status=200, body=json.dumps(replies[seen.path]))
-        return Answer(status=404, body=json.dumps({"status": 404}))
-
-    return handle
-
-
-def answering(reply: object, *, status: int = 200) -> Callable[[Seen], Answer]:
-    return lambda seen: Answer(status=status, body=json.dumps(reply))
-
-
-def connect(
-    session: Session, settings: Settings, server_url: str, certificate: Certificate
-) -> None:
-    submission = Submission(
-        url=server_url,
-        tls_mode="pinned",
-        tls_ca_pem=None,
-        tls_fingerprint=certificate.fingerprint,
-        options={},
-        secrets={"api_key": KEY, "api_secret": SECRET},
-    )
-    service.save(
-        session,
-        settings,
-        netguard.HOME_NETWORK_AND_LOOPBACK,
-        registry.INTEGRATIONS["opnsense"],
-        {"api": submission},
-        utcnow(),
-    )
-    session.commit()
-
-
-def collect(settings: Settings, engine: Engine, collector: Collector) -> None:
-    maker = sessionmaker(bind=engine, expire_on_commit=False)
-    scheduler = Scheduler(
-        settings,
-        maker,
-        ApiLogRecorder(maker),
-        netguard.HOME_NETWORK_AND_LOOPBACK,
-        collectors=(collector,),
-    )
-    asyncio.run(scheduler.run_once())
-
-
-def health(session: Session) -> CollectorHealth:
-    session.expire_all()
-    return session.scalars(select(CollectorHealth)).one()
-
-
 def measured(session: Session) -> dict[str, float]:
     """What was stored, as ``name{label=value}`` and its value."""
     session.expire_all()
@@ -243,19 +182,6 @@ def measured(session: Session) -> dict[str, float]:
         name + "".join(f"{{{label}={text}}}" for label, text in labels.items()): value
         for name, labels, value in rows
     }
-
-
-def run(
-    session: Session,
-    settings: Settings,
-    engine: Engine,
-    serve: Serve,
-    collector: Collector,
-    handler: Callable[[Seen], Answer],
-) -> None:
-    certificate = make_certificate()
-    connect(session, settings, serve(handler, certificate).url, certificate)
-    collect(settings, engine, collector)
 
 
 def times(**changes: Any) -> dict[str, Any]:

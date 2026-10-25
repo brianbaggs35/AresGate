@@ -13,6 +13,11 @@ Every release's notes are here, newest first. The format follows
   interface, and whether each gateway is up and how its link is doing. They are four jobs on the
   Collection card, each needing its own privilege in OPNsense
   ([DOCS/integrations.md](DOCS/integrations.md#health-traffic-and-gateways)).
+- The devices on the network, listed from OPNsense's ARP table every minute and from the DHCP
+  leases of Dnsmasq and Kea every five, and kept with their hardware and IP addresses, host
+  names and the makers of their network cards, and when each was first and last seen. They are
+  what the monitoring pages and the AI analyst will use to say which device is which
+  ([DOCS/integrations.md](DOCS/integrations.md#devices)).
 
 ## 0.0.3
 
