@@ -141,6 +141,27 @@ and returns how many were new.
   columns hold the time and the source, and what to run after a purge (`app/metrics/retention.py`
   forgets the series left without samples).
 
+## Storing devices from a collector
+
+A collector that lists the devices on the network makes a `NewSighting` for each with
+`NewSighting.of(mac, seen_at, address=..., hostname=..., vendor=...)` (`app/devices/sighting.py`)
+and hands them to `await context.record_devices(sightings)`, which returns how many different
+devices there were.
+
+- `of` returns `None` for a hardware address that isn't a device's (not six bytes, all zeros, or
+  with the multicast bit set, as the broadcast address has), and takes the address in any of the
+  forms programs write it, including FreeBSD's without leading zeros (`0:c:29:a:b:c`). The IP
+  address, host name and maker came from the other system: an address that isn't one, and a name
+  that stands for none (`*`, `?`, `-`), are left out without costing the device, and text is
+  cleaned and cut to fit.
+- A device (`devices`) is told apart by its MAC address, and `app/devices/store.py` updates it
+  when it is listed again: the times only widen (first seen moves back and last seen moves
+  forward), a name or maker replaces the one kept and none leaves it, and an address is added to
+  the device's rows (`device_addresses`). Sightings of one device in the same call are taken
+  together, and a time ahead of now is taken as now.
+- The OPNsense lease searches share `app/collectors/opnsense/leases.py`: a collector for another
+  DHCP server only needs its path and what makes a lease current.
+
 ## Dependencies
 
 Add the newest version of a dependency unless there's a reason not to, and prefer packages that

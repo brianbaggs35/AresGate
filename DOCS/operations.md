@@ -258,6 +258,24 @@ the integrations.
 - **If the clock is wrong.** A sample dated more than five minutes ahead of AresGate's clock is
   stored as of now.
 
+### Stored devices
+
+The devices the collectors see on the network are kept in two tables: `devices`, with one row
+for each hardware (MAC) address, and `device_addresses`, with a row for each IP address a device
+has had. A device has the host name and the maker of its network card that were last told, and
+when it was first and last seen; an address has the same two times. A device that was seen again
+is updated, not added, and an address that changed hands is in the rows of both devices, the
+one seen with it last having it now. The collectors that fill them are OPNsense's
+[ARP table and DHCP leases](integrations.md#devices).
+
+- **How long they're kept.** Until you remove them: there is no retention period for devices yet,
+  and nothing reads them yet either.
+- **How much room they take.** A few hundred bytes for each device and address, so a home network
+  of a hundred devices is a few tens of kilobytes. A device that changes its hardware address
+  often is a new device each time, which adds up very slowly.
+- **How they're written.** Every run updates the devices it lists, once a minute for the ARP
+  table, so the tables are small but see a steady trickle of updates.
+
 ### Reading the logs
 
 The API writes one JSON object per line: the `time`, the `level`, the `logger`, the `message`,
