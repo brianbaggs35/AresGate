@@ -418,6 +418,144 @@ def sample_gateways() -> dict[str, object]:
     }
 
 
+def sample_arp_table() -> list[dict[str, object]]:
+    """The ARP table of a firewall with a laptop (whose address FreeBSD writes without its leading
+    zeros), a phone, an address that stopped answering, and its own address, which is permanent."""
+    return [
+        {
+            "mac": "0:11:22:a:b:c",
+            "ip": "192.168.1.20",
+            "intf": "igb1",
+            "intf_description": "LAN",
+            "expired": False,
+            "expires": 1176,
+            "permanent": False,
+            "type": "ethernet",
+            "manufacturer": "Example Devices Inc.",
+            "hostname": "?",
+        },
+        {
+            "mac": "ac:de:48:00:00:02",
+            "ip": "192.168.1.21",
+            "intf": "igb1",
+            "intf_description": "LAN",
+            "expired": False,
+            "expires": 640,
+            "permanent": False,
+            "type": "ethernet",
+            "manufacturer": "",
+            "hostname": "phone.lan",
+        },
+        {
+            "mac": "ac:de:48:00:00:03",
+            "ip": "192.168.1.22",
+            "intf": "igb1",
+            "intf_description": "LAN",
+            "expired": True,
+            "expires": 0,
+            "permanent": False,
+            "type": "ethernet",
+            "manufacturer": "",
+            "hostname": "?",
+        },
+        {
+            "mac": "ac:de:48:00:00:01",
+            "ip": "192.168.1.1",
+            "intf": "igb1",
+            "intf_description": "LAN",
+            "expired": False,
+            "expires": -1,
+            "permanent": True,
+            "type": "ethernet",
+            "manufacturer": "",
+            "hostname": "?",
+        },
+    ]
+
+
+def sample_dnsmasq_leases() -> list[dict[str, object]]:
+    """Two leases of Dnsmasq: the laptop of the ARP table, which has a name, and a printer that
+    has none; and one of an IPv6 client that gave no hardware address."""
+    return [
+        {
+            "address": "192.168.1.20",
+            "hwaddr": "00:11:22:0a:0b:0c",
+            "hostname": "laptop",
+            "mac_info": "Example Devices Inc.",
+            "expire": 1_900_000_000,
+            "if": "igb1",
+            "if_name": "lan",
+            "client_id": "01:00:11:22:0a:0b:0c",
+            "iaid": "",
+            "is_reserved": [],
+            "lease_type": "dynamic",
+        },
+        {
+            "address": "192.168.1.30",
+            "hwaddr": "f0:ad:4e:00:00:01",
+            "hostname": "*",
+            "mac_info": "Example Printers Ltd.",
+            "expire": 1_900_000_000,
+            "if": "igb1",
+            "if_name": "lan",
+            "client_id": "*",
+            "iaid": "",
+            "is_reserved": [],
+            "lease_type": "dynamic",
+        },
+        {
+            "address": "fd00::1234",
+            "hwaddr": "",
+            "hostname": "*",
+            "mac_info": "",
+            "expire": 1_900_000_000,
+            "if": "igb1",
+            "if_name": "lan",
+            "client_id": "00:02:00:00:ab:11:22:33",
+            "iaid": "1234",
+            "is_reserved": [],
+            "lease_type": "dynamic",
+        },
+    ]
+
+
+def sample_kea_leases() -> list[dict[str, object]]:
+    """Two IPv4 leases of Kea: a camera, and one that ran out and waits to be cleared away."""
+    return [
+        {
+            "address": "192.168.1.40",
+            "hwaddr": "00:1a:2b:00:00:01",
+            "hostname": "camera.lan.",
+            "mac_info": "Example Cameras Corp.",
+            "state": 0,
+            "valid_lifetime": 3600,
+            "expire": 1_900_000_000,
+            "if": "igb1",
+            "if_name": "lan",
+            "is_reserved": [],
+            "lease_type": "dynamic",
+        },
+        {
+            "address": "192.168.1.41",
+            "hwaddr": "00:1a:2b:00:00:02",
+            "hostname": "",
+            "mac_info": "Example Cameras Corp.",
+            "state": 2,
+            "valid_lifetime": 3600,
+            "expire": 1_800_000_000,
+            "if": "igb1",
+            "if_name": "lan",
+            "is_reserved": [],
+            "lease_type": "dynamic",
+        },
+    ]
+
+
+def _lease_search(rows: Sequence[Mapping[str, object]]) -> Answer:
+    """What a search of leases answers with."""
+    return _json({"total": len(rows), "rowCount": len(rows), "current": 1, "rows": list(rows)})
+
+
 def _rows_asked(body: bytes) -> int:
     """How many rows a search asks for, which OPNsense gives all of (up to 9999) if it isn't
     said."""
@@ -435,12 +573,15 @@ def opnsense(
     *,
     firewall_log: Sequence[Mapping[str, str]] = (),
     suricata_alerts: Sequence[Mapping[str, object]] = (),
+    arp_table: Sequence[Mapping[str, object]] = (),
+    dnsmasq_leases: Sequence[Mapping[str, object]] = (),
+    kea_leases: Sequence[Mapping[str, object]] = (),
     zone: timedelta = timedelta(0),
 ) -> Handler:
     """OPNsense's API with one key and secret. The services named are installed and running; the
     others answer 404, as a plugin that isn't installed does. It has a clock in a time zone that
-    is ``zone`` ahead of UTC, the lines given in its firewall log, newest first, and, if Suricata
-    is installed, the alerts given."""
+    is ``zone`` ahead of UTC, the lines given in its firewall log, newest first, the entries
+    given in its ARP table and, if Suricata, Dnsmasq or Kea is installed, its alerts or leases."""
     expected = _basic(api_key, api_secret)
     paths = {module.path: module.key for module in OPNSENSE_MODULES if module.path}
 
@@ -461,6 +602,12 @@ def opnsense(
             return _json(sample_interface_statistics())
         if seen.path == "/api/routes/gateway/status":
             return _json(sample_gateways())
+        if seen.path == "/api/diagnostics/interface/get_arp":
+            return _json(list(arp_table))
+        if seen.path == "/api/dnsmasq/leases/search" and "dnsmasq" in services:
+            return _lease_search(dnsmasq_leases)
+        if seen.path == "/api/kea/leases4/search" and "kea" in services:
+            return _lease_search(kea_leases)
         if seen.path == "/api/diagnostics/firewall/log":
             limit = parse_qs(urlsplit(seen.target).query).get("limit", ["0"])[0]
             return _json(list(firewall_log)[: int(limit) or None])
@@ -529,6 +676,9 @@ class StandIns:
                 services,
                 firewall_log=sample_firewall_log(),
                 suricata_alerts=sample_suricata_alerts(),
+                arp_table=sample_arp_table(),
+                dnsmasq_leases=sample_dnsmasq_leases(),
+                kea_leases=sample_kea_leases(),
             ),
             "zenarmor": zenarmor(api_key),
         }
