@@ -1,5 +1,6 @@
 // Everything a spec needs: `import { test, expect } from '../support'`.
 export { expectAccessible } from './accessibility'
+export { connectFirewall, FIREWALL_KEY, FIREWALL_SECRET } from './flows'
 export {
   Harness,
   type ApiCoverage,
@@ -12,6 +13,7 @@ export {
   type WorkerPulse,
 } from './harness'
 export { ActivityPage } from './pages/activity-page'
+export { DataPage } from './pages/data-page'
 export { AppShell, type ThemeChoice } from './pages/app-shell'
 export { IntegrationPage } from './pages/integration-page'
 export { IntegrationsPage } from './pages/integrations-page'

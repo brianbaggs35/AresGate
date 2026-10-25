@@ -2,7 +2,9 @@ import {
   describeBrowser,
   formatAgo,
   formatBytes,
+  formatCount,
   formatDateTime,
+  formatDays,
   formatDue,
   formatDuration,
   formatElapsed,
@@ -149,5 +151,21 @@ describe('formatElapsed', () => {
     [125_000, '2 min 5 s'],
   ])('says %d milliseconds as %s', (milliseconds, said) => {
     expect(formatElapsed(milliseconds)).toBe(said)
+  })
+})
+
+describe('formatDays', () => {
+  it('says day for one and days for any other number', () => {
+    expect(formatDays(1)).toBe('1 day')
+    expect(formatDays(30)).toBe('30 days')
+    expect(formatDays(3650)).toBe('3650 days')
+  })
+})
+
+describe('formatCount', () => {
+  it('groups the digits the way the language does', () => {
+    expect(formatCount(12408, 'en-US')).toBe('12,408')
+    expect(formatCount(12408, 'de-DE')).toBe('12.408')
+    expect(formatCount(0, 'en-US')).toBe('0')
   })
 })

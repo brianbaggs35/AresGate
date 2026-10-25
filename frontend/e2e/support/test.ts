@@ -4,6 +4,7 @@ import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
 import { AppShell } from './pages/app-shell'
+import { DataPage } from './pages/data-page'
 import { IntegrationPage } from './pages/integration-page'
 import { IntegrationsPage } from './pages/integrations-page'
 import { OverviewPage } from './pages/overview-page'
@@ -28,6 +29,8 @@ export interface AresGateFixtures {
   settings: SettingsPage
   signIns: SignInsPage
   activity: ActivityPage
+  /** The settings page for how long data is kept. */
+  data: DataPage
   status: StatusPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
@@ -116,6 +119,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   activity: async ({ page }, use) => {
     await use(new ActivityPage(page))
+  },
+
+  data: async ({ page }, use) => {
+    await use(new DataPage(page))
   },
 
   status: async ({ page }, use) => {

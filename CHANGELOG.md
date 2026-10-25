@@ -18,6 +18,9 @@ Every release's notes are here, newest first. The format follows
   names and the makers of their network cards, and when each was first and last seen. They are
   what the monitoring pages and the AI analyst will use to say which device is which
   ([DOCS/integrations.md](DOCS/integrations.md#devices)).
+- A **Data** page in Settings, showing for each integration how many events and measurements are
+  stored and how long they are kept, and letting you change that. It asks first when a shorter
+  time would remove what is already stored ([DOCS/operations.md](DOCS/operations.md#stored-events)).
 
 ### Fixed
 

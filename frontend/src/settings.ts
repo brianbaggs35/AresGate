@@ -1,4 +1,4 @@
-import { History, MonitorSmartphone, UserRound } from '@lucide/vue'
+import { Database, History, MonitorSmartphone, UserRound } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A page of the Settings area. */
@@ -17,4 +17,5 @@ export const settingsSections: readonly SettingsSection[] = [
   { key: 'account', route: 'settings-account', title: 'Account', icon: UserRound },
   { key: 'sign-ins', route: 'settings-sign-ins', title: 'Sign-ins', icon: MonitorSmartphone },
   { key: 'activity', route: 'settings-activity', title: 'Activity', icon: History },
+  { key: 'data', route: 'settings-data', title: 'Data', icon: Database },
 ]
