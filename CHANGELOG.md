@@ -27,6 +27,9 @@ Every release's notes are here, newest first. The format follows
   server name is, on the HTTPS port in use. Plain HTTP goes on to the address it was opened at
   (`localhost` or the server name), the setup code's box in the log names both addresses, and a
   change that is refused now says which addresses to use.
+- A message under a field that is long enough to wrap, such as the one asking for a username on
+  the setup page, ran under the label of the field below it. Every field now keeps room for the
+  label, so nothing overlaps.
 
 ## 0.0.3
 

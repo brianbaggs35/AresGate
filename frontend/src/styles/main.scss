@@ -44,6 +44,21 @@
     }
   }
 
+  // A field's label floats half its height above the field, into the room the field above it
+  // keeps for its message. Vuetify keeps room for one line of message, so a message that wrapped
+  // ran under the next field's label. This keeps room for the label too, with or without a
+  // message, so nothing moves when one appears.
+  .v-input:has(.v-field) {
+    > .v-input__details:not(.v-input__details--hidden) {
+      min-height: 28px;
+      padding-bottom: 10px;
+    }
+
+    .v-messages {
+      min-height: 12px;
+    }
+  }
+
   // Moving focus to the page is only for the skip link; it shouldn't draw a box round the page.
   #main-content:focus {
     outline: none;

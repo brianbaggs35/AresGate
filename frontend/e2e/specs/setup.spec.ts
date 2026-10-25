@@ -1,6 +1,20 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from '../support'
 
 const NEW_ACCOUNT = { username: 'first-admin', password: 'a long enough passphrase' }
+
+/** Waits for the transitions to end: messages slide in, which moves them while they do. One
+ * that is cut short by another counts as ended, and one that never ends is left out. */
+const settled = (page: Page) =>
+  page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished),
+    ),
+  )
 
 test.describe('setting up a fresh install', () => {
   test.use({ signedIn: false })
@@ -96,6 +110,51 @@ test.describe('setting up a fresh install', () => {
     await expect(page.getByText('Use 12 to 128 characters')).toBeVisible()
     await expect(page.getByText("The passwords don't match.")).toBeVisible()
     expect(requests.filter((url) => url.endsWith('/api/setup'))).toEqual([])
+  })
+
+  test('keeps what a field says clear of the field below it', async ({ page, setup, baseline }) => {
+    await setup.goto()
+    await setup.enterCode(baseline.fresh_install_setup_code)
+
+    await setup.createAccountWith({ username: 'x', password: 'short' }, 'different')
+    await expect(page.getByText("The passwords don't match.")).toBeVisible()
+    await settled(page)
+
+    // Each field's last line of message, and where the label of the field after it starts.
+    const gaps = await page.evaluate(() => {
+      const inputs = [...document.querySelectorAll('.v-input')]
+      return inputs.slice(0, -1).map((input, index) => {
+        const lines = input.querySelectorAll('.v-messages__message')
+        const label = inputs[index + 1]?.querySelector('.v-field-label--floating')
+        return (
+          (label?.getBoundingClientRect().top ?? NaN) -
+          (lines[lines.length - 1]?.getBoundingClientRect().bottom ?? NaN)
+        )
+      })
+    })
+
+    expect(gaps).toHaveLength(2)
+    for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(0)
+  })
+
+  test('does not move the fields when a message of one line appears', async ({
+    page,
+    setup,
+    baseline,
+  }) => {
+    await setup.goto()
+    await setup.enterCode(baseline.fresh_install_setup_code)
+    await setup.username.fill(NEW_ACCOUNT.username)
+    await setup.password.fill(NEW_ACCOUNT.password)
+    const button = page.getByTestId('create-account')
+    const before = await button.boundingBox()
+
+    await setup.confirmation.fill('different')
+    await setup.createAccount.click()
+
+    await expect(page.getByText("The passwords don't match.")).toBeVisible()
+    await settled(page)
+    expect((await button.boundingBox())?.y).toBe(before?.y)
   })
 
   test('shows why the server refused a password, and lets the code be used again', async ({
