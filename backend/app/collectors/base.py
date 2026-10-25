@@ -14,9 +14,11 @@ from typing import ClassVar
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.events import store
+from app.events import store as events
 from app.events.event import NewEvent
 from app.integrations.client import ApiClient, Target
+from app.metrics import store as metrics
+from app.metrics.sample import NewSample
 from app.models import utcnow
 
 
@@ -48,11 +50,17 @@ class Context:
     new_session: Callable[[], Session]
     settings: Settings
 
-    async def record(self, events: Sequence[NewEvent]) -> int:
+    async def record(self, new: Sequence[NewEvent]) -> int:
         """Stores the events a run read, in a session of its own, and returns how many were new:
         one stored already, or older than its source keeps events, is skipped, so reading the
         same window twice is harmless."""
-        return await self.save(lambda db: store.record(db, self.settings, events, utcnow()))
+        return await self.save(lambda db: events.record(db, self.settings, new, utcnow()))
+
+    async def record_samples(self, samples: Sequence[NewSample]) -> int:
+        """Stores the numbers a run measured, in a session of its own, and returns how many were
+        new: a series read at the same moment twice, or at a moment older than its source keeps
+        samples, is skipped, so reading the same moment twice is harmless."""
+        return await self.save(lambda db: metrics.record(db, self.settings, samples, utcnow()))
 
     async def save[T](self, work: Callable[[Session], T]) -> T:
         """Runs ``work`` with a session of its own, off the event loop, and commits it."""

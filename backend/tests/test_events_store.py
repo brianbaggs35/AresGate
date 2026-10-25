@@ -5,15 +5,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.events import partitions, retention
+from app.events import retention
 from app.events.event import Severity
-from app.events.partitions import Partition
 from app.events.store import FUTURE_TOLERANCE, record
 from app.models import Event
+from app.partitions import EVENTS, Partition
 from tests.helpers import new_event
 
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
-THIS_WEEK = Partition(datetime(2026, 10, 19, tzinfo=UTC))
+THIS_WEEK = Partition("events", datetime(2026, 10, 19, tzinfo=UTC))
 
 
 def stored(session: Session) -> list[Event]:
@@ -54,7 +54,7 @@ def test_an_event_is_stored_with_everything_about_it(session: Session, settings:
 
 def test_nothing_to_store_stores_nothing(session: Session, settings: Settings) -> None:
     assert record(session, settings, [], NOW) == 0
-    assert partitions.existing(session) == []
+    assert EVENTS.existing(session) == []
 
 
 def test_reading_the_same_event_again_stores_it_once(session: Session, settings: Settings) -> None:
@@ -97,8 +97,8 @@ def test_a_week_gets_a_partition_when_its_first_event_arrives(
     record(session, settings, events, NOW)
     session.commit()
 
-    assert partitions.existing(session) == [
-        Partition(THIS_WEEK.start - timedelta(days=7)),
+    assert EVENTS.existing(session) == [
+        Partition("events", THIS_WEEK.start - timedelta(days=7)),
         THIS_WEEK,
     ]
 
@@ -109,7 +109,7 @@ def test_a_later_batch_for_a_week_that_exists_makes_nothing_more(
     record(session, settings, [new_event(occurred_at=NOW)], NOW)
     record(session, settings, [new_event(occurred_at=NOW, identity=("b",))], NOW)
 
-    assert partitions.existing(session) == [THIS_WEEK]
+    assert EVENTS.existing(session) == [THIS_WEEK]
 
 
 def test_an_event_from_a_little_in_the_future_keeps_its_time(
@@ -129,7 +129,7 @@ def test_an_event_from_far_in_the_future_is_stored_as_of_now(
     record(session, settings, [new_event(occurred_at=datetime(2099, 1, 1, tzinfo=UTC))], NOW)
 
     assert [row.occurred_at for row in stored(session)] == [NOW]
-    assert partitions.existing(session) == [THIS_WEEK]
+    assert EVENTS.existing(session) == [THIS_WEEK]
 
 
 def test_an_event_older_than_the_retention_period_is_not_stored(
@@ -149,7 +149,7 @@ def test_nothing_is_made_when_everything_is_too_old(session: Session, settings: 
     old = new_event(occurred_at=NOW - timedelta(days=settings.event_retention_days + 5))
 
     assert record(session, settings, [old], NOW) == 0
-    assert partitions.existing(session) == []
+    assert EVENTS.existing(session) == []
 
 
 def test_each_source_is_held_to_its_own_retention_period(

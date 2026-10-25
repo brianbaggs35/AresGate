@@ -22,13 +22,14 @@ from app.models import (
     CollectorHealth,
     Event,
     IntegrationConnection,
+    MetricSample,
     WorkerBeat,
     utcnow,
 )
 from app.security import credential_store
 from app.security.credential_store import Kind
 from e2e.stand_ins import crowdsec
-from tests.helpers import new_event
+from tests.helpers import new_event, new_sample
 from tests.stubs import Serve
 
 SECRET = "a-very-secret-api-key-for-tests"
@@ -118,6 +119,23 @@ class Reporting(Hourly):
             for number in range(2)
         ]
         return Outcome(items=await context.record(found))
+
+
+class Measuring(Hourly):
+    key = "measuring"
+
+    async def collect(self, context: Context) -> Outcome:
+        target = context.target
+        found = [
+            new_sample(
+                source=target.integration,
+                connection=target.connection,
+                name=name,
+                sampled_at=WHEN,
+            )
+            for name in ("system.load_1m", "system.load_5m")
+        ]
+        return Outcome(items=await context.record_samples(found))
 
 
 class OnlyOpnsense(Hourly):
@@ -333,6 +351,23 @@ def test_a_collector_stores_the_events_it_read_and_reading_them_again_adds_none(
     session.expire_all()
     events = session.scalars(select(Event).order_by(Event.id)).all()
     assert [(item.source, item.connection) for item in events] == [("crowdsec", "lapi")] * 2
+
+
+def test_a_collector_stores_the_samples_it_read_and_reading_them_again_adds_none(
+    session: Session, settings: Settings, engine: Engine, serve: Serve
+) -> None:
+    connect(session, settings, serve(crowdsec(SECRET)).url)
+    scheduler = make(settings, engine, Measuring())
+
+    asyncio.run(scheduler.run_once())
+    first = the_health(session).last_items
+    asyncio.run(scheduler.run_once())
+    second = the_health(session).last_items
+
+    assert (first, second) == (2, 0)
+    session.expire_all()
+    samples = session.scalars(select(MetricSample).order_by(MetricSample.series_id)).all()
+    assert [item.source for item in samples] == ["crowdsec"] * 2
 
 
 def test_a_collector_that_declines_gives_its_reason(

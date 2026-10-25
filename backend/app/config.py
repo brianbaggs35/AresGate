@@ -60,6 +60,8 @@ class Settings(BaseSettings):
 
     # How long events from the integrations are kept, for a source that has no setting of its own.
     event_retention_days: Annotated[int, Field(ge=1, le=3650)] = 30
+    # The same for the numbers they measure: a firewall's load, an interface's traffic.
+    metric_retention_days: Annotated[int, Field(ge=1, le=3650)] = 30
 
     # Whether the worker collects from the integrations. Turned off, it keeps running and says
     # so on the status page, which is how to pause collecting without stopping the container.

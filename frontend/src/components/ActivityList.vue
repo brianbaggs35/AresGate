@@ -29,6 +29,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'integration.disconnected': 'An integration was disconnected',
   'integration.tested': 'An integration was tested',
   'events.retention_changed': 'How long events are kept was changed',
+  'metrics.retention_changed': 'How long metrics are kept was changed',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

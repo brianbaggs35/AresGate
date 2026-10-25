@@ -9,11 +9,10 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import audit, cli, db
+from app import audit, cli, db, partitions
 from app.api.integrations import api_log_recorder
 from app.config import Settings
 from app.db import get_session
-from app.events import partitions
 from app.integrations import netguard
 from app.integrations.apilog import ApiLogRecorder
 from app.main import create_app
@@ -76,10 +75,11 @@ def session(engine: Engine) -> Iterator[Session]:
         audit.allow_deletes(connection)
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
-        # The weeks of events that tests made, so the next test begins with none.
+        # The weeks that tests made, so the next test begins with none.
         with Session(bind=connection) as cleanup:
-            for partition in partitions.existing(cleanup):
-                partitions.drop(cleanup, partition)
+            for weeks in partitions.ALL:
+                for partition in weeks.existing(cleanup):
+                    weeks.drop(cleanup, partition)
 
 
 @pytest.fixture

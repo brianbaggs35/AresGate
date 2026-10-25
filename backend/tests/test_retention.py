@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app import audit, main, retention
 from app.audit import Action, Outcome
 from app.config import Settings
-from app.events import partitions as events_partitions
 from app.events import store as events
 from app.integrations.apilog import ApiLogRecorder
 from app.integrations.client import Call
-from app.models import ApiCall, AuditEvent, Event
-from tests.helpers import new_event
+from app.metrics import store as metrics
+from app.models import ApiCall, AuditEvent, Event, MetricSample, MetricSeries
+from app.partitions import EVENTS, METRIC_SAMPLES
+from tests.helpers import new_event, new_sample
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def test_purging_also_deletes_the_events_past_their_retention_period(
     stale = now - timedelta(days=settings.event_retention_days + 10)
     events.record(session, settings, [new_event(occurred_at=now - timedelta(days=1))], now)
     # Stored directly, because the store refuses an event that is already past its period.
-    events_partitions.ensure(session, [events_partitions.containing(stale)])
+    EVENTS.ensure(session, [EVENTS.containing(stale)])
     session.add(Event(**new_event(occurred_at=stale, identity=("stale",)).row(now)))
     session.commit()
 
@@ -82,7 +83,41 @@ def test_purging_also_deletes_the_events_past_their_retention_period(
     assert "dropped 1 old weeks of events" in caplog.text
 
 
-def test_purging_says_nothing_when_there_were_no_events_to_remove(
+def test_purging_also_deletes_the_samples_past_their_retention_period(
+    session: Session,
+    settings: Settings,
+    new_session: Callable[[], Session],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    now = datetime.now(UTC)
+    stale = now - timedelta(days=settings.metric_retention_days + 10)
+    metrics.record(session, settings, [new_sample(sampled_at=now - timedelta(days=1))], now)
+    # Stored directly, because the store refuses a sample that is already past its period.
+    sample = new_sample(name="system.load_5m", sampled_at=stale)
+    METRIC_SAMPLES.ensure(session, [METRIC_SAMPLES.containing(stale)])
+    series = MetricSeries(
+        source=sample.source,
+        connection=sample.connection,
+        name=sample.name,
+        labels={},
+        fingerprint=sample.fingerprint,
+    )
+    session.add(series)
+    session.flush()
+    session.add(MetricSample(series_id=series.id, sampled_at=stale, source="opnsense", value=1))
+    session.commit()
+
+    with caplog.at_level(logging.INFO):
+        retention.purge_once(settings, new_session)
+
+    session.expire_all()
+    assert session.scalar(select(func.count()).select_from(MetricSample)) == 1
+    # The series of the sample that went goes with it.
+    assert session.scalar(select(func.count()).select_from(MetricSeries)) == 1
+    assert "dropped 1 old weeks of samples" in caplog.text
+
+
+def test_purging_says_nothing_when_there_were_no_events_or_samples_to_remove(
     session: Session,
     settings: Settings,
     new_session: Callable[[], Session],

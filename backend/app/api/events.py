@@ -54,7 +54,7 @@ def _source(
         name=registry.INTEGRATIONS[key].name,
         days=loaded.own.get(key),
         effective_days=loaded.days(key),
-        events=found.events if found else 0,
+        events=found.rows if found else 0,
         oldest_at=found.oldest if found else None,
     )
 

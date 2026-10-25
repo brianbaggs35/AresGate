@@ -8,9 +8,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.events import partitions, retention
+from app.events import retention
 from app.events.event import NewEvent
 from app.models import Event
+from app.partitions import EVENTS
 
 # A clock this far ahead of AresGate's is taken to be a little off. Further than that, an event's
 # time can't be trusted, and a time years ahead would make a week of its own to hold it.
@@ -31,8 +32,8 @@ def record(db: Session, settings: Settings, events: Sequence[NewEvent], now: dat
     if not rows:
         return 0
     # Under the lock, so a purge can't drop the week these go into between making it and writing.
-    partitions.lock(db)
-    partitions.ensure(db, {partitions.containing(row["occurred_at"]) for row in rows})
+    EVENTS.lock(db)
+    EVENTS.ensure(db, {EVENTS.containing(row["occurred_at"]) for row in rows})
     statement = (
         insert(Event)
         .on_conflict_do_nothing(index_elements=["source", "fingerprint", "occurred_at"])

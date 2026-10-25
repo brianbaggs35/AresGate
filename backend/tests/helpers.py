@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.events.event import NewEvent, Severity
+from app.metrics.sample import NewSample
 from app.models import User, utcnow
 from app.security import totp, two_factor
 
@@ -49,3 +50,16 @@ def new_event(**changes: object) -> NewEvent:
         **changes,
     }
     return NewEvent(**fields)
+
+
+def new_sample(**changes: object) -> NewSample:
+    """A sample as a collector would hand it over, with whatever is given changed."""
+    fields: dict[str, Any] = {
+        "source": "opnsense",
+        "connection": "api",
+        "name": "system.load_1m",
+        "value": 0.42,
+        "sampled_at": utcnow(),
+        **changes,
+    }
+    return NewSample(**fields)
