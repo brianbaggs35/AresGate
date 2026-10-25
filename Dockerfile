@@ -23,8 +23,15 @@ ARG SUPERVISOR_VERSION=4.3.0
 FROM ${WOLFI_BASE} AS wolfi
 # CI passes the date here so cached layers are refreshed at least daily.
 ARG APK_REFRESH=""
+# The base image's /etc/apk/world holds each of its packages at the exact version it shipped with
+# (libbrotlicommon1=1.2.0-r5, glibc-2.44=2.44-r6 and so on), and apk upgrade never moves a package
+# that is held to a version, so without this the image keeps the base's versions until its digest
+# above is changed. Dropping the versions from that list lets the upgrade install the newest fix
+# of every package.
 RUN --mount=type=bind,source=docker/apk-retry.sh,target=/apk-retry.sh \
-    echo "apk refresh: ${APK_REFRESH:-none}" && sh /apk-retry.sh apk upgrade --no-cache
+    echo "apk refresh: ${APK_REFRESH:-none}" \
+    && sed -i -E 's/[<>~=].*$//' /etc/apk/world \
+    && sh /apk-retry.sh apk upgrade --no-cache
 
 # ---- Frontend: type-check and build static assets ------------------------------------
 # The web app is the same on every CPU, so a multi-platform release builds it once, natively
