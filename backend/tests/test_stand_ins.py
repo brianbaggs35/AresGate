@@ -203,6 +203,58 @@ class TestOpnsenseSuricataAlerts:
         assert self.handler()(asked).status == 401
 
 
+class TestOpnsenseDevices:
+    credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
+    table: ClassVar[list[dict[str, object]]] = [{"mac": "aa:bb:cc:00:11:22", "ip": "192.168.1.9"}]
+
+    def handler(self, *services: str, **options: Any) -> Handler:
+        return stand_ins.opnsense("a-key", "a-secret", services, **options)
+
+    def test_its_arp_table_is_empty_unless_it_is_given_entries(self) -> None:
+        path = "/api/diagnostics/interface/get_arp"
+
+        assert body(self.handler()(seen(path, **self.credentials))) == []
+        given = self.handler(arp_table=self.table)(seen(path, **self.credentials))
+        assert (given.status, body(given)) == (200, self.table)
+
+    @pytest.mark.parametrize(
+        ("service", "path", "option"),
+        [
+            ("dnsmasq", "/api/dnsmasq/leases/search", "dnsmasq_leases"),
+            ("kea", "/api/kea/leases4/search", "kea_leases"),
+        ],
+    )
+    def test_the_leases_of_a_dhcp_server_are_there_if_it_is_installed(
+        self, service: str, path: str, option: str
+    ) -> None:
+        leases = [{"hwaddr": "aa:bb:cc:00:11:22", "address": "192.168.1.9"}]
+        installed = self.handler(service, **{option: leases})
+        missing = self.handler(**{option: leases})
+
+        answer = installed(seen(path, **self.credentials))
+        assert (answer.status, body(answer)) == (
+            200,
+            {"total": 1, "rowCount": 1, "current": 1, "rows": leases},
+        )
+        assert missing(seen(path, **self.credentials)).status == 404
+
+    def test_one_dhcp_server_is_not_the_other(self) -> None:
+        handler = self.handler("dnsmasq")
+
+        assert handler(seen("/api/kea/leases4/search", **self.credentials)).status == 404
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/diagnostics/interface/get_arp",
+            "/api/dnsmasq/leases/search",
+            "/api/kea/leases4/search",
+        ],
+    )
+    def test_they_need_the_key_too(self, path: str) -> None:
+        assert self.handler("dnsmasq", "kea")(seen(path)).status == 401
+
+
 class TestSampleSuricataAlerts:
     def test_they_are_two_recent_alerts_that_the_collector_reads(self) -> None:
         events = parse_alerts(list(stand_ins.sample_suricata_alerts()))

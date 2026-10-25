@@ -142,6 +142,8 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "audit_events": 0,
         "collector_health": 0,
         "credentials": 0,
+        "device_addresses": 0,
+        "devices": 0,
         "event_retention": 0,
         "events": 0,
         "integration_api_calls": 0,
@@ -184,6 +186,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "passkeys",
             "passkey_challenges",
             "metric_samples",
+            "device_addresses",
             "worker_beats",
             "users",
             "system_info",
@@ -194,6 +197,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "integration_api_calls",
             "events",
             "event_retention",
+            "devices",
             "credentials",
             "collector_health",
             "audit_events",
@@ -450,12 +454,17 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
 
 
 @pytest.mark.usefixtures("stand_ins")
-def test_the_collectors_read_the_log_alerts_and_metrics_of_the_opnsense_stand_in(
+def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_stand_in(
     e2e: TestClient, session: Session, settings: Settings
 ) -> None:
     started = e2e.post(
         "/api/__test__/stand-ins",
-        json={"kind": "opnsense", "api_key": "k", "api_secret": "s", "services": ["suricata"]},
+        json={
+            "kind": "opnsense",
+            "api_key": "k",
+            "api_secret": "s",
+            "services": ["suricata", "dnsmasq", "kea"],
+        },
     ).json()
     service.save(
         session,
@@ -483,10 +492,13 @@ def test_the_collectors_read_the_log_alerts_and_metrics_of_the_opnsense_stand_in
     records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
     assert sorted(records) == [
         "connection-check",
+        "opnsense-arp-table",
         "opnsense-cpu-usage",
+        "opnsense-dnsmasq-leases",
         "opnsense-firewall-log",
         "opnsense-gateway-status",
         "opnsense-interface-traffic",
+        "opnsense-kea-leases",
         "opnsense-suricata-alerts",
         "opnsense-system-health",
     ]
@@ -494,12 +506,15 @@ def test_the_collectors_read_the_log_alerts_and_metrics_of_the_opnsense_stand_in
     # The second run read the same lines and alerts and found them stored already.
     assert records["opnsense-firewall-log"].last_items == 0
     assert records["opnsense-suricata-alerts"].last_items == 0
-    # Each run measures again, so what it read is new.
+    # Each run measures again, so what it read is new, and lists the devices again.
     assert {
         key: item.last_items for key, item in records.items() if key.startswith("opnsense-")
     } == {
+        "opnsense-arp-table": 3,
         "opnsense-cpu-usage": 1,
+        "opnsense-dnsmasq-leases": 2,
         "opnsense-firewall-log": 0,
+        "opnsense-kea-leases": 1,
         "opnsense-gateway-status": 4,
         "opnsense-interface-traffic": 14,
         "opnsense-suricata-alerts": 0,
@@ -510,3 +525,6 @@ def test_the_collectors_read_the_log_alerts_and_metrics_of_the_opnsense_stand_in
     assert counts["events"] == 5
     # 28 things measured, twice.
     assert (counts["metric_series"], counts["metric_samples"]) == (28, 56)
+    # Three devices in the ARP table, two with leases from Dnsmasq (one of them the laptop that is
+    # in the table too) and one from Kea, each with one address.
+    assert (counts["devices"], counts["device_addresses"]) == (5, 5)

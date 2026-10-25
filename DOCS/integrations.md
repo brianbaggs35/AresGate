@@ -114,6 +114,46 @@ shows on the Collection card with its own state.
   page stops all four jobs, and the firewall log. The metrics that were stored are kept for their
   retention period.
 
+### Devices
+
+AresGate keeps a list of the devices it has seen on the network, so that a page or the AI
+analyst can say which device an address belongs to ([Stored devices](operations.md#stored-devices)).
+A device is told apart by its hardware (MAC) address, and has the addresses it has had, a host
+name if it gave one, who made its network card, and when it was first and last seen. Three jobs
+fill the list; each shows on the Collection card with its own state.
+
+| Job | Reads | Every | The user needs |
+| --- | --- | --- | --- |
+| Devices (ARP table) | `/api/diagnostics/interface/get_arp` | minute | **Diagnostics: ARP Table** |
+| Devices (Dnsmasq leases) | `/api/dnsmasq/leases/search`, for IPv4 and IPv6 | 5 minutes | **Services: Dnsmasq DNS/DHCP: Settings** |
+| Devices (Kea leases) | `/api/kea/leases4/search`, for IPv4 | 5 minutes | **Services: DHCP: Kea(v4)** |
+
+- **Which jobs run.** The ARP table is part of **Firewall and system**. The lease jobs run only
+  if testing the connection found Dnsmasq or Kea installed, so a firewall with neither has only
+  the ARP table, and AresGate starts one within a few minutes of the plugin being installed.
+  Switch off
+  **Dnsmasq** or **Kea DHCP** under Services on the OPNsense page to leave it alone.
+- **The ARP table** is what the firewall has learned about the devices on its networks, and
+  includes its own addresses. An entry that has gone stale (the device stopped answering) is not
+  a sighting. It gives the hardware and IP address and who made the network card; it has no host
+  name unless the firewall knows one.
+- **Leases** give the host name the device asked for, and the address it was given. Dnsmasq
+  lists the leases it has given out that haven't run out; of Kea's, only those in force count,
+  not a lease that was declined or has run out and waits to be cleared away. A client that gave no hardware address
+  (an IPv6 client of Dnsmasq that identifies itself some other way) can't be told from the
+  others, so it is left out. Kea's IPv6 leases are a privilege of their own and aren't read yet.
+- **What the user needs.** The two DHCP privileges cover all of `/api/dnsmasq/` and, for Kea,
+  all of `/api/kea/dhcpv4/`, `/api/kea/leases4/` and `/api/kea/service/`, so unlike most of what
+  AresGate reads they also allow changing the settings and releasing leases. AresGate only searches the leases; make the
+  user for AresGate with only the privileges it needs, and leave out the ones for a server you
+  don't run.
+- **Last seen.** It is when a job last listed the device. A lease is listed until it runs out,
+  so a device that has left but holds a long lease keeps being seen; the ARP table is the
+  better sign that it is there now.
+- **Randomized addresses.** A phone or laptop that uses a different hardware address for each
+  network, or changes it from time to time to keep from being followed, appears as a new device
+  each time it does.
+
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
 OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its own certificate
