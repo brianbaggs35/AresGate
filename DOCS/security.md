@@ -79,6 +79,11 @@ see [SECURITY.md](../SECURITY.md).
 - Every change the web app asks for must say it came from AresGate's own address (the `Origin`
   header, which browsers always send and a page on another website can't change), and carry a
   security token that is different for each sign-in and that only AresGate's pages are given.
+  Its own addresses are the server name (`ARESGATE_SERVER_NAME`) and `localhost`, with the
+  HTTPS port (`ARESGATE_HTTPS_PORT`) when it isn't 443, which are the only names the web server
+  answers to: it refuses a connection that asks for any other, such as an IP address, before a
+  request is read. So `https://localhost` works on the computer that runs AresGate, whatever the
+  server name is, and a refused change says which addresses to use.
 - Changing the password needs the current one, so a sign-in left open on a borrowed computer
   can't change it. The new one has to pass the same rules as a new account's, and not be the one
   in use. It ends every other sign-in in the same step, so a stolen sign-in doesn't survive it,

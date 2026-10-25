@@ -82,6 +82,44 @@ def test_the_dev_server_may_make_changes_outside_production(
     assert response.status_code == 401
 
 
+@pytest.mark.parametrize("environment", ["production", "development"])
+def test_localhost_works_whatever_the_server_name_is(
+    app: FastAPI, settings: Settings, environment: str
+) -> None:
+    served = settings.model_copy(update={"environment": environment})
+    app.dependency_overrides[get_settings] = lambda: served
+    with TestClient(app, base_url="https://localhost") as local:
+        response = local.post(
+            "/api/auth/login", json=LOGIN, headers={"Origin": "https://localhost"}
+        )
+
+    assert response.status_code == 401
+
+
+def test_localhost_uses_the_servers_port(app: FastAPI, settings: Settings) -> None:
+    on_8443 = settings.model_copy(update={"environment": "production", "https_port": 8443})
+    app.dependency_overrides[get_settings] = lambda: on_8443
+    with TestClient(app, base_url="https://localhost:8443") as local:
+        allowed = local.post(
+            "/api/auth/login", json=LOGIN, headers={"Origin": "https://localhost:8443"}
+        )
+        refused = local.post("/api/auth/login", json=LOGIN, headers={"Origin": "https://localhost"})
+
+    assert allowed.status_code == 401
+    assert refused.status_code == 403
+
+
+def test_the_refusal_says_where_to_open_aresgate(app: FastAPI, settings: Settings) -> None:
+    with TestClient(app, base_url=ORIGIN) as other:
+        response = other.post("/api/auth/login", json=LOGIN, headers={"Origin": OTHER_ORIGIN})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "The request didn't come from AresGate. "
+        "Open it at https://aresgate.test or https://localhost, which is what it is set up for."
+    )
+
+
 def test_the_port_is_part_of_the_origin(app: FastAPI, settings: Settings) -> None:
     on_8443 = settings.model_copy(update={"https_port": 8443})
     app.dependency_overrides[get_settings] = lambda: on_8443

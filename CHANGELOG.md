@@ -19,6 +19,15 @@ Every release's notes are here, newest first. The format follows
   what the monitoring pages and the AI analyst will use to say which device is which
   ([DOCS/integrations.md](DOCS/integrations.md#devices)).
 
+### Fixed
+
+- Creating the account with the setup code failed with "The request didn't come from AresGate"
+  when AresGate was opened at `https://localhost` and `ARESGATE_SERVER_NAME` was a name of your
+  own, because only the server name was accepted. `https://localhost` now works whatever the
+  server name is, on the HTTPS port in use. Plain HTTP goes on to the address it was opened at
+  (`localhost` or the server name), the setup code's box in the log names both addresses, and a
+  change that is refused now says which addresses to use.
+
 ## 0.0.3
 
 ### Added

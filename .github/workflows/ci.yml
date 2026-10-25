@@ -334,6 +334,16 @@ jobs:
       - name: Serve, renew and check certificates
         run: ./.github/scripts/certificate-test.sh
 
+      # A server name of a person's own, which their computer may not resolve, still works at
+      # https://localhost on the computer that runs it, and another website is still refused.
+      - name: Use a server name of its own
+        env:
+          ARESGATE_SERVER_NAME: aresgate.example
+        run: |
+          docker compose down --volumes
+          docker compose up --detach --no-build --wait --wait-timeout 180
+          ./.github/scripts/custom-name-test.sh
+
       - name: Container logs
         if: ${{ failure() }}
         run: docker compose logs --no-color

@@ -1,5 +1,6 @@
-"""Which web addresses count as AresGate's own: the one it is served from, and, away from
-production, the web app's dev server and the end-to-end tests' copy of it."""
+"""Which web addresses count as AresGate's own: the ones it is served from (its server name, and
+localhost), and, away from production, the web app's dev server and the end-to-end tests' copy
+of it."""
 
 from urllib.parse import urlsplit
 
@@ -28,6 +29,6 @@ def is_dev_server_origin(origin: str) -> bool:
 
 def is_own_origin(settings: Settings, origin: str) -> bool:
     """Whether a page served from the origin is AresGate's own."""
-    return origin == settings.public_origin or (
+    return origin in settings.own_origins or (
         not settings.is_production and is_dev_server_origin(origin)
     )

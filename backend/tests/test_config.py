@@ -73,6 +73,23 @@ def test_public_origin_leaves_out_the_default_port() -> None:
     )
 
 
+def test_it_answers_at_the_server_name_and_at_localhost() -> None:
+    assert Settings(server_name="ares.example.com", https_port=443).own_origins == (
+        "https://ares.example.com",
+        "https://localhost",
+    )
+    assert Settings(server_name="ares.example.com", https_port=9443).own_origins == (
+        "https://ares.example.com:9443",
+        "https://localhost:9443",
+    )
+
+
+def test_localhost_is_not_listed_twice() -> None:
+    assert Settings(server_name="localhost", https_port=9443).own_origins == (
+        "https://localhost:9443",
+    )
+
+
 def test_port_must_be_a_real_port() -> None:
     with pytest.raises(ValidationError):
         Settings(https_port=0)

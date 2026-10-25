@@ -9,6 +9,7 @@ stops working once it does.
 import hashlib
 import hmac
 import secrets
+from collections.abc import Sequence
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -75,13 +76,13 @@ def consume(db: Session) -> None:
     db.execute(delete(SystemInfo).where(SystemInfo.key == KEY))
 
 
-def banner(code: str, origin: str) -> str:
+def banner(code: str, origins: Sequence[str]) -> str:
     rule = "=" * 64
     return "\n".join(
         [
             rule,
             " AresGate is ready to be set up.",
-            f" Open {origin} and enter this setup code:",
+            f" Open {' or '.join(origins)} and enter this setup code:",
             "",
             f"     {code}",
             "",
@@ -100,4 +101,4 @@ def announce() -> None:
             return
         code = issue(db)
         db.commit()
-    print(banner(code, get_settings().public_origin), flush=True)
+    print(banner(code, get_settings().own_origins), flush=True)

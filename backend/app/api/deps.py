@@ -28,7 +28,14 @@ def require_same_origin(request: Request, settings: SettingsDep) -> None:
         return
     if is_own_origin(settings, request.headers.get("origin", "")):
         return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "The request didn't come from AresGate.")
+    # Says where to go, because the usual cause is opening AresGate at an address that isn't its
+    # server name. The page that was refused can read this; a page on another website can't.
+    addresses = " or ".join(settings.own_origins)
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        f"The request didn't come from AresGate. Open it at {addresses}, "
+        "which is what it is set up for.",
+    )
 
 
 def client_address(request: Request) -> str:
