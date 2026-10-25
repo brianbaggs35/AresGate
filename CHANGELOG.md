@@ -4,6 +4,15 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Every build of the image now gets the newest fix of every package, as
+  [DOCS/security.md](DOCS/security.md) says. The Wolfi base image holds its packages at the
+  versions it shipped with, which kept `apk upgrade` from moving them, so a vulnerability fixed
+  in one of them (CVE-2026-111497 in brotli) failed the image scan until the base was replaced.
+
 ## 0.0.2
 
 ### Added
