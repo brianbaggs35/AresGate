@@ -63,9 +63,10 @@ docker compose logs --no-color aresgate |
     fail "the log doesn't say to open https://$name$suffix or https://localhost$suffix"
 
 echo "HTTP goes on to the address that was used"
+# Asked for by Host header, so the name needs no DNS and the address is always this computer's.
 for host in "$name" localhost; do
     redirect="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
-        "${resolve[@]}" "http://$host:$http_port/settings" || true)"
+        --header "Host: $host" "http://localhost:$http_port/settings" || true)"
     [[ "$redirect" = "301 https://$host$suffix/settings" ]] ||
         fail "$host: expected '301 https://$host$suffix/settings', got '$redirect'"
 done
