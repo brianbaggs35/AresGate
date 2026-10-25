@@ -4,6 +4,16 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- OPNsense's health, traffic and gateways, read every minute and kept as metrics: the load,
+  uptime, memory and disk space, the processors' use, the bytes, packets and errors of each
+  interface, and whether each gateway is up and how its link is doing. They are four jobs on the
+  Collection card, each needing its own privilege in OPNsense
+  ([DOCS/integrations.md](DOCS/integrations.md#health-traffic-and-gateways)).
+
 ## 0.0.3
 
 ### Added

@@ -562,7 +562,7 @@ test.describe('integrations', () => {
       ])
     })
 
-    test('reads its firewall log as a second job beside the connection check', async ({
+    test('reads its firewall log and what it measures beside the connection check', async ({
       harness,
       integration,
     }) => {
@@ -572,20 +572,31 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      // Suricata isn't installed on this one, so it has no job for its alerts.
-      await expect(integration.collectors).toHaveCount(2)
-      await expect(integration.collectors.nth(0)).toContainText('Connection check')
-      await expect(integration.collectors.nth(1)).toContainText('Firewall log')
-      await expect(integration.collectorStates).toHaveText(['Working', 'Working'])
-      await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
+      // Suricata isn't installed on this one, so it has no job for its alerts. The jobs are
+      // listed by name.
+      await expect(integration.collectors).toHaveCount(6)
+      await expect(integration.collectors).toContainText([
+        'Connection check',
+        'Processor use',
+        'Firewall log',
+        'Gateways',
+        'Interface traffic',
+        'System health',
+      ])
+      await expect(integration.collectorStates).toHaveText(new Array(6).fill('Working'))
+      await expect(integration.collectorTimings.nth(2)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
       // The three lines in the firewall's log are kept once, however often they are read.
       expect((await harness.rowCounts()).events).toBe(3)
+      // What it measures is read again each time: 14 numbers for two interfaces, 9 for its
+      // health, 4 for its gateway and 1 for its processors.
+      expect((await harness.rowCounts()).metric_samples).toBe(28)
       await harness.runCollectors()
       expect((await harness.rowCounts()).events).toBe(3)
+      expect((await harness.rowCounts()).metric_samples).toBe(56)
     })
 
-    test('reads the alerts of Suricata as a third job when it is installed', async ({
+    test('reads the alerts of Suricata as well when it is installed', async ({
       harness,
       integration,
     }) => {
@@ -595,9 +606,9 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      await expect(integration.collectors).toHaveCount(3)
-      await expect(integration.collectors.nth(2)).toContainText('Suricata alerts')
-      await expect(integration.collectorStates).toHaveText(['Working', 'Working', 'Working'])
+      await expect(integration.collectors).toHaveCount(7)
+      await expect(integration.collectors.nth(5)).toContainText('Suricata alerts')
+      await expect(integration.collectorStates).toHaveText(new Array(7).fill('Working'))
       await expect(integration.collectorErrors).toHaveCount(0)
       // Three lines of the firewall's log and two alerts, kept once however often they are read.
       expect((await harness.rowCounts()).events).toBe(5)

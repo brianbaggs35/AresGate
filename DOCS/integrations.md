@@ -82,6 +82,38 @@ that is all AresGate can go by.
   network and a Suricata that has never alerted look the same. If OPNsense can't ask Suricata at
   all (it answers with nothing), the Collection card says so.
 
+### Health, traffic and gateways
+
+Once OPNsense is connected, AresGate reads how the firewall is doing every minute and keeps the
+numbers as metrics ([Stored metrics](operations.md#stored-metrics)), so they can be charted over
+time. There are four jobs, so that a missing privilege costs only the numbers it covers; each
+shows on the Collection card with its own state.
+
+| Job | Keeps | Reads | The user needs |
+| --- | --- | --- | --- |
+| System health | The load averages (`system.load_1m`, `_5m`, `_15m`), `system.uptime_seconds`, the memory in use and in all, and, for each disk, `disk.used_percent`, `disk.used_bytes` and `disk.total_bytes` | `system_time`, `system_resources` and `system_disk` under `/api/diagnostics/system/` | **Lobby: Dashboard**, the privilege the connection check already needs |
+| Processor use | `cpu.usage_percent` | `/api/diagnostics/activity/get_activity` | **Diagnostics: System Activity** |
+| Interface traffic | For each interface, the bytes, packets and errors in and out, and the packets dropped (`interface.bytes_in` and so on) | `/api/diagnostics/interface/get_interface_statistics` | **Diagnostics: Netstat** |
+| Gateways | For each gateway, `gateway.up` (1 or 0), `gateway.latency_ms`, `gateway.jitter_ms` and `gateway.loss_percent` | `/api/routes/gateway/status` | **System: Gateways** |
+
+- **Counters.** The traffic of an interface is kept as OPNsense counts it: a number that only
+  rises, from zero when the interface came up. A chart finds the speed from the difference
+  between two readings.
+- **Which interfaces and disks.** Each interface is named as OPNsense names it (`igc0`). The
+  firewall's own loopback and its logging, state-sync and encapsulation interfaces are left
+  out. Of the file systems, only those on a disk (UFS and ZFS) are kept, by mount point; an
+  older OPNsense gives the percentage in use but not the bytes.
+- **Gateways.** A gateway is up unless OPNsense's monitoring says it is down, or forced down. One
+  with a poor link is still up, and its delay and loss show how poor. A gateway whose monitoring
+  is switched off has no delay or loss to keep, and is always up, because OPNsense has nothing
+  to say against it.
+- **Processor use.** OPNsense has no way to ask for a single reading except its system activity
+  page, which runs `top`; that takes it a couple of seconds, once a minute.
+- **When it reads.** At the moment each run begins, by AresGate's clock, so the firewall's own
+  clock doesn't matter. Switching off **Firewall and system** under Services on the OPNsense
+  page stops all four jobs, and the firewall log. The metrics that were stored are kept for their
+  retention period.
+
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
 OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its own certificate
