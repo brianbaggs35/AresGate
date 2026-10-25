@@ -71,9 +71,9 @@ settings have working defaults:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `ARESGATE_SERVER_NAME` | `localhost` | The name you browse to |
-| `ARESGATE_HTTPS_PORT` | `443` | The port on this computer for HTTPS |
-| `ARESGATE_HTTP_PORT` | `80` | The port that redirects to HTTPS |
+| `ARESGATE_SERVER_NAME` | `localhost` | The name you browse to. `https://localhost` also works on the computer that runs AresGate, whatever this is |
+| `ARESGATE_HTTPS_PORT` | `443` | The port on this computer for HTTPS. Browse to it when it isn't 443, such as `https://localhost:8443` |
+| `ARESGATE_HTTP_PORT` | `80` | The port that redirects to HTTPS, at the HTTPS port above |
 | `TZ` | `UTC` | Time zone, e.g. `America/Halifax` |
 | `ARESGATE_API_WORKERS` | `2` | How many API processes to run |
 | `ARESGATE_SECRET_KEY` | made for you | The key that encrypts what AresGate stores. Only set it to bring a key from another server ([Operations](operations.md#the-app-secret-key)) |
@@ -97,12 +97,13 @@ the box near the start:
 ```
 ================================================================
  AresGate is ready to be set up.
- Open https://aresgate.example.com and enter this setup code:
+ Open https://aresgate.example.com or https://localhost and enter this setup code:
 
      K7QD-3MWX-9HPA
 ```
 
-Open that address. AresGate asks for the code (step 1), then for a username and a password
+Open either address: the second is for the computer that runs AresGate, where the server name may
+not point at it. (Passkeys only work at the server name, so add them from that address.) AresGate asks for the code (step 1), then for a username and a password
 (step 2). Use a long password, such as a few words in a sentence: at least 12 characters, and
 nothing like your username or the server's name. You are signed in as soon as the account exists.
 

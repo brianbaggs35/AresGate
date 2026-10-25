@@ -78,11 +78,23 @@ def test_a_code_can_be_chosen(session: Session) -> None:
 
 
 def test_the_log_shows_the_code_and_where_to_use_it() -> None:
-    lines = setup_code.banner("K7QD-3MWX-9HPA", "https://aresgate.example.com").splitlines()
+    lines = setup_code.banner("K7QD-3MWX-9HPA", ["https://aresgate.example.com"]).splitlines()
 
     assert any(line.strip() == "K7QD-3MWX-9HPA" for line in lines)
     assert any(
         line.strip() == "Open https://aresgate.example.com and enter this setup code:"
+        for line in lines
+    )
+
+
+def test_the_log_names_every_address_that_works() -> None:
+    addresses = ["https://aresgate.example.com", "https://localhost"]
+
+    lines = setup_code.banner("K7QD-3MWX-9HPA", addresses).splitlines()
+
+    assert any(
+        line.strip()
+        == "Open https://aresgate.example.com or https://localhost and enter this setup code:"
         for line in lines
     )
 
@@ -107,7 +119,7 @@ def test_a_fresh_install_prints_a_code_that_works(
     assert stored is not None
     assert setup_code.matches(stored, code)
     assert any(
-        line.strip() == "Open https://aresgate.test and enter this setup code:"
+        line.strip() == "Open https://aresgate.test or https://localhost and enter this setup code:"
         for line in shown.splitlines()
     )
 

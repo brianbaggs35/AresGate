@@ -83,8 +83,18 @@ class Settings(BaseSettings):
 
     @property
     def public_origin(self) -> str:
-        port = "" if self.https_port == 443 else f":{self.https_port}"
-        return f"https://{self.server_name}{port}"
+        return f"https://{self.server_name}{self._port_suffix}"
+
+    @property
+    def own_origins(self) -> tuple[str, ...]:
+        """Every address AresGate answers at, the server name first. nginx also answers to
+        localhost, so it works on the computer that runs AresGate whatever the server name is
+        (and nothing else is let in: an IP address, or any other name, is refused by nginx)."""
+        return tuple(dict.fromkeys([self.public_origin, f"https://localhost{self._port_suffix}"]))
+
+    @property
+    def _port_suffix(self) -> str:
+        return "" if self.https_port == 443 else f":{self.https_port}"
 
 
 @lru_cache

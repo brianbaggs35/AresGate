@@ -181,7 +181,8 @@ lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI work
 		.github/scripts/e2e-host.sh .github/scripts/trivy-report.sh \
 		.github/scripts/codeql-report.sh .github/scripts/release-version.sh \
 		.github/scripts/supplied-key-test.sh .github/scripts/sign-in-test.sh \
-		.github/scripts/certificate-test.sh .github/scripts/certificate-script-test.sh
+		.github/scripts/certificate-test.sh .github/scripts/certificate-script-test.sh \
+		.github/scripts/custom-name-test.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code
