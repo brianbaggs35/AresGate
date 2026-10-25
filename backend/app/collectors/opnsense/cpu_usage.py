@@ -15,7 +15,8 @@ from app.collectors.opnsense.readings import Readings, number
 from app.integrations import probes
 
 ACTIVITY_PATH = "/api/diagnostics/activity/get_activity"
-_IDLE = re.compile(r"^CPU:.*?(\d+(?:\.\d+)?)% idle")
+# One of the shares in the line, split at the commas: "96.0% idle".
+_IDLE = re.compile(r"^(\d+(?:\.\d+)?)% idle$")
 
 
 class CpuUsage(Collector):
@@ -41,7 +42,10 @@ def busy_percent(answer: object) -> float | None:
     """The share of the time the processors were not idle, from the header lines of ``top``."""
     lines = probes.as_array((probes.as_object(answer) or {}).get("headers")) or []
     for line in lines:
-        found = _IDLE.match(line.strip()) if isinstance(line, str) else None
-        if found and (idle := number(found[1])) is not None and idle <= 100:
-            return round(100 - idle, 2)
+        if not isinstance(line, str) or not line.startswith("CPU:"):
+            continue
+        for share in line.removeprefix("CPU:").split(","):
+            found = _IDLE.match(share.strip())
+            if found and (idle := number(found[1])) is not None and idle <= 100:
+                return round(100 - idle, 2)
     return None
