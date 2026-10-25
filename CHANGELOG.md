@@ -145,6 +145,12 @@ Every release's notes are here, newest first. The format follows
   AresGate works the zone out from the firewall's clock and says so on the Collection card if the
   two clocks are more than five minutes apart instead of storing times it can't trust
   ([DOCS/integrations.md](DOCS/integrations.md#the-firewall-log)).
+- OPNsense's Suricata alerts, read every minute when Suricata is installed: each alert becomes an
+  event with its signature, interface, protocol, addresses and ports and whether Suricata
+  blocked it (medium severity, or low if it did), and the record is kept beside it without the
+  packet that set it off. Collectors now skip a service that testing the connection found isn't
+  installed, so a firewall without Suricata has no such job
+  ([DOCS/integrations.md](DOCS/integrations.md#suricata-alerts)).
 
 ### Fixed
 

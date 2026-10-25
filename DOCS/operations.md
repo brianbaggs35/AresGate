@@ -178,8 +178,10 @@ the web app. They share the database and nothing else.
 
 - **What it does.** For each connected integration it runs the jobs that apply to it. Today
   those are a connection check every five minutes, which does what **Test connection** does and
-  keeps the integration's status and the services found on it up to date, and, on OPNsense, the
-  firewall log every 30 seconds ([below](#stored-events)). A job that fails is
+  keeps the integration's status and the services found on it up to date, and, on OPNsense,
+  the firewall log every 30 seconds and, if Suricata is installed, its alerts every minute
+  ([below](#stored-events)). A service that testing the connection found isn't installed has no
+  jobs. A job that fails is
   tried again after 30 seconds, then 1 minute, then 2, and so on, but never later than its normal
   interval, and it's stopped if it takes too long. Connecting an integration starts its jobs
   within seconds, saving its settings again runs them straight away, and disconnecting it stops
@@ -205,9 +207,9 @@ What the collectors read from the integrations (a firewall block, an alert, a fa
 kept as events, in one shape whatever program reported them: when it happened, which integration
 and connection, what kind it is, how serious, the addresses and ports, the rule that fired, a
 one-line summary and the program's own record of it. Reading the same thing twice, which
-overlapping requests do, stores it once. So far the only collector that stores events is
-OPNsense's firewall log ([Integrations](integrations.md#the-firewall-log)); the others come with
-the integrations.
+overlapping requests do, stores it once. So far the collectors that store events are
+OPNsense's [firewall log](integrations.md#the-firewall-log) and
+[Suricata alerts](integrations.md#suricata-alerts); the others come with the integrations.
 
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_EVENT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
