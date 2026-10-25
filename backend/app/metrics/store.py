@@ -78,7 +78,7 @@ def _series(db: Session, samples: Sequence[NewSample]) -> dict[str, int]:
             MetricSeries.fingerprint.in_(wanted)
         )
     )
-    return {fingerprint: series_id for fingerprint, series_id in found}
+    return dict(found.all())
 
 
 def _when(sampled_at: datetime, now: datetime) -> datetime:

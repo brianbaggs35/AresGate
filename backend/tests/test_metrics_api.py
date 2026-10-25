@@ -141,7 +141,9 @@ def test_the_change_is_in_the_audit_log(
 
     session.expire_all()
     events = session.scalars(
-        select(AuditEvent).where(AuditEvent.action == Action.METRIC_RETENTION_CHANGED)
+        select(AuditEvent)
+        .where(AuditEvent.action == Action.METRIC_RETENTION_CHANGED)
+        .order_by(AuditEvent.id)
     ).all()
     assert [(event.outcome, event.detail) for event in events] == [
         (Outcome.SUCCESS, {"source": "opnsense", "days": 90}),
