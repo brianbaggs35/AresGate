@@ -7,13 +7,11 @@ direction, the protocol, the addresses and ports and, if the rule has one, its d
 (``label``). Reading the newest lines every half a minute covers a firewall that logs about 33
 lines a second; the events' fingerprints keep a line from being stored twice by the overlap."""
 
-from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import clock
+from app.collectors.opnsense import clock, traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.events.event import NewEvent, Severity
 from app.integrations import probes
@@ -71,29 +69,17 @@ class FirewallLog(Collector):
 def parse(lines: list[object], offset: timedelta, now: datetime) -> list[NewEvent]:
     """The lines that can be read as events, in the order given. A line that isn't an object or
     has no readable time is left out."""
-    seen: Counter[tuple[str, ...]] = Counter()
+    occurrences = traffic.Occurrences()
     events: list[NewEvent] = []
     for line in lines:
         entry = probes.as_object(line)
-        occurred_at = _moment(_text(entry, "__timestamp__"), offset, now) if entry else None
+        occurred_at = _moment(traffic.text(entry, "__timestamp__"), offset, now) if entry else None
         if entry is None or occurred_at is None:
             continue
-        facts = tuple(_text(entry, key) for key in _IDENTITY)
-        # Lines identical down to the second are as many events as there are lines. Counting
-        # from the newest, the first of them is the same whichever window it is read in.
-        events.append(_event(entry, occurred_at, (*facts, seen[facts])))
-        seen[facts] += 1
+        facts = tuple(traffic.text(entry, key) for key in _IDENTITY)
+        # Lines identical down to the second are as many events as there are lines.
+        events.append(_event(entry, occurred_at, occurrences.identity(facts)))
     return events
-
-
-def _text(entry: Mapping[str, object], key: str) -> str:
-    value = entry.get(key)
-    return str(value) if isinstance(value, str | int) else ""
-
-
-def _number(entry: Mapping[str, object], key: str) -> int | None:
-    text = _text(entry, key)
-    return int(text) if text.isascii() and text.isdigit() else None
 
 
 def _moment(stamp: str, offset: timedelta, now: datetime) -> datetime | None:
@@ -124,12 +110,12 @@ def _without_year(stamp: str, local_now: datetime) -> datetime | None:
 
 
 def _event(
-    entry: Mapping[str, object], occurred_at: datetime, identity: tuple[Any, ...]
+    entry: Mapping[str, object], occurred_at: datetime, identity: tuple[str | int, ...]
 ) -> NewEvent:
-    action = _text(entry, "action")
-    protocol = (_text(entry, "protoname") or _text(entry, "protonum")).lower()
-    source = _text(entry, "src")
-    destination = _text(entry, "dst")
+    action = traffic.text(entry, "action")
+    protocol = (traffic.text(entry, "protoname") or traffic.text(entry, "protonum")).lower()
+    source = traffic.text(entry, "src")
+    destination = traffic.text(entry, "dst")
     return NewEvent(
         source=SOURCE,
         connection=CONNECTION,
@@ -139,11 +125,11 @@ def _event(
         occurred_at=occurred_at,
         identity=identity,
         summary=_summary(entry, action, protocol),
-        signature=_text(entry, "label") or None,
+        signature=traffic.text(entry, "label") or None,
         src_address=source or None,
-        src_port=_number(entry, "srcport"),
+        src_port=traffic.number(entry, "srcport"),
         dst_address=destination or None,
-        dst_port=_number(entry, "dstport"),
+        dst_port=traffic.number(entry, "dstport"),
         protocol=protocol or None,
         raw={key: value for key, value in entry.items() if key != "__spec__"},
     )
@@ -151,25 +137,14 @@ def _event(
 
 def _summary(entry: Mapping[str, object], action: str, protocol: str) -> str:
     """One line for a list: ``block in on igb0: tcp 198.51.100.7:51514 to 192.0.2.10:443``."""
-    interface = _text(entry, "interface")
-    where = f"{_text(entry, 'dir')} on {interface}" if interface else _text(entry, "dir")
-    route = _route(_endpoint(entry, "src", "srcport"), _endpoint(entry, "dst", "dstport"))
+    interface = traffic.text(entry, "interface")
+    direction = traffic.text(entry, "dir")
+    where = f"{direction} on {interface}" if interface else direction
+    route = traffic.route(
+        traffic.endpoint(traffic.text(entry, "src"), traffic.number(entry, "srcport")),
+        traffic.endpoint(traffic.text(entry, "dst"), traffic.number(entry, "dstport")),
+    )
     head = f"{action or 'logged'} {where}".strip()
     detail = " ".join(part for part in (protocol, route) if part)
-    label = _text(entry, "label")
+    label = traffic.text(entry, "label")
     return (f"{head}: {detail}" if detail else head) + (f" ({label})" if label else "")
-
-
-def _route(source: str, destination: str) -> str:
-    if source and destination:
-        return f"{source} to {destination}"
-    return f"to {destination}" if destination else source
-
-
-def _endpoint(entry: Mapping[str, object], address: str, port: str) -> str:
-    host, number = _text(entry, address), _number(entry, port)
-    if not host:
-        return ""
-    if number is None:
-        return host
-    return f"[{host}]:{number}" if ":" in host else f"{host}:{number}"

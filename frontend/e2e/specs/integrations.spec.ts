@@ -1,4 +1,4 @@
-import { expect, test } from '../support'
+import { expect, test, type Harness, type IntegrationPage } from '../support'
 
 const TOKEN = 'a-valid-ntopng-token'
 const KEY = 'a-valid-key'
@@ -470,6 +470,29 @@ test.describe('integrations', () => {
     })
   })
 
+  /** Connects OPNsense to a stand-in with these services installed, pinning its certificate. */
+  async function connectFirewall(
+    harness: Harness,
+    integration: IntegrationPage,
+    services: string[],
+  ): Promise<void> {
+    const firewall = await harness.standIn({
+      kind: 'opnsense',
+      api_key: KEY,
+      api_secret: SECRET,
+      services,
+    })
+    await integration.goto('opnsense')
+    await integration.address('api').fill(firewall.url)
+    await integration.field('api', 'api_key').fill(KEY)
+    await integration.field('api', 'api_secret').fill(SECRET)
+    await integration.tlsMode('api', 'pinned').check()
+    await integration.lookUp('api').click()
+    await integration.trust('api').click()
+    await integration.save.click()
+    await expect(integration.status).toHaveText('Connected')
+  }
+
   test.describe('OPNsense', () => {
     test('pins its own certificate, finds the services that run on it and reads from them', async ({
       page,
@@ -543,21 +566,13 @@ test.describe('integrations', () => {
       harness,
       integration,
     }) => {
-      const firewall = await harness.standIn({ kind: 'opnsense', api_key: KEY, api_secret: SECRET })
-      await integration.goto('opnsense')
-      await integration.address('api').fill(firewall.url)
-      await integration.field('api', 'api_key').fill(KEY)
-      await integration.field('api', 'api_secret').fill(SECRET)
-      await integration.tlsMode('api', 'pinned').check()
-      await integration.lookUp('api').click()
-      await integration.trust('api').click()
-      await integration.save.click()
-      await expect(integration.status).toHaveText('Connected')
+      await connectFirewall(harness, integration, [])
 
       await harness.setWorker('running')
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
+      // Suricata isn't installed on this one, so it has no job for its alerts.
       await expect(integration.collectors).toHaveCount(2)
       await expect(integration.collectors.nth(0)).toContainText('Connection check')
       await expect(integration.collectors.nth(1)).toContainText('Firewall log')
@@ -568,6 +583,26 @@ test.describe('integrations', () => {
       expect((await harness.rowCounts()).events).toBe(3)
       await harness.runCollectors()
       expect((await harness.rowCounts()).events).toBe(3)
+    })
+
+    test('reads the alerts of Suricata as a third job when it is installed', async ({
+      harness,
+      integration,
+    }) => {
+      await connectFirewall(harness, integration, ['suricata'])
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(3)
+      await expect(integration.collectors.nth(2)).toContainText('Suricata alerts')
+      await expect(integration.collectorStates).toHaveText(['Working', 'Working', 'Working'])
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // Three lines of the firewall's log and two alerts, kept once however often they are read.
+      expect((await harness.rowCounts()).events).toBe(5)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).events).toBe(5)
     })
 
     test('a certificate lookup says why it could not be done', async ({ integration }) => {
