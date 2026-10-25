@@ -304,6 +304,120 @@ def sample_suricata_alerts() -> list[dict[str, object]]:
     return alerts
 
 
+def sample_system_time() -> dict[str, str]:
+    """What OPNsense's dashboard says about the time: how long it has been up, its load averages
+    and its clock."""
+    return {"uptime": "1 day, 02:03:04", "loadavg": "0.31, 0.30, 0.27", "datetime": ""}
+
+
+def sample_system_resources() -> dict[str, object]:
+    """The memory of a firewall with 8 GiB, three quarters of a gigabyte of it in use."""
+    return {"memory": {"total": 8589934592, "used": 805306368, "total_frmt": "8192"}}
+
+
+def sample_system_disk() -> dict[str, object]:
+    """The disk of a firewall with a 120 GB disk, 15% full, and the file systems that aren't on
+    it."""
+    return {
+        "devices": [
+            {
+                "device": "/dev/gpt/rootfs",
+                "type": "ufs",
+                "total_bytes": 120_000_000_000,
+                "used_bytes": 18_000_000_000,
+                "available_bytes": 102_000_000_000,
+                "used_pct": 15,
+                "mountpoint": "/",
+            },
+            {"device": "devfs", "type": "devfs", "used_pct": 0, "mountpoint": "/dev"},
+        ]
+    }
+
+
+def sample_activity() -> dict[str, object]:
+    """What ``top`` says about a firewall that is 4% busy."""
+    return {
+        "headers": [
+            "last pid: 4242;  load averages:  0.31,  0.30,  0.27  up 1+02:03:04    12:00:00",
+            "52 threads:   2 running, 50 sleeping",
+            "CPU:  2.1% user,  0.0% nice,  1.4% system,  0.5% interrupt, 96.0% idle",
+            "Mem: 64M Active, 410M Inact, 805M Wired, 7G Free",
+        ],
+        "details": [],
+    }
+
+
+def sample_interface_statistics() -> dict[str, object]:
+    """The counters of the two interfaces of a firewall, each listed for itself and for its
+    address, and of its loopback, which isn't kept."""
+    link = {"flags": "0x8843", "mtu": 1500, "network": "<Link#1>"}
+    return {
+        "statistics": {
+            "[WAN] (igb0) / 00:00:5e:00:53:01": {
+                **link,
+                "name": "igb0",
+                "address": "00:00:5e:00:53:01",
+                "received-packets": 1_200_000,
+                "received-errors": 0,
+                "dropped-packets": 3,
+                "received-bytes": 900_000_000,
+                "sent-packets": 800_000,
+                "send-errors": 1,
+                "sent-bytes": 120_000_000,
+                "collisions": 0,
+            },
+            "[WAN] (igb0) / 203.0.113.0/24": {
+                "name": "igb0",
+                "network": "203.0.113.0/24",
+                "address": "203.0.113.2",
+                "received-packets": 1_100_000,
+                "received-bytes": 850_000_000,
+                "sent-packets": 700_000,
+                "sent-bytes": 100_000_000,
+            },
+            "[LAN] (igb1) / 00:00:5e:00:53:02": {
+                **link,
+                "name": "igb1",
+                "address": "00:00:5e:00:53:02",
+                "received-packets": 700_000,
+                "received-errors": 0,
+                "dropped-packets": 0,
+                "received-bytes": 100_000_000,
+                "sent-packets": 1_100_000,
+                "send-errors": 0,
+                "sent-bytes": 880_000_000,
+                "collisions": 0,
+            },
+            "[lo0] / lo0": {
+                "name": "lo0",
+                "network": "<Link#3>",
+                "address": "lo0",
+                "received-bytes": 5_000,
+                "sent-bytes": 5_000,
+            },
+        }
+    }
+
+
+def sample_gateways() -> dict[str, object]:
+    """A firewall with one gateway, which is up and answers in a few milliseconds."""
+    return {
+        "items": [
+            {
+                "name": "WAN_DHCP",
+                "address": "203.0.113.1",
+                "status": "none",
+                "status_translated": "Online",
+                "loss": "0.0 %",
+                "delay": "4.2 ms",
+                "stddev": "0.6 ms",
+                "monitor": "203.0.113.1",
+            }
+        ],
+        "status": "ok",
+    }
+
+
 def _rows_asked(body: bytes) -> int:
     """How many rows a search asks for, which OPNsense gives all of (up to 9999) if it isn't
     said."""
@@ -336,7 +450,17 @@ def opnsense(
         if seen.path == "/api/diagnostics/system/system_information":
             return _json({"name": "fw.home.arpa", "versions": ["OPNsense 25.7.1-amd64"]})
         if seen.path == "/api/diagnostics/system/system_time":
-            return _json({"uptime": "1 day, 02:03:04", "datetime": _opnsense_time(zone)})
+            return _json({**sample_system_time(), "datetime": _opnsense_time(zone)})
+        if seen.path == "/api/diagnostics/system/system_resources":
+            return _json(sample_system_resources())
+        if seen.path == "/api/diagnostics/system/system_disk":
+            return _json(sample_system_disk())
+        if seen.path == "/api/diagnostics/activity/get_activity":
+            return _json(sample_activity())
+        if seen.path == "/api/diagnostics/interface/get_interface_statistics":
+            return _json(sample_interface_statistics())
+        if seen.path == "/api/routes/gateway/status":
+            return _json(sample_gateways())
         if seen.path == "/api/diagnostics/firewall/log":
             limit = parse_qs(urlsplit(seen.target).query).get("limit", ["0"])[0]
             return _json(list(firewall_log)[: int(limit) or None])

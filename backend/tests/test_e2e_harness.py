@@ -450,7 +450,7 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
 
 
 @pytest.mark.usefixtures("stand_ins")
-def test_the_collectors_read_the_firewall_log_and_alerts_of_the_opnsense_stand_in(
+def test_the_collectors_read_the_log_alerts_and_metrics_of_the_opnsense_stand_in(
     e2e: TestClient, session: Session, settings: Settings
 ) -> None:
     started = e2e.post(
@@ -483,12 +483,30 @@ def test_the_collectors_read_the_firewall_log_and_alerts_of_the_opnsense_stand_i
     records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
     assert sorted(records) == [
         "connection-check",
+        "opnsense-cpu-usage",
         "opnsense-firewall-log",
+        "opnsense-gateway-status",
+        "opnsense-interface-traffic",
         "opnsense-suricata-alerts",
+        "opnsense-system-health",
     ]
-    assert [item.consecutive_failures for item in records.values()] == [0, 0, 0]
+    assert {item.consecutive_failures for item in records.values()} == {0}
     # The second run read the same lines and alerts and found them stored already.
     assert records["opnsense-firewall-log"].last_items == 0
     assert records["opnsense-suricata-alerts"].last_items == 0
+    # Each run measures again, so what it read is new.
+    assert {
+        key: item.last_items for key, item in records.items() if key.startswith("opnsense-")
+    } == {
+        "opnsense-cpu-usage": 1,
+        "opnsense-firewall-log": 0,
+        "opnsense-gateway-status": 4,
+        "opnsense-interface-traffic": 14,
+        "opnsense-suricata-alerts": 0,
+        "opnsense-system-health": 9,
+    }
+    counts = e2e.get("/api/__test__/database/counts").json()
     # Three lines of the firewall's log and two alerts.
-    assert e2e.get("/api/__test__/database/counts").json()["events"] == 5
+    assert counts["events"] == 5
+    # 28 things measured, twice.
+    assert (counts["metric_series"], counts["metric_samples"]) == (28, 56)

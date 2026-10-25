@@ -237,8 +237,9 @@ The numbers the collectors measure (a firewall's load, the traffic through an in
 as samples: one number, read from one connection at one moment, under the name of what it
 measures (`system.load_1m`) and the labels that tell it apart from the same thing measured
 elsewhere (`interface: igc0`). Reading the same moment twice stores it once, and a reading that
-isn't a number is left out. Nothing stores metrics yet; the collectors that do come with the
-integrations.
+isn't a number is left out. So far the collectors that store metrics are OPNsense's
+[health, traffic and gateways](integrations.md#health-traffic-and-gateways); the others come with
+the integrations.
 
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_METRIC_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
@@ -246,6 +247,9 @@ integrations.
   signed in, `PUT /api/metrics/storage/opnsense` with `{"days": 90}` (or `{"days": null}` to go
   back to the default) sets it, and `GET /api/metrics/storage` shows each integration's setting,
   how many samples it has and when the oldest was read. Each change is in the audit log.
+- **How much room they take.** About 100 bytes a reading, with its indexes. A firewall with two
+  interfaces and one gateway gives about 28 readings a minute, which is about 130 MB over the
+  default 30 days. Each interface adds seven readings a minute and each gateway four.
 - **How they go.** Samples are stored in a table for each week, and leave the way events do: the
   API removes what's past its retention period when it starts and every six hours after that,
   dropping a week that ended before even the longest period began and deleting the rest by

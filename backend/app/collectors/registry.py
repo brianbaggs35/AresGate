@@ -4,10 +4,22 @@ from collections.abc import Iterable, Sequence
 
 from app.collectors.base import Collector
 from app.collectors.connection_check import ConnectionCheck
+from app.collectors.opnsense.cpu_usage import CpuUsage
 from app.collectors.opnsense.firewall_log import FirewallLog
+from app.collectors.opnsense.gateway_status import GatewayStatus
+from app.collectors.opnsense.interface_traffic import InterfaceTraffic
 from app.collectors.opnsense.suricata_alerts import SuricataAlerts
+from app.collectors.opnsense.system_health import SystemHealth
 
-COLLECTORS: Sequence[Collector] = (ConnectionCheck(), FirewallLog(), SuricataAlerts())
+COLLECTORS: Sequence[Collector] = (
+    ConnectionCheck(),
+    FirewallLog(),
+    SuricataAlerts(),
+    SystemHealth(),
+    CpuUsage(),
+    InterfaceTraffic(),
+    GatewayStatus(),
+)
 
 
 def find(key: str, collectors: Iterable[Collector] = COLLECTORS) -> Collector | None:
