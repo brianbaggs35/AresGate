@@ -53,7 +53,7 @@ Every command is the same one CI runs, so a failure in CI can be reproduced loca
 | --- | --- |
 | `make test` | pytest (on a throwaway Postgres) and Vitest, with coverage |
 | `make e2e` | The Playwright tests against the test container; `make e2e-host` runs them with no container |
-| `make lint` | ruff, pyright (strict) and bandit; ESLint, Prettier and vue-tsc; hadolint, ShellCheck and actionlint |
+| `make lint` | ruff, pyright (strict) and bandit; ESLint, Prettier and vue-tsc; hadolint, ShellCheck, actionlint and a check that no script ends a pipeline in `grep --quiet` |
 | `make format` | Fixes formatting and the lint problems that can be fixed automatically |
 | `make audit` | pip-audit and npm audit |
 | `make scan` | Trivy on the source and on the built image |

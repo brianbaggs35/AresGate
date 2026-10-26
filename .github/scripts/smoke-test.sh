@@ -17,8 +17,10 @@ health="$(curl --silent --show-error --fail --insecure "$base/api/health")"
 echo "$health"
 jq --exit-status '.status == "ok" and .database == "ok"' <<<"$health" >/dev/null ||
     fail "API health is not ok"
-curl --silent --show-error --fail --insecure --dump-header - --output /dev/null "$base/api/health" |
-    grep --quiet --ignore-case '^cache-control: no-store' || fail "API responses may be cached"
+# The headers go into a variable before grep looks at them: grep --quiet stops reading at the first
+# match, which would make curl fail with a broken pipe and, under pipefail, this check with it.
+api_headers="$(curl --silent --show-error --fail --insecure --dump-header - --output /dev/null "$base/api/health")"
+grep --quiet --ignore-case '^cache-control: no-store' <<<"$api_headers" || fail "API responses may be cached"
 
 echo "Web app"
 index="$(curl --silent --show-error --fail --insecure "$base/")"

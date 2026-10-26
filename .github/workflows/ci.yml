@@ -176,7 +176,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Hadolint, ShellCheck and actionlint
+      - name: Hadolint, ShellCheck, actionlint and the early-exit check
         run: make lint-infra
 
       # make cert and make cert-renew, with a stand-in for Docker: what they read, refuse, pass to

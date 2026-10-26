@@ -58,8 +58,10 @@ for host in "$name" localhost; do
 done
 
 echo "The log names both addresses"
-docker compose logs --no-color aresgate |
-    grep --quiet --fixed-strings "Open https://$name$suffix or https://localhost$suffix and enter this setup code" ||
+# Read the log into a variable first: grep --quiet stops reading at the first match, which would
+# make `docker compose logs` fail with a broken pipe and, under pipefail, this check with it.
+logs="$(docker compose logs --no-color aresgate)"
+grep --quiet --fixed-strings "Open https://$name$suffix or https://localhost$suffix and enter this setup code" <<<"$logs" ||
     fail "the log doesn't say to open https://$name$suffix or https://localhost$suffix"
 
 echo "HTTP goes on to the address that was used"
