@@ -20,7 +20,7 @@ describe('SecurityBanner', () => {
     })
     const banner = wrapper.find('[data-test="posture"]')
     expect(banner.attributes('data-state')).toBe(state)
-    expect(banner.find('[role="status"]').exists()).toBe(true)
+    expect(banner.find('output').exists()).toBe(true)
     expect(banner.attributes('style')).toContain(`--v-theme-${color}`)
     expect(wrapper.find('[data-test="posture-title"]').text()).toBe(`Title ${state}`)
     expect(wrapper.find('[data-test="posture-detail"]').text()).toBe(`Detail ${state}`)
