@@ -1,5 +1,5 @@
-"""What the OPNsense collectors that measure have in common: the numbers in what OPNsense says,
-and the samples one run reads."""
+"""What the collectors that measure have in common: the numbers in what a product says, and the
+samples one run reads."""
 
 import math
 import re
@@ -13,8 +13,9 @@ _LEADING = re.compile(r"^(-?\d+(?:\.\d+)?)\s*[a-zA-Z%]*$")
 
 
 def number(value: object) -> float | None:
-    """A number that OPNsense gave as one, or as digits in a string (PHP hands some over as
-    text), or None. A flag, "N/A" and anything that isn't finite are not numbers."""
+    """A number that a product gave as one, or as digits in a string (PHP, which OPNsense runs on,
+    hands some over as text), or None. A flag, "N/A" and anything that isn't finite are not
+    numbers."""
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         return None
     if isinstance(value, str) and not _PLAIN.match(value.strip()):

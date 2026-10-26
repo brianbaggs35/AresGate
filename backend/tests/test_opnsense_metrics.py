@@ -9,8 +9,8 @@ from app.collectors.base import Collector
 from app.collectors.opnsense.cpu_usage import CpuUsage, busy_percent
 from app.collectors.opnsense.gateway_status import GatewayStatus
 from app.collectors.opnsense.interface_traffic import InterfaceTraffic, interfaces
-from app.collectors.opnsense.readings import leading_number, number
 from app.collectors.opnsense.system_health import SystemHealth, uptime_seconds
+from app.collectors.readings import leading_number, number
 from app.config import Settings
 from app.models import MetricSample, MetricSeries, utcnow
 from e2e import stand_ins

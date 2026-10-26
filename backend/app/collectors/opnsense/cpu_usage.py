@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
 from app.collectors.opnsense.api import PRODUCT, read
-from app.collectors.opnsense.readings import Readings, number
+from app.collectors.readings import Readings, number
 from app.integrations import probes
 
 ACTIVITY_PATH = "/api/diagnostics/activity/get_activity"
