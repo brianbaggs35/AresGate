@@ -29,7 +29,8 @@ export function changeOf(
     }
   }
   const direction = total > previous ? 'up' : 'down'
-  const tone = !moreIsWorse ? 'neutral' : direction === 'up' ? 'bad' : 'good'
+  let tone: Change['tone'] = 'neutral'
+  if (moreIsWorse) tone = direction === 'up' ? 'bad' : 'good'
   if (previous === 0) return { text: `Up from none ${before}`, direction, tone }
   const percent = Math.round((Math.abs(total - previous) / previous) * 100)
   if (percent === 0)
