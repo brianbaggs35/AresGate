@@ -34,7 +34,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Incidents' },
       },
       {
-        path: ':id(\\d+)',
+        path: String.raw`:id(\d+)`,
         name: 'incident',
         component: () => import('@/views/IncidentView.vue'),
         meta: { title: 'Incidents' },
