@@ -181,11 +181,11 @@ const anchor = computed(() => {
     y: TOP + (heights.length ? (Math.min(...heights) + Math.max(...heights)) / 2 : rise.value / 2),
   }
 })
-const readout = computed(() =>
-  active.value === null
-    ? ''
-    : `${when(props.times[active.value] as number)}: ${rows.value.map(({ value, label }) => `${value} ${label}`).join(', ')}`,
-)
+const readout = computed(() => {
+  if (active.value === null) return ''
+  const values = rows.value.map(({ value, label }) => `${value} ${label}`).join(', ')
+  return `${when(props.times[active.value] as number)}: ${values}`
+})
 
 /** The moment under the pointer. */
 function point(event: PointerEvent) {
@@ -329,7 +329,7 @@ function leave(event: PointerEvent) {
         :heading="when(times[active] as number)"
         :rows="rows"
       />
-      <div class="chart-readout" role="status">{{ readout }}</div>
+      <output class="chart-readout">{{ readout }}</output>
     </div>
   </ChartFrame>
 </template>

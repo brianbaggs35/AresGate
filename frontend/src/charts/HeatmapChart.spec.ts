@@ -105,13 +105,13 @@ describe('HeatmapChart', () => {
       const tip = wrapper.find('[data-test="chart-tooltip"]')
       expect(tip.text()).toContain('Mon · 18')
       expect(tip.find('[data-test="chart-tooltip-row"]').text()).toBe('50alerts')
-      expect(wrapper.find('[role="status"]').text()).toBe('Mon · 18: 50 alerts')
+      expect(wrapper.find('output').text()).toBe('Mon · 18: 50 alerts')
       expect(cells[3]?.classes()).toContain('heatmap__cell--active')
       expect(cells[0]?.classes()).not.toContain('heatmap__cell--active')
 
       await point(wrapper.find('.chart-svg').element, 'pointerleave')
       expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
-      expect(wrapper.find('[role="status"]').text()).toBe('')
+      expect(wrapper.find('output').text()).toBe('')
     })
 
     it('opens the tooltip on the left over the right half, and writes values as told', async () => {
@@ -143,7 +143,7 @@ describe('HeatmapChart', () => {
     it('moves across and down the grid with the arrow keys, and stops at the edges', async () => {
       const { wrapper } = await mountMap()
       const chart = wrapper.find('.chart-svg')
-      const at = () => wrapper.find('[role="status"]').text()
+      const at = () => wrapper.find('output').text()
 
       await chart.trigger('keydown', { key: 'ArrowRight' })
       expect(at()).toBe('Mon · 0: 0 alerts')
@@ -170,15 +170,15 @@ describe('HeatmapChart', () => {
     it('starts from the end or the start when an arrow is the first key', async () => {
       const first = await mountMap()
       await first.wrapper.find('.chart-svg').trigger('keydown', { key: 'ArrowLeft' })
-      expect(first.wrapper.find('[role="status"]').text()).toBe('Mon · 0: 0 alerts')
+      expect(first.wrapper.find('output').text()).toBe('Mon · 0: 0 alerts')
 
       const second = await mountMap()
       await second.wrapper.find('.chart-svg').trigger('keydown', { key: 'End' })
-      expect(second.wrapper.find('[role="status"]').text()).toBe('Mon · 18: 50 alerts')
+      expect(second.wrapper.find('output').text()).toBe('Mon · 18: 50 alerts')
 
       const third = await mountMap()
       await third.wrapper.find('.chart-svg').trigger('keydown', { key: 'ArrowUp' })
-      expect(third.wrapper.find('[role="status"]').text()).toBe('Mon · 0: 0 alerts')
+      expect(third.wrapper.find('output').text()).toBe('Mon · 0: 0 alerts')
     })
 
     it('puts the readout away with Escape, and leaves the other keys to the page', async () => {

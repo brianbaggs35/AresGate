@@ -217,7 +217,7 @@ function leave(event: PointerEvent) {
         />
         <span class="text-medium-emphasis">{{ format(largest) }}</span>
       </div>
-      <div class="chart-readout" role="status">{{ readout }}</div>
+      <output class="chart-readout">{{ readout }}</output>
     </div>
   </ChartFrame>
 </template>

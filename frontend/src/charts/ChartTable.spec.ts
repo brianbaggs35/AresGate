@@ -34,7 +34,7 @@ describe('ChartTable', () => {
     })
 
     const region = wrapper.find('[data-test="chart-table"]')
-    expect(region.attributes('role')).toBe('region')
+    expect(region.element.tagName).toBe('SECTION')
     expect(region.attributes('tabindex')).toBe('0')
     expect(region.attributes('aria-label')).toBe('Traffic, as a table')
   })

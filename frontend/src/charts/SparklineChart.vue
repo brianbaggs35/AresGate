@@ -51,15 +51,16 @@ const latest = computed(() => {
 </script>
 
 <template>
-  <div class="sparkline" :style="{ height: `${height}px` }" role="img" :aria-label="label">
+  <div class="sparkline" :style="{ height: `${height}px` }">
     <svg
-      v-if="known.length"
       :viewBox="`0 0 ${WIDTH} ${height}`"
       preserveAspectRatio="none"
-      aria-hidden="true"
+      role="img"
+      :aria-label="label"
       data-test="sparkline"
     >
       <path
+        v-if="known.length"
         :d="path"
         class="sparkline__line"
         fill="none"
@@ -73,6 +74,7 @@ const latest = computed(() => {
     <span
       v-if="latest"
       class="sparkline__dot"
+      aria-hidden="true"
       :style="{
         left: `${across(latest.index)}%`,
         top: `${place(latest.value)}px`,

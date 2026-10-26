@@ -11,9 +11,8 @@ defineProps<{
 </script>
 
 <template>
-  <div
+  <section
     class="chart-table"
-    role="region"
     tabindex="0"
     :aria-label="`${label}, as a table`"
     data-test="chart-table"
@@ -40,7 +39,7 @@ defineProps<{
         </tr>
       </tbody>
     </table>
-  </div>
+  </section>
 </template>
 
 <style scoped>

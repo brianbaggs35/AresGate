@@ -63,7 +63,8 @@ export function layoutBars(input: BarLayoutInput): { shapes: BarShape[]; labels:
     size: number,
     round: boolean,
   ) => {
-    const end = round ? (horizontal ? 'right' : 'top') : null
+    const side = horizontal ? 'right' : 'top'
+    const end = round ? side : null
     const path = horizontal
       ? barPath(from, across, size, thickness, RADIUS, end)
       : barPath(across, length - from - size, thickness, size, RADIUS, end)
@@ -79,7 +80,7 @@ export function layoutBars(input: BarLayoutInput): { shapes: BarShape[]; labels:
       for (const series of drawn) {
         const from = scale(total)
         total += at(series)
-        const last = series === drawn[drawn.length - 1]
+        const last = series === drawn.at(-1)
         draw(
           series,
           category,

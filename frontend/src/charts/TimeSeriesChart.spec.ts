@@ -192,9 +192,7 @@ describe('TimeSeriesChart', () => {
         '100Download',
         '10Upload',
       ])
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        'Oct 26, 2026, 12:00 AM: 100 Download, 10 Upload',
-      )
+      expect(wrapper.find('output').text()).toBe('Oct 26, 2026, 12:00 AM: 100 Download, 10 Upload')
     })
 
     it('has no readout until it is pointed at, and brings the end dots back when it is put away', async () => {
@@ -286,11 +284,9 @@ describe('TimeSeriesChart', () => {
       const chart = wrapper.find('.chart-svg')
 
       await chart.trigger('keydown', { key: 'End' })
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        'Oct 27, 2026, 12:00 AM: 580 Download, 34 Upload',
-      )
+      expect(wrapper.find('output').text()).toBe('Oct 27, 2026, 12:00 AM: 580 Download, 34 Upload')
       await chart.trigger('keydown', { key: 'ArrowLeft' })
-      expect(wrapper.find('[role="status"]').text()).toContain('Oct 26, 2026, 11:00 PM')
+      expect(wrapper.find('output').text()).toContain('Oct 26, 2026, 11:00 PM')
       await chart.trigger('keydown', { key: 'Escape' })
       expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
 
