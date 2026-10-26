@@ -13,10 +13,10 @@ test.describe('signing in', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
   })
 
-  test('signs in with the account’s username and password, and shows the overview', async ({
+  test('signs in with the account’s username and password, and shows the dashboard', async ({
     page,
     signIn,
-    overview,
+    dashboard,
     shell,
     baseline,
   }) => {
@@ -25,7 +25,7 @@ test.describe('signing in', () => {
     await signIn.signIn(baseline.account)
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
     await expect(shell.userMenu).toHaveAccessibleName(`Account: ${baseline.account.username}`)
   })
 
@@ -50,13 +50,13 @@ test.describe('signing in', () => {
     await expect(security.accountName).toHaveText(baseline.account.username)
   })
 
-  test('never goes on to another website', async ({ page, signIn, overview, baseline }) => {
+  test('never goes on to another website', async ({ page, signIn, dashboard, baseline }) => {
     await signIn.goto('/sign-in?next=//example.com/phish')
 
     await signIn.signIn(baseline.account)
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('says so, and clears the password, when it is wrong', async ({ page, signIn, baseline }) => {
@@ -131,25 +131,25 @@ test.describe('signing in', () => {
 })
 
 test.describe('staying signed in', () => {
-  test('keeps the sign-in over a reload', async ({ page, overview }) => {
-    await overview.goto()
-    await expect(overview.card).toBeVisible()
+  test('keeps the sign-in over a reload', async ({ page, dashboard }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
 
     await page.reload()
 
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
     await expect(page).toHaveURL('/')
   })
 
   test('leaves the sign-in page for someone who is signed in already', async ({
     page,
     signIn,
-    overview,
+    dashboard,
   }) => {
     await signIn.goto()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('says when the sign-in ended while the page was open, and goes back to where it was', async ({
@@ -159,9 +159,11 @@ test.describe('staying signed in', () => {
     signIn,
     security,
     baseline,
+    dashboard,
   }) => {
     await page.goto('/')
-    await expect(shell.settingsLink).toBeVisible()
+    // The dashboard has asked for what it shows, so nothing is on its way when the sign-in ends.
+    await expect(dashboard.banner).toBeVisible()
     // Cleaning the database ends every sign-in, as the idle limit would.
     await harness.clean()
 

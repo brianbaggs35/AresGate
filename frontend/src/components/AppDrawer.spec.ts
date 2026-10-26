@@ -22,10 +22,10 @@ describe('AppDrawer', () => {
 
   it('lists the places, and marks the one that is open', async () => {
     const { wrapper } = await open(COMPUTER)
-    const overview = wrapper.find('[data-test="nav-home"]')
-    expect(overview.text()).toBe('Overview')
-    expect(overview.attributes('href')).toBe('/')
-    expect(overview.classes()).toContain('v-list-item--active')
+    const dashboard = wrapper.find('[data-test="nav-home"]')
+    expect(dashboard.text()).toBe('Dashboard')
+    expect(dashboard.attributes('href')).toBe('/')
+    expect(dashboard.classes()).toContain('v-list-item--active')
   })
 
   it('keeps Integrations marked on the page of one of them', async () => {
@@ -54,7 +54,7 @@ describe('AppDrawer', () => {
     expect(wrapper.find('a[aria-label="AresGate"]').text()).toBe('')
     expect(toggle(wrapper).attributes('aria-label')).toBe('Expand the menu')
     expect(toggle(wrapper).attributes('aria-expanded')).toBe('false')
-    expect(wrapper.findComponent(VTooltip).props('text')).toBe('Overview')
+    expect(wrapper.findComponent(VTooltip).props('text')).toBe('Dashboard')
   })
 
   it('collapses to a rail, and remembers it', async () => {

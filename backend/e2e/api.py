@@ -17,6 +17,7 @@ from app.api.deps import SettingsDep
 from app.collectors.health import WORKER
 from app.collectors.scheduler import Scheduler
 from app.db import get_session
+from app.events.event import Severity
 from app.integrations.apilog import ApiLogRecorder
 from app.models import WorkerBeat, utcnow
 from e2e import baseline, factories
@@ -127,6 +128,47 @@ def make_system_info(body: SystemInfoRequest, db: Db) -> SystemInfoRecord:
 class AccountRequest(BaseModel):
     username: str | None = None
     password: str = factories.DEFAULT_PASSWORD
+
+
+class ActivityRequest(BaseModel):
+    """What the dashboard has to show. All of it is optional: none at all is a quiet network."""
+
+    # How many alerts of each severity, such as {"high": 2}.
+    alerts: dict[Literal["info", "low", "medium", "high", "critical"], int] = {}
+    # How many connections the firewall refused from each address.
+    blocked: dict[str, int] = {}
+    # A steady speed in megabits a second for each interface of the firewall.
+    traffic: dict[str, float] = {}
+    # How many devices were seen for the first time half an hour ago.
+    devices: int = 0
+    # A collector of the firewall in each of these states, to say how collecting is going.
+    collectors: list[factories.CollectorState] = []
+
+
+class ActivityRecord(BaseModel):
+    alerts: int
+    blocked: int
+    samples: int
+    devices: int
+    collectors: int
+
+
+@router.post("/factories/activity", status_code=status.HTTP_201_CREATED)
+def make_activity(body: ActivityRequest, db: Db, settings: SettingsDep) -> ActivityRecord:
+    """Stores alerts, refused connections, interface speeds and new devices as of now, for the
+    dashboard to show."""
+    stored = factories.activity(
+        db,
+        settings,
+        utcnow(),
+        alerts={Severity[name.upper()]: count for name, count in body.alerts.items()},
+        blocked=body.blocked,
+        traffic=body.traffic,
+        devices=body.devices,
+        collectors=body.collectors,
+    )
+    db.commit()
+    return ActivityRecord(**stored._asdict())
 
 
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)

@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- A **Dashboard** in place of the Overview page: a sentence at the top on whether anything needs
+  you (it never says all is quiet while collectors are failing), the numbers for alerts, refused
+  connections, new devices and collection, a chart of each OPNsense interface's traffic, alerts
+  by severity, the addresses refused most and the latest alerts, for the last 24 hours or 7 days
+  against the time before. It asks again every 30 seconds while it is open, keeps what it shows
+  if a refresh fails, and works on a phone ([DOCS/operations.md](DOCS/operations.md#the-dashboard)).
 - What the dashboard will show, as `GET /api/dashboard` for someone signed in: the alerts and the
   connections the firewall refused over the last 24 hours or 7 days, each against the stretch of
   time before it and by hour (or six hours), the most serious alert, the addresses refused most,

@@ -10,7 +10,7 @@ export class AppShell {
   readonly logo: Locator
   readonly menu: Locator
   /** The places in the menu. */
-  readonly overviewLink: Locator
+  readonly dashboardLink: Locator
   readonly integrationsLink: Locator
   readonly statusLink: Locator
   readonly settingsLink: Locator
@@ -35,7 +35,7 @@ export class AppShell {
   constructor(private readonly page: Page) {
     this.logo = page.getByRole('link', { name: 'AresGate' })
     this.menu = page.getByRole('navigation', { name: 'Main' })
-    this.overviewLink = page.getByTestId('nav-home')
+    this.dashboardLink = page.getByTestId('nav-home')
     this.integrationsLink = page.getByTestId('nav-integrations')
     this.statusLink = page.getByTestId('nav-status')
     this.settingsLink = page.getByTestId('nav-settings')

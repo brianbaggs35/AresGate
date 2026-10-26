@@ -631,3 +631,63 @@ def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_
     # Three devices in the ARP table, two with leases from Dnsmasq (one of them the laptop that is
     # in the table too) and one from Kea, each with one address.
     assert (counts["devices"], counts["device_addresses"]) == (5, 5)
+
+
+def test_what_the_dashboard_shows_can_be_made_to_order(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/activity",
+        json={
+            "alerts": {"critical": 1, "medium": 2},
+            "blocked": {"203.0.113.9": 3, "198.51.100.7": 1},
+            "traffic": {"igc0": 80},
+            "devices": 2,
+            "collectors": ["ok", "problem"],
+        },
+    )
+
+    assert made.status_code == 201
+    # Two readings of two counters, every five minutes for three hours.
+    assert made.json() == {"alerts": 3, "blocked": 4, "samples": 74, "devices": 2, "collectors": 2}
+    signed_in = e2e.post(
+        "/api/auth/login",
+        json={"username": BASELINE_ACCOUNT.username, "password": BASELINE_ACCOUNT.password},
+    )
+    assert signed_in.status_code == 200
+    shown = e2e.get("/api/dashboard").json()
+    assert shown["alerts"]["total"] == 3
+    assert shown["alerts"]["highest"] == "critical"
+    assert [item["severity"] for item in shown["recent_alerts"]] == ["critical", "medium", "medium"]
+    assert shown["blocked"]["top_sources"] == [
+        {"address": "203.0.113.9", "count": 3},
+        {"address": "198.51.100.7", "count": 1},
+    ]
+    assert shown["devices"] == {"total": 2, "new": 2}
+    [interface] = shown["traffic"]
+    speeds = [speed for speed in interface["received"] if speed is not None]
+    assert interface["interface"] == "igc0"
+    assert speeds
+    assert all(speed == pytest.approx(80_000_000) for speed in speeds)
+    listed = e2e.get("/api/collectors").json()["collectors"]
+    assert [item["state"] for item in listed] == ["ok", "problem"]
+    assert all(item["integration"] == "opnsense" for item in listed)
+
+
+@pytest.mark.parametrize("state", ["waiting", "ok", "problem", "late"])
+def test_a_collector_can_be_made_to_be_in_any_state(e2e: TestClient, state: str) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post("/api/__test__/factories/activity", json={"collectors": [state]})
+    e2e.post(
+        "/api/auth/login",
+        json={"username": BASELINE_ACCOUNT.username, "password": BASELINE_ACCOUNT.password},
+    )
+
+    [listed] = e2e.get("/api/collectors").json()["collectors"]
+
+    assert listed["state"] == state
+
+
+def test_an_empty_request_stores_nothing(e2e: TestClient) -> None:
+    made = e2e.post("/api/__test__/factories/activity", json={})
+
+    assert made.json() == {"alerts": 0, "blocked": 0, "samples": 0, "devices": 0, "collectors": 0}

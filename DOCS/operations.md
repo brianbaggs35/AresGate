@@ -138,9 +138,10 @@ the backup or a newer one:
   is for the wrong name.
 - `make shell` opens a shell in the container, and `make psql` a database shell.
 
-The Overview page (the first page you see) shows whether the API and the database are up. Once
-you're signed in, the **Status** page in the menu says more, and is the place to look first when
-something seems wrong. It shows:
+The **Dashboard** (the first page you see) says what the network has been doing and whether any
+of it needs you, as described [below](#the-dashboard). Once you're signed in, the **Status** page
+in the menu says more about AresGate itself, and is the place to look first when something
+seems wrong. It shows:
 
 - **AresGate**: the version, the commit and time it was built from (set by `make up` and by the
   release workflow, and "Not recorded" where AresGate runs from source), and how long it has
@@ -312,6 +313,31 @@ Set these in `.env` (see `.env.example`):
 Secrets are blanked out before anything is written (see
 [Security](security.md#how-it-is-hardened-today)). That is a safety net: if you find one in a log,
 please [report it](../SECURITY.md).
+
+## The dashboard
+
+The first page of the web app, for the last 24 hours or the last 7 days (the buttons at the top
+right), each compared with the same length of time before it. From the top:
+
+- **A sentence on whether anything needs you.** *Needs your attention* when there was a high or
+  critical alert, *Worth a look* for medium alerts, and *All quiet* otherwise. It never says
+  quiet while collectors are failing or the worker has stopped, because a network nobody is
+  watching is quiet too: it says *Some sources aren't reporting* and links to the Status page.
+  With nothing connected at all it asks you to connect an integration. Until AresGate has
+  learned what is normal on your network this goes by how serious the alerts are.
+- **Four numbers**: alerts, connections the firewall refused, devices first seen in that time
+  (out of all it knows), and how the collectors are doing. The first two show how they changed
+  and a small line of how they went through the day or week.
+- **Network traffic** of one OPNsense interface (the busiest first, the others in a menu), in
+  bits a second received and sent. It is worked out from the bytes the firewall counts, over
+  15 minutes (or an hour for the week). Where the firewall wasn't read, or restarted and began
+  counting again, the line has a gap rather than a made-up speed.
+- **Alerts by severity** for each hour (or six hours), the **addresses refused most**, and the
+  **latest alerts** with who reported each. Every chart can be shown as a table.
+
+The page asks again every 30 seconds while it is open and in view, and when you come back to its
+tab after longer than that. If a refresh fails it keeps what it has and says so. The numbers
+come from `GET /api/dashboard?window=24h` (or `7d`), for someone signed in.
 
 ## Signing in
 

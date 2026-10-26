@@ -7,7 +7,7 @@ import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { IntegrationPage } from './pages/integration-page'
 import { IntegrationsPage } from './pages/integrations-page'
-import { OverviewPage } from './pages/overview-page'
+import { DashboardPage } from './pages/dashboard-page'
 import { SecurityPage } from './pages/security-page'
 import { SettingsPage } from './pages/settings-page'
 import { SetupPage } from './pages/setup-page'
@@ -19,7 +19,7 @@ import { VirtualAuthenticator } from './virtual-authenticator'
 export interface AresGateFixtures {
   /** The logo and the theme switcher that every page has. */
   shell: AppShell
-  overview: OverviewPage
+  dashboard: DashboardPage
   integrations: IntegrationsPage
   integration: IntegrationPage
   signIn: SignInPage
@@ -85,8 +85,8 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
     await use(new AppShell(page))
   },
 
-  overview: async ({ page }, use) => {
-    await use(new OverviewPage(page))
+  dashboard: async ({ page }, use) => {
+    await use(new DashboardPage(page))
   },
 
   integrations: async ({ page }, use) => {

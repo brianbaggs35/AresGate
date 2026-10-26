@@ -20,8 +20,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
-    component: () => import('@/views/HomeView.vue'),
-    meta: { title: 'Overview' },
+    component: () => import('@/views/DashboardView.vue'),
+    meta: { title: 'Dashboard' },
   },
   {
     // The list, and a page for each integration. Both belong to the one place in the menu.

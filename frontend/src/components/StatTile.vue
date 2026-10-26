@@ -102,7 +102,12 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
 
 .stat-tile__delta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.25rem;
+}
+
+/* The arrow stays level with the first line of the words when they wrap. */
+.stat-tile__delta .v-icon {
+  margin-top: 0.1875rem;
 }
 </style>
