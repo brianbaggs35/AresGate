@@ -4,6 +4,9 @@ import type { Locator, Page } from '@playwright/test'
 export class DataPage {
   readonly eventsCard: Locator
   readonly metricsCard: Locator
+  /** The chart of what each integration has stored, which is only there once something is. */
+  readonly eventsChart: Locator
+  readonly metricsChart: Locator
   /** The dialog that asks for a number of days, and its parts. */
   readonly dialog: Locator
   readonly dialogTitle: Locator
@@ -18,6 +21,8 @@ export class DataPage {
   constructor(private readonly page: Page) {
     this.eventsCard = page.getByTestId('events-retention-card')
     this.metricsCard = page.getByTestId('metrics-retention-card')
+    this.eventsChart = page.getByTestId('events-chart')
+    this.metricsChart = page.getByTestId('metrics-chart')
     this.dialog = page.getByTestId('retention-dialog')
     this.dialogTitle = page.getByTestId('retention-title')
     this.useDefault = page.getByTestId('retention-default').getByRole('radio')

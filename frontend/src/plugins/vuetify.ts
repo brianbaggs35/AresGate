@@ -1,6 +1,7 @@
 import '@fontsource-variable/inter'
 import 'vuetify/styles'
 import '@/styles/main.scss'
+import '@/styles/charts.scss'
 
 import { createVuetify, type ThemeDefinition } from 'vuetify'
 

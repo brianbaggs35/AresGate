@@ -1,4 +1,4 @@
-import { authenticatorCode, expect, expectAccessible, test } from '../support'
+import { authenticatorCode, connectFirewall, expect, expectAccessible, test } from '../support'
 
 // Both themes, since contrast is checked against the colors each one draws.
 for (const theme of ['light', 'dark'] as const) {
@@ -109,6 +109,32 @@ for (const theme of ['light', 'dark'] as const) {
       await data.days.fill('90')
       await data.save.click()
       await expect(data.eventsCard.getByTestId('retention-notice')).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the data page’s charts, read and as tables, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      data,
+      shell,
+    }) => {
+      await connectFirewall(harness, integration, [])
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await data.goto()
+      await expect(data.eventsChart).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await data.eventsChart.getByTestId('bar-slot').first().hover()
+      await expect(data.eventsChart.getByTestId('chart-tooltip')).toBeVisible()
+      await expectAccessible(page)
+
+      await data.eventsChart.getByTestId('chart-view').click()
+      await data.metricsChart.getByTestId('chart-view').click()
+      await expect(data.eventsChart.getByTestId('chart-table')).toBeVisible()
       await expectAccessible(page)
     })
 

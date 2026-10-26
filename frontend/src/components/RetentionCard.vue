@@ -10,6 +10,7 @@ import {
   type StorageKind,
   type StorageSource,
 } from '@/api/storage'
+import BarChart from '@/charts/BarChart.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import LoadError from '@/components/LoadError.vue'
 import RetentionDialog from '@/components/RetentionDialog.vue'
@@ -68,6 +69,14 @@ async function load() {
     loading.value = false
   }
 }
+
+/** Where the most is stored first. */
+const byCount = computed(() =>
+  [...(storage.value as Storage).sources].sort((a, b) => b.count - a.count),
+)
+const chartSeries = computed(() => [
+  { id: 'count', label: words.value.title, values: byCount.value.map(({ count }) => count) },
+])
 
 const keptFor = (source: StorageSource) =>
   `Kept for ${formatDays(source.effective_days)}${source.days === null ? ' (the default)' : ''}`
@@ -166,34 +175,46 @@ onMounted(load)
       @retry="load"
     />
     <v-skeleton-loader v-else-if="!storage" type="list-item-two-line, list-item-two-line" />
-    <ul v-else class="sources" data-test="retention-list">
-      <li
-        v-for="source in storage.sources"
-        :key="source.source"
-        class="sources__item"
-        data-test="retention-source"
-      >
-        <div class="sources__text">
-          <div class="text-body-large" data-test="retention-name">{{ source.name }}</div>
-          <div class="text-body-medium text-medium-emphasis" data-test="retention-holds">
-            {{ holds(source) }}
-          </div>
-          <div class="text-body-medium text-medium-emphasis" data-test="retention-kept">
-            {{ keptFor(source) }}
-          </div>
-        </div>
-        <v-btn
-          variant="text"
-          :prepend-icon="Pencil"
-          :disabled="busy"
-          :aria-label="`Change how long ${source.name}'s ${words.noun} are kept`"
-          data-test="retention-change"
-          @click="choose(source)"
+    <template v-else>
+      <BarChart
+        v-if="byCount.some(({ count }) => count > 0)"
+        title="Stored by integration"
+        :caption="`How many ${words.noun} each one has stored now.`"
+        category-label="Integration"
+        :categories="byCount.map(({ name }) => name)"
+        :series="chartSeries"
+        class="mb-4"
+        :data-test="`${kind}-chart`"
+      />
+      <ul class="sources" data-test="retention-list">
+        <li
+          v-for="source in storage.sources"
+          :key="source.source"
+          class="sources__item"
+          data-test="retention-source"
         >
-          Change
-        </v-btn>
-      </li>
-    </ul>
+          <div class="sources__text">
+            <div class="text-body-large" data-test="retention-name">{{ source.name }}</div>
+            <div class="text-body-medium text-medium-emphasis" data-test="retention-holds">
+              {{ holds(source) }}
+            </div>
+            <div class="text-body-medium text-medium-emphasis" data-test="retention-kept">
+              {{ keptFor(source) }}
+            </div>
+          </div>
+          <v-btn
+            variant="text"
+            :prepend-icon="Pencil"
+            :disabled="busy"
+            :aria-label="`Change how long ${source.name}'s ${words.noun} are kept`"
+            data-test="retention-change"
+            @click="choose(source)"
+          >
+            Change
+          </v-btn>
+        </li>
+      </ul>
+    </template>
   </SectionCard>
 
   <RetentionDialog

@@ -2,12 +2,14 @@ import {
   describeBrowser,
   formatAgo,
   formatBytes,
+  formatCompact,
   formatCount,
   formatDateTime,
   formatDays,
   formatDue,
   formatDuration,
   formatElapsed,
+  formatFigure,
   formatTimestamp,
 } from '@/format'
 
@@ -167,5 +169,24 @@ describe('formatCount', () => {
     expect(formatCount(12408, 'en-US')).toBe('12,408')
     expect(formatCount(12408, 'de-DE')).toBe('12.408')
     expect(formatCount(0, 'en-US')).toBe('0')
+  })
+})
+
+describe('formatCompact', () => {
+  it('writes a number short from a thousand up', () => {
+    expect(formatCompact(0, 'en-US')).toBe('0')
+    expect(formatCompact(950, 'en-US')).toBe('950')
+    expect(formatCompact(1000, 'en-US')).toBe('1K')
+    expect(formatCompact(12_900, 'en-US')).toBe('12.9K')
+    expect(formatCompact(4_200_000, 'en-US')).toBe('4.2M')
+  })
+})
+
+describe('formatFigure', () => {
+  it('writes a number in full while it fits and short after', () => {
+    expect(formatFigure(1284, 'en-US')).toBe('1,284')
+    expect(formatFigure(9999, 'en-US')).toBe('9,999')
+    expect(formatFigure(12_900, 'en-US')).toBe('12.9K')
+    expect(formatFigure(-12_900, 'en-US')).toBe('-12.9K')
   })
 })
