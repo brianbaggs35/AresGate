@@ -24,6 +24,12 @@ describe('BottomNavigation', () => {
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')
   })
 
+  it('keeps Incidents marked on the page of one of them', async () => {
+    const { wrapper } = await open('/incidents/7')
+    expect(wrapper.find('[data-test="nav-incidents"]').classes()).toContain('v-btn--active')
+    expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')
+  })
+
   it('marks nothing on a page that is not in the menu', async () => {
     const { wrapper } = await open('/no/such/page')
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')

@@ -40,6 +40,16 @@ describe('AppDrawer', () => {
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-list-item--active')
   })
 
+  it('keeps Incidents marked on the page of one of them', async () => {
+    const { wrapper } = await mountWithPlugins(AppDrawer, {
+      withApp: true,
+      width: COMPUTER,
+      route: '/incidents/7',
+    })
+    expect(wrapper.find('[data-test="nav-incidents"]').classes()).toContain('v-list-item--active')
+    expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-list-item--active')
+  })
+
   it('shows the labels on a computer', async () => {
     const { wrapper } = await open(COMPUTER)
     expect(wrapper.find('.v-navigation-drawer--rail').exists()).toBe(false)

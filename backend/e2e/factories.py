@@ -10,6 +10,7 @@ from ipaddress import ip_address
 from typing import Literal, NamedTuple
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.collectors import registry
@@ -19,9 +20,10 @@ from app.devices.sighting import NewSighting
 from app.devices.store import record as record_devices
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
+from app.incidents import engine as incident_engine
 from app.metrics.sample import NewSample
 from app.metrics.store import record as record_samples
-from app.models import CollectorHealth, SystemInfo, User
+from app.models import CollectorHealth, Incident, SystemInfo, User
 from app.security import passwords
 from app.security.accounts import normalize_username
 
@@ -199,3 +201,116 @@ def _sighting(number: int, now: datetime) -> NewSighting:
         address=ip_address(f"192.168.1.{number + 10}"),
         hostname=f"e2e-device-{number + 1}",
     )
+
+
+# Public addresses for attackers, in turn: the documentation ranges are not outside the network
+# as far as the engine is concerned.
+_ATTACKERS = ("93.184.216.34", "8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222")
+# What the programs that saw an attack call themselves, and how each reports a signal.
+_CONNECTIONS = {"wazuh": "indexer", "opnsense": "api", "crowdsec": "lapi", "ntopng": "api"}
+IncidentStatusName = Literal["open", "investigating", "resolved", "dismissed"]
+
+
+class IncidentSpec(NamedTuple):
+    """An attack for `incidents` to store: what the programs saw of it, and when."""
+
+    # Where it came from; the next of a few public addresses when None.
+    address: str | None = None
+    severity: Severity = Severity.HIGH
+    # Who saw it, in turn: the signals are shared between them.
+    programs: Sequence[str] = ("wazuh",)
+    signals: int = 1
+    # Whether CrowdSec banned the address afterwards.
+    ban: bool = False
+    # How long ago the last signal was.
+    minutes_ago: int = 10
+    # The device on the network that was attacked, and what it is called when it is known.
+    device: str = "192.168.1.20"
+    device_name: str | None = None
+    status: IncidentStatusName = "open"
+
+
+class IncidentsRecorded(NamedTuple):
+    """How much `incidents` stored."""
+
+    signals: int
+    incidents: int
+
+
+def incidents(
+    session: Session, settings: Settings, now: datetime, specs: Sequence[IncidentSpec]
+) -> IncidentsRecorded:
+    """Stores the alerts of each attack the way the programs would have, a few minutes apart
+    and ending ``minutes_ago`` before ``now``, a device for each that has a name, and runs the
+    engine that files them into incidents, as the worker does every half minute."""
+    events: list[NewEvent] = []
+    sightings: list[NewSighting] = []
+    addresses = [
+        spec.address or _ATTACKERS[number % len(_ATTACKERS)] for number, spec in enumerate(specs)
+    ]
+    for number, (spec, address) in enumerate(zip(specs, addresses, strict=True)):
+        events.extend(_attack(number, address, spec, now))
+        if spec.device_name:
+            sightings.append(
+                NewSighting(
+                    mac=f"02:00:00:00:10:{number + 1:02x}",
+                    seen_at=now - timedelta(hours=1),
+                    address=ip_address(spec.device),
+                    hostname=spec.device_name,
+                    vendor="E2E Devices",
+                )
+            )
+    # Stored a minute ago, so that the engine reads them as settled.
+    record_events(session, settings, events, now - timedelta(minutes=1))
+    record_devices(session, sightings, now)
+    session.flush()
+    incident_engine.correlate(session, now)
+    session.flush()
+    for spec, address in zip(specs, addresses, strict=True):
+        if spec.status != "open":
+            row = session.scalars(select(Incident).where(Incident.subject == address)).one()
+            row.status = spec.status
+            row.status_changed_at = now
+    return IncidentsRecorded(len(events), len(specs))
+
+
+def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> list[NewEvent]:
+    """The signals of one attack: the first and worst as serious as asked, the rest a level or
+    two below, then the ban."""
+    last = now - timedelta(minutes=spec.minutes_ago)
+    events: list[NewEvent] = []
+    for signal in range(spec.signals):
+        program = spec.programs[signal % len(spec.programs)]
+        # The first is the strongest; the others are medium, or low once that is the strongest.
+        severity = spec.severity if signal == 0 else min(spec.severity, Severity.MEDIUM)
+        events.append(
+            NewEvent(
+                source=program,
+                connection=_CONNECTIONS.get(program, "e2e"),
+                kind="alert",
+                severity=severity,
+                occurred_at=last - timedelta(minutes=4 * (spec.signals - 1 - signal)),
+                identity=(f"e2e-incident-{number}-{signal}",),
+                summary=f"{program.capitalize()} saw {address} try ssh",
+                signature="Brute force on ssh" if signal == 0 else "ET SCAN Potential SSH Scan",
+                src_address=address,
+                src_port=40_000 + signal,
+                dst_address=spec.device,
+                dst_port=22,
+                protocol="tcp",
+            )
+        )
+    if spec.ban:
+        events.append(
+            NewEvent(
+                source="crowdsec",
+                connection="lapi",
+                kind="decision",
+                severity=Severity.LOW,
+                occurred_at=last + timedelta(seconds=30),
+                identity=(f"e2e-incident-{number}-ban",),
+                summary=f"Ban {address} for ssh-bruteforce",
+                src_address=address,
+            )
+        )
+    return events

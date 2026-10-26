@@ -76,7 +76,7 @@ function toError(status: number, body: unknown): ApiError {
 }
 
 interface Request {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   csrfToken?: string
 }
@@ -115,6 +115,12 @@ export function apiPost<T>(path: string, body?: unknown, csrfToken?: string): Pr
 /** Replaces something with what is sent. Like `apiPost`, it takes the sign-in's security token. */
 export function apiPut<T>(path: string, body: unknown, csrfToken?: string): Promise<T> {
   return send<T>(path, { method: 'PUT', body, csrfToken })
+}
+
+/** Changes part of something with what is sent. Like `apiPost`, it takes the sign-in's security
+ * token. */
+export function apiPatch<T>(path: string, body: unknown, csrfToken?: string): Promise<T> {
+  return send<T>(path, { method: 'PATCH', body, csrfToken })
 }
 
 /** Removes something. Like `apiPost`, it takes the sign-in's security token. */

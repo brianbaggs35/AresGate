@@ -1,4 +1,4 @@
-import { HeartPulse, LayoutDashboard, Plug, Settings } from '@lucide/vue'
+import { HeartPulse, LayoutDashboard, Plug, Settings, Siren } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A place in the menu. */
@@ -15,6 +15,7 @@ export const BOTTOM_BAR_LIMIT = 5
 /** The menu, in order. A page that should be in it adds itself here. */
 export const navItems: readonly NavItem[] = [
   { route: 'home', title: 'Dashboard', icon: LayoutDashboard },
+  { route: 'incidents', title: 'Incidents', icon: Siren },
   { route: 'integrations', title: 'Integrations', icon: Plug },
   { route: 'status', title: 'Status', icon: HeartPulse },
   { route: 'settings', title: 'Settings', icon: Settings },

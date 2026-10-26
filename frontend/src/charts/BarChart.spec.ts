@@ -112,6 +112,21 @@ describe('BarChart', () => {
       )
     })
 
+    it('has no lines between whole numbers for counts', async () => {
+      const small = { ...vertical, series: [{ id: 'alerts', label: 'Alerts', values: [1, 2, 0] }] }
+      const loose = await mountBars(small)
+      const whole = await mountBars({ ...small, whole: true })
+
+      const ticks = (chart: typeof loose) =>
+        chart.wrapper
+          .findAll('.chart-text')
+          .map((text) => text.text())
+          .filter((text) => /^[\d.]+$/.test(text) && !hours.includes(text))
+      expect(ticks(loose)).toEqual(expect.arrayContaining(['0.5', '1.5']))
+      expect(ticks(whole)).not.toContain('0.5')
+      expect(ticks(whole)).toEqual(expect.arrayContaining(['0', '1', '2']))
+    })
+
     it('writes the axis in short numbers unless it is told how to write values', async () => {
       const { wrapper } = await mountBars({
         ...vertical,

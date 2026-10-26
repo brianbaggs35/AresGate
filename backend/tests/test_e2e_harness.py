@@ -695,3 +695,68 @@ def test_an_empty_request_stores_nothing(e2e: TestClient) -> None:
     made = e2e.post("/api/__test__/factories/activity", json={})
 
     assert made.json() == {"alerts": 0, "blocked": 0, "samples": 0, "devices": 0, "collectors": 0}
+
+
+def sign_in(e2e: TestClient) -> None:
+    signed_in = e2e.post(
+        "/api/auth/login",
+        json={"username": BASELINE_ACCOUNT.username, "password": BASELINE_ACCOUNT.password},
+    )
+    assert signed_in.status_code == 200
+
+
+def test_incidents_can_be_made_to_order(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {
+                    "severity": "critical",
+                    "programs": ["wazuh", "opnsense"],
+                    "signals": 4,
+                    "ban": True,
+                    "minutes_ago": 5,
+                    "device_name": "nas",
+                },
+                {"address": "8.8.4.4", "severity": "low", "minutes_ago": 90, "status": "resolved"},
+                {"severity": "medium", "status": "investigating", "device": "192.168.1.30"},
+            ]
+        },
+    )
+
+    # Four alerts and a ban, one, and one.
+    assert made.status_code == 201
+    assert made.json() == {"signals": 7, "incidents": 3}
+    sign_in(e2e)
+    listed = e2e.get("/api/incidents", params={"limit": 10}).json()
+    assert listed["total"] == 3
+    assert listed["counts"] == {"open": 1, "investigating": 1, "resolved": 1, "dismissed": 0}
+    by_subject = {item["subject"]: item for item in listed["items"]}
+    assert set(by_subject) == {"93.184.216.34", "8.8.4.4", "1.1.1.1"}
+    attack = by_subject["93.184.216.34"]
+    assert (attack["severity"], attack["signal_count"], attack["banned"]) == ("critical", 5, True)
+    assert [source["key"] for source in attack["sources"]] == ["crowdsec", "opnsense", "wazuh"]
+    assert by_subject["8.8.4.4"]["status"] == "resolved"
+    assert by_subject["1.1.1.1"]["status"] == "investigating"
+    detail = e2e.get(f"/api/incidents/{attack['id']}").json()
+    assert [device["hostname"] for device in detail["devices"]] == ["nas"]
+    assert len(detail["signals"]) == 5
+
+
+def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
+    made = e2e.post("/api/__test__/factories/incidents", json={"incidents": []})
+
+    assert made.json() == {"signals": 0, "incidents": 0}
+
+
+@pytest.mark.parametrize(
+    "incident",
+    [{"signals": 0}, {"signals": 51}, {"severity": "scary"}, {"status": "ignored"}],
+)
+def test_an_incident_that_cannot_be_made_is_refused(
+    e2e: TestClient, incident: dict[str, object]
+) -> None:
+    made = e2e.post("/api/__test__/factories/incidents", json={"incidents": [incident]})
+
+    assert made.status_code == 422

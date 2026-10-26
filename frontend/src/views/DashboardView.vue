@@ -286,6 +286,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
             category-label="Time"
             orientation="vertical"
             stacked
+            whole
             :categories="alertCategories"
             :series="alertSeries"
             :loading="loading"
@@ -302,6 +303,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
             title="Most blocked addresses"
             :caption="`Where the firewall refused the most connections from in ${lastWords}.`"
             category-label="Address"
+            whole
             :categories="data.blocked.top_sources.map(({ address }) => address)"
             :series="sourceSeries"
             :loading="loading"
