@@ -14,6 +14,8 @@ from app.collectors.opnsense.interface_traffic import InterfaceTraffic
 from app.collectors.opnsense.kea_leases import KeaLeases
 from app.collectors.opnsense.suricata_alerts import SuricataAlerts
 from app.collectors.opnsense.system_health import SystemHealth
+from app.collectors.wazuh.agents import Agents
+from app.collectors.wazuh.alerts import Alerts
 
 COLLECTORS: Sequence[Collector] = (
     ConnectionCheck(),
@@ -27,6 +29,8 @@ COLLECTORS: Sequence[Collector] = (
     DnsmasqLeases(),
     KeaLeases(),
     Decisions(),
+    Alerts(),
+    Agents(),
 )
 
 

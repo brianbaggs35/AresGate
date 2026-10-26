@@ -141,12 +141,15 @@ def make_account(body: AccountRequest, db: Db) -> AccountLogin:
 class StandInRequest(BaseModel):
     kind: Kind
     # What it accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
-    # `api_key` and `api_secret`.
+    # `api_key` and `api_secret`, Wazuh a `username` and `password`.
     token: str = ""
     api_key: str = ""
     api_secret: str = ""
     # OPNsense only: the services (by key) that are installed and running on it.
     services: list[str] = []
+    # Wazuh: the user and password of its manager and its indexer.
+    username: str = ""
+    password: str = ""
 
 
 class StandInRecord(BaseModel):
@@ -167,6 +170,8 @@ def start_stand_in(body: StandInRequest) -> StandInRecord:
         api_key=body.api_key,
         api_secret=body.api_secret,
         services=body.services,
+        username=body.username,
+        password=body.password,
     )
     return StandInRecord(
         id=running.id, kind=running.kind, url=running.url, fingerprint=running.fingerprint

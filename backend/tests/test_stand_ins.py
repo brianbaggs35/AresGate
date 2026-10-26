@@ -115,6 +115,118 @@ class TestCrowdsec:
         )
 
 
+def post(path: str, content: object, **headers: str) -> Seen:
+    return Seen("POST", path, headers, json.dumps(content).encode())
+
+
+class TestWazuh:
+    now = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    login: ClassVar[dict[str, str]] = {"authorization": basic("a-user", "a-password")}
+
+    def handler(self) -> Handler:
+        return stand_ins.wazuh(
+            "a-user",
+            "a-password",
+            stand_ins.sample_wazuh_alerts(self.now),
+            stand_ins.sample_wazuh_agents(self.now),
+        )
+
+    def token(self) -> str:
+        answer = self.handler()(
+            Seen("POST", "/security/user/authenticate?raw=true", self.login, b"")
+        )
+        assert (answer.status, answer.headers) == (200, {"Content-Type": "text/plain"})
+        return str(answer.body)
+
+    def bearer(self) -> dict[str, str]:
+        return {"authorization": f"Bearer {self.token()}"}
+
+    def test_the_manager_gives_a_token_for_the_login_and_refuses_another(self) -> None:
+        refused = self.handler()(
+            Seen(
+                "POST", "/security/user/authenticate", {"authorization": basic("a-user", "x")}, b""
+            )
+        )
+
+        assert self.token().count(".") == 2
+        assert (refused.status, body(refused)["title"]) == (401, "Unauthorized")
+
+    def test_the_manager_says_which_version_it_is_to_a_token(self) -> None:
+        answer = self.handler()(seen("/", **self.bearer()))
+
+        assert body(answer)["data"]["api_version"] == "4.9.2"
+
+    def test_the_indexer_says_which_version_it_is_to_the_login(self) -> None:
+        answer = self.handler()(seen("/", **self.login))
+
+        assert body(answer)["version"]["number"] == "7.10.2"
+
+    @pytest.mark.parametrize(
+        "headers", [{}, {"authorization": "Bearer wrong"}, {"authorization": "Basic wrong"}]
+    )
+    def test_it_refuses_a_request_that_signs_in_some_other_way(
+        self, headers: dict[str, str]
+    ) -> None:
+        for path in ("/", "/agents", "/wazuh-alerts-*/_search"):
+            assert self.handler()(seen(path, **headers)).status == 401
+
+    def test_it_lists_the_agents_to_a_token_with_the_limit_and_fields_asked_for(self) -> None:
+        answer = self.handler()(seen("/agents?limit=2&select=id,status", **self.bearer()))
+
+        data = body(answer)["data"]
+        assert data["affected_items"] == [
+            {"id": "000", "status": "active"},
+            {"id": "001", "status": "active"},
+        ]
+        assert (data["total_affected_items"], data["total_failed_items"]) == (5, 0)
+
+    def test_it_lists_every_field_of_every_agent_when_not_told_otherwise(self) -> None:
+        answer = self.handler()(seen("/agents", **self.bearer()))
+
+        items = body(answer)["data"]["affected_items"]
+        assert [item["id"] for item in items] == ["000", "001", "002", "003", "004"]
+        assert items[1]["name"] == "web1"
+
+    def test_it_searches_the_alerts_newest_first_and_only_as_far_back_as_asked(self) -> None:
+        asked = {
+            "size": 10,
+            "query": {"range": {"timestamp": {"gte": "2026-10-26T11:30:00.000Z"}}},
+        }
+
+        answer = self.handler()(post("/wazuh-alerts-*/_search", asked, **self.login))
+
+        hits = body(answer)["hits"]["hits"]
+        assert [hit["_id"] for hit in hits] == [
+            "wz-alert-1",
+            "wz-alert-2",
+            "wz-alert-3",
+            "wz-alert-4",
+        ]
+
+    def test_it_gives_no_more_alerts_than_the_size_asked_for(self) -> None:
+        asked = {"size": 2, "query": {"range": {"timestamp": {"gte": "2026-10-26T00:00:00Z"}}}}
+
+        answer = self.handler()(post("/wazuh-alerts-*/_search", asked, **self.login))
+
+        assert [hit["_id"] for hit in body(answer)["hits"]["hits"]] == ["wz-alert-1", "wz-alert-2"]
+
+    def test_a_search_with_no_query_finds_every_alert(self) -> None:
+        answer = self.handler()(Seen("POST", "/wazuh-alerts-%2A/_search", self.login, b""))
+
+        assert len(body(answer)["hits"]["hits"]) == 5
+
+    def test_it_has_nothing_elsewhere_and_a_search_is_a_post(self) -> None:
+        assert self.handler()(seen("/other", **self.login)).status == 404
+        assert self.handler()(seen("/other", **self.bearer())).status == 404
+        assert self.handler()(seen("/wazuh-alerts-*/_search", **self.login)).status == 404
+
+    def test_the_sample_alerts_are_dated_back_from_the_time_given(self) -> None:
+        stamps = [hit["_source"]["timestamp"] for hit in stand_ins.sample_wazuh_alerts(self.now)]  # type: ignore[index]
+
+        assert stamps[0] == "2026-10-26T11:58:00.123+0000"
+        assert stamps[-1] == "2026-10-26T10:00:00.123+0000"
+
+
 class TestOpnsense:
     credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
 
@@ -388,6 +500,20 @@ class TestStandIns:
         assert started.url.startswith("https://127.0.0.1:")
         assert started.fingerprint == presented.fingerprint
         assert presented.names == ["fw.home.arpa", "127.0.0.1"]
+
+    def test_wazuh_has_a_certificate_of_its_own_and_answers_to_the_login_it_was_started_with(
+        self, running: StandIns
+    ) -> None:
+        started = running.start("wazuh", username="a-user", password="a-password")
+        origin = netguard.parse_origin(started.url, allow_http=False)
+
+        presented = asyncio.run(
+            netguard.look_up_certificate(netguard.HOME_NETWORK_AND_LOOPBACK, origin)
+        )
+
+        assert started.url.startswith("https://127.0.0.1:")
+        assert started.fingerprint == presented.fingerprint
+        assert presented.names == ["wazuh.home.arpa", "127.0.0.1"]
 
     def test_each_is_a_server_of_its_own(self, running: StandIns) -> None:
         first = running.start("ntopng", token="a")

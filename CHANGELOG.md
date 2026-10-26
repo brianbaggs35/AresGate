@@ -25,6 +25,10 @@ Every release's notes are here, newest first. The format follows
   (the address, the scenario and for how long), with how many bans are in force as a metric. Only
   the bans that came from your own logs, by hand or from an import are read, not the community blocklist
   ([DOCS/integrations.md](DOCS/integrations.md#bans)).
+- Wazuh's alerts, read from the indexer every minute and kept as events with the rule, the level
+  Wazuh rates it at, the host it is about and the address it came from. The state of its agents is
+  read from the manager's API too: how many are in each state as a metric, and an event for each
+  one that stopped reporting ([DOCS/integrations.md](DOCS/integrations.md#alerts)).
 
 ### Fixed
 
