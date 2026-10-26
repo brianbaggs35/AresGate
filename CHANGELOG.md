@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- What the dashboard will show, as `GET /api/dashboard` for someone signed in: the alerts and the
+  connections the firewall refused over the last 24 hours or 7 days, each against the stretch of
+  time before it and by hour (or six hours), the most serious alert, the addresses refused most,
+  the latest alerts, the speed of each firewall interface worked out from its byte counters (a
+  restart that sets a counter back to zero is a gap, not a negative speed) and the devices first
+  seen in that time. Each is a function of its own that the pages that go deeper and the AI
+  analyst can use too.
 - Charts for the pages to come: bars (ranked or by hour, side by side or stacked), lines over time,
   a heatmap of hours and days and small trend lines. Each has a legend that turns a series off,
   a switch to the same numbers as a table, readouts by pointer, touch or the arrow keys, colors
