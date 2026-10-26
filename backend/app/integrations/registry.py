@@ -253,7 +253,10 @@ OPNSENSE = IntegrationDef(
 NTOPNG = IntegrationDef(
     key="ntopng",
     name="ntopng",
-    provides="Live traffic: hosts, flows and throughput on the interface ntopng watches.",
+    provides=(
+        "Live traffic on the interface ntopng watches: how much each host sends and receives, the "
+        "devices it sees and its alerts."
+    ),
     icon="traffic",
     docs_url="https://www.ntop.org/guides/ntopng/api/rest/api_v2.html",
     setup=(
@@ -264,6 +267,8 @@ NTOPNG = IntegrationDef(
         "ntopng answers a login it refuses by redirecting to its login page, and AresGate doesn't "
         "follow redirects, so a refused login shows up as a redirect.",
         "The interface ID is the ifid in ntopng's addresses. The first interface is usually 0.",
+        "The user must be allowed to see alerts, which AresGate reads along with the hosts and the "
+        "interface's traffic.",
     ),
     connections=(
         ConnectionDef(

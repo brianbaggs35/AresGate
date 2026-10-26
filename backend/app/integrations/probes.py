@@ -143,26 +143,32 @@ async def zenarmor(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "Zenarmor's API accepted the key.")
 
 
+# What a login ntopng refuses looks like, since it redirects to its login page instead of saying no.
+NTOPNG_LOGIN_REFUSED = (
+    "ntopng redirected to its login page, which it does when the login is refused. "
+    "Check the token, or the username and password."
+)
+
+
+async def ntopng_get(
+    client: ApiClient, target: Target, path: str, query: Mapping[str, str] | None = None
+) -> Reply:
+    """A GET of ntopng's REST API, signed in the way the connection says: with an authentication
+    token, or with HTTP basic authentication."""
+    if target.options.get("auth") == "basic":
+        credentials = (str(target.options["username"]), target.secrets["password"])
+        return await client.request("GET", path, query=query, auth=credentials)
+    return await client.request(
+        "GET", path, query=query, headers={"Authorization": f"Token {target.secrets['token']}"}
+    )
+
+
 async def ntopng(client: ApiClient, target: Target) -> Verdict:
     """The interfaces ntopng monitors, which also shows the chosen interface exists. ntopng
     answers a login it refuses with a redirect to its login page, not with a 401."""
-    if target.options.get("auth") == "basic":
-        credentials = (str(target.options["username"]), target.secrets["password"])
-        reply = await client.request(
-            "GET", "/lua/rest/v2/get/ntopng/interfaces.lua", auth=credentials
-        )
-    else:
-        reply = await client.request(
-            "GET",
-            "/lua/rest/v2/get/ntopng/interfaces.lua",
-            headers={"Authorization": f"Token {target.secrets['token']}"},
-        )
+    reply = await ntopng_get(client, target, "/lua/rest/v2/get/ntopng/interfaces.lua")
     if 300 <= reply.status < 400:
-        return Verdict(
-            False,
-            "ntopng redirected to its login page, which it does when the login is refused. "
-            "Check the token, or the username and password.",
-        )
+        return Verdict(False, NTOPNG_LOGIN_REFUSED)
     if bad := problem(reply, "ntopng"):
         return bad
     data = as_object(reply.json())

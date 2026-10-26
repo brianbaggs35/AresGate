@@ -63,7 +63,12 @@ def test_a_real_install_collects(
     asyncio.run(worker.build(production).tick())
 
     assert session.scalar(select(WorkerBeat)) is not None
-    assert [row.integration for row in session.scalars(select(CollectorHealth))] == ["ntopng"]
+    assert sorted(row.collector for row in session.scalars(select(CollectorHealth))) == [
+        "connection-check",
+        "ntopng-alerts",
+        "ntopng-hosts",
+        "ntopng-interface",
+    ]
 
 
 def test_turned_off_it_does_not_collect(

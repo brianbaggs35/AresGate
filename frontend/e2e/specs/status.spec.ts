@@ -83,8 +83,14 @@ test.describe('status page', () => {
 
     await status.goto()
 
-    await expect(status.collectorNames).toHaveText(['Collector worker', 'ntopng: Connection check'])
-    await expect(status.collectorStates).toHaveText(['Working', 'Working'])
+    await expect(status.collectorNames).toHaveText([
+      'Collector worker',
+      'ntopng: Connection check',
+      'ntopng: Alerts',
+      'ntopng: Hosts',
+      'ntopng: Interface traffic',
+    ])
+    await expect(status.collectorStates).toHaveText(new Array(5).fill('Working'))
     await expect(status.collector('ntopng: Connection check')).toContainText('Last worked just now')
     await expect(status.fine).toBeVisible()
 

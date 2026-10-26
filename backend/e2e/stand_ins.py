@@ -193,19 +193,221 @@ def _basic(user: str, password: str) -> str:
     return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
 
 
-def ntopng(token: str) -> Handler:
+def ntopng(
+    token: str,
+    hosts: Sequence[Mapping[str, object]] = (),
+    interface: Mapping[str, object] | None = None,
+    flow_alerts: Sequence[Mapping[str, object]] = (),
+    host_alerts: Sequence[Mapping[str, object]] = (),
+) -> Handler:
     """ntopng's REST API with one authentication token. A login it refuses is sent to its login
-    page, as ntopng does, not answered with a 401."""
+    page, as ntopng does, not answered with a 401, and so is anything it doesn't have. Every
+    answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has one interface, ``0``,
+    and gives the hosts of the local network when asked for ``mode=local``, and the alerts that
+    began between the times asked for, newest first and no more than ``length``."""
 
     def handle(seen: Seen) -> Answer:
-        if (
-            seen.path == "/lua/rest/v2/get/ntopng/interfaces.lua"
-            and seen.headers.get("authorization") == f"Token {token}"
-        ):
-            return _json({"rc": 0, "rsp": [{"ifid": 0, "ifname": "eth0"}]})
-        return Answer(status=302, headers={"Location": "/lua/login.lua"})
+        if seen.headers.get("authorization") != f"Token {token}":
+            return Answer(status=302, headers={"Location": "/lua/login.lua"})
+        query = parse_qs(urlsplit(seen.target).query)
+        if seen.path == "/lua/rest/v2/get/ntopng/interfaces.lua":
+            return _ntopng_answer([{"ifid": 0, "ifname": "eth0"}])
+        answers: dict[str, Callable[[], Answer]] = {
+            "/lua/rest/v2/get/host/active.lua": lambda: _ntopng_hosts(query, hosts),
+            "/lua/rest/v2/get/interface/data.lua": lambda: _ntopng_answer(interface or {}),
+            "/lua/rest/v2/get/flow/alert/list.lua": lambda: _ntopng_alerts(query, flow_alerts),
+            "/lua/rest/v2/get/host/alert/list.lua": lambda: _ntopng_alerts(query, host_alerts),
+        }
+        if seen.path not in answers:
+            return Answer(status=302, headers={"Location": "/lua/login.lua"})
+        if query.get("ifid") != ["0"]:
+            return _ntopng_answer({}, "INVALID_INTERFACE", -2)
+        return answers[seen.path]()
 
     return handle
+
+
+def _ntopng_hosts(
+    query: Mapping[str, Sequence[str]], hosts: Sequence[Mapping[str, object]]
+) -> Answer:
+    local = query.get("mode") == ["local"]
+    found = [host for host in hosts if host.get("is_localhost") or not local]
+    return _ntopng_answer({"perPage": -1, "currentPage": 0, "data": found})
+
+
+def _ntopng_answer(rsp: object, rc_str: str = "OK", rc: int = 0, **more: object) -> Answer:
+    hr = "Success" if rc == 0 else rc_str
+    return _json({"rc": rc, "rc_str": rc_str, "rc_str_hr": hr, "rsp": rsp, **more})
+
+
+def _ntopng_alerts(
+    query: Mapping[str, Sequence[str]], alerts: Sequence[Mapping[str, object]]
+) -> Answer:
+    begin, end = (int(query.get(key, ["0"])[0]) for key in ("epoch_begin", "epoch_end"))
+    found = sorted(
+        (alert for alert in alerts if begin <= _ntopng_began(alert) <= end),
+        key=_ntopng_began,
+        reverse=True,
+    )
+    records = found[: int(query.get("length", ["100"])[0])]
+    return _ntopng_answer(
+        {"records": records, "stats": {}},
+        draw=0,
+        recordsTotal=len(found),
+        recordsFiltered=len(found),
+    )
+
+
+def _ntopng_began(alert: Mapping[str, object]) -> int:
+    return int(cast("Mapping[str, int]", alert["tstamp"])["value"])
+
+
+def sample_ntopng_hosts(now: datetime) -> list[dict[str, object]]:
+    """Four hosts in the form ntopng's active hosts answer gives them: two devices in the
+    broadcast domain, one with a name and one only with an address, a local host behind a router
+    (whose MAC address is the router's, so it is no device) and a remote host, which a question
+    about the local network leaves out."""
+
+    def host(
+        address: str, mac: str, name: str, *, sent: int, received: int, **more: object
+    ) -> dict[str, object]:
+        return {
+            "key": address.replace(".", "__"),
+            "ip": address,
+            "mac": mac,
+            "name": name,
+            "vlan": 0,
+            "os": 0,
+            "country": "",
+            "is_blacklisted": False,
+            "first_seen": int((now - timedelta(hours=5)).timestamp()),
+            "last_seen": int(now.timestamp()),
+            "num_alerts": 0,
+            "score": {"total": 12, "as_client": 12, "as_server": 0},
+            "thpt": {"pps": 3.5, "bps": 8200.0},
+            "bytes": {"total": sent + received, "sent": sent, "recvd": received},
+            "num_flows": {"total": 6, "as_client": 5, "as_server": 1},
+            "is_localhost": True,
+            "is_multicast": False,
+            "is_broadcast": False,
+            "is_broadcast_domain": True,
+            **more,
+        }
+
+    return [
+        host("192.168.1.20", "52:54:00:aa:bb:20", "web1", sent=48_213_907, received=9_120_433),
+        host("192.168.1.41", "52:54:00:aa:bb:41", "192.168.1.41", sent=1_204_330, received=88_340),
+        host(
+            "192.168.2.15",
+            "52:54:00:00:00:01",
+            "printer [192.168.2.15]",
+            sent=5_120,
+            received=2_048,
+            is_broadcast_domain=False,
+        ),
+        host(
+            "8.241.92.250",
+            "52:54:00:00:00:01",
+            "8.241.92.250",
+            sent=2_322_624,
+            received=34_148,
+            is_localhost=False,
+            is_broadcast_domain=False,
+            country="US",
+        ),
+    ]
+
+
+def sample_ntopng_interface() -> dict[str, object]:
+    """What ntopng's interface data answer holds, as its documentation shows it (the members that
+    AresGate reads, with plausible numbers)."""
+    return {
+        "ifid": "0",
+        "ifname": "eth0",
+        "speed": 1000,
+        "bytes_download": 912_340_221,
+        "bytes_upload": 104_220_113,
+        "packets_download": 1_204_330,
+        "packets_upload": 988_120,
+        "drops": 3,
+        "local2remote": 84_220_113,
+        "remote2local": 902_340_221,
+        "num_hosts": 41,
+        "num_local_hosts": 18,
+        "num_devices": 16,
+        "num_flows": 212,
+        "engaged_alerts": 2,
+        "throughput_bps": 149.56,
+    }
+
+
+def _ntopng_alert(
+    now: datetime, minutes: float, row_id: int, severity: int, name: str, **more: object
+) -> dict[str, object]:
+    began = int((now - timedelta(minutes=minutes)).timestamp())
+    return {
+        "row_id": str(row_id),
+        "tstamp": {"value": began, "label": "just now"},
+        "alert_id": {"value": str(10 + row_id), "label": f"<b>{name}</b>"},
+        "score": {"value": 100, "label": "100"},
+        "severity": {"value": severity, "label": "<i class='fas'></i>"},
+        "count": 1,
+        "msg": {"name": name, "fullname": f"<b>{name}</b>", "description": f"<b>{name}</b> found"},
+        **more,
+    }
+
+
+def sample_ntopng_flow_alerts(now: datetime) -> list[dict[str, object]]:
+    """Three alerts for flows, as ntopng lists them: a device talking to a blacklisted address
+    and a self-signed certificate, newest first, and one from two hours ago, which a search of
+    the last half hour leaves out."""
+
+    def flow(
+        minutes: float, row_id: int, severity: int, name: str, client: str, server: str, port: int
+    ) -> dict[str, object]:
+        return _ntopng_alert(
+            now,
+            minutes,
+            row_id,
+            severity,
+            name,
+            family="flow",
+            alert_name=name,
+            cli_ip={"value": client, "ip": client, "label": client, "country": ""},
+            srv_ip={"value": server, "ip": server, "label": server, "country": "US"},
+            cli_port={"value": "51514", "label": ""},
+            srv_port={"value": str(port), "label": "https"},
+            proto={"value": "6", "label": "TCP"},
+            total_bytes=4_096,
+        )
+
+    return [
+        flow(1, 101, 5, "Blacklisted Flow", "192.168.1.41", "203.0.113.9", 443),
+        flow(8, 100, 4, "TLS Certificate Selfsigned", "192.168.1.20", "198.51.100.30", 8443),
+        flow(120, 99, 5, "Blacklisted Flow", "192.168.1.41", "203.0.113.10", 443),
+    ]
+
+
+def sample_ntopng_host_alerts(now: datetime) -> list[dict[str, object]]:
+    """Two alerts for hosts: one that scanned others, and one that was scanned."""
+
+    def host(minutes: float, row_id: int, name: str, address: str, role: str) -> dict[str, object]:
+        return _ntopng_alert(
+            now,
+            minutes,
+            row_id,
+            4,
+            name,
+            family="host",
+            alert_name=name,
+            ip={"value": address, "label": address, "is_local": True},
+            role={"label": role, "value": role},
+        )
+
+    return [
+        host(4, 52, "Scan Attacker", "192.168.1.41", "attacker"),
+        host(6, 51, "Scan Victim", "192.168.1.20", "victim"),
+    ]
 
 
 def crowdsec(api_key: str, decisions: Sequence[Mapping[str, object]] = ()) -> Handler:
@@ -971,7 +1173,13 @@ class StandIns:
     ) -> Running:
         now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
-            "ntopng": ntopng(token),
+            "ntopng": ntopng(
+                token,
+                sample_ntopng_hosts(now),
+                sample_ntopng_interface(),
+                sample_ntopng_flow_alerts(now),
+                sample_ntopng_host_alerts(now),
+            ),
             "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
             "opnsense": opnsense(
                 api_key,

@@ -5,6 +5,9 @@ from collections.abc import Iterable, Sequence
 from app.collectors.base import Collector
 from app.collectors.connection_check import ConnectionCheck
 from app.collectors.crowdsec.decisions import Decisions
+from app.collectors.ntopng.alerts import Alerts as NtopngAlerts
+from app.collectors.ntopng.hosts import Hosts
+from app.collectors.ntopng.interface import InterfaceTraffic as NtopngInterfaceTraffic
 from app.collectors.opnsense.arp_table import ArpTable
 from app.collectors.opnsense.cpu_usage import CpuUsage
 from app.collectors.opnsense.dnsmasq_leases import DnsmasqLeases
@@ -29,6 +32,9 @@ COLLECTORS: Sequence[Collector] = (
     DnsmasqLeases(),
     KeaLeases(),
     Decisions(),
+    Hosts(),
+    NtopngInterfaceTraffic(),
+    NtopngAlerts(),
     Alerts(),
     Agents(),
 )

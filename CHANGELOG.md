@@ -29,6 +29,10 @@ Every release's notes are here, newest first. The format follows
   Wazuh rates it at, the host it is about and the address it came from. The state of its agents is
   read from the manager's API too: how many are in each state as a metric, and an event for each
   one that stopped reporting ([DOCS/integrations.md](DOCS/integrations.md#alerts)).
+- ntopng's hosts and traffic: how much each host on the local network has sent and received, its
+  flows and its score as metrics, the hosts that are devices added to the devices, the traffic
+  through its interface as metrics, and its flow and host alerts as events
+  ([DOCS/integrations.md](DOCS/integrations.md#hosts-and-the-devices-among-them)).
 
 ### Fixed
 
