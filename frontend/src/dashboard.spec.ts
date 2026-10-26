@@ -206,8 +206,9 @@ describe('postureOf', () => {
 describe('bucketLabel', () => {
   it('gives the hour for a day and the day and hour for a week', () => {
     expect(bucketLabel('2026-10-26T14:00:00Z', '24h', 'en-US')).toMatch(/^\d{1,2}\s?[AP]M$/)
+    // Newer Unicode data drops the comma after the day, so either is the right answer.
     expect(bucketLabel('2026-10-26T14:00:00Z', '7d', 'en-US')).toMatch(
-      /^[A-Z][a-z]{2}, \d{1,2}\s?[AP]M$/,
+      /^[A-Z][a-z]{2},? \d{1,2}\s?[AP]M$/,
     )
   })
 })
