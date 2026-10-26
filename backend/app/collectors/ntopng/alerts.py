@@ -122,7 +122,14 @@ def _event(family: str, alert: Mapping[str, object], seen: traffic.Occurrences) 
         str(cli_port),
         str(srv_port),
     )
-    attacker = _value(alert, "role") == "attacker"
+    # A flow alert goes from its client to its server. A host alert is about one host: the
+    # source if ntopng calls it the attacker, otherwise the destination.
+    if flow:
+        source, destination = client, server
+    elif _value(alert, "role") == "attacker":
+        source, destination = host, ""
+    else:
+        source, destination = "", host
     return NewEvent(
         source=SOURCE,
         connection=CONNECTION,
@@ -134,9 +141,9 @@ def _event(family: str, alert: Mapping[str, object], seen: traffic.Occurrences) 
             flow, name, host, traffic.endpoint(client, cli_port), traffic.endpoint(server, srv_port)
         ),
         signature=name or None,
-        src_address=(client if flow else host if attacker else "") or None,
+        src_address=source or None,
         src_port=cli_port if flow else None,
-        dst_address=(server if flow else "" if attacker else host) or None,
+        dst_address=destination or None,
         dst_port=srv_port if flow else None,
         protocol=traffic.text(_part(alert, "proto"), "label").lower() or None,
         raw=dict(alert),
