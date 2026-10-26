@@ -200,11 +200,11 @@ const rows = computed<TooltipRow[]>(() => {
   }
   return found
 })
-const readout = computed(() =>
-  active.value === null
-    ? ''
-    : `${props.categories[active.value] as string}: ${rows.value.map(({ value, label }) => `${value} ${label}`).join(', ')}`,
-)
+const readout = computed(() => {
+  if (active.value === null) return ''
+  const values = rows.value.map(({ value, label }) => `${value} ${label}`).join(', ')
+  return `${props.categories[active.value] as string}: ${values}`
+})
 
 function onKey(event: KeyboardEvent) {
   const next = stepIndex(event.key, active.value, props.categories.length)
@@ -334,7 +334,7 @@ function leave(event: PointerEvent) {
         :heading="categories[active] as string"
         :rows="rows"
       />
-      <div class="chart-readout" role="status">{{ readout }}</div>
+      <output class="chart-readout">{{ readout }}</output>
     </div>
   </ChartFrame>
 </template>

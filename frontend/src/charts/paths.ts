@@ -40,7 +40,7 @@ export function linePath(points: readonly Point[]): string {
 export function areaPath(points: readonly Point[], baseline: number): string {
   return runs(points)
     .map((run) => {
-      const [first, last] = [run[0] as Located, run[run.length - 1] as Located]
+      const [first, last] = [run[0] as Located, run.at(-1) as Located]
       const along = run.map((point) => `L${at(...point)}`).join('')
       return `M${at(first[0], baseline)}${along}L${at(last[0], baseline)}Z`
     })

@@ -177,13 +177,13 @@ describe('BarChart', () => {
       expect(tip.findAll('[data-test="chart-tooltip-row"]').map((row) => row.text())).toEqual([
         '4,210Blocked',
       ])
-      expect(wrapper.find('[role="status"]').text()).toBe('living-room-tv.lan: 4,210 Blocked')
+      expect(wrapper.find('output').text()).toBe('living-room-tv.lan: 4,210 Blocked')
       // The other bars step back.
       expect(wrapper.findAll('.bar-chart__mark--dim')).toHaveLength(1)
 
       await wrapper.find('.chart-svg').trigger('pointerleave', { pointerType: 'mouse' })
       expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
-      expect(wrapper.find('[role="status"]').text()).toBe('')
+      expect(wrapper.find('output').text()).toBe('')
     })
 
     it('opens the tooltip on the other side near the right edge of a horizontal chart', async () => {
@@ -222,11 +222,11 @@ describe('BarChart', () => {
       const chart = wrapper.find('.chart-svg')
 
       await chart.trigger('keydown', { key: 'ArrowDown' })
-      expect(wrapper.find('[role="status"]').text()).toContain('192.168.1.20')
+      expect(wrapper.find('output').text()).toContain('192.168.1.20')
       await chart.trigger('keydown', { key: 'End' })
-      expect(wrapper.find('[role="status"]').text()).toContain('printer')
+      expect(wrapper.find('output').text()).toContain('printer')
       await chart.trigger('keydown', { key: 'ArrowUp' })
-      expect(wrapper.find('[role="status"]').text()).toContain('living-room-tv.lan')
+      expect(wrapper.find('output').text()).toContain('living-room-tv.lan')
       await chart.trigger('keydown', { key: 'Escape' })
       expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
     })

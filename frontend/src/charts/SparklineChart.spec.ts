@@ -11,8 +11,9 @@ describe('SparklineChart', () => {
   it('draws the shape of the values, and says in words what it shows', async () => {
     const { wrapper } = await mountSpark()
 
-    expect(wrapper.attributes('role')).toBe('img')
-    expect(wrapper.attributes('aria-label')).toBe('Blocked per hour, now 31')
+    const image = wrapper.find('svg')
+    expect(image.attributes('role')).toBe('img')
+    expect(image.attributes('aria-label')).toBe('Blocked per hour, now 31')
     const path = wrapper.find('path').attributes('d') ?? ''
     expect(path.startsWith('M0,')).toBe(true)
     expect(path.match(/L/g)).toHaveLength(4)
@@ -63,11 +64,12 @@ describe('SparklineChart', () => {
     expect(flat.wrapper.find('path').attributes('d')).toBe('M0,16L50,16L100,16')
   })
 
-  it('draws nothing but its room when there is nothing to draw', async () => {
+  it('draws nothing but its room, still described, when there is nothing to draw', async () => {
     const { wrapper } = await mountSpark({ values: [null, null] })
 
-    expect(wrapper.find('[data-test="sparkline"]').exists()).toBe(false)
+    expect(wrapper.find('path').exists()).toBe(false)
     expect(wrapper.find('[data-test="sparkline-dot"]').exists()).toBe(false)
+    expect(wrapper.find('svg').attributes('aria-label')).toBe('Blocked per hour, now 31')
     expect(wrapper.attributes('style')).toContain('height: 32px')
   })
 })

@@ -36,7 +36,6 @@ const showTable = computed(() => asTable.value && !props.empty)
 <template>
   <figure
     class="chart-frame"
-    role="group"
     :aria-labelledby="titleId"
     :aria-busy="loading ? 'true' : undefined"
     data-test="chart"
