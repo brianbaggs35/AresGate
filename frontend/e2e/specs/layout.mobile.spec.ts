@@ -3,9 +3,9 @@ import type { Page } from '@playwright/test'
 import { connectFirewall, expect, test } from '../support'
 
 test.describe('layout on a phone', () => {
-  test('the overview fits the screen without scrolling sideways', async ({ page, overview }) => {
-    await overview.goto()
-    await expect(overview.databaseStatus).toHaveText('Database: Connected')
+  test('the dashboard fits the screen without scrolling sideways', async ({ page, dashboard }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -14,10 +14,10 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
-  test('the status card uses nearly the whole width', async ({ page, overview }) => {
-    await overview.goto()
+  test('the banner uses nearly the whole width', async ({ page, dashboard }) => {
+    await dashboard.goto()
 
-    const box = await overview.card.boundingBox()
+    const box = await dashboard.banner.boundingBox()
     const viewport = page.viewportSize()
 
     expect(box?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
@@ -26,22 +26,22 @@ test.describe('layout on a phone', () => {
   test('puts the menu in a bar at the bottom, with no menu at the side', async ({
     page,
     shell,
-    overview,
+    dashboard,
   }) => {
-    await overview.goto()
-    await expect(overview.databaseStatus).toHaveText('Database: Connected')
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
 
     const bar = await shell.menu.boundingBox()
     const viewport = page.viewportSize()
 
     expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(viewport?.height)
     expect(bar?.width).toBe(viewport?.width)
-    await expect(shell.overviewLink).toContainText('Overview')
+    await expect(shell.dashboardLink).toContainText('Dashboard')
     await expect(shell.menuWidthToggle).toHaveCount(0)
     await expect(page.locator('.v-navigation-drawer')).toHaveCount(0)
   })
 
-  test('has the logo in the top bar, which goes home', async ({ page, shell, overview }) => {
+  test('has the logo in the top bar, which goes home', async ({ page, shell, dashboard }) => {
     await page.goto('/no/such/page')
     await expect(shell.logo).toContainText('AresGate')
     await expect(shell.pageTitle).toHaveCount(0)
@@ -49,12 +49,12 @@ test.describe('layout on a phone', () => {
     await shell.logo.click()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
-  test('keeps the end of a page clear of the bottom bar', async ({ shell, overview }) => {
-    await overview.goto()
-    await expect(overview.card).toBeVisible()
+  test('keeps the end of a page clear of the bottom bar', async ({ shell, dashboard }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
 
     const bar = await shell.menu.boundingBox()
     const room = await shell.main.evaluate((main) =>
@@ -83,7 +83,7 @@ test.describe('layout on a phone', () => {
       expect(card?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
       // Four places share the bar, each wide enough to tap.
       for (const link of [
-        shell.overviewLink,
+        shell.dashboardLink,
         shell.integrationsLink,
         shell.statusLink,
         shell.settingsLink,
@@ -256,6 +256,72 @@ test.describe('layout on a phone', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('lays the dashboard out in one column, with the numbers two to a row', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({
+      collectors: ['ok'],
+      alerts: { critical: 1, high: 1, medium: 2, low: 1 },
+      blocked: { '203.0.113.9': 5, '198.51.100.7': 2 },
+      traffic: { igc0: 80, igc1: 5 },
+      devices: 2,
+    })
+    await dashboard.goto()
+    await expect(dashboard.alertRows).toHaveCount(5)
+
+    const viewport = page.viewportSize()?.width ?? 0
+    const [alerts, blocked, devices, banner, traffic, severity] = await Promise.all(
+      [
+        dashboard.alertsTile,
+        dashboard.blockedTile,
+        dashboard.devicesTile,
+        dashboard.banner,
+        dashboard.trafficCard,
+        dashboard.alertsCard,
+      ].map((item) => item.boundingBox()),
+    )
+    expect(alerts?.y).toBe(blocked?.y)
+    expect(alerts?.width).toBeLessThan(viewport / 2)
+    expect(devices?.y).toBeGreaterThan(alerts?.y ?? 0)
+    expect(banner?.width).toBeGreaterThan(viewport * 0.85)
+    // The charts are under one another and each as wide as the page.
+    expect(severity?.y).toBeGreaterThan((traffic?.y ?? 0) + (traffic?.height ?? 0))
+    expect(traffic?.width).toBeGreaterThan(viewport * 0.85)
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('keeps what a tap on the traffic chart reads on the screen', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'], traffic: { igc0: 80 } })
+    await dashboard.goto()
+    const chart = dashboard.trafficChart
+    await chart.getByRole('img').scrollIntoViewIfNeeded()
+    const plot = await chart.getByRole('img').boundingBox()
+    const card = await dashboard.trafficCard.boundingBox()
+    expect((plot?.x ?? 0) + (plot?.width ?? 0)).toBeLessThanOrEqual(
+      (card?.x ?? 0) + (card?.width ?? 0),
+    )
+
+    await page.touchscreen.tap(
+      (plot?.x ?? 0) + (plot?.width ?? 0) * 0.9,
+      (plot?.y ?? 0) + (plot?.height ?? 0) / 2,
+    )
+
+    await expect(chart.getByTestId('chart-tooltip')).toBeVisible()
+    const tip = await chart.getByTestId('chart-tooltip').boundingBox()
+    const viewport = page.viewportSize()?.width ?? 0
+    expect(tip?.x ?? -1).toBeGreaterThanOrEqual(0)
+    expect((tip?.x ?? 0) + (tip?.width ?? 0)).toBeLessThanOrEqual(viewport)
   })
 
   test('lists the settings pages as tabs across the top, above the page', async ({

@@ -10,46 +10,46 @@ test.describe('navigation', () => {
     await expect(page.getByTestId('not-found')).toContainText("That page doesn't exist.")
   })
 
-  test('goes back to the overview from the not-found page', async ({ page, overview }) => {
+  test('goes back to the dashboard from the not-found page', async ({ page, dashboard }) => {
     await page.goto('/no/such/page')
 
-    await page.getByRole('link', { name: 'Back to the overview' }).click()
+    await page.getByRole('link', { name: 'Back to the dashboard' }).click()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
-  test('goes home from the logo', async ({ page, shell, overview }) => {
+  test('goes home from the logo', async ({ page, shell, dashboard }) => {
     await page.goto('/no/such/page')
 
     await shell.logo.click()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
-  test('opens the overview from the menu', async ({ page, shell, overview }) => {
+  test('opens the dashboard from the menu', async ({ page, shell, dashboard }) => {
     await page.goto('/no/such/page')
 
-    await shell.overviewLink.click()
+    await shell.dashboardLink.click()
 
     await expect(page).toHaveURL('/')
-    await expect(page).toHaveTitle('Overview · AresGate')
-    await expect(overview.card).toBeVisible()
+    await expect(page).toHaveTitle('Dashboard · AresGate')
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('marks the place the menu is on', async ({ page, shell }) => {
     await page.goto('/')
-    await expect(shell.overviewLink).toHaveAttribute('aria-current', 'page')
+    await expect(shell.dashboardLink).toHaveAttribute('aria-current', 'page')
 
     await page.goto('/no/such/page')
 
-    await expect(shell.overviewLink).not.toHaveAttribute('aria-current', 'page')
+    await expect(shell.dashboardLink).not.toHaveAttribute('aria-current', 'page')
   })
 
-  test('lets the keyboard skip past the menu to the page', async ({ page, shell, overview }) => {
-    await overview.goto()
-    await expect(overview.card).toBeVisible()
+  test('lets the keyboard skip past the menu to the page', async ({ page, shell, dashboard }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
 
     await page.keyboard.press('Tab')
     await expect(shell.skipLink).toBeFocused()

@@ -1,7 +1,11 @@
 import { expect, test } from '../support'
 
 test.describe('starting up', () => {
-  test('says when AresGate isn’t answering, and tries again', async ({ page, shell, overview }) => {
+  test('says when AresGate isn’t answering, and tries again', async ({
+    page,
+    shell,
+    dashboard,
+  }) => {
     let fail = true
     await page.route('**/api/setup/status', (route) => (fail ? route.abort() : route.continue()))
     await page.goto('/')
@@ -11,7 +15,7 @@ test.describe('starting up', () => {
     await shell.startupRetry.click()
 
     await expect(shell.startupError).toHaveCount(0)
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
     await expect(page).toHaveURL('/')
   })
 })

@@ -14,7 +14,7 @@ export const BOTTOM_BAR_LIMIT = 5
 
 /** The menu, in order. A page that should be in it adds itself here. */
 export const navItems: readonly NavItem[] = [
-  { route: 'home', title: 'Overview', icon: LayoutDashboard },
+  { route: 'home', title: 'Dashboard', icon: LayoutDashboard },
   { route: 'integrations', title: 'Integrations', icon: Plug },
   { route: 'status', title: 'Status', icon: HeartPulse },
   { route: 'settings', title: 'Settings', icon: Settings },

@@ -116,7 +116,7 @@ test.describe('signing in with an authenticator app', () => {
     security,
     shell,
     signIn,
-    overview,
+    dashboard,
     baseline,
   }) => {
     await security.goto()
@@ -130,7 +130,7 @@ test.describe('signing in with an authenticator app', () => {
     await expect(page).toHaveURL('/sign-in')
     await signIn.enterCode(authenticatorCode(secret, 1))
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('goes on to the page that was asked for', async ({
@@ -306,7 +306,7 @@ test.describe('changing it', () => {
     activity,
     shell,
     signIn,
-    overview,
+    dashboard,
     baseline,
   }) => {
     await security.goto()
@@ -323,7 +323,7 @@ test.describe('changing it', () => {
     await shell.signOutFromMenu()
     await signIn.signIn(baseline.account)
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('stays on when the password is wrong', async ({ security, baseline }) => {

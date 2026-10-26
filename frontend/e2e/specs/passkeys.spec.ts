@@ -140,12 +140,12 @@ test.describe('removing a passkey', () => {
 })
 
 test.describe('signing in with a passkey', () => {
-  test('needs nothing typed, and shows the overview', async ({
+  test('needs nothing typed, and shows the dashboard', async ({
     page,
     security,
     shell,
     signIn,
-    overview,
+    dashboard,
     baseline,
   }) => {
     await security.goto()
@@ -156,7 +156,7 @@ test.describe('signing in with a passkey', () => {
     await signIn.passkey.click()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
     await expect(shell.userMenu).toHaveAccessibleName(`Account: ${baseline.account.username}`)
   })
 
@@ -187,7 +187,7 @@ test.describe('signing in with a passkey', () => {
     security,
     shell,
     signIn,
-    overview,
+    dashboard,
     baseline,
   }) => {
     await security.goto()
@@ -198,7 +198,7 @@ test.describe('signing in with a passkey', () => {
     await signIn.passkey.click()
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
   })
 
   test('says when AresGate no longer knows the passkey the device offers', async ({

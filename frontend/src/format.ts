@@ -114,3 +114,14 @@ export function formatCompact(value: number, locale?: string): string {
 export function formatFigure(value: number, locale?: string): string {
   return Math.abs(value) < 10_000 ? formatCount(value, locale) : formatCompact(value, locale)
 }
+
+/** A speed in bits a second the way network gear says it ("950 kb/s", "80 Mb/s", "1.5 Gb/s"):
+ * in thousands, not in powers of 1024. */
+export function formatBitrate(bitsPerSecond: number): string {
+  let amount = bitsPerSecond
+  for (const unit of ['b/s', 'kb/s', 'Mb/s', 'Gb/s']) {
+    if (amount < 999.5) return `${Number(amount.toPrecision(3)).toString()} ${unit}`
+    amount /= 1000
+  }
+  return `${Number(amount.toPrecision(3)).toString()} Tb/s`
+}

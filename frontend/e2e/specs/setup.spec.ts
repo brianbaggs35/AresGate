@@ -43,7 +43,7 @@ test.describe('setting up a fresh install', () => {
   test('creates the account with the code, and signs in', async ({
     page,
     setup,
-    overview,
+    dashboard,
     shell,
     baseline,
     harness,
@@ -55,7 +55,7 @@ test.describe('setting up a fresh install', () => {
     await setup.createAccountWith(NEW_ACCOUNT)
 
     await expect(page).toHaveURL('/')
-    await expect(overview.card).toBeVisible()
+    await expect(dashboard.banner).toBeVisible()
     await expect(shell.userMenu).toHaveAccessibleName(`Account: ${NEW_ACCOUNT.username}`)
     expect((await harness.rowCounts()).users).toBe(1)
   })

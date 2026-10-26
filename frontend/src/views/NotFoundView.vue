@@ -3,7 +3,7 @@
     <v-empty-state
       headline="Page not found"
       text="That page doesn't exist."
-      action-text="Back to the overview"
+      action-text="Back to the dashboard"
       to="/"
       data-test="not-found"
     />

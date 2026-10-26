@@ -42,6 +42,30 @@ export interface SystemInfoRecord {
   updated_at: string
 }
 
+/** What the dashboard has to show, as `createActivity()` stores it. All of it is optional. */
+export interface ActivityRequest {
+  /** How many alerts of each severity. */
+  alerts?: Partial<Record<'info' | 'low' | 'medium' | 'high' | 'critical', number>>
+  /** How many connections the firewall refused from each address. */
+  blocked?: Record<string, number>
+  /** A steady speed in megabits a second for each interface of the firewall. */
+  traffic?: Record<string, number>
+  /** How many devices were seen for the first time half an hour ago. */
+  devices?: number
+  /** A collector of the firewall in each of these states, to say how collecting is going. The
+   * integration need not be connected. */
+  collectors?: ('waiting' | 'ok' | 'problem' | 'late')[]
+}
+
+/** How much `createActivity()` stored. */
+export interface ActivityRecord {
+  alerts: number
+  blocked: number
+  samples: number
+  devices: number
+  collectors: number
+}
+
 /** The kinds of integration a stand-in can answer like. */
 export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh'
 
@@ -170,6 +194,15 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/account', { data: record })
       .then((response) => readJson<Credentials>(response, 'Making an account'))
+  }
+
+  /** Stores alerts, refused connections, interface speeds and new devices as of now, for the
+   * dashboard to show. Hours of traffic are made at once, as if the firewall had been read all
+   * that time. */
+  createActivity(request: ActivityRequest): Promise<ActivityRecord> {
+    return this.api
+      .post('/api/__test__/factories/activity', { data: request })
+      .then((response) => readJson<ActivityRecord>(response, 'Making activity'))
   }
 
   /** Starts a server that answers like an integration. It runs until the next test's clean. */
