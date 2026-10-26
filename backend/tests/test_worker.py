@@ -1,6 +1,6 @@
 import asyncio
 import runpy
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import pytest
@@ -93,6 +93,75 @@ def test_turned_off_it_does_not_collect(
     assert session.scalars(select(CollectorHealth)).all() == []
 
 
+@pytest.mark.parametrize(
+    ("changes", "collects"),
+    [
+        ({"environment": "production"}, True),
+        ({"environment": "production", "collectors_enabled": False}, False),
+        ({"environment": "test"}, False),
+    ],
+    ids=["a real install", "turned off", "the tests"],
+)
+def test_it_collects_on_a_real_install_unless_it_is_turned_off(
+    settings: Settings, changes: dict[str, object], collects: bool
+) -> None:
+    assert worker.collecting(settings.model_copy(update=changes)) is collects
+
+
+class TestServing:
+    def test_it_collects_and_files_incidents_side_by_side(
+        self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        started: list[str] = []
+
+        class Collecting:
+            async def run(self) -> None:
+                started.append("collectors")
+
+        async def file_incidents(new_session: Callable[[], Session], *, enabled: bool) -> None:
+            assert callable(new_session)
+            started.append(f"incidents, enabled: {enabled}")
+
+        def collecting(_: Settings) -> Collecting:
+            return Collecting()
+
+        monkeypatch.setattr(worker, "build", collecting)
+        monkeypatch.setattr(worker.incidents, "run", file_incidents)
+        production = settings.model_copy(update={"environment": "production"})
+
+        asyncio.run(worker.serve(production))
+
+        assert sorted(started) == ["collectors", "incidents, enabled: True"]
+
+    def test_one_that_stops_takes_the_other_with_it(
+        self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cancelled: list[str] = []
+
+        class Failing:
+            async def run(self) -> None:
+                raise RuntimeError("the scheduler fell over")
+
+        async def wait_forever(*_: object, **__: object) -> None:
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                cancelled.append("incidents")
+                raise
+
+        def failing(_: Settings) -> Failing:
+            return Failing()
+
+        monkeypatch.setattr(worker, "build", failing)
+        monkeypatch.setattr(worker.incidents, "run", wait_forever)
+
+        with pytest.raises(ExceptionGroup) as raised:
+            asyncio.run(worker.serve(settings))
+
+        assert raised.group_contains(RuntimeError, match="fell over")
+        assert cancelled == ["incidents"]
+
+
 @pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
 def test_it_runs_as_a_module(
     monkeypatch: pytest.MonkeyPatch, untouched_logging: None, engine: Engine
@@ -121,7 +190,7 @@ def test_it_runs_as_a_module(
         db.get_engine.cache_clear()
         db.get_sessionmaker.cache_clear()
 
-    assert ran == ["Scheduler.run"]
+    assert ran == ["serve"]
 
 
 def test_main_needs_a_usable_secret_key(
