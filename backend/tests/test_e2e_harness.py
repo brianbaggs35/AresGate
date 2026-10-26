@@ -349,6 +349,56 @@ def test_a_stand_in_can_be_started_for_a_test_to_connect_to(e2e: TestClient) -> 
 
 
 @pytest.mark.usefixtures("stand_ins")
+def test_the_collectors_read_the_alerts_and_agents_of_the_wazuh_stand_in(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={"kind": "wazuh", "username": "u", "password": "p"},
+    ).json()
+    connection = Submission(
+        url=started["url"],
+        tls_mode="pinned",
+        tls_ca_pem=None,
+        tls_fingerprint=started["fingerprint"],
+        options={"username": "u"},
+        secrets={"password": "p"},
+    )
+    service.save(
+        session,
+        settings,
+        netguard.HOME_NETWORK_AND_LOOPBACK,
+        registry.INTEGRATIONS["wazuh"],
+        {"manager": connection, "indexer": connection},
+        utcnow(),
+    )
+    session.commit()
+
+    for _ in range(2):
+        assert e2e.post("/api/__test__/collectors/run").status_code == 204
+
+    session.expire_all()
+    records = {
+        (item.collector, item.connection): item for item in session.scalars(select(CollectorHealth))
+    }
+    assert sorted(records) == [
+        ("connection-check", "indexer"),
+        ("connection-check", "manager"),
+        ("wazuh-agents", "manager"),
+        ("wazuh-alerts", "indexer"),
+    ]
+    assert {item.consecutive_failures for item in records.values()} == {0}
+    # The second run found the alerts and the agent that stopped stored already.
+    assert records["wazuh-alerts", "indexer"].last_items == 0
+    assert records["wazuh-agents", "manager"].last_items == 0
+    counts = e2e.get("/api/__test__/database/counts").json()
+    # Four alerts of the last half hour and the one agent that stopped reporting.
+    assert counts["events"] == 5
+    # The four states of the agents, counted twice.
+    assert (counts["metric_series"], counts["metric_samples"]) == (4, 8)
+
+
+@pytest.mark.usefixtures("stand_ins")
 def test_a_stand_in_of_a_kind_that_does_not_exist_is_refused(e2e: TestClient) -> None:
     response = e2e.post("/api/__test__/stand-ins", json={"kind": "nothing"})
 

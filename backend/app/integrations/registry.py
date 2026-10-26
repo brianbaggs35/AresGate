@@ -318,9 +318,7 @@ NTOPNG = IntegrationDef(
 WAZUH = IntegrationDef(
     key="wazuh",
     name="Wazuh",
-    provides=(
-        "Security alerts and agent health from the manager, and the alert history from the indexer."
-    ),
+    provides=("Security alerts from the indexer, and the health of the agents from the manager."),
     icon="alerts",
     docs_url="https://documentation.wazuh.com/current/user-manual/api/getting-started.html",
     setup=(
@@ -338,7 +336,7 @@ WAZUH = IntegrationDef(
         ConnectionDef(
             key="manager",
             label="Manager API",
-            summary="The Wazuh manager's API: alerts, agents and the manager's status.",
+            summary="The Wazuh manager's API: the agents and whether they are reporting.",
             url_example="https://192.168.1.3:55000",
             allow_http=False,
             fields=(
@@ -349,7 +347,7 @@ WAZUH = IntegrationDef(
         ConnectionDef(
             key="indexer",
             label="Indexer",
-            summary="The Wazuh indexer, which keeps the alert history for searching.",
+            summary="The Wazuh indexer, which keeps the alerts for searching.",
             url_example="https://192.168.1.3:9200",
             allow_http=False,
             fields=(

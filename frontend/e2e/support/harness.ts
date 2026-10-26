@@ -43,16 +43,19 @@ export interface SystemInfoRecord {
 }
 
 /** The kinds of integration a stand-in can answer like. */
-export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec'
+export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh'
 
 /** What a stand-in accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
- * `api_key` and `api_secret` (and the keys of the `services` it has installed and running). */
+ * `api_key` and `api_secret` (and the keys of the `services` it has installed and running),
+ * Wazuh a `username` and `password` (one stand-in answers as both its manager and its indexer). */
 export interface StandInRequest {
   kind: StandInKind
   token?: string
   api_key?: string
   api_secret?: string
   services?: string[]
+  username?: string
+  password?: string
 }
 
 /** A server on the test machine that answers like an integration. */

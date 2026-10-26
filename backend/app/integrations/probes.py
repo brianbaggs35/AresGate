@@ -184,9 +184,9 @@ async def ntopng(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, f"ntopng answered. Interface {wanted} is {found[wanted]}.")
 
 
-async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
-    """Signs in for a token (valid for a few minutes), as Wazuh's API documentation describes,
-    then asks the API about itself with it."""
+async def wazuh_sign_in(client: ApiClient, target: Target) -> str | Verdict:
+    """Signs in to the manager's API for a token (valid for a few minutes), as Wazuh's API
+    documentation describes, and keeps it out of every message. The token, or why not."""
     signed_in = await client.request(
         "POST",
         "/security/user/authenticate",
@@ -199,6 +199,14 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
     if not token or len(token) > 4096 or any(character.isspace() for character in token):
         return unexpected("the Wazuh manager")
     client.hide(token)
+    return token
+
+
+async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
+    """Signs in, then asks the API about itself with the token."""
+    token = await wazuh_sign_in(client, target)
+    if isinstance(token, Verdict):
+        return token
     reply = await client.request("GET", "/", headers={"Authorization": f"Bearer {token}"})
     if bad := problem(reply, "The Wazuh manager"):
         return bad

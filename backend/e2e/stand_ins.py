@@ -17,8 +17,8 @@ from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Literal
-from urllib.parse import parse_qs, urlsplit
+from typing import Any, Literal, cast
+from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 from cryptography import x509
@@ -703,7 +703,240 @@ def zenarmor(api_key: str) -> Handler:
     return handle
 
 
-Kind = Literal["opnsense", "zenarmor", "ntopng", "crowdsec"]
+def wazuh(
+    username: str,
+    password: str,
+    alerts: Sequence[Mapping[str, object]] = (),
+    agents: Sequence[Mapping[str, object]] = (),
+) -> Handler:
+    """Wazuh's manager API and its indexer in one server, which at home are two on ports of their
+    own. Each is told by how a request signs in: the manager gives a token for a user and
+    password and then wants it as a bearer, and the indexer wants the user and password on every
+    request. It keeps the alerts of ``alerts`` that are newer than the search asks for."""
+    token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcmVzZ2F0ZSJ9.c3RhbmQtaW4"
+    login = _basic(username, password)
+
+    def handle(seen: Seen) -> Answer:
+        credential = seen.headers.get("authorization")
+        path = unquote(seen.path)
+        if path == "/security/user/authenticate" and seen.method == "POST":
+            if credential != login:
+                return _json({"title": "Unauthorized", "detail": "Invalid credentials"}, 401)
+            return Answer(body=token, headers={"Content-Type": "text/plain"})
+        if credential == f"Bearer {token}":
+            if path == "/":
+                return _json({"data": {"title": "Wazuh App REST API", "api_version": "4.9.2"}})
+            if path == "/agents":
+                return _wazuh_agents(seen, agents)
+        elif credential == login:
+            if path == "/":
+                return _json(
+                    {
+                        "name": "node-1",
+                        "cluster_name": "wazuh-indexer-cluster",
+                        "version": {"number": "7.10.2", "distribution": "opensearch"},
+                        "tagline": "The OpenSearch Project: https://opensearch.org/",
+                    }
+                )
+            if path == "/wazuh-alerts-*/_search" and seen.method == "POST":
+                return _wazuh_search(seen, alerts)
+        else:
+            return _json({"title": "Unauthorized", "detail": "Invalid credentials"}, 401)
+        return _json({"title": "Not Found", "detail": "No such resource"}, 404)
+
+    return handle
+
+
+def _wazuh_agents(seen: Seen, agents: Sequence[Mapping[str, object]]) -> Answer:
+    query = parse_qs(urlsplit(seen.target).query)
+    limit = int(query.get("limit", ["500"])[0])
+    selected = query["select"][0].split(",") if "select" in query else None
+    items = [
+        {key: value for key, value in agent.items() if selected is None or key in selected}
+        for agent in agents[:limit]
+    ]
+    return _json(
+        {
+            "data": {
+                "affected_items": items,
+                "total_affected_items": len(agents),
+                "total_failed_items": 0,
+                "failed_items": [],
+            },
+            "message": "All selected agents information was returned",
+            "error": 0,
+        }
+    )
+
+
+def _wazuh_search(seen: Seen, alerts: Sequence[Mapping[str, object]]) -> Answer:
+    asked: dict[str, Any] = json.loads(seen.body or b"{}")
+    bound = asked.get("query", {}).get("range", {}).get("timestamp", {}).get("gte")
+    since = datetime.fromisoformat(bound) if bound else datetime.min.replace(tzinfo=UTC)
+    found = sorted(
+        (hit for hit in alerts if _alert_time(hit) >= since), key=_alert_time, reverse=True
+    )
+    return _json(
+        {
+            "took": 1,
+            "timed_out": False,
+            "hits": {"max_score": None, "hits": found[: int(asked.get("size", 10))]},
+        }
+    )
+
+
+def _alert_time(hit: Mapping[str, object]) -> datetime:
+    alert = cast("Mapping[str, object]", hit["_source"])
+    return datetime.fromisoformat(str(alert["timestamp"]))
+
+
+def sample_wazuh_alerts(now: datetime) -> list[dict[str, object]]:
+    """Five alerts as the indexer holds them, the way Wazuh's manager writes them: a login by a
+    user that doesn't exist, the same address trying again until a rule for that fires, a changed
+    file, a routine login, and one from two hours ago, which a search of the last half hour
+    leaves out."""
+
+    def at(minutes: float) -> str:
+        return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S.123+0000")
+
+    web = {"id": "001", "name": "web1", "ip": "192.168.1.20"}
+    nas = {"id": "004", "name": "nas", "ip": "192.168.1.30"}
+    return [
+        {
+            "_index": "wazuh-alerts-4.x-2026.10.26",
+            "_id": "wz-alert-1",
+            "_source": {
+                "timestamp": at(2),
+                "rule": {
+                    "id": "5710",
+                    "level": 5,
+                    "description": "sshd: Attempt to login using a non-existent user",
+                    "groups": ["syslog", "sshd", "authentication_failed"],
+                },
+                "agent": web,
+                "manager": {"name": "wazuh-server"},
+                "id": "1761473523.482",
+                "full_log": "Oct 26 10:12:03 web1 sshd[811]: Invalid user admin from 198.51.100.7",
+                "decoder": {"name": "sshd"},
+                "data": {"srcip": "198.51.100.7", "srcport": "51514", "srcuser": "admin"},
+                "location": "/var/log/auth.log",
+            },
+        },
+        {
+            "_index": "wazuh-alerts-4.x-2026.10.26",
+            "_id": "wz-alert-2",
+            "_source": {
+                "timestamp": at(5),
+                "rule": {
+                    "id": "5712",
+                    "level": 10,
+                    "description": "sshd: brute force trying to get access to the system.",
+                    "groups": ["syslog", "sshd", "authentication_failures"],
+                },
+                "agent": web,
+                "manager": {"name": "wazuh-server"},
+                "id": "1761473403.311",
+                "full_log": "Oct 26 10:10:03 web1 sshd[811]: Failed password for invalid user",
+                "decoder": {"name": "sshd"},
+                "data": {"srcip": "198.51.100.7"},
+                "location": "/var/log/auth.log",
+            },
+        },
+        {
+            "_index": "wazuh-alerts-4.x-2026.10.26",
+            "_id": "wz-alert-3",
+            "_source": {
+                "timestamp": at(9),
+                "rule": {
+                    "id": "550",
+                    "level": 7,
+                    "description": "Integrity checksum changed.",
+                    "groups": ["ossec", "syscheck", "syscheck_entry_modified"],
+                },
+                "agent": web,
+                "manager": {"name": "wazuh-server"},
+                "id": "1761473163.907",
+                "syscheck": {"path": "/etc/passwd", "event": "modified"},
+                "decoder": {"name": "syscheck_integrity_changed"},
+                "location": "syscheck",
+            },
+        },
+        {
+            "_index": "wazuh-alerts-4.x-2026.10.26",
+            "_id": "wz-alert-4",
+            "_source": {
+                "timestamp": at(14),
+                "rule": {
+                    "id": "5501",
+                    "level": 3,
+                    "description": "PAM: Login session opened.",
+                    "groups": ["pam", "syslog", "authentication_success"],
+                },
+                "agent": nas,
+                "manager": {"name": "wazuh-server"},
+                "id": "1761472863.201",
+                "decoder": {"name": "pam"},
+                "data": {"dstuser": "root"},
+                "location": "/var/log/auth.log",
+            },
+        },
+        {
+            "_index": "wazuh-alerts-4.x-2026.10.26",
+            "_id": "wz-alert-5",
+            "_source": {
+                "timestamp": at(120),
+                "rule": {
+                    "id": "5710",
+                    "level": 5,
+                    "description": "sshd: Attempt to login using a non-existent user",
+                    "groups": ["syslog", "sshd", "authentication_failed"],
+                },
+                "agent": web,
+                "manager": {"name": "wazuh-server"},
+                "id": "1761466323.100",
+                "decoder": {"name": "sshd"},
+                "data": {"srcip": "203.0.113.50"},
+                "location": "/var/log/auth.log",
+            },
+        },
+    ]
+
+
+def sample_wazuh_agents(now: datetime) -> list[dict[str, object]]:
+    """The manager's list of agents: itself (which is always agent 000), two that are reporting,
+    a laptop that stopped two hours ago, and a camera gateway that never connected."""
+
+    def heard(minutes: float) -> str:
+        return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+    return [
+        {"id": "000", "name": "wazuh-server", "ip": "127.0.0.1", "status": "active"},
+        {
+            "id": "001",
+            "name": "web1",
+            "ip": "192.168.1.20",
+            "status": "active",
+            "lastKeepAlive": heard(0.1),
+        },
+        {
+            "id": "002",
+            "name": "laptop",
+            "ip": "192.168.1.41",
+            "status": "disconnected",
+            "lastKeepAlive": heard(120),
+        },
+        {"id": "003", "name": "camera-gw", "ip": "any", "status": "never_connected"},
+        {
+            "id": "004",
+            "name": "nas",
+            "ip": "192.168.1.30",
+            "status": "active",
+            "lastKeepAlive": heard(0.2),
+        },
+    ]
+
+
+Kind = Literal["opnsense", "zenarmor", "ntopng", "crowdsec", "wazuh"]
 
 
 @dataclass(frozen=True)
@@ -733,7 +966,10 @@ class StandIns:
         api_key: str = "",
         api_secret: str = "",
         services: Collection[str] = (),
+        username: str = "",
+        password: str = "",
     ) -> Running:
+        now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
             "ntopng": ntopng(token),
             "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
@@ -748,8 +984,14 @@ class StandIns:
                 kea_leases=sample_kea_leases(),
             ),
             "zenarmor": zenarmor(api_key),
+            "wazuh": wazuh(username, password, sample_wazuh_alerts(now), sample_wazuh_agents(now)),
         }
-        certificate = make_certificate("fw.home.arpa") if kind in ("opnsense", "zenarmor") else None
+        names: dict[Kind, str] = {
+            "opnsense": "fw.home.arpa",
+            "zenarmor": "fw.home.arpa",
+            "wazuh": "wazuh.home.arpa",
+        }
+        certificate = make_certificate(names[kind]) if kind in names else None
         server = StubServer(handlers[kind], certificate)
         identifier = uuid4().hex
         with self._lock:

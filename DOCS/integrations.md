@@ -9,7 +9,7 @@ connect it, change its settings, test it or disconnect it.
 | ----------- | ---------------------- | --------------- |
 | OPNsense | Health, interfaces and traffic, gateways, the firewall log, ARP and DHCP, and the services that run on it: Suricata, CrowdSec, OpenVPN, WireGuard, IPsec, Unbound, Dnsmasq, Kea, the ntopng and Wazuh agent plugins, and Zenarmor | API key and secret |
 | ntopng | Live traffic: hosts, flows and throughput | Authentication token, or user name and password |
-| Wazuh | Alerts and agent health from the manager, and the alert history from the indexer | Two connections, each with a user name and password |
+| Wazuh | Alerts from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
@@ -183,6 +183,71 @@ Wazuh has two connections, each with its own address and sign-in:
   using `admin`.
 
 Both use HTTPS with a self-signed certificate in a default install, so see the next section.
+
+### Alerts
+
+Every minute AresGate searches the indexer's `wazuh-alerts-*` indices for the alerts of the last
+half hour (the newest 500) and keeps each as an event (`alert`): when it was raised, the rule and
+the level Wazuh rates it at, the host (agent) it is about, the source address and port Wazuh's
+decoders found in the log line, and Wazuh's own record of it, including the log line itself. An
+alert is stored once however often it is read, by its document's id in the index.
+
+- **How serious.** Wazuh's levels run from 0 to 16. Up to 3 is routine (ignored, a notification,
+  a login that worked) and shows as info, 4 to 6 as low (errors, a low relevance attack), 7 to 10
+  as medium (a first time seen, an error from an invalid source, repeated user errors), 11 to 13
+  as high (an integrity warning, the events Wazuh calls high importance) and 14 and up as critical
+  (its high importance security events and severe attacks). Wazuh's table names the levels; where
+  AresGate draws the lines between them is its own choice.
+- **Addresses.** An alert's source is the address in its log line (`srcip`), such as the one an
+  SSH login failed from. Its destination is the one the line names (`dstip`), or else the host
+  that raised it, so an alert can be matched with the firewall's and Suricata's events about that
+  host.
+- **What the user needs.** Read access to the `wazuh-alerts-*` indices and nothing else. The
+  manager's API doesn't give alerts, so this is the only place AresGate reads them.
+- **A gap.** An alert that reaches the indexer more than half an hour after it was raised, such
+  as after the indexer was down, is not read. A manager that raises more than 500 alerts in half
+  an hour is read from the newest.
+
+### Agents
+
+Every minute AresGate signs in to the manager's API for a token and lists the agents. How many
+are in each state (`active`, `disconnected`, `pending`, `never_connected`) is kept as the metric
+`agents.count`, with a zero for a state that has none. An agent that is disconnected is also an
+info event (`agent`, "laptop (192.168.1.41) stopped reporting to Wazuh"), dated by when the
+manager last heard from it, since a host that stops reporting is the first thing an intruder with
+the run of it may do. It is stored once; an agent that reports again and goes quiet again is a
+new event. The manager itself, which the API lists as agent `000`, is not counted. The user needs
+a role that may read agents.
+
+### Where this comes from, and what isn't tried
+
+Taken from Wazuh's documentation, not guessed:
+
+- The ports (55000 for the server API, 9200 for the indexer) are in
+  [Architecture, Required ports](https://documentation.wazuh.com/current/getting-started/architecture.html).
+- The token request and `raw=true` are in the
+  [server API's Getting started](https://documentation.wazuh.com/current/user-manual/api/getting-started.html).
+  `GET /agents`, its `limit`, `select` and `status` parameters and the agent's `lastKeepAlive` are
+  in the API's [OpenAPI specification](https://github.com/wazuh/wazuh/blob/v4.14.1/api/api/spec/spec.yaml).
+- The search is the
+  [indexer API's](https://documentation.wazuh.com/current/user-manual/indexer-api/getting-started.html)
+  (OpenSearch) `_search`, and the alert fields are those of the
+  [`wazuh-alerts-*` index template](https://github.com/wazuh/wazuh/blob/v4.14.1/extensions/elasticsearch/7.x/wazuh-template.json).
+- The levels are in
+  [Rules classification](https://documentation.wazuh.com/current/user-manual/ruleset/rules/rules-classification.html).
+
+Not tried against a live Wazuh: the answers are tested against a stand-in built from those pages.
+If your version answers differently, the Collection card says so and the API log shows the answer.
+What was worked out rather than read: that `data.srcip`, `data.dstip` and `data.srcport` are
+where the decoders put an address (they vary by decoder, so an alert without them is kept without
+an address), and that an agent's `lastKeepAlive` always carries a zone, as the specification's
+examples do (one that doesn't is left out).
+
+### What Wazuh has that AresGate doesn't read yet
+
+Wazuh also keeps vulnerabilities and an inventory of each host's software, ports and processes
+in the indexer (`wazuh-states-vulnerabilities-*`, `wazuh-states-inventory-*`), and its own
+statistics (`wazuh-statistics-*`). AresGate doesn't read those yet.
 
 ## CrowdSec
 

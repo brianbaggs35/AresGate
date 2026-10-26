@@ -209,8 +209,9 @@ and connection, what kind it is, how serious, the addresses and ports, the rule 
 one-line summary and the program's own record of it. Reading the same thing twice, which
 overlapping requests do, stores it once. So far the collectors that store events are
 OPNsense's [firewall log](integrations.md#the-firewall-log) and
-[Suricata alerts](integrations.md#suricata-alerts), and CrowdSec's [bans](integrations.md#bans);
-the others come with the integrations.
+[Suricata alerts](integrations.md#suricata-alerts), CrowdSec's [bans](integrations.md#bans), and
+Wazuh's [alerts](integrations.md#alerts) and [silent agents](integrations.md#agents); the others
+come with the integrations.
 
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_EVENT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An
@@ -240,8 +241,9 @@ as samples: one number, read from one connection at one moment, under the name o
 measures (`system.load_1m`) and the labels that tell it apart from the same thing measured
 elsewhere (`interface: igc0`). Reading the same moment twice stores it once, and a reading that
 isn't a number is left out. So far the collectors that store metrics are OPNsense's
-[health, traffic and gateways](integrations.md#health-traffic-and-gateways) and how many bans
-[CrowdSec](integrations.md#bans) has in force; the others come with the integrations.
+[health, traffic and gateways](integrations.md#health-traffic-and-gateways), how many bans
+[CrowdSec](integrations.md#bans) has in force, and how many of Wazuh's
+[agents](integrations.md#agents) are in each state; the others come with the integrations.
 
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_METRIC_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An

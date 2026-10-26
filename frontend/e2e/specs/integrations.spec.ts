@@ -7,6 +7,8 @@ import {
 } from '../support'
 
 const TOKEN = 'a-valid-ntopng-token'
+const USERNAME = 'aresgate'
+const PASSWORD = 'a-valid-password'
 
 test.describe('integrations', () => {
   test('lists a card for each, which opens its own page', async ({
@@ -501,6 +503,48 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       expect((await harness.rowCounts()).events).toBe(4)
       expect((await harness.rowCounts()).metric_samples).toBe(2)
+    })
+  })
+
+  test.describe('Wazuh', () => {
+    test('reads its alerts from the indexer and its agents from the manager', async ({
+      harness,
+      integration,
+    }) => {
+      const wazuh = await harness.standIn({ kind: 'wazuh', username: USERNAME, password: PASSWORD })
+      await integration.goto('wazuh')
+      // At home the manager and the indexer are two servers; the stand-in answers as both.
+      for (const connection of ['manager', 'indexer']) {
+        await integration.address(connection).fill(wazuh.url)
+        await integration.field(connection, 'username').fill(USERNAME)
+        await integration.field(connection, 'password').fill(PASSWORD)
+        await integration.tlsMode(connection, 'pinned').check()
+        await integration.lookUp(connection).click()
+        await integration.trust(connection).click()
+      }
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(4)
+      await expect(integration.collectors).toContainText([
+        'Connection check · Indexer',
+        'Alerts · Indexer',
+        'Connection check · Manager API',
+        'Agents · Manager API',
+      ])
+      await expect(integration.collectorStates).toHaveText(new Array(4).fill('Working'))
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // The four alerts of the last half hour and the agent that stopped, each stored once.
+      expect((await harness.rowCounts()).events).toBe(5)
+      // The agents in each of four states, counted on every run.
+      expect((await harness.rowCounts()).metric_samples).toBe(4)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).events).toBe(5)
+      expect((await harness.rowCounts()).metric_samples).toBe(8)
     })
   })
 
