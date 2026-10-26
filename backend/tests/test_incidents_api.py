@@ -1,0 +1,486 @@
+from datetime import datetime, timedelta
+from ipaddress import ip_address
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.audit import Action, Outcome
+from app.config import Settings
+from app.events.event import Severity
+from app.incidents import engine as correlation
+from app.models import AuditEvent, Device, DeviceAddress, Incident, User
+from tests.helpers import OTHER_ORIGIN, new_event
+from tests.test_incidents_engine import ATTACKER, DEVICE, NOW, OTHER_ATTACKER, alert, run, store
+
+BASE = "/api/incidents"
+MINUTE = timedelta(minutes=1)
+
+
+def headers(token: str) -> dict[str, str]:
+    return {"X-CSRF-Token": token}
+
+
+def listed(client: TestClient, **params: Any) -> list[dict[str, Any]]:
+    response = client.get(BASE, params=params)
+    assert response.status_code == 200
+    return response.json()["items"]  # type: ignore[no-any-return]
+
+
+def make(session: Session, settings: Settings) -> None:
+    """An attack from one address that two programs saw and one banned, and a quiet scan from
+    another that only one program noticed, a little later."""
+    store(
+        session,
+        settings,
+        alert(NOW, n=1, severity=Severity.HIGH, signature="Brute force on ssh"),
+        alert(NOW + MINUTE, n=2, source="opnsense", connection="api", signature="ET SCAN"),
+        new_event(
+            source="crowdsec",
+            connection="lapi",
+            kind="decision",
+            severity=Severity.LOW,
+            occurred_at=NOW + 2 * MINUTE,
+            identity=("ban-1",),
+            summary="Ban for ssh-bruteforce",
+            src_address=ATTACKER,
+        ),
+        alert(NOW + 10 * MINUTE, n=3, src_address=OTHER_ATTACKER, severity=Severity.LOW),
+    )
+    run(session)
+
+
+def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> None:
+    assert client.get(BASE).status_code == 401
+    assert client.get(f"{BASE}/1").status_code == 401
+    assert client.patch(f"{BASE}/1", json={"status": "resolved"}).status_code == 401
+
+
+class TestListing:
+    def test_an_install_with_no_incidents_has_an_empty_list(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        response = client.get(BASE)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "total": 0,
+            "items": [],
+            "counts": {"open": 0, "investigating": 0, "resolved": 0, "dismissed": 0},
+        }
+
+    def test_the_ones_going_most_recently_come_first(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        response = client.get(BASE)
+
+        body = response.json()
+        assert body["total"] == 2
+        assert body["counts"] == {"open": 2, "investigating": 0, "resolved": 0, "dismissed": 0}
+        quiet, attack = body["items"]
+        assert quiet["subject"] == OTHER_ATTACKER
+        assert attack["subject"] == ATTACKER
+
+    def test_each_says_what_it_is(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        attack = next(i for i in listed(client) if i["subject"] == ATTACKER)
+
+        assert attack["title"] == f"Brute force on ssh ({ATTACKER})"
+        assert attack["severity"] == "high"
+        # The strongest signal 40, two more programs 30, the ban 20.
+        assert attack["confidence"] == 90
+        assert attack["confidence_level"] == "high"
+        assert attack["status"] == "open"
+        assert attack["signal_count"] == 3
+        assert attack["sources"] == [
+            {"key": "crowdsec", "name": "CrowdSec"},
+            {"key": "opnsense", "name": "OPNsense"},
+            {"key": "wazuh", "name": "Wazuh"},
+        ]
+        assert attack["addresses"] == [ATTACKER, DEVICE]
+        assert attack["banned"] is True
+        assert attack["first_seen_at"].startswith("2026-10-26T06:00:00")
+        assert attack["last_seen_at"].startswith("2026-10-26T06:02:00")
+        assert attack["status_changed_at"] is None
+
+    def test_a_list_hasnt_the_timeline(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        assert "signals" not in listed(client)[0]
+        assert "reasons" not in listed(client)[0]
+
+    @pytest.mark.parametrize(
+        ("params", "subjects"),
+        [
+            ({"min_severity": "high"}, [ATTACKER]),
+            ({"min_severity": "info"}, [OTHER_ATTACKER, ATTACKER]),
+            ({"min_confidence": 50}, [ATTACKER]),
+            ({"min_confidence": 91}, []),
+            ({"address": ATTACKER}, [ATTACKER]),
+            ({"address": DEVICE}, [OTHER_ATTACKER, ATTACKER]),
+            ({"address": "10.9.9.9"}, []),
+            ({"since": "2026-10-26T06:05:00Z"}, [OTHER_ATTACKER]),
+            ({"limit": 1}, [OTHER_ATTACKER]),
+            ({"limit": 1, "offset": 1}, [ATTACKER]),
+            ({"offset": 2}, []),
+        ],
+        ids=[
+            "serious",
+            "anything",
+            "sure",
+            "surer than any",
+            "an attacker",
+            "a device",
+            "an address in none",
+            "recent",
+            "first page",
+            "second page",
+            "past the end",
+        ],
+    )
+    def test_it_can_be_narrowed(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        params: dict[str, Any],
+        subjects: list[str],
+    ) -> None:
+        make(session, settings)
+
+        assert [item["subject"] for item in listed(client, **params)] == subjects
+
+    def test_the_total_counts_what_matched_not_the_page(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        body = client.get(BASE, params={"limit": 1}).json()
+
+        assert (body["total"], len(body["items"])) == (2, 1)
+
+    def test_it_can_be_narrowed_by_status(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        attack = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+        attack.status = "investigating"
+        session.commit()
+
+        def subjects(**params: Any) -> list[str]:
+            return [item["subject"] for item in listed(client, **params)]
+
+        assert subjects(status="investigating") == [ATTACKER]
+        assert subjects(status="open") == [OTHER_ATTACKER]
+        assert subjects(status=["open", "investigating"]) == [OTHER_ATTACKER, ATTACKER]
+        assert subjects(status="resolved") == []
+        counts = client.get(BASE, params={"status": "resolved"}).json()["counts"]
+        assert counts["open"] == 1
+        assert counts["investigating"] == 1
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"status": "ignored"},
+            {"min_severity": "scary"},
+            {"min_confidence": 101},
+            {"min_confidence": -1},
+            {"address": "not-an-address"},
+            {"since": "yesterday"},
+            {"limit": 0},
+            {"limit": 201},
+            {"offset": -1},
+        ],
+    )
+    def test_nonsense_is_refused(
+        self, client: TestClient, csrf_token: str, params: dict[str, Any]
+    ) -> None:
+        assert client.get(BASE, params=params).status_code == 422
+
+
+class TestOne:
+    def test_it_shows_why_it_is_as_sure_as_it_is(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+
+        response = client.get(f"{BASE}/{incident.id}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == incident.id
+        assert body["confidence"] == 90
+        assert [(r["rule"], r["points"]) for r in body["reasons"]] == [
+            ("strongest", 40),
+            ("corroborated", 30),
+            ("banned", 20),
+        ]
+        assert sum(reason["points"] for reason in body["reasons"]) == body["confidence"]
+        assert body["reasons"][1]["text"] == "3 programs saw it: CrowdSec, OPNsense and Wazuh."
+
+    def test_it_has_a_timeline_oldest_first(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert [(s["source_name"], s["kind"], s["severity"]) for s in body["signals"]] == [
+            ("Wazuh", "alert", "high"),
+            ("OPNsense", "alert", "medium"),
+            ("CrowdSec", "decision", "low"),
+        ]
+        first = body["signals"][0]
+        assert first["summary"] == "sshd: authentication failed"
+        assert first["signature"] == "Brute force on ssh"
+        assert (first["src_address"], first["dst_address"]) == (ATTACKER, DEVICE)
+        assert (first["src_port"], first["dst_port"], first["protocol"]) == (None, None, None)
+        assert body["signals"][2]["dst_address"] is None
+
+    def test_it_names_the_devices_in_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+        phone = Device(
+            mac="aa:bb:cc:00:00:01",
+            hostname="phone",
+            vendor="Acme",
+            first_seen_at=NOW,
+            last_seen_at=NOW,
+        )
+        old = Device(mac="aa:bb:cc:00:00:02", first_seen_at=NOW, last_seen_at=NOW)
+        session.add_all([phone, old])
+        session.flush()
+        # The address passed from one device to another: the one seen with it last has it.
+        session.add_all(
+            [
+                DeviceAddress(
+                    device_id=old.id,
+                    address=ip_address(DEVICE),
+                    first_seen_at=NOW,
+                    last_seen_at=NOW - timedelta(days=2),
+                ),
+                DeviceAddress(
+                    device_id=phone.id,
+                    address=ip_address(DEVICE),
+                    first_seen_at=NOW,
+                    last_seen_at=NOW,
+                ),
+            ]
+        )
+        session.commit()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["devices"] == [
+            {
+                "id": phone.id,
+                "address": DEVICE,
+                "mac": "aa:bb:cc:00:00:01",
+                "hostname": "phone",
+                "vendor": "Acme",
+            }
+        ]
+
+    def test_no_device_is_not_a_problem(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        incident = session.scalars(select(Incident)).first()
+        assert incident is not None
+
+        assert client.get(f"{BASE}/{incident.id}").json()["devices"] == []
+
+    def test_it_counts_the_blocks_around_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        def block(n: int, at: datetime, address: str = ATTACKER, **changes: Any) -> Any:
+            return new_event(
+                **{
+                    "source": "opnsense",
+                    "connection": "api",
+                    "kind": "firewall",
+                    "severity": Severity.LOW,
+                    "occurred_at": at,
+                    "identity": (f"block-{n}",),
+                    "summary": "Blocked",
+                    "src_address": address,
+                    **changes,
+                }
+            )
+
+        make(session, settings)
+        store(
+            session,
+            settings,
+            block(1, NOW - correlation.GAP),
+            block(2, NOW - 30 * MINUTE),
+            block(3, NOW + 3 * MINUTE),
+            block(4, NOW + 2 * MINUTE + 59 * MINUTE),
+            block(5, NOW + 3 * MINUTE, address=OTHER_ATTACKER),
+            block(6, NOW + 3 * MINUTE, severity=Severity.INFO),
+        )
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        # One just before, one during and one just after, but not the one hours before, nor
+        # another address's, nor one of no importance. They are no part of the incident itself.
+        assert body["blocked"] == 3
+        assert body["signal_count"] == 3
+
+    def test_an_incident_about_a_rule_has_no_blocks_to_count(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(src_address=None, dst_address=None))
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["subject"].startswith("rule:")
+        assert body["blocked"] is None
+        assert body["addresses"] == []
+
+    def test_a_very_long_one_lists_only_so_many_signals(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(correlation, "MAX_SIGNALS", 2)
+        store(session, settings, *(alert(NOW + n * MINUTE, n=n) for n in range(4)))
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["signal_count"] == 4
+        assert len(body["signals"]) == 2
+
+    @pytest.mark.parametrize("incident_id", ["999999", "9223372036854775807"])
+    def test_there_is_no_such_incident(
+        self, client: TestClient, csrf_token: str, incident_id: str
+    ) -> None:
+        assert client.get(f"{BASE}/{incident_id}").status_code == 404
+
+    @pytest.mark.parametrize("incident_id", ["0", "-1", "abc", "9223372036854775808"])
+    def test_an_id_that_cannot_be_one_is_refused(
+        self, client: TestClient, csrf_token: str, incident_id: str
+    ) -> None:
+        assert client.get(f"{BASE}/{incident_id}").status_code == 422
+
+
+class TestSayingWhatIsBeingDone:
+    def one(self, session: Session, settings: Settings) -> Incident:
+        store(session, settings, alert())
+        run(session)
+        return session.scalars(select(Incident)).one()
+
+    def test_it_changes_the_status_and_keeps_a_record(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        incident = self.one(session, settings)
+
+        response = client.patch(
+            f"{BASE}/{incident.id}", json={"status": "investigating"}, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "investigating"
+        assert body["status_changed_at"] is not None
+        assert len(body["signals"]) == 1
+        session.expire_all()
+        assert incident.status == "investigating"
+        audited = session.scalars(
+            select(AuditEvent).where(AuditEvent.action == Action.INCIDENT_STATUS_CHANGED)
+        ).one()
+        assert audited.outcome == Outcome.SUCCESS
+        assert audited.username == "brian"
+        assert audited.detail == {"incident": incident.id, "from": "open", "to": "investigating"}
+
+    def test_it_can_be_opened_again(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        incident = self.one(session, settings)
+
+        for status in ("resolved", "open"):
+            response = client.patch(
+                f"{BASE}/{incident.id}", json={"status": status}, headers=headers(csrf_token)
+            )
+            assert response.json()["status"] == status
+
+        assert client.get(BASE, params={"status": "open"}).json()["total"] == 1
+
+    def test_saying_what_it_already_is_changes_nothing(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        incident = self.one(session, settings)
+
+        response = client.patch(
+            f"{BASE}/{incident.id}", json={"status": "open"}, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status_changed_at"] is None
+        assert (
+            session.scalars(
+                select(AuditEvent).where(AuditEvent.action == Action.INCIDENT_STATUS_CHANGED)
+            ).all()
+            == []
+        )
+
+    @pytest.mark.parametrize(
+        "body", [{"status": "ignored"}, {}, {"status": "open", "title": "x"}, {"status": None}]
+    )
+    def test_nonsense_is_refused(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        body: dict[str, Any],
+    ) -> None:
+        incident = self.one(session, settings)
+
+        response = client.patch(f"{BASE}/{incident.id}", json=body, headers=headers(csrf_token))
+
+        assert response.status_code == 422
+
+    def test_there_is_no_such_incident_to_change(self, client: TestClient, csrf_token: str) -> None:
+        response = client.patch(
+            f"{BASE}/999999", json={"status": "resolved"}, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 404
+
+    def test_it_only_changes_from_one_of_its_own_pages(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        incident = self.one(session, settings)
+
+        response = client.patch(
+            f"{BASE}/{incident.id}",
+            json={"status": "resolved"},
+            headers={**headers(csrf_token), "Origin": OTHER_ORIGIN},
+        )
+
+        assert response.status_code == 403
+        session.expire_all()
+        assert incident.status == "open"

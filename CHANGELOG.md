@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Incidents**: the alerts and bans that belong together, whichever integration reported them,
+  filed by the worker every 30 seconds. Suricata's alert, Wazuh's log line and CrowdSec's ban of
+  one address are one incident, with its severity, how sure AresGate is and a list of the reasons
+  that add up to it (the most serious signal, other programs that agree, how often it happened,
+  a ban, how many addresses it reached), a timeline of the signals, the devices on your network
+  involved and how often the firewall turned the address away. You can mark one open,
+  investigating, resolved or dismissed. Nothing here needs an AI provider
+  ([DOCS/operations.md](DOCS/operations.md#incidents)). It is `GET /api/incidents`,
+  `GET /api/incidents/{id}` and `PATCH /api/incidents/{id}` for now; the pages follow.
 - A **Dashboard** in place of the Overview page: a sentence at the top on whether anything needs
   you (it never says all is quiet while collectors are failing), the numbers for alerts, refused
   connections, new devices and collection, a chart of each OPNsense interface's traffic, alerts

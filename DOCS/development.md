@@ -16,7 +16,7 @@ make             # lists every command
 
 | Folder | What is in it |
 | --- | --- |
-| `backend/app` | The API (FastAPI), its settings and database models, `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule, and `app/events` and `app/metrics`, where the events and the numbers they read are stored |
+| `backend/app` | The API (FastAPI), its settings and database models, `app/collectors`, which the worker (`python -m app.worker`) runs on a schedule, `app/events` and `app/metrics`, where the events and the numbers they read are stored, and `app/incidents`, which groups the events into incidents |
 | `backend/migrations` | Database migrations (Alembic) |
 | `backend/tests` | The API's tests (pytest) |
 | `backend/e2e` | The test server's harness, used only by the end-to-end tests (see [frontend/e2e/README.md](../frontend/e2e/README.md)) |
@@ -166,6 +166,33 @@ devices there were.
   together, and a time ahead of now is taken as now.
 - The OPNsense lease searches share `app/collectors/opnsense/leases.py`: a collector for another
   DHCP server only needs its path and what makes a lease current.
+
+## Incidents
+
+`app/incidents` groups the events of every integration into incidents, with no AI. The worker
+runs `app/incidents/run.py` every 30 seconds beside the collectors; it calls
+`engine.correlate(db, now)`, which reads the events stored since the last run (the cursor is
+`system_info.incidents.cursor`), files each in the order it happened and saves the cursor with
+the incidents, so a run that fails is read again. An advisory lock keeps two runs from
+overlapping.
+
+- **What is a signal** is `engine.KINDS` (`alert`, `decision`) at `engine.MIN_SEVERITY` or more.
+  A collector's new kind of event is not one until it is added there, with a test.
+- **What it is about** is `subject.subject_of`: the address of interest, or `rule:<source>:<rule>`
+  for a signal that names none. Changing it changes which incidents later signals join, not
+  the ones filed.
+- **How sure** is `rules.assess`: a list of `Reason(rule, points, text)` that is stored on the
+  incident (`incidents.reasons`) next to the confidence it adds up to. To add a rule, add its
+  reason there, give `Facts` what it needs (an incident keeps the totals it needs, so scoring
+  never reads old signals) and add a case to `tests/test_incidents_rules.py`. A rule needs a
+  sentence a person can read: nothing is scored that can't be explained.
+- **What is stored** is `incidents` (a summary that grows with each signal) and
+  `incident_signals` (the timeline, copied from the events, which expire sooner).
+- **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
+  the AI analyst can call them too. They only read, apart from the status.
+- **Tests** build events with `tests.helpers.new_event`, store them with `record_events` and
+  run the engine at a time of their choosing. Use a public address for an attacker
+  (`93.184.216.34`): the documentation ranges are not global addresses.
 
 ## Dependencies
 

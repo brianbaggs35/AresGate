@@ -182,7 +182,8 @@ the web app. They share the database and nothing else.
   keeps the integration's status and the services found on it up to date, and, on OPNsense,
   the firewall log every 30 seconds and, if Suricata is installed, its alerts every minute
   ([below](#stored-events)). A service that testing the connection found isn't installed has no
-  jobs. A job that fails is
+  jobs. The worker also files what the collectors stored into [incidents](#incidents) every 30
+  seconds. A job that fails is
   tried again after 30 seconds, then 1 minute, then 2, and so on, but never later than its normal
   interval, and it's stopped if it takes too long. Connecting an integration starts its jobs
   within seconds, saving its settings again runs them straight away, and disconnecting it stops
@@ -284,6 +285,65 @@ one seen with it last having it now. The collectors that fill them are OPNsense'
   often is a new device each time, which adds up very slowly.
 - **How they're written.** Every run updates the devices it lists, once a minute for the ARP
   table, so the tables are small but see a steady trickle of updates.
+
+### Incidents
+
+An incident is the alerts and bans that belong together, whichever integration reported them:
+Suricata's alert, Wazuh's log line and CrowdSec's ban of one address are one incident, not three
+rows in three places. It says how serious that is, how sure AresGate is that it is a real attack
+and why, and lists the signals in the order they happened. The worker files them (see
+[the collector worker](#the-collector-worker)); nothing here needs an AI provider.
+
+- **What counts as a signal.** An alert, or a ban, of low severity or more. The firewall's blocks
+  don't: the internet knocks all day and a block says the firewall worked. Instead an incident
+  says how many times the firewall turned its address away around then. Alerts of no importance
+  (info) and agents going offline aren't signals either.
+- **Which incident a signal joins.** The one about the same *subject* that is still going. The
+  subject is the address the signal is about: where one end is outside your network and the
+  other isn't, the outside one, whichever way the traffic went, so an attack coming in and a
+  device calling out to the same address are one incident. Where both are inside, or both
+  outside, it is the source. A signal that names no address (such as a log line from a
+  host) is about the rule that raised it. Addresses that say nothing, such as `0.0.0.0`,
+  loopback, multicast and broadcast, are ignored. An incident has been going until it has been
+  quiet for 6 hours; after that, the next signal about the subject starts another, so a scan on
+  Monday and another on Friday are two.
+- **How serious.** As serious as its most serious signal.
+- **How sure.** Confidence is 0 to 100 and is a sum of reasons, each with its points and a
+  sentence, which the incident keeps so that you can see why and disagree:
+
+  | Reason | Points |
+  | --- | --- |
+  | The most serious signal's severity: info 0, low 10, medium 25, high 40, critical 55 | 0 to 55 |
+  | Each other program that saw it, up to two more | 15 each |
+  | It set off at least 5 signals, or at least 20 | 10, or 20 |
+  | A program banned the address | 20 |
+  | At least 3 other addresses are involved | 10 |
+
+  It is capped at 100 and called **low** below 35, **medium** from 35 and **high** from 65.
+  One program's single medium alert is therefore low; the same alert seen by a second program
+  and followed by a ban is high. The points are a judgement, written in one place
+  (`backend/app/incidents/rules.py`) so that they can be argued with.
+- **What you can say about it.** An incident is *open*, *investigating*, *resolved* or
+  *dismissed*, which you set with `PATCH /api/incidents/{id}` (each change is in the
+  [activity log](security.md)). A resolved incident is over: a later signal about the same
+  subject starts a new one. An investigating or dismissed one keeps taking signals and keeps its
+  status.
+- **Where to read them.** `GET /api/incidents` lists them, newest activity first, and can be
+  narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`
+  and `since`. `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
+  network behind its addresses and the firewall's blocks. Pages for them come next.
+- **When they appear.** A run every 30 seconds files the signals that were stored at least 30
+  seconds ago, so a new attack is an incident within about a minute of its first alert. The first
+  run looks back 24 hours. Signals the collectors stored out of order are filed in the order
+  they happened.
+- **How much room they take.** A few hundred bytes for an incident and about 300 for each
+  signal, which is copied so that the timeline outlives the event. An incident lists at most its
+  first 1000 signals and names at most 50 addresses; it goes on counting and updating its
+  severity beyond that. A home network is a few incidents a day.
+- **How long they're kept.** Until you remove them: there is no retention period for incidents
+  yet.
+- **Pausing it.** Turning collecting off (`ARESGATE_COLLECTORS_ENABLED=false`) pauses filing too:
+  nothing new is stored, so there is nothing to file.
 
 ### Reading the logs
 
