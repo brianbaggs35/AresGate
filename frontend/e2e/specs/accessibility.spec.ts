@@ -137,7 +137,7 @@ for (const theme of ['light', 'dark'] as const) {
       await harness.runCollectors()
       await status.goto()
       await expect(status.attention).toBeVisible()
-      await expect(status.collectorStates).toHaveText(['Working', 'Problem'])
+      await expect(status.collectorStates).toHaveText(['Working', ...new Array(4).fill('Problem')])
       await expectAccessible(page)
 
       await status.copy.click()
@@ -389,7 +389,7 @@ for (const theme of ['light', 'dark'] as const) {
       await harness.setWorker('running')
       await harness.runCollectors()
       await integration.collectionRefresh.click()
-      await expect(integration.collectorStates).toHaveText('Working')
+      await expect(integration.collectorStates).toHaveText(new Array(4).fill('Working'))
       await expectAccessible(page)
 
       await integration.disconnect.click()
