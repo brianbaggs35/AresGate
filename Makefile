@@ -173,7 +173,7 @@ lint-backend: ## ruff, pyright and bandit (API and container scripts)
 lint-frontend: ## ESLint, Prettier and vue-tsc
 	$(FRONTEND) npm run lint -- --max-warnings=0 && npm run format:check && npm run typecheck
 
-lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI workflows)
+lint-infra: ## hadolint, ShellCheck, actionlint and the early-exit check (Dockerfile, scripts, CI workflows)
 	docker run --rm -v "$(CURDIR):/work:ro" -w /work $(HADOLINT_IMAGE) hadolint Dockerfile
 	docker run --rm -v "$(CURDIR):/mnt:ro" $(SHELLCHECK_IMAGE) docker/entrypoint.sh docker/start-api.sh docker/start-worker.sh \
 		docker/apk-retry.sh docker/check-certificate.sh docker/install-certificate.sh \
@@ -182,7 +182,10 @@ lint-infra: ## hadolint, ShellCheck and actionlint (Dockerfile, scripts, CI work
 		.github/scripts/codeql-report.sh .github/scripts/release-version.sh \
 		.github/scripts/supplied-key-test.sh .github/scripts/sign-in-test.sh \
 		.github/scripts/certificate-test.sh .github/scripts/certificate-script-test.sh \
-		.github/scripts/custom-name-test.sh
+		.github/scripts/custom-name-test.sh .github/scripts/early-exit-check.sh \
+		.github/scripts/early-exit-check-test.sh
+	./.github/scripts/early-exit-check-test.sh
+	./.github/scripts/early-exit-check.sh .github/scripts/*.sh
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 
 format: ## Auto-format backend and frontend code

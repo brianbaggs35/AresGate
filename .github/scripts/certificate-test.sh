@@ -42,8 +42,11 @@ make_expired_certificate() {
 
 # The fingerprint of the certificate the container is serving, for localhost.
 served() {
-    openssl s_client -connect "localhost:$https_port" -servername localhost -tls1_3 </dev/null 2>/dev/null |
-        openssl x509 -noout -fingerprint -sha256
+    # s_client's output goes into a variable first: x509 stops reading after the certificate, which
+    # would make s_client fail with a broken pipe and, under pipefail, this with it.
+    local handshake
+    handshake="$(openssl s_client -connect "localhost:$https_port" -servername localhost -tls1_3 </dev/null 2>/dev/null)"
+    openssl x509 -noout -fingerprint -sha256 <<<"$handshake"
 }
 
 in_certs() {
