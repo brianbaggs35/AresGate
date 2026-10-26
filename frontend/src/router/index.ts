@@ -24,6 +24,24 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Dashboard' },
   },
   {
+    // The list, and a page for each incident. Both belong to the one place in the menu.
+    path: '/incidents',
+    children: [
+      {
+        path: '',
+        name: 'incidents',
+        component: () => import('@/views/IncidentsView.vue'),
+        meta: { title: 'Incidents' },
+      },
+      {
+        path: ':id(\\d+)',
+        name: 'incident',
+        component: () => import('@/views/IncidentView.vue'),
+        meta: { title: 'Incidents' },
+      },
+    ],
+  },
+  {
     // The list, and a page for each integration. Both belong to the one place in the menu.
     path: '/integrations',
     children: [

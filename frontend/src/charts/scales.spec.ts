@@ -13,6 +13,16 @@ describe('linear', () => {
 })
 
 describe('valueAxis', () => {
+  it('has no lines between whole numbers for counts', () => {
+    expect(valueAxis(2, 4, true)).toEqual({ ticks: [0, 1, 2], top: 2 })
+    expect(valueAxis(1, 4, true)).toEqual({ ticks: [0, 1], top: 1 })
+    expect(valueAxis(3, 4, true)).toEqual({ ticks: [0, 1, 2, 3], top: 3 })
+    // Larger counts are as they always were.
+    expect(valueAxis(100, 4, true)).toEqual(valueAxis(100))
+    // And others have as many lines as they need.
+    expect(valueAxis(2)).toEqual({ ticks: [0, 0.5, 1, 1.5, 2], top: 2 })
+  })
+
   it.each([
     [0, [0, 1], 1],
     [-4, [0, 1], 1],

@@ -41,6 +41,20 @@ describe('router', () => {
     expect(document.title).toBe('Integrations · AresGate')
   })
 
+  it('shows the incidents, and each one’s page, under one title', async () => {
+    const list = await visit('/incidents')
+    expect(list.name).toBe('incidents')
+    expect(pageTitle(list)).toBe('Incidents')
+    const one = await visit('/incidents/12')
+    expect(one.name).toBe('incident')
+    expect(one.params.id).toBe('12')
+    expect(document.title).toBe('Incidents · AresGate')
+  })
+
+  it('shows an address that is not a number as a page that is not there', async () => {
+    expect((await visit('/incidents/twelve')).name).toBe('not-found')
+  })
+
   it('lazy-loads every view module', async () => {
     const records = routes.flatMap((route) => [route, ...(route.children ?? [])])
     const loaders = records

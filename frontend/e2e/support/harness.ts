@@ -66,6 +66,32 @@ export interface ActivityRecord {
   collectors: number
 }
 
+/** An attack that programs saw, as `createIncidents()` stores it. All of it is optional. */
+export interface IncidentRequest {
+  /** Where it came from: a public address, since the documentation ranges are not outside the
+   * network as far as the engine is concerned. The next of a few is used when it isn't given. */
+  address?: string
+  severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
+  /** Which integrations saw it, in turn: the signals are shared between them. */
+  programs?: string[]
+  /** How many alerts there are, a few minutes apart. */
+  signals?: number
+  /** Whether CrowdSec banned the address. */
+  ban?: boolean
+  /** How long ago the last signal was. */
+  minutes_ago?: number
+  /** The device on the network that was attacked, and what it is called when it is known. */
+  device?: string
+  device_name?: string
+  status?: 'open' | 'investigating' | 'resolved' | 'dismissed'
+}
+
+/** How much `createIncidents()` stored. */
+export interface IncidentsRecord {
+  signals: number
+  incidents: number
+}
+
 /** The kinds of integration a stand-in can answer like. */
 export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh'
 
@@ -203,6 +229,14 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/activity', { data: request })
       .then((response) => readJson<ActivityRecord>(response, 'Making activity'))
+  }
+
+  /** Stores the alerts of some attacks as of now and files them into incidents, as the worker
+   * would have, for the Incidents pages to show. */
+  createIncidents(incidents: IncidentRequest[]): Promise<IncidentsRecord> {
+    return this.api
+      .post('/api/__test__/factories/incidents', { data: { incidents } })
+      .then((response) => readJson<IncidentsRecord>(response, 'Making incidents'))
   }
 
   /** Starts a server that answers like an integration. It runs until the next test's clean. */

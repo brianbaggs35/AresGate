@@ -27,6 +27,21 @@ sits in one row above it. The page asks again every 30 seconds with `usePolling`
 while the tab is in the background, and a quiet refresh does not dim the charts, only one that
 somebody asked for.
 
+## Incidents
+
+The Incidents pages are built from the same parts. The list is `IncidentCard`s in one column
+(each a single link to its incident, with an accent bar in the color of its severity, and a
+confidence meter that says *High confidence*, not only 100%); what it is narrowed to lives in the
+route's query (`view`, `severity`, `confidence`, `address`), never in component state, so a link
+reproduces it. An incident's page reads in the order a person asks: what is it and what can I
+do (the header and its buttons), the numbers, why is AresGate sure (`IncidentReasons`: the bar
+and the list use the chart palette, in the same order, so a color is always the same reason),
+who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program) and then
+every signal (`IncidentTimeline`). The status is always an icon and a word
+(`IncidentStatusChip`), and the changes are named by what they do (*Resolve*, not *Done*). The
+primary action is the one to reach for next, and the page confirms a change in an `output`.
+Status looks, wording and the filters' choices are in `src/incidents.ts`.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

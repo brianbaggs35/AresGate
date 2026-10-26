@@ -38,6 +38,8 @@ const props = withDefaults(
     stacked?: boolean
     /** How a value reads, on the axis and in the tooltip. */
     format?: (value: number) => string
+    /** The values are counts, so the axis has no lines between whole numbers. */
+    whole?: boolean
     /** The height of a vertical chart, with its labels. */
     height?: number
     loading?: boolean
@@ -50,6 +52,7 @@ const props = withDefaults(
     orientation: 'horizontal',
     stacked: false,
     format: undefined,
+    whole: false,
     height: 220,
     loading: false,
     emptyTitle: undefined,
@@ -118,7 +121,7 @@ const labelWidth = computed(() => {
   const longest = Math.max(0, ...props.categories.map(({ length }) => length))
   return Math.min(longest * CHARACTER + 8, width.value * 0.4)
 })
-const axis = computed(() => valueAxis(largest.value))
+const axis = computed(() => valueAxis(largest.value, 4, props.whole))
 const labelled = computed(() => props.stacked || shown.value.length === 1)
 const left = computed(() => {
   if (!vertical.value) return labelWidth.value + 8

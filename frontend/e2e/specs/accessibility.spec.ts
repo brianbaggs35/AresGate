@@ -12,6 +12,52 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the incidents, and the page of one, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      incidents,
+      incident,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'critical',
+          programs: ['wazuh', 'opnsense', 'crowdsec'],
+          signals: 8,
+          ban: true,
+          minutes_ago: 4,
+          device_name: 'nas',
+        },
+        { address: '8.8.8.8', severity: 'high', programs: ['wazuh', 'opnsense'], signals: 3 },
+        { address: '1.1.1.1', severity: 'medium', programs: ['ntopng'], status: 'investigating' },
+        { address: '9.9.9.9', severity: 'low', programs: ['opnsense'], status: 'resolved' },
+      ])
+      await incidents.goto()
+      await expect(incidents.cards).toHaveCount(3)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await incidents.search('8.8')
+      await expect(incidents.address).toContainText('Type a whole IP address')
+      await expectAccessible(page)
+
+      await incidents.goto('?view=all&address=203.0.113.77')
+      await expect(incidents.empty).toContainText('Nothing matches')
+      await expectAccessible(page)
+
+      await incidents.goto()
+      await incidents.cards.first().click()
+      await expect(incident.reasonsCard).toBeVisible()
+      await expect(incident.signals.first()).toBeVisible()
+      await expectAccessible(page)
+
+      await incident.action('investigating').click()
+      await expect(incident.notice).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the not-found page has no WCAG 2.2 AA problems', async ({ page, shell }) => {
       await page.goto('/no/such/page')
       await shell.chooseTheme(theme)
