@@ -7,7 +7,7 @@ const open = (width: number, route: string) =>
 describe('AppBar', () => {
   it("shows the page's title beside the menu", async () => {
     const { wrapper } = await open(1280, '/')
-    expect(wrapper.find('[data-test="page-title"]').text()).toBe('Overview')
+    expect(wrapper.find('[data-test="page-title"]').text()).toBe('Dashboard')
     expect(wrapper.find('[data-test="app-logo"]').exists()).toBe(false)
   })
 

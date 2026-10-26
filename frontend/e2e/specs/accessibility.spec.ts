@@ -3,9 +3,9 @@ import { authenticatorCode, connectFirewall, expect, expectAccessible, test } fr
 // Both themes, since contrast is checked against the colors each one draws.
 for (const theme of ['light', 'dark'] as const) {
   test.describe(`accessibility in the ${theme} theme`, () => {
-    test('the overview has no WCAG 2.2 AA problems', async ({ page, overview, shell }) => {
-      await overview.goto()
-      await expect(overview.databaseStatus).toHaveText('Database: Connected')
+    test('the dashboard has no WCAG 2.2 AA problems', async ({ page, dashboard, shell }) => {
+      await dashboard.goto()
+      await expect(dashboard.banner).toBeVisible()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 
@@ -137,6 +137,60 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(data.eventsChart.getByTestId('chart-table')).toBeVisible()
       await expectAccessible(page)
     })
+
+    test('the dashboard asking for attention, read and as tables, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      dashboard,
+      shell,
+    }) => {
+      await harness.createActivity({
+        collectors: ['ok', 'problem'],
+        alerts: { critical: 1, high: 1, medium: 2, low: 1, info: 2 },
+        blocked: { '203.0.113.9': 5, '198.51.100.7': 2 },
+        traffic: { igc0: 80, igc1: 5 },
+        devices: 2,
+      })
+      await dashboard.goto()
+      await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
+      await expect(dashboard.alertRows).toHaveCount(7)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await dashboard.trafficChart.getByRole('img').scrollIntoViewIfNeeded()
+      const plot = await dashboard.trafficChart.getByRole('img').boundingBox()
+      await page.mouse.move((plot?.x ?? 0) + (plot?.width ?? 0) * 0.9, (plot?.y ?? 0) + 80)
+      await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toBeVisible()
+      await expectAccessible(page)
+
+      for (const card of [dashboard.trafficCard, dashboard.alertsCard, dashboard.sourcesCard]) {
+        await card.getByTestId('chart-view').click()
+        await expect(card.getByTestId('chart-table')).toBeVisible()
+      }
+      await expectAccessible(page)
+    })
+
+    for (const [state, collectors] of [
+      ['setup', []],
+      ['calm', ['ok']],
+      ['watch', ['problem']],
+    ] as const) {
+      test(`the dashboard saying ${state} has no WCAG 2.2 AA problems`, async ({
+        page,
+        harness,
+        dashboard,
+        shell,
+      }) => {
+        await harness.createActivity({ collectors: [...collectors] })
+        await dashboard.goto()
+        await expect(dashboard.banner).toHaveAttribute('data-state', state)
+        await shell.chooseTheme(theme)
+        await shell.expectTheme(theme)
+
+        await expectAccessible(page)
+      })
+    }
 
     test('the status page, and its warning, have no WCAG 2.2 AA problems', async ({
       page,
@@ -296,8 +350,8 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
-    test('the account menu has no WCAG 2.2 AA problems', async ({ page, overview, shell }) => {
-      await overview.goto()
+    test('the account menu has no WCAG 2.2 AA problems', async ({ page, dashboard, shell }) => {
+      await dashboard.goto()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       await shell.userMenu.click()
@@ -355,8 +409,8 @@ for (const theme of ['light', 'dark'] as const) {
       })
     })
 
-    test('the theme menu has no WCAG 2.2 AA problems', async ({ page, overview, shell }) => {
-      await overview.goto()
+    test('the theme menu has no WCAG 2.2 AA problems', async ({ page, dashboard, shell }) => {
+      await dashboard.goto()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       await shell.themeToggle.click()
@@ -459,8 +513,8 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test.describe('theme', () => {
-  test('keeps the choice after a reload', async ({ page, overview, shell }) => {
-    await overview.goto()
+  test('keeps the choice after a reload', async ({ page, dashboard, shell }) => {
+    await dashboard.goto()
     await shell.chooseTheme('dark')
     await shell.expectTheme('dark')
 
@@ -471,7 +525,7 @@ test.describe('theme', () => {
 
   test('still works when the browser will not store settings', async ({
     page,
-    overview,
+    dashboard,
     shell,
   }) => {
     await page.addInitScript(() => {
@@ -482,7 +536,7 @@ test.describe('theme', () => {
       Storage.prototype.setItem = refuse
     })
     await page.emulateMedia({ colorScheme: 'light' })
-    await overview.goto()
+    await dashboard.goto()
     await shell.expectTheme('light')
 
     await shell.chooseTheme('dark')
@@ -490,9 +544,9 @@ test.describe('theme', () => {
     await shell.expectTheme('dark')
   })
 
-  test('follows the browser when the choice is System', async ({ page, overview, shell }) => {
+  test('follows the browser when the choice is System', async ({ page, dashboard, shell }) => {
     await page.emulateMedia({ colorScheme: 'dark' })
-    await overview.goto()
+    await dashboard.goto()
     await shell.chooseTheme('system')
     await shell.expectTheme('dark')
 

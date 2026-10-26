@@ -1,23 +1,29 @@
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as collectorsApi from '@/api/collectors'
+import * as dashboardApi from '@/api/dashboard'
 import App from '@/App.vue'
 import { guardRoutes } from '@/router/guard'
 import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
+import { report } from '@/test/collectors'
+import { dashboard } from '@/test/dashboard'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 const signedIn = { route: '/', signedIn: 'admin' }
 
 describe('App', () => {
   it('shows the app bar, the menu at the side and the page for the route', async () => {
+    vi.spyOn(dashboardApi, 'fetchDashboard').mockResolvedValue(dashboard())
+    vi.spyOn(collectorsApi, 'fetchCollectors').mockResolvedValue(report())
     const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
     await flushPromises()
-    expect(wrapper.find('[data-test="page-title"]').text()).toBe('Overview')
+    expect(wrapper.find('[data-test="page-title"]').text()).toBe('Dashboard')
     expect(wrapper.find('.app-drawer').exists()).toBe(true)
     expect(wrapper.find('.v-bottom-navigation').exists()).toBe(false)
     expect(wrapper.find('[data-test="theme-toggle"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="user-menu"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="status-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="posture"]').exists()).toBe(true)
   })
 
   it('puts the menu at the bottom on a phone', async () => {

@@ -15,6 +15,18 @@ something they don't do, change the part (or add a new one) rather than styling 
 | `FactList` | Facts as labelled values (the versions on the Status page): the label beside its value where there is room, and above it on a phone. |
 | `UsageMeter` | How much of something is used: a bar that turns amber from 75% and red from 90%, with the figures in words so the meaning never rests on colour. |
 
+## The dashboard
+
+The first page is built from the parts above and the charts below, in this order, and a page
+that grows beside it should keep the order: what needs attention (`SecurityBanner`), the numbers
+(`StatTile`), then charts, then lists. The banner is never only a color: each of its four states
+has its own icon and words, it announces a change politely (`role="status"`), and it never says
+all is quiet while the collectors that would raise an alarm are not working. The time range and
+the refresh button sit in the page header; a chart's own filter (the interface for the traffic)
+sits in one row above it. The page asks again every 30 seconds with `usePolling`, which waits
+while the tab is in the background, and a quiet refresh does not dim the charts, only one that
+somebody asked for.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

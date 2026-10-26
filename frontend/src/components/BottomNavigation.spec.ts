@@ -12,10 +12,10 @@ describe('BottomNavigation', () => {
 
   it('lists the places, and marks the one that is open', async () => {
     const { wrapper } = await open('/')
-    const overview = wrapper.find('[data-test="nav-home"]')
-    expect(overview.text()).toBe('Overview')
-    expect(overview.attributes('href')).toBe('/')
-    expect(overview.classes()).toContain('v-btn--active')
+    const dashboard = wrapper.find('[data-test="nav-home"]')
+    expect(dashboard.text()).toBe('Dashboard')
+    expect(dashboard.attributes('href')).toBe('/')
+    expect(dashboard.classes()).toContain('v-btn--active')
   })
 
   it('keeps Integrations marked on the page of one of them', async () => {

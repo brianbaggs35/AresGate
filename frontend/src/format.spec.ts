@@ -1,6 +1,7 @@
 import {
   describeBrowser,
   formatAgo,
+  formatBitrate,
   formatBytes,
   formatCompact,
   formatCount,
@@ -188,5 +189,25 @@ describe('formatFigure', () => {
     expect(formatFigure(9999, 'en-US')).toBe('9,999')
     expect(formatFigure(12_900, 'en-US')).toBe('12.9K')
     expect(formatFigure(-12_900, 'en-US')).toBe('-12.9K')
+  })
+})
+
+describe('formatBitrate', () => {
+  it('says bits, kilobits, megabits and gigabits a second, in thousands', () => {
+    expect(formatBitrate(0)).toBe('0 b/s')
+    expect(formatBitrate(950)).toBe('950 b/s')
+    expect(formatBitrate(1_500)).toBe('1.5 kb/s')
+    expect(formatBitrate(80_000_000)).toBe('80 Mb/s')
+    expect(formatBitrate(123_456_789)).toBe('123 Mb/s')
+    expect(formatBitrate(2_500_000_000)).toBe('2.5 Gb/s')
+  })
+
+  it('moves up a unit instead of rounding to a thousand', () => {
+    expect(formatBitrate(999_600)).toBe('1 Mb/s')
+    expect(formatBitrate(999_400)).toBe('999 kb/s')
+  })
+
+  it('goes on to terabits for a link nobody has at home', () => {
+    expect(formatBitrate(3_000_000_000_000)).toBe('3 Tb/s')
   })
 })

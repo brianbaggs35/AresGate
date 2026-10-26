@@ -9,9 +9,9 @@ async function visit(path: string) {
 }
 
 describe('router', () => {
-  it('shows the overview at the root and titles the page', async () => {
+  it('shows the dashboard at the root and titles the page', async () => {
     expect((await visit('/')).name).toBe('home')
-    expect(document.title).toBe('Overview · AresGate')
+    expect(document.title).toBe('Dashboard · AresGate')
   })
 
   it('shows the not-found page for any other address', async () => {
@@ -27,7 +27,7 @@ describe('router', () => {
   })
 
   it("gives a page's title, if it has one", async () => {
-    expect(pageTitle(await visit('/'))).toBe('Overview')
+    expect(pageTitle(await visit('/'))).toBe('Dashboard')
     expect(pageTitle({ meta: {} })).toBeUndefined()
   })
 

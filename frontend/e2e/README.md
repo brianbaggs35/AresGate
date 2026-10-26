@@ -18,7 +18,7 @@ The specs run against a test server in one of two ways, and CI runs both:
 ```sh
 make install           # once: dependencies and Playwright's Chromium
 make e2e               # build and start the test container, then run every spec
-make e2e ARGS="overview --project=mobile"   # just some of them
+make e2e ARGS="dashboard --project=mobile"   # just some of them
 make e2e-host          # the same specs, with no container
 make e2e-up            # keep the test container running (with the baseline loaded) ...
 make e2e-ui            # ... and write specs in Playwright's UI,
@@ -42,9 +42,9 @@ tablet. Import from `../support`:
 ```ts
 import { expect, test } from '../support'
 
-test('shows that the API is up', async ({ overview }) => {
-  await overview.goto()
-  await expect(overview.apiStatus).toHaveText('API: Running')
+test('shows the dashboard', async ({ dashboard }) => {
+  await dashboard.goto()
+  await expect(dashboard.banner).toBeVisible()
 })
 ```
 
