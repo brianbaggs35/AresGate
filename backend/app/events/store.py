@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
 
+from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,41 @@ def record(db: Session, settings: Settings, events: Sequence[NewEvent], now: dat
         .returning(Event.id)
     )
     return len(db.execute(statement, rows).all())
+
+
+def record_unseen(
+    db: Session, settings: Settings, events: Sequence[NewEvent], now: datetime
+) -> int:
+    """Stores the events whose identity isn't stored yet, whenever the one stored was dated, and
+    returns how many were new. It is for events with no time of their own, such as a ban that
+    stays in force until it runs out, which a collector dates by when it first saw it: read again
+    a minute later it would be a new event every time, because the same event is told by its time
+    as well as its identity. An event whose stored copy has been removed for its age is new
+    again. The caller commits."""
+    if not events:
+        return 0
+    kept = retention.load(db, settings)
+    wanted: dict[str, set[str]] = {}
+    for event in events:
+        wanted.setdefault(event.source, set()).add(event.fingerprint)
+    # Each source is looked back over for as long as it keeps its events.
+    known = set(
+        db.execute(
+            select(Event.source, Event.fingerprint).where(
+                or_(
+                    *(
+                        and_(
+                            Event.source == source,
+                            Event.fingerprint.in_(fingerprints),
+                            Event.occurred_at >= now - timedelta(days=kept.days(source)),
+                        )
+                        for source, fingerprints in wanted.items()
+                    )
+                )
+            )
+        ).tuples()
+    )
+    return record(db, settings, [e for e in events if (e.source, e.fingerprint) not in known], now)
 
 
 def _when(occurred_at: datetime, now: datetime) -> datetime:

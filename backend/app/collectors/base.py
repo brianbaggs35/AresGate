@@ -58,6 +58,12 @@ class Context:
         same window twice is harmless."""
         return await self.save(lambda db: events.record(db, self.settings, new, utcnow()))
 
+    async def record_unseen(self, new: Sequence[NewEvent]) -> int:
+        """Stores the events a run read that have no time of their own, dated by this run, and
+        returns how many were new: one whose identity is stored already is skipped, whenever
+        that was, so reading the same thing every minute is harmless."""
+        return await self.save(lambda db: events.record_unseen(db, self.settings, new, utcnow()))
+
     async def record_samples(self, samples: Sequence[NewSample]) -> int:
         """Stores the numbers a run measured, in a session of its own, and returns how many were
         new: a series read at the same moment twice, or at a moment older than its source keeps

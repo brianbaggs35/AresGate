@@ -472,6 +472,35 @@ test.describe('integrations', () => {
       await expect(integration.logCalls).toHaveCount(1)
       await expect(integration.logCalls.first()).toContainText('403')
     })
+
+    test('keeps the bans made here and counts how many are in force', async ({
+      harness,
+      integration,
+    }) => {
+      const crowdsec = await harness.standIn({ kind: 'crowdsec', api_key: KEY })
+      await integration.goto('crowdsec')
+      await integration.address('lapi').fill(crowdsec.url)
+      await integration.field('lapi', 'api_key').fill(KEY)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(2)
+      await expect(integration.collectors).toContainText(['Connection check', 'Bans'])
+      await expect(integration.collectorStates).toHaveText(['Working', 'Working'])
+      await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // Two of its four decisions are its own and one is a manual ban; the community blocklist
+      // is left out. Seeing a ban again does not store it again, but each run counts them.
+      expect((await harness.rowCounts()).events).toBe(3)
+      expect((await harness.rowCounts()).metric_samples).toBe(1)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).events).toBe(3)
+      expect((await harness.rowCounts()).metric_samples).toBe(2)
+    })
   })
 
   /** Connects OPNsense to a stand-in with these services installed, pinning its certificate. */

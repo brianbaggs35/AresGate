@@ -21,6 +21,10 @@ Every release's notes are here, newest first. The format follows
 - A **Data** page in Settings, showing for each integration how many events and measurements are
   stored and how long they are kept, and letting you change that. It asks first when a shorter
   time would remove what is already stored ([DOCS/operations.md](DOCS/operations.md#stored-events)).
+- The addresses CrowdSec has banned, read from its local API every minute and kept as events
+  (the address, the scenario and for how long), with how many bans are in force as a metric. Only
+  the bans that came from your own logs or by hand are read, not the community blocklist
+  ([DOCS/integrations.md](DOCS/integrations.md#bans)).
 
 ### Fixed
 

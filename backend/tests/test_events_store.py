@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address
 
@@ -6,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.events import retention
-from app.events.event import Severity
-from app.events.store import FUTURE_TOLERANCE, record
+from app.events.event import NewEvent, Severity
+from app.events.store import FUTURE_TOLERANCE, record, record_unseen
 from app.models import Event
 from app.partitions import EVENTS, Partition
 from tests.helpers import new_event
@@ -177,3 +178,84 @@ def test_the_count_is_of_the_new_events_across_batches_larger_than_one_statement
 
     assert record(session, settings, events, NOW) == 2500
     assert session.scalar(select(func.count()).select_from(Event)) == 2500
+
+
+class TestRecordingWhatWasntSeen:
+    def test_an_event_seen_before_is_skipped_whenever_it_was_dated(
+        self, session: Session, settings: Settings
+    ) -> None:
+        ban = new_event(occurred_at=NOW, identity=("ban", 1))
+
+        assert record_unseen(session, settings, [ban], NOW) == 1
+        later = new_event(occurred_at=NOW + timedelta(minutes=1), identity=("ban", 1))
+        assert record_unseen(session, settings, [later], NOW + timedelta(minutes=1)) == 0
+        session.commit()
+
+        assert [row.occurred_at for row in stored(session)] == [NOW]
+
+    def test_events_that_differ_are_each_stored_and_only_the_new_ones_are_counted(
+        self, session: Session, settings: Settings
+    ) -> None:
+        first = [new_event(occurred_at=NOW, identity=(number,)) for number in range(2)]
+        later = NOW + timedelta(minutes=1)
+        second = [new_event(occurred_at=later, identity=(number,)) for number in range(3)]
+        other = new_event(occurred_at=later, identity=(0,), source="ntopng", connection="api")
+
+        assert record_unseen(session, settings, first, NOW) == 2
+        assert record_unseen(session, settings, [*second, other], later) == 2
+        session.commit()
+
+        assert len(stored(session)) == 4
+
+    def test_nothing_to_store_stores_nothing(self, session: Session, settings: Settings) -> None:
+        assert record_unseen(session, settings, [], NOW) == 0
+        assert EVENTS.existing(session) == []
+
+    def test_an_event_whose_stored_copy_is_past_its_retention_is_new_again(
+        self, session: Session, settings: Settings
+    ) -> None:
+        ban = new_event(occurred_at=NOW, identity=("ban", 1))
+        later = NOW + timedelta(days=settings.event_retention_days + 1)
+        again = new_event(occurred_at=later, identity=("ban", 1))
+
+        assert record_unseen(session, settings, [ban], NOW) == 1
+        assert record_unseen(session, settings, [again], later) == 1
+
+    def test_it_looks_back_over_the_retention_of_the_sources_in_the_batch(
+        self, session: Session, settings: Settings
+    ) -> None:
+        retention.set_days(session, "wazuh", 2)
+        retention.set_days(session, "ntopng", 90)
+        session.flush()
+        later = NOW + timedelta(days=60)
+        first = [
+            new_event(occurred_at=NOW, identity=("a",), source="ntopng", connection="api"),
+            new_event(occurred_at=NOW, identity=("b",)),
+        ]
+        assert record_unseen(session, settings, first, NOW) == 2
+
+        # Sixty days on, what ntopng kept for 90 days is still known, and what wazuh kept for 2
+        # is not, wherever the old copy happens still to be.
+        ntopng, wazuh = (replace_time(event, later) for event in first)
+        assert record_unseen(session, settings, [wazuh], later) == 1
+        assert record_unseen(session, settings, [ntopng], later) == 0
+
+    def test_each_source_in_a_batch_is_looked_back_over_for_as_long_as_it_keeps_events(
+        self, session: Session, settings: Settings
+    ) -> None:
+        retention.set_days(session, "wazuh", 2)
+        retention.set_days(session, "ntopng", 90)
+        session.flush()
+        later = NOW + timedelta(days=60)
+        first = [
+            new_event(occurred_at=NOW, identity=("a",), source="ntopng", connection="api"),
+            new_event(occurred_at=NOW, identity=("b",)),
+        ]
+        assert record_unseen(session, settings, first, NOW) == 2
+
+        # In one batch, ntopng's copy is still known and wazuh's, kept for only 2 days, is not.
+        assert record_unseen(session, settings, [replace_time(e, later) for e in first], later) == 1
+
+
+def replace_time(event: NewEvent, occurred_at: datetime) -> NewEvent:
+    return dataclasses.replace(event, occurred_at=occurred_at)

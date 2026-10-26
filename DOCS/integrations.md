@@ -194,6 +194,30 @@ can reach.
 The local API speaks plain HTTP unless you set up TLS for it. AresGate accepts `http://` there but
 warns that anyone on the network path can read the key.
 
+### Bans
+
+Every minute AresGate asks the local API for the decisions in force and keeps each ban as an event
+(`decision`), with the address, the scenario that fired (`crowdsecurity/ssh-bf`), for how long it
+runs and CrowdSec's own record of it. A ban is medium, any other remedy (a captcha) is low and a
+ban that was only simulated is info. How many decisions are in force is kept as the metric
+`decisions.active`, so a run that finds none still records that there are none.
+
+- **Only what happened here.** It asks for the origins `crowdsec` (a scenario that fired on your
+  own logs) and `cscli` (a ban someone typed in). The community blocklist (`CAPI` and the lists you
+  subscribed to) is tens of thousands of addresses that attacked other people, and is left out so
+  it doesn't bury the ones that attacked you.
+- **When.** The local API gives no time for a decision, so an event is dated by the run that first
+  saw it, which is within a minute of when it was made. A ban seen before is not stored again,
+  however long it has lasted, and if its time runs out and CrowdSec bans the address again it is
+  a new decision with a new number and is stored again.
+- **Ranges.** A ban of a whole range (`203.0.113.0/24`) is kept with its summary, but has no
+  source address, because an event's address is one address.
+- **Alerts aren't read yet.** The alerts behind the decisions, with the events that made them, need
+  a machine login (`cscli machines add`) rather than a bouncer's key, so they come later.
+- **Not tried against a live CrowdSec.** The answer's shape is taken from CrowdSec's documentation
+  and source and tested against a stand-in; if your version answers differently, the Collection
+  card says so and the API log shows the answer.
+
 ## What AresGate will connect to
 
 Every integration is reached the same way, and a few rules are not settings:

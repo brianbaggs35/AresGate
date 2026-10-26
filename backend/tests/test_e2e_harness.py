@@ -11,7 +11,7 @@ import pytest
 from coverage.data import CoverageData
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config as config_module
@@ -21,7 +21,7 @@ from app.config import Settings
 from app.db import get_session
 from app.integrations import netguard, registry, service
 from app.integrations.service import Submission
-from app.models import CollectorHealth, SystemInfo, User, WorkerBeat, utcnow
+from app.models import CollectorHealth, Event, SystemInfo, User, WorkerBeat, utcnow
 from app.security import passwords, setup_code
 from e2e import factories
 from e2e.api import STAND_INS
@@ -444,13 +444,14 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
 
     assert response.status_code == 204
     session.expire_all()
-    [record] = session.scalars(select(CollectorHealth)).all()
-    assert (record.collector, record.integration, record.consecutive_failures) == (
-        "connection-check",
-        "crowdsec",
-        0,
-    )
-    assert record.last_success_at is not None
+    records = session.scalars(select(CollectorHealth).order_by(CollectorHealth.collector)).all()
+    assert [(item.collector, item.integration, item.consecutive_failures) for item in records] == [
+        ("connection-check", "crowdsec", 0),
+        ("crowdsec-decisions", "crowdsec", 0),
+    ]
+    assert all(item.last_success_at is not None for item in records)
+    # The bans made here, and not the one from the community blocklist.
+    assert session.scalar(select(func.count()).select_from(Event)) == 3
 
 
 @pytest.mark.usefixtures("stand_ins")
