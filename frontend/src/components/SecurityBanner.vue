@@ -39,10 +39,10 @@ const LOOKS: Readonly<
       size="32"
       aria-hidden="true"
     />
-    <div class="security-banner__text" role="status">
-      <p class="text-title-large" data-test="posture-title">{{ posture.title }}</p>
-      <p class="text-body-large" data-test="posture-detail">{{ posture.detail }}</p>
-    </div>
+    <output class="security-banner__text">
+      <span class="d-block text-title-large" data-test="posture-title">{{ posture.title }}</span>
+      <span class="d-block text-body-large" data-test="posture-detail">{{ posture.detail }}</span>
+    </output>
     <v-btn
       v-if="action"
       class="security-banner__action"
@@ -71,6 +71,7 @@ const LOOKS: Readonly<
 }
 
 .security-banner__text {
+  display: block;
   min-width: 0;
 }
 
