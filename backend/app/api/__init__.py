@@ -8,6 +8,7 @@ from app.api import (
     auth,
     collectors,
     credentials,
+    dashboard,
     events,
     health,
     integrations,
@@ -30,6 +31,7 @@ api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(collectors.router)
+api_router.include_router(dashboard.router)
 api_router.include_router(events.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audit.router)
