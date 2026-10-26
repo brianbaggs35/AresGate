@@ -8,8 +8,9 @@ read."""
 from collections.abc import Mapping
 from datetime import timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, Context, Outcome
-from app.collectors.opnsense import leases, traffic
+from app.collectors.opnsense import leases
 
 LEASES_PATH = "/api/kea/leases4/search"
 

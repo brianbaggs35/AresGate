@@ -8,8 +8,8 @@ monitoring has measured it, its ``delay`` (``1.2 ms``), ``stddev`` (``0.3 ms``) 
 
 from datetime import timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.collectors.opnsense.readings import Readings, leading_number
 from app.integrations import probes

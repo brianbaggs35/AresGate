@@ -9,8 +9,8 @@ file system's size, use and mount point; newer versions also give bytes)."""
 import re
 from datetime import timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.collectors.opnsense.readings import Readings, number
 from app.integrations import probes

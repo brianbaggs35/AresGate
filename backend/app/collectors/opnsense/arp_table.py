@@ -9,8 +9,8 @@ entries. An address that did not answer is left out by OPNsense."""
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.devices.sighting import NewSighting
 from app.integrations import probes

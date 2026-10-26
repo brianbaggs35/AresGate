@@ -1,13 +1,13 @@
-"""What the OPNsense collectors have in common when they read a line of traffic: the strings and
-numbers a JSON object holds, how to write an address with its port, and how to tell lines apart
-that agree on everything they say."""
+"""What the collectors have in common when they read a line of traffic: the strings and numbers a
+JSON object holds, how to write an address with its port, and how to tell lines apart that agree
+on everything they say."""
 
 from collections import Counter
 from collections.abc import Mapping
 
 
 def text(entry: Mapping[str, object], key: str) -> str:
-    """A member as text: what OPNsense gives as a string or a number, or nothing."""
+    """A member as text: what a product gives as a string or a number, or nothing."""
     value = entry.get(key)
     return str(value) if isinstance(value, str | int) else ""
 
