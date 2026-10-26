@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 
 from app.collectors.base import Collector
 from app.collectors.connection_check import ConnectionCheck
+from app.collectors.crowdsec.decisions import Decisions
 from app.collectors.opnsense.arp_table import ArpTable
 from app.collectors.opnsense.cpu_usage import CpuUsage
 from app.collectors.opnsense.dnsmasq_leases import DnsmasqLeases
@@ -25,6 +26,7 @@ COLLECTORS: Sequence[Collector] = (
     ArpTable(),
     DnsmasqLeases(),
     KeaLeases(),
+    Decisions(),
 )
 
 

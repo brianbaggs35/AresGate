@@ -208,17 +208,74 @@ def ntopng(token: str) -> Handler:
     return handle
 
 
-def crowdsec(api_key: str) -> Handler:
-    """CrowdSec's local API, which asks for decisions about an address with a bouncer's key."""
+def crowdsec(api_key: str, decisions: Sequence[Mapping[str, object]] = ()) -> Handler:
+    """CrowdSec's local API, with a bouncer's key. A question about one address has no decisions
+    to give. One that names the origins it wants is answered with the decisions of those origins,
+    as the real API does, and ``null`` when there are none."""
 
     def handle(seen: Seen) -> Answer:
         if seen.path != "/v1/decisions":
             return _json({"message": "not found"}, 404)
         if seen.headers.get("x-api-key") != api_key:
             return _json({"message": "access forbidden"}, 403)
+        origins = parse_qs(urlsplit(seen.target).query).get("origins")
+        if origins:
+            wanted = origins[0].split(",")
+            chosen = [item for item in decisions if item.get("origin") in wanted]
+            if chosen:
+                return _json(chosen)
         return Answer(body="null", headers={"Content-Type": "application/json"})
 
     return handle
+
+
+def sample_crowdsec_decisions() -> list[dict[str, object]]:
+    """Four decisions in force, in the form CrowdSec's local API reports them: a scenario that
+    fired here banned an address, a ban by hand of a whole range, a captcha for another address
+    (the remedy is not always a ban), and a ban from the community blocklist, which is not about
+    this network."""
+    return [
+        {
+            "id": 101,
+            "origin": "crowdsec",
+            "type": "ban",
+            "scope": "Ip",
+            "value": "198.51.100.7",
+            "duration": "3h59m12s",
+            "scenario": "crowdsecurity/ssh-bf",
+            "simulated": False,
+        },
+        {
+            "id": 102,
+            "origin": "cscli",
+            "type": "ban",
+            "scope": "Range",
+            "value": "203.0.113.0/24",
+            "duration": "23h58m1s",
+            "scenario": "manual 'ban' from 'localhost'",
+            "simulated": False,
+        },
+        {
+            "id": 103,
+            "origin": "crowdsec",
+            "type": "captcha",
+            "scope": "Ip",
+            "value": "192.0.2.77",
+            "duration": "1h2m3s",
+            "scenario": "crowdsecurity/http-crawl-non_statics",
+            "simulated": False,
+        },
+        {
+            "id": 104,
+            "origin": "CAPI",
+            "type": "ban",
+            "scope": "Ip",
+            "value": "192.0.2.99",
+            "duration": "142h3m",
+            "scenario": "crowdsecurity/http-probing",
+            "simulated": False,
+        },
+    ]
 
 
 def _opnsense_time(zone: timedelta) -> str:
@@ -669,7 +726,7 @@ class StandIns:
     ) -> Running:
         handlers: dict[Kind, Handler] = {
             "ntopng": ntopng(token),
-            "crowdsec": crowdsec(api_key),
+            "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
             "opnsense": opnsense(
                 api_key,
                 api_secret,

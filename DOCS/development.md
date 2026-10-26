@@ -112,6 +112,11 @@ many were new, for the run's item count.
   read twice from being stored twice, so it must not hold anything that changes between reads.
 - `severity` is `Severity.INFO` to `Severity.CRITICAL`, which the web app shows as info, low,
   medium, high and critical.
+- An event that has no time of its own, such as a CrowdSec decision, is dated with the run's
+  `context.now` and handed to `await context.record_unseen(events)` instead. The unique index
+  holds the time, so the same state read by a later run would be stored again by `record`;
+  `record_unseen` first looks for the identity among the source's events kept within its
+  retention and stores only the ones it hasn't seen.
 - The table is partitioned by week of `occurred_at` (`app/partitions.py`), made on demand
   under an advisory lock that the retention purge takes too, so a purge never drops a week an
   event is being written into. That is why the primary key and the unique index both hold the

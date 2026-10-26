@@ -70,6 +70,44 @@ class TestCrowdsec:
     def test_it_has_nothing_elsewhere(self) -> None:
         assert self.handler(seen("/other", **{"x-api-key": "right-key"})).status == 404
 
+    def test_it_gives_the_decisions_of_the_origins_asked_for(self) -> None:
+        handler = stand_ins.crowdsec("right-key", stand_ins.sample_crowdsec_decisions())
+        asked = seen("/v1/decisions?origins=crowdsec,cscli", **{"x-api-key": "right-key"})
+
+        answer = handler(asked)
+
+        assert (answer.status, [item["id"] for item in body(answer)]) == (200, [101, 102, 103])
+        assert answer.headers == {"Content-Type": "application/json"}
+
+    def test_it_gives_only_the_origin_asked_for(self) -> None:
+        handler = stand_ins.crowdsec("right-key", stand_ins.sample_crowdsec_decisions())
+
+        answer = handler(seen("/v1/decisions?origins=CAPI", **{"x-api-key": "right-key"}))
+
+        assert [item["id"] for item in body(answer)] == [104]
+
+    def test_it_has_nothing_for_an_origin_without_decisions(self) -> None:
+        handler = stand_ins.crowdsec("right-key", stand_ins.sample_crowdsec_decisions())
+
+        answer = handler(seen("/v1/decisions?origins=lists:tor", **{"x-api-key": "right-key"}))
+
+        assert (answer.status, answer.body) == (200, "null")
+
+    def test_a_question_about_an_address_has_no_decisions_even_when_it_has_some(self) -> None:
+        handler = stand_ins.crowdsec("right-key", stand_ins.sample_crowdsec_decisions())
+
+        answer = handler(seen("/v1/decisions?ip=192.0.2.1", **{"x-api-key": "right-key"}))
+
+        assert (answer.status, answer.body) == (200, "null")
+
+    def test_the_samples_are_numbered_and_each_has_what_the_collector_reads(self) -> None:
+        samples = stand_ins.sample_crowdsec_decisions()
+
+        assert len({item["id"] for item in samples}) == len(samples)
+        assert all(
+            {"origin", "type", "scope", "value", "duration"} <= set(item) for item in samples
+        )
+
 
 class TestOpnsense:
     credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
@@ -327,6 +365,8 @@ class TestStandIns:
             == 200
         )
         assert fetch(crowdsec.url + "/v1/decisions", **{"X-Api-Key": "a-key"}) == (200, "null")
+        status, text = fetch(crowdsec.url + "/v1/decisions?origins=cscli", **{"X-Api-Key": "a-key"})
+        assert (status, [item["id"] for item in json.loads(text)]) == (200, [102])
 
     @pytest.mark.parametrize("kind", ["opnsense", "zenarmor"])
     def test_opnsense_and_zenarmor_have_a_certificate_of_their_own(
