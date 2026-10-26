@@ -451,7 +451,7 @@ def test_the_collectors_run_when_asked_against_the_stand_ins(
     ]
     assert all(item.last_success_at is not None for item in records)
     # The bans made here, and not the one from the community blocklist.
-    assert session.scalar(select(func.count()).select_from(Event)) == 3
+    assert session.scalar(select(func.count()).select_from(Event)) == 4
 
 
 @pytest.mark.usefixtures("stand_ins")

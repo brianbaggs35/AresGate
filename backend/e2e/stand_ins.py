@@ -230,10 +230,10 @@ def crowdsec(api_key: str, decisions: Sequence[Mapping[str, object]] = ()) -> Ha
 
 
 def sample_crowdsec_decisions() -> list[dict[str, object]]:
-    """Four decisions in force, in the form CrowdSec's local API reports them: a scenario that
+    """Five decisions in force, in the form CrowdSec's local API reports them: a scenario that
     fired here banned an address, a ban by hand of a whole range, a captcha for another address
-    (the remedy is not always a ban), and a ban from the community blocklist, which is not about
-    this network."""
+    (the remedy is not always a ban), a ban from the community blocklist, which is not about this
+    network, and an address banned by an import from a file."""
     return [
         {
             "id": 101,
@@ -273,6 +273,16 @@ def sample_crowdsec_decisions() -> list[dict[str, object]]:
             "value": "192.0.2.99",
             "duration": "142h3m",
             "scenario": "crowdsecurity/http-probing",
+            "simulated": False,
+        },
+        {
+            "id": 105,
+            "origin": "cscli-import",
+            "type": "ban",
+            "scope": "Ip",
+            "value": "192.0.2.150",
+            "duration": "167h59m",
+            "scenario": "imported from a file",
             "simulated": False,
         },
     ]

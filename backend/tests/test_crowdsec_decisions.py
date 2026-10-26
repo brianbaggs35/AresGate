@@ -174,9 +174,10 @@ class TestRunningAgainstCrowdsec:
 
         collect(settings, engine, Decisions())
 
-        assert health(session).last_items == 3
+        assert health(session).last_items == 4
         stored = stored_events(session)
         assert [item.summary for item in stored] == [
+            "Ban 192.0.2.150 for 167h59m: imported from a file",
             "Ban 198.51.100.7 for 3h59m12s: crowdsecurity/ssh-bf",
             "Ban 203.0.113.0/24 for 23h58m1s: manual 'ban' from 'localhost'",
             "Captcha 192.0.2.77 for 1h2m3s: crowdsecurity/http-crawl-non_statics",
@@ -184,20 +185,22 @@ class TestRunningAgainstCrowdsec:
         assert [(item.kind, item.severity) for item in stored] == [
             ("decision", 2),
             ("decision", 2),
+            ("decision", 2),
             ("decision", 1),
         ]
         assert [str(item.src_address) for item in stored] == [
+            "192.0.2.150",
             "198.51.100.7",
             "None",
             "192.0.2.77",
         ]
-        assert active(session) == [3]
+        assert active(session) == [4]
 
         collect(settings, engine, Decisions())
 
         assert health(session).last_items == 0
-        assert len(stored_events(session)) == 3
-        assert active(session) == [3, 3]
+        assert len(stored_events(session)) == 4
+        assert active(session) == [4, 4]
 
     def test_it_asks_for_what_was_decided_here_and_not_the_community_blocklist(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
@@ -209,9 +212,11 @@ class TestRunningAgainstCrowdsec:
 
         [asked] = [item for item in server.seen if item.path == "/v1/decisions"]
         assert asked.method == "GET"
-        assert parse_qs(urlsplit(asked.target).query) == {"origins": ["crowdsec,cscli"]}
+        assert parse_qs(urlsplit(asked.target).query) == {
+            "origins": ["crowdsec,cscli,cscli-import,console"]
+        }
         assert asked.headers["x-api-key"] == KEY
-        assert (health(session).consecutive_failures, health(session).last_items) == (0, 3)
+        assert (health(session).consecutive_failures, health(session).last_items) == (0, 4)
 
     def test_no_bans_is_a_quiet_network_with_none_banned(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
