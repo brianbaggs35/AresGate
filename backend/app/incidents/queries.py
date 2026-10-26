@@ -62,7 +62,7 @@ def search(
 def counts(db: Session) -> dict[str, int]:
     """How many incidents there are in each status, whatever a search is for."""
     rows = db.execute(select(Incident.status, func.count()).group_by(Incident.status)).all()
-    found = {status: count for status, count in rows}
+    found = dict(rows)
     return {status: found.get(status, 0) for status in INCIDENT_STATUSES}
 
 
