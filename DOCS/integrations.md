@@ -8,7 +8,7 @@ connect it, change its settings, test it or disconnect it.
 | Integration | What it gives AresGate | How it connects |
 | ----------- | ---------------------- | --------------- |
 | OPNsense | Health, interfaces and traffic, gateways, the firewall log, ARP and DHCP, and the services that run on it: Suricata, CrowdSec, OpenVPN, WireGuard, IPsec, Unbound, Dnsmasq, Kea, the ntopng and Wazuh agent plugins, and Zenarmor | API key and secret |
-| ntopng | Live traffic: hosts, flows and throughput | Authentication token, or user name and password |
+| ntopng | Traffic of each host and of the interface, the devices it sees, and its alerts | Authentication token, or user name and password |
 | Wazuh | Alerts from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 
@@ -120,7 +120,9 @@ AresGate keeps a list of the devices it has seen on the network, so that a page 
 analyst can say which device an address belongs to ([Stored devices](operations.md#stored-devices)).
 A device is told apart by its hardware (MAC) address, and has the addresses it has had, a host
 name if it gave one, who made its network card, and when it was first and last seen. Three jobs
-fill the list; each shows on the Collection card with its own state.
+of OPNsense fill the list; each shows on the Collection card with its own state. A fourth, the
+hosts ntopng lists, adds the ones it knows the MAC address of
+([below](#hosts-and-the-devices-among-them)).
 
 | Job | Reads | Every | The user needs |
 | --- | --- | --- | --- |
@@ -172,6 +174,77 @@ else (a Raspberry Pi, a server) is the separate **CrowdSec** integration below.
 
 ntopng answers a login it refuses by redirecting to its login page. AresGate doesn't follow
 redirects (see below), so a refused token shows up as "redirected to its login page".
+
+The user must be allowed to see alerts, which ntopng treats as a capability of its own, and
+AresGate only reads. Everything below is read from the interface that **Interface ID** names,
+every minute.
+
+### Hosts and the devices among them
+
+For every host on the local networks ntopng lists (`mode=local`) AresGate keeps five readings as
+metrics, labelled with the host's address: `host.bytes_sent` and `host.bytes_received` (what it
+has sent and received since ntopng first saw it), `host.throughput_bps`, `host.flows` (the flows
+it is in now) and `host.score` (how suspicious ntopng finds its behaviour so far). The byte
+counters rise, so a chart takes the difference between two readings; ntopng starts a host's again
+when it has forgotten the host, which shows as a drop. Up to 1000 hosts are read.
+
+A host is also a **device** (see [Devices](#devices)) when ntopng says it is in its broadcast
+domain and knows its MAC address, with the name ntopng has for it. A host behind a router is
+left out of the devices, because the MAC address ntopng has for it is the router's.
+
+### The interface's traffic
+
+How much has come in and gone out (`interface.bytes_in`, `interface.bytes_out`, packets and
+drops, and how much went from local hosts to remote ones and back), and how many hosts, local
+hosts, devices and flows ntopng holds and how many alerts are engaged, as metrics labelled with
+the interface's name. The names are those OPNsense's interface traffic uses, so a chart can show
+either. ntopng's own `throughput_bps` isn't read: its documentation doesn't give the unit, and
+the speed is the difference between the counters.
+
+### Flow alerts and host alerts
+
+Every minute the alerts of the last half hour (the newest 500 of each kind) become events
+(`alert`), dated by when the alert began: what ntopng found, how serious it rates it, and the
+hosts and ports it is about. An alert is stored once, by what it says and when it began, so one
+that is still engaged is the same event on every run.
+
+- **How serious.** ntopng's severity (none, debug and info are info, a notice is low, a warning
+  medium, an error high, critical and emergency critical). The grouping is AresGate's.
+- **Addresses.** A flow alert's source is the client and its destination the server, with their
+  ports and the protocol. A host alert is about one host: it is the source if ntopng calls it the
+  attacker, and otherwise the destination, so it can be matched with the firewall's and Wazuh's
+  events about that host.
+- **Not read.** ntopng also keeps alerts for the interface, for networks, devices (MAC
+  addresses), its own system and monitored hosts. AresGate doesn't read those yet.
+
+### Where the ntopng reading comes from
+
+ntopng's documentation has the endpoints and an example of each answer, but not the parameters
+they take, so those are read from ntopng's source. Taken from them, not guessed:
+
+- The [REST API v2 examples](https://www.ntop.org/guides/ntopng/api/rest/examples_v2.html) show
+  `get/host/active.lua` (2.2.1), `get/interface/data.lua` (2.1.1), `get/ntopng/interfaces.lua`
+  (2.1.4) and the alerts list (2.4.2), with the `rc` and `rsp` of every answer.
+- The parameters (`mode`, `all`, `status`, `epoch_begin`, `epoch_end`, `length`, `sort`, `order`)
+  and the fields of an alert record are in ntopng's source, in
+  [`get/host/active.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/host/active.lua),
+  [`get/interface/data.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/interface/data.lua),
+  [`get/flow/alert/list.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/flow/alert/list.lua),
+  [`get/host/alert/list.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/host/alert/list.lua)
+  and the [alert store](https://github.com/ntop/ntopng/tree/dev/scripts/lua/modules/alert_store).
+  That source is the development branch.
+
+Not tried against a live ntopng: the answers are tested against a stand-in built from those
+pages, and a ntopng of another version may differ. If it does, the Collection card says so and the
+API log shows the answer. What was worked out rather than read: that the `status` value `any`
+includes the alerts that are engaged, and which of ntopng's severity numbers is which (from its
+list of severities).
+
+### What ntopng has that AresGate doesn't read yet
+
+ntopng also knows the application protocols and categories of every host's traffic, the flows
+themselves, historical traffic charts, and a host's alerts by type. AresGate doesn't read those
+yet.
 
 ## Wazuh
 

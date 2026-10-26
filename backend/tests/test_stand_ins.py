@@ -37,7 +37,12 @@ class TestNtopng:
         )
 
         assert answer.status == 200
-        assert body(answer) == {"rc": 0, "rsp": [{"ifid": 0, "ifname": "eth0"}]}
+        assert body(answer) == {
+            "rc": 0,
+            "rc_str": "OK",
+            "rc_str_hr": "Success",
+            "rsp": [{"ifid": 0, "ifname": "eth0"}],
+        }
 
     @pytest.mark.parametrize("authorization", ["Token wrong", "Bearer right-token", None])
     def test_it_sends_a_login_it_refuses_to_its_login_page(self, authorization: str | None) -> None:
@@ -51,6 +56,120 @@ class TestNtopng:
         answer = self.handler(seen("/other", authorization="Token right-token"))
 
         assert answer.status == 302
+
+
+class TestNtopngReadings:
+    now = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    login: ClassVar[dict[str, str]] = {"authorization": "Token right-token"}
+
+    def handler(self, **kinds: Any) -> Handler:
+        return stand_ins.ntopng("right-token", **kinds)
+
+    def test_the_hosts_of_the_local_network_are_the_ones_asked_for(self) -> None:
+        handler = self.handler(hosts=stand_ins.sample_ntopng_hosts(self.now))
+
+        local = handler(seen("/lua/rest/v2/get/host/active.lua?ifid=0&mode=local", **self.login))
+        every = handler(seen("/lua/rest/v2/get/host/active.lua?ifid=0", **self.login))
+
+        assert [item["ip"] for item in body(local)["rsp"]["data"]] == [
+            "192.168.1.20",
+            "192.168.1.41",
+            "192.168.2.15",
+        ]
+        assert len(body(every)["rsp"]["data"]) == 4
+        assert (body(local)["rc"], body(local)["rc_str"]) == (0, "OK")
+
+    def test_the_interface_data_is_given_for_the_interface_it_has(self) -> None:
+        handler = self.handler(interface=stand_ins.sample_ntopng_interface())
+
+        answer = handler(seen("/lua/rest/v2/get/interface/data.lua?ifid=0", **self.login))
+
+        assert body(answer)["rsp"]["ifname"] == "eth0"
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/lua/rest/v2/get/host/active.lua",
+            "/lua/rest/v2/get/interface/data.lua",
+            "/lua/rest/v2/get/flow/alert/list.lua",
+            "/lua/rest/v2/get/host/alert/list.lua",
+        ],
+    )
+    def test_an_interface_it_does_not_have_is_an_error_in_the_answer(self, path: str) -> None:
+        answer = self.handler()(seen(f"{path}?ifid=4", **self.login))
+        missing = self.handler()(seen(path, **self.login))
+
+        assert answer.status == 200
+        assert body(answer) == {
+            "rc": -2,
+            "rc_str": "INVALID_INTERFACE",
+            "rc_str_hr": "INVALID_INTERFACE",
+            "rsp": {},
+        }
+        assert body(missing)["rc"] == -2
+
+    def test_the_alerts_between_the_times_asked_for_come_newest_first_up_to_the_length(
+        self,
+    ) -> None:
+        handler = self.handler(flow_alerts=stand_ins.sample_ntopng_flow_alerts(self.now))
+        begin = int((self.now - timedelta(minutes=30)).timestamp())
+        end = int(self.now.timestamp())
+
+        answer = handler(
+            seen(
+                f"/lua/rest/v2/get/flow/alert/list.lua?ifid=0&epoch_begin={begin}&epoch_end={end}"
+                "&length=1&sort=tstamp&order=desc",
+                **self.login,
+            )
+        )
+        all_of_them = handler(
+            seen(
+                f"/lua/rest/v2/get/flow/alert/list.lua?ifid=0&epoch_begin=0&epoch_end={end}",
+                **self.login,
+            )
+        )
+
+        assert [item["row_id"] for item in body(answer)["rsp"]["records"]] == ["101"]
+        assert (body(answer)["recordsTotal"], body(answer)["recordsFiltered"]) == (2, 2)
+        assert [item["row_id"] for item in body(all_of_them)["rsp"]["records"]] == [
+            "101",
+            "100",
+            "99",
+        ]
+
+    def test_the_host_alerts_are_listed_apart_from_the_flow_alerts(self) -> None:
+        handler = self.handler(
+            flow_alerts=stand_ins.sample_ntopng_flow_alerts(self.now),
+            host_alerts=stand_ins.sample_ntopng_host_alerts(self.now),
+        )
+        end = int(self.now.timestamp())
+
+        answer = handler(
+            seen(
+                f"/lua/rest/v2/get/host/alert/list.lua?ifid=0&epoch_begin=0&epoch_end={end}",
+                **self.login,
+            )
+        )
+
+        assert [item["family"] for item in body(answer)["rsp"]["records"]] == ["host", "host"]
+
+    def test_every_one_of_them_sends_a_login_it_refuses_to_the_login_page(self) -> None:
+        answer = self.handler()(seen("/lua/rest/v2/get/host/active.lua?ifid=0"))
+
+        assert answer.status == 302
+
+    def test_the_samples_have_what_the_collectors_read(self) -> None:
+        hosts = stand_ins.sample_ntopng_hosts(self.now)
+        flows = stand_ins.sample_ntopng_flow_alerts(self.now)
+        hosts_alerts = stand_ins.sample_ntopng_host_alerts(self.now)
+
+        assert len({item["ip"] for item in hosts}) == len(hosts)
+        assert all(
+            {"ip", "mac", "name", "bytes", "thpt", "num_flows"} <= set(item) for item in hosts
+        )
+        assert len({item["row_id"] for item in flows + hosts_alerts}) == 5
+        assert all({"tstamp", "severity", "msg", "alert_id"} <= set(item) for item in flows)
+        assert all(item["family"] == "flow" for item in flows)
 
 
 class TestCrowdsec:

@@ -399,6 +399,58 @@ def test_the_collectors_read_the_alerts_and_agents_of_the_wazuh_stand_in(
 
 
 @pytest.mark.usefixtures("stand_ins")
+def test_the_collectors_read_the_hosts_interface_and_alerts_of_the_ntopng_stand_in(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post("/api/__test__/stand-ins", json={"kind": "ntopng", "token": "t"}).json()
+    service.save(
+        session,
+        settings,
+        netguard.HOME_NETWORK_AND_LOOPBACK,
+        registry.INTEGRATIONS["ntopng"],
+        {
+            "api": Submission(
+                url=started["url"],
+                tls_mode="system",
+                tls_ca_pem=None,
+                tls_fingerprint=None,
+                options={"auth": "token", "interface_id": 0},
+                secrets={"token": "t"},
+            )
+        },
+        utcnow(),
+    )
+    session.commit()
+
+    for _ in range(2):
+        assert e2e.post("/api/__test__/collectors/run").status_code == 204
+
+    session.expire_all()
+    records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
+    assert sorted(records) == [
+        "connection-check",
+        "ntopng-alerts",
+        "ntopng-hosts",
+        "ntopng-interface",
+    ]
+    assert {item.consecutive_failures for item in records.values()} == {0}
+    # The second run read the same alerts and found them stored already; it listed the three
+    # local hosts again and measured the interface again.
+    assert {key: item.last_items for key, item in records.items() if key != "connection-check"} == {
+        "ntopng-alerts": 0,
+        "ntopng-hosts": 3,
+        "ntopng-interface": 12,
+    }
+    counts = e2e.get("/api/__test__/database/counts").json()
+    # Two flow alerts and two host alerts of the last half hour, and none of the older one.
+    assert counts["events"] == 4
+    # Five readings of each of three hosts and twelve of the interface, taken twice.
+    assert (counts["metric_series"], counts["metric_samples"]) == (27, 54)
+    # The two hosts in the broadcast domain.
+    assert counts["devices"] == 2
+
+
+@pytest.mark.usefixtures("stand_ins")
 def test_a_stand_in_of_a_kind_that_does_not_exist_is_refused(e2e: TestClient) -> None:
     response = e2e.post("/api/__test__/stand-ins", json={"kind": "nothing"})
 
