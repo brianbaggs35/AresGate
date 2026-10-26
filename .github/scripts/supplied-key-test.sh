@@ -4,8 +4,10 @@
 # only root can read, as a Docker secret is (ARESGATE_SECRET_KEY_FILE). Each time it must come up
 # healthy without making a key of its own, and keep the key out of its processes' environment.
 # Then it supplies a key that is too short, which must stop the container with the reason in the
-# log. Uses (and removes) a .env in the current directory, so run it from the repository root
-# with the image already built, e.g. in CI after the build.
+# log, and never leave an API that answers. That step does not rely on `up --wait`: the container
+# stops and is restarted over and over, and what Compose makes of that is not something to
+# depend on. Uses (and removes) a .env in the current directory, so run it from the repository
+# root with the image already built, e.g. in CI after the build.
 set -euo pipefail
 
 compose=(docker compose)
@@ -60,14 +62,33 @@ check_supplied_key_is_used "in a file" -f docker-compose.yml -f "$workdir/secret
 
 echo "A key that is too short"
 echo 'ARESGATE_SECRET_KEY=too-short' >.env
-if start; then
-    fail "the container started with a secret key that is too short"
-fi
-# Read into a variable first: grep --quiet stops reading at the first match, which would make
+"${compose[@]}" down --volumes >/dev/null 2>&1
+"${compose[@]}" up --detach --no-build
+# The API says why it stopped as it starts, and the container stops with it. Read the log into a
+# variable first: grep --quiet stops reading at the first match, which would make
 # `docker compose logs` fail with a broken pipe and, under pipefail, this check with it.
-logs="$("${compose[@]}" logs --no-color 2>&1)"
+logs=""
+for _ in $(seq 1 60); do
+    logs="$("${compose[@]}" logs --no-color 2>&1)"
+    if grep --quiet 'needs at least 32' <<<"$logs"; then
+        break
+    fi
+    sleep 2
+done
 if ! grep --quiet 'needs at least 32' <<<"$logs"; then
     echo "$logs"
     fail "the log doesn't say the secret key is too short"
 fi
+# However long it is watched, it has no API to answer for: never healthy to Docker, and never to a
+# request.
+for _ in $(seq 1 10); do
+    health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' aresgate)"
+    if [[ "$health" = healthy ]]; then
+        fail "the container was healthy with a secret key that is too short"
+    fi
+    if ./.github/scripts/smoke-test.sh >/dev/null 2>&1; then
+        fail "the API came up with a secret key that is too short"
+    fi
+    sleep 2
+done
 echo "A key that is too short stops the container"
