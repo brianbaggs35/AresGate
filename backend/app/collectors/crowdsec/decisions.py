@@ -1,16 +1,25 @@
 """The addresses CrowdSec has banned, from what it detected on this network, kept as events.
 
 ``GET /v1/decisions`` answers with the decisions in force, as a list, or ``null`` when there are
-none. Each is an object with its ``id``, the ``origin`` that made it (``crowdsec`` for a scenario
-that fired here, ``cscli`` for a ban typed in by hand, ``CAPI`` for the community blocklist), a
-``type`` (``ban``), the ``scope`` and ``value`` it applies to (``Ip`` and an address), how long
-is left (``duration``, such as ``3h59m12s``), the ``scenario`` and whether it is only a
-``simulated`` one. A bouncer's key, which is what AresGate holds, may read nothing else.
+none. Each is an object with its ``id``, the ``origin`` that made it, a ``type`` (``ban``), the
+``scope`` and ``value`` it applies to (``Ip`` and an address), how long is left (``duration``,
+such as ``3h59m12s``), the ``scenario`` and whether it is only a ``simulated`` one. A bouncer's
+key, which is what AresGate holds, may read nothing else.
 
-Only the origins ``crowdsec`` and ``cscli`` are asked for. The community blocklist is tens of
-thousands of addresses that attacked other people, which would drown the ones that attacked this
-network. The answer carries no time for when a decision was made, so an event is dated by the
-run that first saw it, and a decision seen before is skipped, however long ago that was."""
+Only the origins that are about this network are asked for, with the ``origins`` parameter of
+that endpoint: ``crowdsec`` (a scenario that fired on its own logs), ``cscli`` (a ban typed in by
+hand), ``cscli-import`` (bans imported from a file) and ``console`` (named in CrowdSec's source;
+what the Console puts under it isn't described in its documentation). ``CAPI``, the community
+blocklist, and ``lists:*``, the lists subscribed to, are tens of thousands of addresses that
+attacked other people, which would drown the ones that attacked this network;
+``remediation_sync`` is left out because nothing says it is about this network. The answer
+carries no time for when a decision was made, so an event is dated by the run that first saw it,
+and a decision seen before is skipped, however long ago that was.
+
+Read from CrowdSec's documentation: the answer in the local API's bouncers guide, the
+``origins`` parameter and which calls a bouncer's key may make in its OpenAPI specification
+(``pkg/models/localapi_swagger.yaml``), and the origins in ``pkg/types/constants.go`` and the
+"decisions management" user guide."""
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
@@ -25,7 +34,7 @@ PRODUCT = "CrowdSec"
 SOURCE = "crowdsec"
 CONNECTION = "lapi"
 # The origins of the decisions that are about this network.
-ORIGINS = "crowdsec,cscli"
+ORIGINS = "crowdsec,cscli,cscli-import,console"
 # The most decisions one run keeps. A home network gets a handful.
 LIMIT = 1000
 ACTIVE = "decisions.active"

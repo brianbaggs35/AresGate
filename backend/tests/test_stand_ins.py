@@ -72,11 +72,17 @@ class TestCrowdsec:
 
     def test_it_gives_the_decisions_of_the_origins_asked_for(self) -> None:
         handler = stand_ins.crowdsec("right-key", stand_ins.sample_crowdsec_decisions())
-        asked = seen("/v1/decisions?origins=crowdsec,cscli", **{"x-api-key": "right-key"})
+        asked = seen(
+            "/v1/decisions?origins=crowdsec,cscli,cscli-import,console",
+            **{"x-api-key": "right-key"},
+        )
 
         answer = handler(asked)
 
-        assert (answer.status, [item["id"] for item in body(answer)]) == (200, [101, 102, 103])
+        assert (answer.status, [item["id"] for item in body(answer)]) == (
+            200,
+            [101, 102, 103, 105],
+        )
         assert answer.headers == {"Content-Type": "application/json"}
 
     def test_it_gives_only_the_origin_asked_for(self) -> None:

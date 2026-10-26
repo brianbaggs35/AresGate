@@ -493,12 +493,13 @@ test.describe('integrations', () => {
       await expect(integration.collectorStates).toHaveText(['Working', 'Working'])
       await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
-      // Two of its four decisions are its own and one is a manual ban; the community blocklist
-      // is left out. Seeing a ban again does not store it again, but each run counts them.
-      expect((await harness.rowCounts()).events).toBe(3)
+      // Two of its five decisions are its own, one is a manual ban and one an import; the
+      // community blocklist is left out. Seeing a ban again does not store it again, but each run
+      // counts them.
+      expect((await harness.rowCounts()).events).toBe(4)
       expect((await harness.rowCounts()).metric_samples).toBe(1)
       await harness.runCollectors()
-      expect((await harness.rowCounts()).events).toBe(3)
+      expect((await harness.rowCounts()).events).toBe(4)
       expect((await harness.rowCounts()).metric_samples).toBe(2)
     })
   })

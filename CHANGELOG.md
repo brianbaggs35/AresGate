@@ -23,7 +23,7 @@ Every release's notes are here, newest first. The format follows
   time would remove what is already stored ([DOCS/operations.md](DOCS/operations.md#stored-events)).
 - The addresses CrowdSec has banned, read from its local API every minute and kept as events
   (the address, the scenario and for how long), with how many bans are in force as a metric. Only
-  the bans that came from your own logs or by hand are read, not the community blocklist
+  the bans that came from your own logs, by hand or from an import are read, not the community blocklist
   ([DOCS/integrations.md](DOCS/integrations.md#bans)).
 
 ### Fixed

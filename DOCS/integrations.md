@@ -203,9 +203,11 @@ ban that was only simulated is info. How many decisions are in force is kept as 
 `decisions.active`, so a run that finds none still records that there are none.
 
 - **Only what happened here.** It asks for the origins `crowdsec` (a scenario that fired on your
-  own logs) and `cscli` (a ban someone typed in). The community blocklist (`CAPI` and the lists you
-  subscribed to) is tens of thousands of addresses that attacked other people, and is left out so
-  it doesn't bury the ones that attacked you.
+  own logs), `cscli` (a ban someone typed in), `cscli-import` (bans imported from a file) and
+  `console` (see the end of this section). The community blocklist (`CAPI`) and the lists you
+  subscribed to (`lists:*`) are tens of thousands of addresses that attacked other people, and are
+  left out so they don't bury the ones that attacked you. `remediation_sync` is left out too,
+  because nothing in CrowdSec's documentation says it is about your network.
 - **When.** The local API gives no time for a decision, so an event is dated by the run that first
   saw it, which is within a minute of when it was made. A ban seen before is not stored again,
   however long it has lasted, and if its time runs out and CrowdSec bans the address again it is
@@ -214,9 +216,32 @@ ban that was only simulated is info. How many decisions are in force is kept as 
   source address, because an event's address is one address.
 - **Alerts aren't read yet.** The alerts behind the decisions, with the events that made them, need
   a machine login (`cscli machines add`) rather than a bouncer's key, so they come later.
-- **Not tried against a live CrowdSec.** The answer's shape is taken from CrowdSec's documentation
-  and source and tested against a stand-in; if your version answers differently, the Collection
-  card says so and the API log shows the answer.
+
+#### Where this comes from, and what isn't tried
+
+Taken from CrowdSec's documentation and source, not guessed:
+
+- What `/v1/decisions` answers is in the
+  [local API's bouncer guide](https://docs.crowdsec.net/docs/next/local_api/bouncers).
+- That a bouncer's key is for the decisions calls and that alerts need a machine login, and the
+  `origins` parameter of `/v1/decisions` and `/v1/decisions/stream`, are in the local API's
+  [OpenAPI specification](https://github.com/crowdsecurity/crowdsec/blob/master/pkg/models/localapi_swagger.yaml).
+- The origins are listed in CrowdSec's
+  [source](https://github.com/crowdsecurity/crowdsec/blob/master/pkg/types/constants.go) and
+  described for `crowdsec`, `cscli`, `CAPI` and `cscli-import` in the
+  [decisions management guide](https://docs.crowdsec.net/u/user_guides/decisions_mgmt).
+
+Not tried against a live CrowdSec: the answers are tested against a stand-in built from those
+pages. If your version answers differently, the Collection card says so and the API log shows the
+answer. The `console` origin is in CrowdSec's source, but its documentation doesn't say what the
+Console puts under it, so including it is a guess that decisions made in the Console are yours.
+
+#### What CrowdSec has that AresGate doesn't read yet
+
+CrowdSec keeps more than the decisions: its alerts say which events made a decision, with the
+country and network (AS) the attacker came from, and a decision lifted early shows in the
+decisions stream. Both need a machine login (`cscli machines add`) or the stream rather than a
+bouncer's key. AresGate doesn't read those yet.
 
 ## What AresGate will connect to
 
