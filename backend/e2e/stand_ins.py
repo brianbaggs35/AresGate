@@ -713,7 +713,7 @@ def wazuh(
     own. Each is told by how a request signs in: the manager gives a token for a user and
     password and then wants it as a bearer, and the indexer wants the user and password on every
     request. It keeps the alerts of ``alerts`` that are newer than the search asks for."""
-    token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcmVzZ2F0ZSJ9.c3RhbmQtaW4"
+    token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcmVzZ2F0ZSJ9.c3RhbmQtaW4"  # nosec B105: made up
     login = _basic(username, password)
 
     def handle(seen: Seen) -> Answer:
