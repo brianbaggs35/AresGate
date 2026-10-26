@@ -10,8 +10,9 @@ lines a second; the events' fingerprints keep a line from being stored twice by 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import clock, traffic
+from app.collectors.opnsense import clock
 from app.collectors.opnsense.api import PRODUCT, read
 from app.events.event import NewEvent, Severity
 from app.integrations import probes

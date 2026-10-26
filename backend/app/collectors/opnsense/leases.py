@@ -8,8 +8,8 @@ answers with them, and the devices the leases are of.
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 
+from app.collectors import traffic
 from app.collectors.base import CollectorFailed, Context, Outcome
-from app.collectors.opnsense import traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.devices.sighting import NewSighting
 from app.integrations import probes

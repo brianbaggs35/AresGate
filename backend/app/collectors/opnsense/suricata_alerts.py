@@ -10,8 +10,8 @@ done about it."""
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
+from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.opnsense import traffic
 from app.collectors.opnsense.api import PRODUCT, read
 from app.events.event import NewEvent, Severity
 from app.integrations import probes
