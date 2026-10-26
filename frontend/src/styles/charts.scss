@@ -1,0 +1,125 @@
+// The colors of every chart, as variables, so each theme has its own steps of the same hues and
+// the charts themselves name a color by its job (see src/charts/palette.ts). They are checked
+// with the data-visualization validator against each theme's card (#ffffff and #0e1626).
+//
+// - `--chart-1` to `--chart-8`: the eight hues that tell series apart, always in this order. Every
+//   adjacent pair is at least 8 apart for people with color blindness in both themes. Three of the
+//   light ones (green, yellow, pink) are under 3:1 against white, so a chart that uses them
+//   always has its legend and its table view.
+// - `--chart-step-1` to `--chart-step-5`: one hue from least to most, for how much of something.
+//   Each step is told from its neighbors by lightness, and the lightest on the page is never
+//   fainter than 2:1 against the card.
+// - `--chart-severity-*`: the levels of src/severity.ts. They are never alone: the icon and the
+//   name go with them.
+@layer aresgate-base {
+  .v-theme--light {
+    --chart-1: #2a78d6;
+    --chart-2: #eb6834;
+    --chart-3: #1baf7a;
+    --chart-4: #eda100;
+    --chart-5: #e87ba4;
+    --chart-6: #008300;
+    --chart-7: #6250d6;
+    --chart-8: #e34948;
+    --chart-other: #94a3b8;
+
+    --chart-step-1: #86b6ef;
+    --chart-step-2: #5598e7;
+    --chart-step-3: #2a78d6;
+    --chart-step-4: #1c5cab;
+    --chart-step-5: #104281;
+
+    --chart-severity-info: #64748b;
+    --chart-severity-low: #0ca30c;
+    --chart-severity-medium: #fab219;
+    --chart-severity-high: #ec835a;
+    --chart-severity-critical: #d03b3b;
+
+    --chart-grid: #e2e8f0;
+    --chart-axis: #cbd5e1;
+    --chart-text: #64748b;
+    --chart-empty: #eef2f6;
+  }
+
+  .v-theme--dark {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-8: #e66767;
+    --chart-other: #64748b;
+
+    --chart-step-1: #184f95;
+    --chart-step-2: #2a78d6;
+    --chart-step-3: #5598e7;
+    --chart-step-4: #86b6ef;
+    --chart-step-5: #b7d3f6;
+
+    --chart-severity-info: #94a3b8;
+    --chart-severity-low: #0ca30c;
+    --chart-severity-medium: #fab219;
+    --chart-severity-high: #ec835a;
+    --chart-severity-critical: #d03b3b;
+
+    --chart-grid: #1b2740;
+    --chart-axis: #2f3d5a;
+    --chart-text: #94a3b8;
+    --chart-empty: #16213a;
+  }
+}
+
+// What every chart draws with, besides the colors.
+@layer aresgate-components {
+  .chart-svg {
+    display: block;
+    max-width: 100%;
+    touch-action: pan-y;
+
+    &:focus-visible {
+      outline: 2px solid rgb(var(--v-theme-primary));
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+  }
+
+  // Axis labels and the like.
+  .chart-text {
+    fill: var(--chart-text);
+    font-size: 12px;
+  }
+
+  // The number at the end of a bar or a line.
+  .chart-value {
+    fill: rgb(var(--v-theme-on-surface));
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Gridlines and axes: hairlines, solid, a step off the card.
+  .chart-grid {
+    stroke: var(--chart-grid);
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+  }
+
+  .chart-axis {
+    stroke: var(--chart-axis);
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+  }
+
+  // What a screen reader is told as the keys move through a chart. The same words are in the
+  // tooltip, which they can't see.
+  .chart-readout {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

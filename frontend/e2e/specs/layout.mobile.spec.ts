@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test } from '../support'
+import { connectFirewall, expect, test } from '../support'
 
 test.describe('layout on a phone', () => {
   test('the overview fits the screen without scrolling sideways', async ({ page, overview }) => {
@@ -222,6 +222,40 @@ test.describe('layout on a phone', () => {
 
       expect(overflow, name).toBeLessThanOrEqual(0)
     }
+  })
+
+  test('draws a chart within the card, and keeps what a tap reads on the screen', async ({
+    page,
+    harness,
+    integration,
+    data,
+  }) => {
+    await connectFirewall(harness, integration, [])
+    await harness.setWorker('running')
+    await harness.runCollectors()
+    await data.goto()
+    const chart = data.eventsChart
+    await expect(chart.getByTestId('bar-value')).toHaveText(['3'])
+
+    const [card, drawing] = await Promise.all([
+      data.eventsCard.boundingBox(),
+      chart.getByRole('img').boundingBox(),
+    ])
+    expect((drawing?.x ?? 0) + (drawing?.width ?? 0)).toBeLessThanOrEqual(
+      (card?.x ?? 0) + (card?.width ?? 0),
+    )
+
+    await chart.getByTestId('bar-slot').first().tap()
+    await expect(chart.getByTestId('chart-tooltip')).toBeVisible()
+    const tip = await chart.getByTestId('chart-tooltip').boundingBox()
+    const viewport = page.viewportSize()?.width ?? 0
+    expect(tip?.x ?? -1).toBeGreaterThanOrEqual(0)
+    expect((tip?.x ?? 0) + (tip?.width ?? 0)).toBeLessThanOrEqual(viewport)
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 
   test('lists the settings pages as tabs across the top, above the page', async ({

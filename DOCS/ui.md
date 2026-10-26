@@ -11,7 +11,7 @@ something they don't do, change the part (or add a new one) rather than styling 
 | `AppPage` | The frame of every page: how wide it may be (`narrow` for a form or a list, `regular` for a page of cards, `wide` for charts and tables), the space around it, and the same gap between everything inside. A page adds no margins of its own. |
 | `PageHeader` | The one `h1` of the page, what it is for, and the actions that belong to the whole page. A page under another has a way back above its title (`back`). It can carry an icon and a badge (the integration pages show their status there). |
 | `SectionCard` | Every group of settings, every list and every panel: a title, what it is for, actions beside the title, then the content. |
-| `StatTile` | One number that matters with its name and a line of context. It leads to where the number comes from when given `to`. |
+| `StatTile` | One number that matters with its name and a line of context, how it has changed (`delta`) and a small trend line (`trend`). It leads to where the number comes from when given `to`. |
 | `FactList` | Facts as labelled values (the versions on the Status page): the label beside its value where there is room, and above it on a phone. |
 | `UsageMeter` | How much of something is used: a bar that turns amber from 75% and red from 90%, with the figures in words so the meaning never rests on colour. |
 
@@ -40,6 +40,65 @@ asks for the password).
 `SeverityChip` (info, low, medium, high, critical) and `StatusChip` (integrations) give each level
 its own icon and its name as well as a color, so nothing depends on telling colors apart. Take
 severities from `src/severity.ts` and don't pick colors by hand.
+
+## Charts
+
+Charts are in `frontend/src/charts`, drawn as SVG with no charting library, so they follow the
+rules below exactly and cost nothing to download. Pick the form from what the data is for:
+
+| Part | Use it for |
+| ---- | ---------- |
+| `BarChart` | Comparing amounts across categories: horizontal for a ranking (the busiest hosts), vertical for amounts by hour or day. Several series go side by side or, with `stacked`, one on top of the other (alerts by severity per hour). |
+| `TimeSeriesChart` | How amounts change over time, one line for each series on one scale from zero; `area` washes the area under it. A gap in the data is a gap in the line, never a zero. |
+| `HeatmapChart` | How much happens at each place on a grid, such as alerts by hour and day. |
+| `SparklineChart` | The shape of how something has been going, beside a number. `StatTile` takes `trend` for one and `delta` for how the number has changed. |
+
+A chart gets its numbers as props and does its own layout, legend, tooltip and table. Say what the
+data is for in `title` and `caption`; there is one chart to a card, in a `SectionCard` or on its
+own, never two scales on one chart (two measures of different size are two charts).
+
+```vue
+<TimeSeriesChart
+  title="Blocked connections"
+  caption="Per 15 minutes, last 24 hours"
+  :times="times"
+  :series="[{ id: 'blocked', label: 'Blocked', values }]"
+  :loading="refreshing"
+/>
+```
+
+What every chart does, and a new one must:
+
+- **Color.** A series takes the next of eight hues in a fixed order (`seriesColor` in
+  `charts/palette.ts`), so the same thing is the same color on every chart, and one that is
+  turned off doesn't repaint the others. There are eight and no more: fold the tail into one
+  "Other" (`--chart-other`). How much of something is one hue in five steps (`stepColor`). A
+  severity is `severityColor`, and always with its icon and name (`SEVERITY`). The colors are
+  CSS variables in `styles/charts.scss`, with their own steps in each theme, checked with the
+  data-visualization validator against the cards (`#ffffff` and `#0e1626`) for color blindness
+  and contrast. Three light hues (green, yellow, pink) are under 3:1 against white, which is why
+  every chart with several series has a legend and a table. Text is never in a series' color.
+- **Marks.** Bars at most 24 px thick with a 4 px round end where the data reaches and a square
+  one at the baseline, and 2 px of card between bars that touch; lines 2 px; dots 10 px across
+  with a 2 px ring of card; an area a 10% wash; gridlines and axes 1 px solid and quiet. A value
+  is written only at the end of a bar or a line, never on every point.
+- **Legend.** One for two series or more, whose entries turn a series off (one always stays on);
+  none for a single series, which the title names.
+- **Table.** Every chart can show the same numbers as a table (the button above it), for anyone
+  who reads that better, and it is where the exact figures are. Anything a tooltip says is there
+  too: tooltips only add.
+- **Reading it.** The pointer or a finger reads a category or moment, a line chart with a
+  crosshair; the arrow keys, Home, End and Escape do the same from the keyboard, and a hidden live
+  region tells a screen reader what the tooltip shows. Each place that answers a pointer is far
+  bigger than its mark.
+- **Loading and nothing to show.** While fresh data loads (`loading`) the chart stays, dimmed,
+  instead of being replaced or jumping. With nothing to draw it says so (`emptyTitle`,
+  `emptyDescription`) rather than draw an empty frame.
+- **Phones.** A chart draws at the width it has, names only as many ticks and labels as fit and
+  drops its end labels when they would crowd. A heatmap keeps its cells touchable and scrolls
+  sideways instead of squeezing them.
+- **Not yet.** A texture for each series (diagonal hatching) for print and forced-colors, which
+  the legend and table stand in for until it lands.
 
 ## Rules for any page
 

@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- Charts for the pages to come: bars (ranked or by hour, side by side or stacked), lines over time,
+  a heatmap of hours and days and small trend lines. Each has a legend that turns a series off,
+  a switch to the same numbers as a table, readouts by pointer, touch or the arrow keys, colors
+  checked for color blindness in both themes, and a layout that works on a phone
+  ([DOCS/ui.md](DOCS/ui.md#charts)). The Data page uses the first: a bar chart of how much each
+  integration has stored. The stat tile can now show how a number has changed and how it has
+  been going.
 - OPNsense's health, traffic and gateways, read every minute and kept as metrics: the load,
   uptime, memory and disk space, the processors' use, the bytes, packets and errors of each
   interface, and whether each gateway is up and how its link is doing. They are four jobs on the

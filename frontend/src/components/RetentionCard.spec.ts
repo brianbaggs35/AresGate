@@ -153,6 +153,48 @@ describe('RetentionCard', () => {
       expect(rows()[2]?.find('[data-test="retention-holds"]').text()).toBe('No events stored')
     })
 
+    it('charts how much each integration has stored, the most first', async () => {
+      const { find } = await open('events', stored([ntopng, wazuh, opnsense]))
+
+      const chart = find('events-chart')
+      expect(chart.find('[data-test="chart-title"]').text()).toBe('Stored by integration')
+      expect(chart.find('[data-test="chart-caption"]').text()).toBe(
+        'How many events each one has stored now.',
+      )
+      expect(chart.findAll('[data-test="bar-category"]').map((name) => name.text())).toEqual([
+        'OPNsense',
+        'Wazuh',
+        'ntopng',
+      ])
+      expect(chart.findAll('[data-test="bar-value"]').map((value) => value.text())).toEqual([
+        '12,408',
+        '1',
+      ])
+    })
+
+    it('calls what a chart counts by its kind: readings for measurements', async () => {
+      const { find } = await open('metrics')
+
+      expect(find('metrics-chart').find('[data-test="chart-caption"]').text()).toBe(
+        'How many readings each one has stored now.',
+      )
+      await find('metrics-chart').find('[data-test="chart-view"]').trigger('click')
+      expect(
+        find('metrics-chart')
+          .findAll('thead th')
+          .map((cell) => cell.text()),
+      ).toEqual(['Integration', 'Measurements'])
+    })
+
+    it('has no chart while nothing is stored, and none when it could not ask', async () => {
+      const nothing = await open('events', stored([ntopng]))
+      expect(nothing.find('events-chart').exists()).toBe(false)
+      expect(nothing.find('retention-list').exists()).toBe(true)
+
+      const failed = await open('events', offline())
+      expect(failed.find('events-chart').exists()).toBe(false)
+    })
+
     it('says reading for one', async () => {
       const { rows } = await open('metrics')
       expect(rows()[1]?.find('[data-test="retention-holds"]').text()).toMatch(/^1 reading · /)

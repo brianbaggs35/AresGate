@@ -102,3 +102,15 @@ export function formatDays(days: number): string {
 export function formatCount(count: number, locale?: string): string {
   return new Intl.NumberFormat(locale).format(count)
 }
+
+/** A number short enough for an axis or a tile, from a thousand up: "950", "1.3K", "4.2M". */
+export function formatCompact(value: number, locale?: string): string {
+  return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(
+    value,
+  )
+}
+
+/** A number for a tile: in full ("1,284") while it fits, short ("12.9K") from ten thousand. */
+export function formatFigure(value: number, locale?: string): string {
+  return Math.abs(value) < 10_000 ? formatCount(value, locale) : formatCompact(value, locale)
+}

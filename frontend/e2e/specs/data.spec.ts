@@ -72,6 +72,84 @@ test.describe('data page', () => {
     ).toHaveText('56 readings · the oldest just now')
   })
 
+  test('has no chart until something is stored', async ({ data }) => {
+    await data.goto()
+    await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(4)
+
+    await expect(data.eventsChart).toBeHidden()
+    await expect(data.metricsChart).toBeHidden()
+  })
+
+  test('charts what each integration has stored, and reads it with the pointer or the keys', async ({
+    page,
+    harness,
+    integration,
+    data,
+  }) => {
+    await connectFirewall(harness, integration, [])
+    await harness.setWorker('running')
+    await harness.runCollectors()
+
+    await data.goto()
+
+    const chart = data.eventsChart
+    await expect(chart.getByTestId('chart-title')).toHaveText('Stored by integration')
+    await expect(chart.getByTestId('chart-caption')).toHaveText(
+      'How many events each one has stored now.',
+    )
+    await expect(chart.getByTestId('bar-category')).toHaveText([
+      'OPNsense',
+      'ntopng',
+      'Wazuh',
+      'CrowdSec',
+    ])
+    await expect(chart.getByTestId('bar-value')).toHaveText(['3'])
+    await expect(chart.getByTestId('chart-tooltip')).toBeHidden()
+
+    await chart.getByTestId('bar-slot').first().hover()
+    await expect(chart.getByTestId('chart-tooltip')).toContainText('OPNsense')
+    await expect(chart.getByTestId('chart-tooltip-row')).toContainText('3')
+    await page.mouse.move(0, 0)
+    await expect(chart.getByTestId('chart-tooltip')).toBeHidden()
+
+    await chart.getByRole('img').focus()
+    await page.keyboard.press('ArrowDown')
+    await expect(chart.getByRole('status')).toHaveText('OPNsense: 3 Events')
+    await expect(chart.getByTestId('chart-tooltip')).toBeVisible()
+    await page.keyboard.press('End')
+    await expect(chart.getByRole('status')).toHaveText('CrowdSec: 0 Events')
+    await page.keyboard.press('Escape')
+    await expect(chart.getByTestId('chart-tooltip')).toBeHidden()
+
+    // The measurements have a chart of their own, with the 28 readings.
+    await expect(data.metricsChart.getByTestId('bar-value')).toHaveText(['28'])
+  })
+
+  test('shows the same numbers as a table, and back as a chart', async ({
+    harness,
+    integration,
+    data,
+  }) => {
+    await connectFirewall(harness, integration, [])
+    await harness.setWorker('running')
+    await harness.runCollectors()
+    await data.goto()
+    const chart = data.eventsChart
+
+    await chart.getByTestId('chart-view').click()
+
+    await expect(chart.getByTestId('bar-chart')).toBeHidden()
+    await expect(chart.getByRole('columnheader')).toHaveText(['Integration', 'Events'])
+    await expect(chart.getByTestId('chart-table-row')).toHaveCount(4)
+    await expect(chart.getByTestId('chart-table-row').first()).toContainText('OPNsense')
+    await expect(chart.getByTestId('chart-table-row').first()).toContainText('3')
+
+    await chart.getByTestId('chart-view').click()
+
+    await expect(chart.getByTestId('bar-chart')).toBeVisible()
+    await expect(chart.getByTestId('chart-table')).toBeHidden()
+  })
+
   test('keeps one integration’s events for the days chosen, and remembers it', async ({
     page,
     data,
