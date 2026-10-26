@@ -11,7 +11,7 @@ from datetime import timedelta
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
 from app.collectors.opnsense.api import PRODUCT, read
-from app.collectors.opnsense.readings import Readings, leading_number
+from app.collectors.readings import Readings, leading_number
 from app.integrations import probes
 
 STATUS_PATH = "/api/routes/gateway/status"
