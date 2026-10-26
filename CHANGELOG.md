@@ -16,7 +16,14 @@ Every release's notes are here, newest first. The format follows
   involved and how often the firewall turned the address away. You can mark one open,
   investigating, resolved or dismissed. Nothing here needs an AI provider
   ([DOCS/operations.md](DOCS/operations.md#incidents)). It is `GET /api/incidents`,
-  `GET /api/incidents/{id}` and `PATCH /api/incidents/{id}` for now; the pages follow.
+  `GET /api/incidents/{id}` and `PATCH /api/incidents/{id}`.
+- **Incidents pages**: Incidents in the menu lists them (active ones to start with; narrow by
+  status, severity, confidence or an address, 25 at a time, kept in the link), and each has a page
+  with its status and the changes you can make, why AresGate is as sure as it is, the addresses
+  and devices on your network involved, a chart of signals over time by program and the timeline
+  of every signal. Both ask again every 30 seconds and work on a phone, in light and dark
+  ([DOCS/operations.md](DOCS/operations.md#the-incidents-pages)). Whole-number axes on count
+  charts: a chart of how many alerts there were no longer has ticks at 0.5.
 - A **Dashboard** in place of the Overview page: a sentence at the top on whether anything needs
   you (it never says all is quiet while collectors are failing), the numbers for alerts, refused
   connections, new devices and collection, a chart of each OPNsense interface's traffic, alerts

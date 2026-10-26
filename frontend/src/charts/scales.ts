@@ -25,10 +25,15 @@ function niceStep(raw: number): number {
 }
 
 /** The gridlines of a value axis from zero: clean steps (0, 5, 10, 15) and the top one, which is
- * at or above `max`. About `target` steps, fewer when the data is small. */
-export function valueAxis(max: number, target = 4): { ticks: number[]; top: number } {
+ * at or above `max`. About `target` steps, fewer when the data is small. A `whole` axis, for
+ * counts, never has a step under one, so it never has a line at half an alert. */
+export function valueAxis(
+  max: number,
+  target = 4,
+  whole = false,
+): { ticks: number[]; top: number } {
   if (max <= 0) return { ticks: [0, 1], top: 1 }
-  const step = niceStep(max / target)
+  const step = whole ? Math.max(1, niceStep(max / target)) : niceStep(max / target)
   const count = Math.ceil(max / step - 1e-9)
   const ticks = Array.from({ length: count + 1 }, (_, index) =>
     Number((index * step).toPrecision(12)),

@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 import coverage
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -169,6 +169,56 @@ def make_activity(body: ActivityRequest, db: Db, settings: SettingsDep) -> Activ
     )
     db.commit()
     return ActivityRecord(**stored._asdict())
+
+
+class IncidentRequest(BaseModel):
+    """One attack that programs saw. All of it is optional: it is made up where left out."""
+
+    address: str | None = None
+    severity: Literal["info", "low", "medium", "high", "critical"] = "high"
+    programs: list[str] = ["wazuh"]
+    signals: int = Field(default=1, ge=1, le=50)
+    ban: bool = False
+    minutes_ago: int = Field(default=10, ge=0, le=60 * 20)
+    device: str = "192.168.1.20"
+    device_name: str | None = None
+    status: factories.IncidentStatusName = "open"
+
+
+class IncidentsRequest(BaseModel):
+    incidents: list[IncidentRequest]
+
+
+class IncidentsRecord(BaseModel):
+    signals: int
+    incidents: int
+
+
+@router.post("/factories/incidents", status_code=status.HTTP_201_CREATED)
+def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> IncidentsRecord:
+    """Stores the alerts of some attacks as of now and files them into incidents, as the worker
+    would have, for the Incidents pages to show."""
+    stored = factories.incidents(
+        db,
+        settings,
+        utcnow(),
+        [
+            factories.IncidentSpec(
+                address=item.address,
+                severity=Severity[item.severity.upper()],
+                programs=item.programs,
+                signals=item.signals,
+                ban=item.ban,
+                minutes_ago=item.minutes_ago,
+                device=item.device,
+                device_name=item.device_name,
+                status=item.status,
+            )
+            for item in body.incidents
+        ],
+    )
+    db.commit()
+    return IncidentsRecord(**stored._asdict())
 
 
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)

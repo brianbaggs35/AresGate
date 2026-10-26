@@ -6,6 +6,8 @@ export {
   type ApiCoverage,
   type BaselineData,
   type FixtureName,
+  type IncidentRequest,
+  type IncidentsRecord,
   type Loaded,
   type StandIn,
   type StandInRequest,
@@ -15,6 +17,8 @@ export {
 export { ActivityPage } from './pages/activity-page'
 export { DataPage } from './pages/data-page'
 export { AppShell, type ThemeChoice } from './pages/app-shell'
+export { IncidentPage } from './pages/incident-page'
+export { IncidentsPage } from './pages/incidents-page'
 export { IntegrationPage } from './pages/integration-page'
 export { IntegrationsPage } from './pages/integrations-page'
 export { DashboardPage } from './pages/dashboard-page'

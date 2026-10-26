@@ -14,6 +14,57 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('the incidents, and an incident, fit the screen without scrolling sideways', async ({
+    page,
+    harness,
+    incidents,
+    incident,
+  }) => {
+    await harness.createIncidents([
+      {
+        address: '93.184.216.34',
+        severity: 'critical',
+        programs: ['wazuh', 'opnsense', 'crowdsec'],
+        signals: 8,
+        ban: true,
+        device_name: 'a-device-with-quite-a-long-name-on-the-network',
+      },
+    ])
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(1)
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    await incidents.cards.first().click()
+    await expect(incident.reasonsCard).toBeVisible()
+    await expect(incident.signals.first()).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+  })
+
+  test('puts the four numbers of an incident two to a row', async ({
+    harness,
+    incidents,
+    incident,
+  }) => {
+    await harness.createIncidents([{ address: '93.184.216.34', signals: 3 }])
+    await incidents.goto()
+    await incidents.cards.first().click()
+    await expect(incident.signalsTile).toBeVisible()
+
+    const [first, second, third] = await Promise.all([
+      incident.signalsTile.boundingBox(),
+      incident.programsTile.boundingBox(),
+      incident.addressesTile.boundingBox(),
+    ])
+
+    expect(first?.y).toBeCloseTo(second?.y ?? -1, 0)
+    expect(third?.y).toBeGreaterThan((first?.y ?? 0) + (first?.height ?? 0) - 1)
+  })
+
   test('the banner uses nearly the whole width', async ({ page, dashboard }) => {
     await dashboard.goto()
 

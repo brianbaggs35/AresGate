@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPost, apiPut, errorMessage } from '@/api/client'
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, errorMessage } from '@/api/client'
 
 function respond(body: unknown, init: ResponseInit = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body)
@@ -170,6 +170,33 @@ describe('apiPut', () => {
   it('fails like the others do', async () => {
     respond({ detail: 'There is no such integration.' }, { status: 404 })
     expect(await failure(apiPut('/integrations/x', {}))).toMatchObject({
+      status: 404,
+      code: 'not_found',
+    })
+  })
+})
+
+describe('apiPatch', () => {
+  it('changes part of something with JSON, and the security token', async () => {
+    respond({ status: 'resolved' })
+    await expect(apiPatch('/incidents/7', { status: 'resolved' }, 'a-token')).resolves.toEqual({
+      status: 'resolved',
+    })
+    expect(fetch).toHaveBeenCalledWith('/api/incidents/7', {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': 'a-token',
+      },
+      body: '{"status":"resolved"}',
+      credentials: 'same-origin',
+    })
+  })
+
+  it('fails like the others do', async () => {
+    respond({ detail: "There's no such incident." }, { status: 404 })
+    expect(await failure(apiPatch('/incidents/9', {}))).toMatchObject({
       status: 404,
       code: 'not_found',
     })

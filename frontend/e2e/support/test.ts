@@ -5,6 +5,8 @@ import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
+import { IncidentPage } from './pages/incident-page'
+import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
 import { IntegrationsPage } from './pages/integrations-page'
 import { DashboardPage } from './pages/dashboard-page'
@@ -20,6 +22,9 @@ export interface AresGateFixtures {
   /** The logo and the theme switcher that every page has. */
   shell: AppShell
   dashboard: DashboardPage
+  /** The list of incidents, and the page for one. */
+  incidents: IncidentsPage
+  incident: IncidentPage
   integrations: IntegrationsPage
   integration: IntegrationPage
   signIn: SignInPage
@@ -87,6 +92,14 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   dashboard: async ({ page }, use) => {
     await use(new DashboardPage(page))
+  },
+
+  incidents: async ({ page }, use) => {
+    await use(new IncidentsPage(page))
+  },
+
+  incident: async ({ page }, use) => {
+    await use(new IncidentPage(page))
   },
 
   integrations: async ({ page }, use) => {

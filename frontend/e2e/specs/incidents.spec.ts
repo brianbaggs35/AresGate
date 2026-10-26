@@ -1,0 +1,287 @@
+import type { IncidentRequest } from '../support'
+import { expect, test } from '../support'
+
+const ATTACKER = '93.184.216.34'
+
+/** Four attacks in each of the states the list tells apart: a bad one that is open and banned, a
+ * serious one, one being looked at and one that is over. The last signal of each is newer than
+ * the one after it, which is the order they are listed in. */
+const SOME: IncidentRequest[] = [
+  {
+    address: ATTACKER,
+    severity: 'critical',
+    programs: ['wazuh', 'opnsense', 'crowdsec'],
+    signals: 6,
+    ban: true,
+    minutes_ago: 4,
+    device_name: 'nas',
+  },
+  {
+    address: '8.8.8.8',
+    severity: 'high',
+    programs: ['wazuh', 'opnsense'],
+    signals: 3,
+    minutes_ago: 35,
+  },
+  {
+    address: '1.1.1.1',
+    severity: 'medium',
+    programs: ['ntopng'],
+    signals: 1,
+    minutes_ago: 180,
+    status: 'investigating',
+  },
+  {
+    address: '9.9.9.9',
+    severity: 'low',
+    programs: ['opnsense'],
+    signals: 2,
+    minutes_ago: 400,
+    status: 'resolved',
+  },
+]
+
+const title = (address: string) => `Brute force on ssh (${address})`
+
+test.describe('incidents', () => {
+  test('are in the menu, and say none have been made yet on a new install', async ({
+    page,
+    shell,
+    incidents,
+  }) => {
+    await page.goto('/')
+
+    await shell.incidentsLink.click()
+
+    await expect(page).toHaveURL('/incidents')
+    await expect(page).toHaveTitle('Incidents · AresGate')
+    await expect(incidents.heading).toHaveText('Incidents')
+    await expect(shell.incidentsLink).toHaveAttribute('aria-current', 'page')
+    await expect(incidents.empty).toContainText('No incidents yet')
+    await incidents.empty.getByRole('link', { name: 'See your integrations' }).click()
+    await expect(page).toHaveURL('/integrations')
+  })
+
+  test('list the ones that are not over, the one that was last heard from first', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(SOME)
+
+    await incidents.goto()
+
+    await expect(incidents.titles()).toHaveText([
+      title(ATTACKER),
+      title('8.8.8.8'),
+      title('1.1.1.1'),
+    ])
+    await expect(incidents.view('active')).toHaveClass(/v-btn--active/)
+    await expect(incidents.updated).toContainText('Updated')
+  })
+
+  test('say how serious each is, how sure AresGate is and what saw it', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(SOME)
+
+    await incidents.goto()
+
+    const worst = incidents.cards.first()
+    await expect(worst.getByTestId('severity')).toHaveText('Critical')
+    await expect(worst.getByTestId('incident-banned')).toBeVisible()
+    await expect(worst.getByTestId('confidence-level')).toHaveText('High confidence')
+    await expect(worst.getByTestId('incident-signals')).toContainText('7 signals')
+    await expect(worst.getByTestId('incident-programs')).toHaveText(
+      'Seen by CrowdSec, OPNsense, Wazuh',
+    )
+    await expect(worst.getByTestId('incident-subject')).toContainText(ATTACKER)
+    const other = incidents.cards.nth(2)
+    await expect(other.getByTestId('incident-status')).toHaveText('Investigating')
+    await expect(other.getByTestId('confidence-level')).toHaveText('Low confidence')
+  })
+
+  test('count the incidents in each view, and show the others when asked', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await expect(incidents.count('active')).toHaveText('3')
+    await expect(incidents.count('open')).toHaveText('2')
+    await expect(incidents.count('investigating')).toHaveText('1')
+    await expect(incidents.count('resolved')).toHaveText('1')
+    await expect(incidents.count('dismissed')).toHaveText('0')
+    await expect(incidents.count('all')).toHaveText('4')
+
+    await incidents.view('resolved').click()
+
+    await expect(page).toHaveURL('/incidents?view=resolved')
+    await expect(incidents.titles()).toHaveText([title('9.9.9.9')])
+
+    await incidents.view('all').click()
+    await expect(incidents.titles()).toHaveCount(4)
+
+    await incidents.view('active').click()
+    await expect(page).toHaveURL('/incidents')
+    await expect(incidents.titles()).toHaveCount(3)
+  })
+
+  test('say nothing needs anyone when every one is over, and offer them', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([
+      { address: ATTACKER, status: 'resolved' },
+      { address: '8.8.8.8', status: 'dismissed' },
+    ])
+
+    await incidents.goto()
+
+    await expect(incidents.empty).toContainText('Nothing needs you')
+    await expect(incidents.empty).toContainText('2 in all')
+    await incidents.empty.getByRole('button', { name: 'Show all incidents' }).click()
+    await expect(incidents.titles()).toHaveCount(2)
+  })
+
+  test('are narrowed to the serious ones, and the ones AresGate is sure of', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.choose(incidents.severity, 'High or more')
+
+    await expect(page).toHaveURL('/incidents?severity=high')
+    await expect(incidents.titles()).toHaveText([title(ATTACKER), title('8.8.8.8')])
+
+    await incidents.choose(incidents.confidence, 'High only')
+
+    await expect(page).toHaveURL('/incidents?severity=high&confidence=65')
+    await expect(incidents.titles()).toHaveText([title(ATTACKER)])
+  })
+
+  test('are searched by an address, once it is a whole one', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.search('8.8')
+    await expect(incidents.address).toContainText('Type a whole IP address to look for it.')
+    await expect(incidents.titles()).toHaveCount(3)
+
+    await incidents.search('8.8.8.8')
+
+    await expect(page).toHaveURL('/incidents?address=8.8.8.8')
+    await expect(incidents.titles()).toHaveText([title('8.8.8.8')])
+  })
+
+  test('say nothing matches when the choices leave none, and drop them when asked', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.search('203.0.113.77')
+
+    await expect(incidents.empty).toContainText('Nothing matches')
+    await incidents.empty.getByRole('button', { name: 'Clear filters' }).click()
+    await expect(page).toHaveURL('/incidents')
+    await expect(incidents.titles()).toHaveCount(3)
+    await expect(incidents.clear).toBeHidden()
+  })
+
+  test('keep the choices in the address of the page, so a link brings them back', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+
+    await incidents.goto('?view=all&severity=medium')
+
+    await expect(incidents.view('all')).toHaveClass(/v-btn--active/)
+    await expect(incidents.titles()).toHaveText([
+      title(ATTACKER),
+      title('8.8.8.8'),
+      title('1.1.1.1'),
+    ])
+    await page.reload()
+    await expect(incidents.titles()).toHaveCount(3)
+    await expect(incidents.clear).toBeVisible()
+  })
+
+  test('are listed a page at a time, with a button for the next', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(
+      Array.from({ length: 27 }, (_, number) => ({
+        address: `20.20.20.${(number + 1).toString()}`,
+        minutes_ago: number + 1,
+      })),
+    )
+
+    await incidents.goto()
+
+    await expect(incidents.cards).toHaveCount(25)
+    await expect(incidents.more).toContainText('Showing 25 of 27.')
+    await expect(incidents.showMore).toHaveText('Show 2 more')
+
+    await incidents.showMore.click()
+
+    await expect(incidents.cards).toHaveCount(27)
+    await expect(incidents.more).toBeHidden()
+  })
+
+  test('lead to the page of the incident that is chosen', async ({ harness, incidents, page }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.cards.nth(1).click()
+
+    await expect(page).toHaveURL(/\/incidents\/\d+$/)
+    await expect(page.getByTestId('page-heading')).toHaveText(title('8.8.8.8'))
+  })
+
+  test('ask again by the button, and keep what they have when that fails', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(3)
+    await page.route('**/api/incidents?**', (route) => route.abort())
+
+    await incidents.refresh.click()
+
+    await expect(incidents.stale).toContainText('What is shown is from')
+    await expect(incidents.cards).toHaveCount(3)
+  })
+
+  test('say so when they cannot be loaded at all, and load once they can', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await page.route('**/api/incidents?**', (route) => route.abort())
+
+    await incidents.goto()
+
+    await expect(incidents.error).toBeVisible()
+    await page.unroute('**/api/incidents?**')
+    await incidents.retry.click()
+    await expect(incidents.cards).toHaveCount(3)
+  })
+})

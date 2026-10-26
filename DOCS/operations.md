@@ -331,7 +331,8 @@ and why, and lists the signals in the order they happened. The worker files them
 - **Where to read them.** `GET /api/incidents` lists them, newest activity first, and can be
   narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`
   and `since`. `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
-  network behind its addresses and the firewall's blocks. Pages for them come next.
+  network behind its addresses and the firewall's blocks. [The Incidents pages](#the-incidents-pages)
+  show them.
 - **When they appear.** A run every 30 seconds files the signals that were stored at least 30
   seconds ago, so a new attack is an incident within about a minute of its first alert. The first
   run looks back 24 hours. Signals the collectors stored out of order are filed in the order
@@ -398,6 +399,33 @@ right), each compared with the same length of time before it. From the top:
 The page asks again every 30 seconds while it is open and in view, and when you come back to its
 tab after longer than that. If a refresh fails it keeps what it has and says so. The numbers
 come from `GET /api/dashboard?window=24h` (or `7d`), for someone signed in.
+
+## The incidents pages
+
+**Incidents** in the menu lists what [the engine](#incidents) filed, the one heard from last first,
+and each incident has a page of its own.
+
+- **The list.** One card for each incident: how serious it is, what became of it (an open one
+  says nothing; the others say so), how sure AresGate is, how many signals there were over how
+  long, which programs saw it, the address it is about and how many others it reached, and
+  whether a program banned it. The buttons at the top choose *Active* (open or being looked at,
+  the one you start from), *Open*, *Investigating*, *Resolved*, *Dismissed* or *All*, each with
+  how many there are. Narrow them to a severity or a confidence, or search for one address (once
+  it is a whole address). What you chose is in the address of the page, so a link or the back
+  button brings it back. The list shows 25 at a time.
+- **An incident.** Under its title: when it began and when it last did something, what its
+  status means and the changes you can make (*Start investigating*, *Resolve*, *Dismiss*,
+  *Reopen*), each of which is in the [activity log](security.md). Then four numbers (signals,
+  programs, addresses, firewall blocks of its address around then), **why AresGate is this
+  sure** (each reason, with the points it adds, drawn as one bar so the share of each shows),
+  **the addresses and the devices on your network** behind them, a chart of **signals over time**
+  by program, and the **timeline** of every signal, oldest first, with the traffic each one
+  described. A long timeline shows 25 at a time.
+- **Keeping up.** Both pages ask again every 30 seconds while they are open and in view. If that
+  fails they keep what they have and say how old it is. A change you make is shown at once, and
+  an answer that was already on its way doesn't undo it.
+- **What it doesn't do yet.** It does not block, isolate or notify anything. Response actions
+  come later, and the analyst will read incidents the way you do.
 
 ## Signing in
 
