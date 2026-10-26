@@ -155,8 +155,10 @@ class TestServing:
         monkeypatch.setattr(worker, "build", failing)
         monkeypatch.setattr(worker.incidents, "run", wait_forever)
 
+        serving = worker.serve(settings)
+
         with pytest.raises(ExceptionGroup) as raised:
-            asyncio.run(worker.serve(settings))
+            asyncio.run(serving)
 
         assert raised.group_contains(RuntimeError, match="fell over")
         assert cancelled == ["incidents"]
