@@ -5,11 +5,14 @@ import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '@/api/client'
 import { fetchCollectors } from '@/api/collectors'
 import { fetchDashboard, WINDOWS, type Dashboard, type DashboardWindow } from '@/api/dashboard'
+import { fetchIncidents, type IncidentPage } from '@/api/incidents'
 import BarChart from '@/charts/BarChart.vue'
 import { severityColor } from '@/charts/palette'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
+import NeedsYouLane from '@/components/NeedsYouLane.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RecentAlerts from '@/components/RecentAlerts.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -25,18 +28,33 @@ import {
   type Collection,
 } from '@/dashboard'
 import { formatCount, formatFigure } from '@/format'
+import { DEFAULT_VIEW, queryOf } from '@/incidents'
 import { usePolling } from '@/polling'
 import { SEVERITIES, SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
+import type { Judged } from '@/verdicts'
 
 /** How often the page asks again while it is on screen. */
 const REFRESH_SECONDS = 30
+/** How many incidents the lane under the hero shows. The rest are a click away. */
+const LANE_SIZE = 3
+/** What needs a decision: the incidents the Incidents page opens on, the most serious first. */
+const NEEDS_YOU = {
+  ...queryOf(
+    { view: DEFAULT_VIEW, severity: null, confidence: 0, address: '', quieted: false },
+    LANE_SIZE,
+  ),
+  order: 'priority',
+} as const
 
 const session = useSessionStore()
 
 const range = ref<DashboardWindow>('24h')
 const data = ref<Dashboard | null>(null)
 const collection = ref<Collection | null>(null)
+/** The incidents that need a decision. Without them the page is still the page: the lane is
+ * left out until they can be read. */
+const needsYou = ref<IncidentPage | null>(null)
 const loadError = ref<string | null>(null)
 /** Whether a load that someone asked for is under way: the charts dim until it is done. */
 const loading = ref(false)
@@ -51,12 +69,17 @@ async function load(quiet = false) {
   const mine = ++latest
   if (!quiet) loading.value = true
   try {
-    const [dashboard, collectors] = await session.call(() =>
-      Promise.all([fetchDashboard(range.value), fetchCollectors()]),
+    const [dashboard, collectors, incidents] = await session.call(() =>
+      Promise.all([
+        fetchDashboard(range.value),
+        fetchCollectors(),
+        fetchIncidents(NEEDS_YOU).catch(() => null),
+      ]),
     )
     if (mine !== latest) return
     data.value = dashboard
     collection.value = collectionOf(collectors)
+    if (incidents) needsYou.value = incidents
     updatedAt.value = new Date()
     loadError.value = null
   } catch (error) {
@@ -64,6 +87,14 @@ async function load(quiet = false) {
   } finally {
     if (mine === latest) loading.value = false
   }
+}
+
+const notice = ref<{ show: (verdict: Judged) => void } | null>(null)
+
+/** A card in the lane gave a verdict: say so, and ask again, since it can leave the lane. */
+function judged(verdict: Judged) {
+  notice.value?.show(verdict)
+  void load(true)
 }
 
 function pick(next: DashboardWindow) {
@@ -279,6 +310,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         />
       </StatusHero>
 
+      <NeedsYouLane
+        v-if="needsYou?.items.length"
+        :incidents="needsYou.items"
+        :total="needsYou.total"
+        @judged="judged"
+      />
+
       <div class="dashboard__charts">
         <TrafficCard :times="traffic.times" :traffic="traffic.interfaces" :loading="loading" />
         <v-card class="pa-5 pa-sm-6" data-test="alerts-card">
@@ -334,6 +372,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </p>
     </template>
     <v-skeleton-loader v-else type="article, article" data-test="dashboard-loading" />
+
+    <JudgedNotice ref="notice" @undone="load(true)" />
   </AppPage>
 </template>
 

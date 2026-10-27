@@ -331,7 +331,8 @@ and why, and lists the signals in the order they happened. The worker files them
   status.
 - **Where to read them.** `GET /api/incidents` lists them, newest activity first, and can be
   narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`,
-  `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`. The answer's
+  `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`; `order=priority`
+  lists the most serious and surest first instead. The answer's
   `counts` follow the `verdict` filter, and `quieted` says how many more incidents (not
   suspicious or low priority throughout) the other filters would have listed.
   `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
