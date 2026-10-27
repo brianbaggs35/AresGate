@@ -1,4 +1,4 @@
-import type { Verdict } from '@/api/verdicts'
+import type { Verdict, VerdictGiven } from '@/api/verdicts'
 
 const NOW = Date.now()
 const HOUR = 3_600_000
@@ -20,4 +20,9 @@ export function verdict(changes: Partial<Verdict> = {}): Verdict {
     last_hit_at: new Date(NOW - 2 * HOUR).toISOString(),
     ...changes,
   }
+}
+
+/** The answer to giving a verdict: a new one, unless it says what it replaced. */
+export function given(changes: Partial<VerdictGiven> = {}): VerdictGiven {
+  return { ...verdict(), replaced: null, ...changes }
 }

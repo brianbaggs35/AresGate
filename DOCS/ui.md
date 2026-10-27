@@ -53,6 +53,14 @@ a switch that shows how many; `quieted` is in the route's query like the other c
 Settings page (`VerdictsView`) is where verdicts are reviewed, changed (`VerdictDialog`) and
 taken back (`ConfirmDialog`, which says how many signals are judged again).
 
+An incident card in the list is a link to the incident with the three verdict buttons under it,
+not in it (a link can't hold buttons), in a `<fieldset>` with a hidden legend. A verdict from a
+card is about the incident's address, or where it names none the first alert in it, which only
+the incident can say, so the card asks for it then. The card says nothing itself: it emits
+`judged`, and the list shows a notice with *Undo* (`IncidentsView`), which takes a new verdict
+back and changes one that replaced another back to what it was. On a phone the buttons stack
+their icon over the name so that all three fit in a row.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

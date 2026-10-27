@@ -47,6 +47,12 @@ class VerdictOut(BaseModel):
     last_hit_at: AwareDatetime | None
 
 
+class VerdictGiven(VerdictOut):
+    """A verdict as it was just given, and what it said before when it changed one."""
+
+    replaced: Verdict | None
+
+
 class VerdictList(BaseModel):
     items: list[VerdictOut]
 
@@ -105,6 +111,10 @@ def _shown(db: Db, rule: VerdictRule) -> VerdictOut:
     return _out(rule, verdicts.hits(db, [rule.id]).get(rule.id, (0, None)))
 
 
+def _given(db: Db, rule: VerdictRule, replaced: Verdict | None) -> VerdictGiven:
+    return VerdictGiven(**_shown(db, rule).model_dump(), replaced=replaced)
+
+
 def _found(db: Db, rule_id: int) -> VerdictRule:
     rule = db.get(VerdictRule, rule_id)
     if rule is None:
@@ -141,9 +151,10 @@ def give_verdict(
     request: Request,
     response: Response,
     db: Db,
-) -> VerdictOut:
+) -> VerdictGiven:
     """Says what is thought of the signals that match. Saying it again of the same thing changes
-    the verdict, and a verdict is applied at once to the incidents that are not over."""
+    the verdict (and says what it was), and a verdict is applied at once to the incidents that
+    are not over."""
     engine.hold(db)
     rule = db.scalars(
         select(VerdictRule).where(
@@ -165,14 +176,15 @@ def give_verdict(
         record_audit(
             db, request, Action.VERDICT_GIVEN, Outcome.SUCCESS, user=auth.user, detail=_facts(rule)
         )
+        was = None
     else:
         response.status_code = status.HTTP_200_OK
-        was = rule.verdict
+        was = cast(Verdict, rule.verdict)
         rule.verdict = body.verdict
         if body.note:
             rule.note = body.note
         if not db.is_modified(rule):
-            return _shown(db, rule)
+            return _given(db, rule, was)
         record_audit(
             db,
             request,
@@ -183,7 +195,7 @@ def give_verdict(
         )
     engine.reapply(db)
     db.commit()
-    return _shown(db, rule)
+    return _given(db, rule, was)
 
 
 @router.patch("/{rule_id}")

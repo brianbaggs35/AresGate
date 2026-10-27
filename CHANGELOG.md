@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Verdicts from the list of incidents**: each card has *Not suspicious*, *Low priority* and
+  *Real threat* under its details, so you can judge an incident without opening it or going to
+  Settings. A verdict from a card is about what the incident is about (its address, or the first
+  alert where it names no address); the page says what it remembered, with *Undo* for ten seconds
+  (a verdict that changed another goes back to what it was), and an incident that nothing else
+  needs leaves the list. `POST /api/verdicts` now also says what a verdict replaced (`replaced`).
 - **Verdicts**: say that an address, a program, a signature or a mix of them is *not
   suspicious*, *low priority* or *a real threat*, and AresGate remembers it as a rule and holds
   you to it from then on. Signals that match a verdict of not suspicious or low priority are still

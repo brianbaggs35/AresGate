@@ -23,6 +23,12 @@ export interface Verdict {
   last_hit_at: string | null
 }
 
+/** A verdict as it was just given: `replaced` is what it said before when saying it changed a
+ * verdict that was already there, and null when it is a new one. */
+export interface VerdictGiven extends Verdict {
+  replaced: VerdictKind | null
+}
+
 /** A verdict to give: what it says and what it is about. */
 export interface VerdictRequest {
   verdict: VerdictKind
@@ -44,8 +50,8 @@ export async function fetchVerdicts(): Promise<Verdict[]> {
 }
 
 /** Says it. Saying it again of the same thing changes the verdict that was there. */
-export function giveVerdict(request: VerdictRequest, csrfToken: string): Promise<Verdict> {
-  return apiPost<Verdict>('/verdicts', request, csrfToken)
+export function giveVerdict(request: VerdictRequest, csrfToken: string): Promise<VerdictGiven> {
+  return apiPost<VerdictGiven>('/verdicts', request, csrfToken)
 }
 
 export function changeVerdict(

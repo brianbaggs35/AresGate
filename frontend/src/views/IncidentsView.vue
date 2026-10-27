@@ -5,6 +5,7 @@ import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 
 import { errorMessage } from '@/api/client'
 import { fetchIncidents, type Incident, type IncidentPage } from '@/api/incidents'
+import { changeVerdict, removeVerdict } from '@/api/verdicts'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
@@ -26,11 +27,14 @@ import {
 import { usePolling } from '@/polling'
 import { SEVERITIES, type Severity } from '@/severity'
 import { useSessionStore } from '@/stores/session'
+import { VERDICT, givenAs, type Judged } from '@/verdicts'
 
 /** How many incidents the page asks for at a time. */
 const PAGE_SIZE = 25
 /** How often the page asks again while it is on screen. */
 const REFRESH_SECONDS = 30
+/** How long the page offers to take back a verdict it was just told about. */
+const UNDO_SECONDS = 10
 
 const session = useSessionStore()
 const route = useRoute()
@@ -185,6 +189,48 @@ const updated = computed(() =>
   new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(updatedAt.value as Date),
 )
 
+/** The verdict that was just given from a card, while the page says so and offers to take it back. */
+const lately = ref<Judged | null>(null)
+const saying = ref(false)
+const undoing = ref(false)
+const undone = ref<string | null>(null)
+
+/** What the page says of the verdict just given, or of what happened when it was taken back. */
+const said = computed(() => {
+  if (undone.value) return undone.value
+  const { scope, kind, rule } = lately.value as Judged
+  const was = rule.replaced ? ` It was ${VERDICT[rule.replaced].label.toLowerCase()}.` : ''
+  return `${givenAs(scope, kind)}${was}`
+})
+
+/** A card gave a verdict: say so, and ask again, since it can leave the list. */
+function judged(verdict: Judged) {
+  lately.value = verdict
+  undone.value = null
+  saying.value = true
+  void load(true)
+}
+
+/** Takes it back: a verdict that was new goes, and one that changed another is changed back. */
+async function undo() {
+  const { rule } = lately.value as Judged
+  const { replaced } = rule
+  undoing.value = true
+  try {
+    await session.change((token) =>
+      replaced
+        ? changeVerdict(rule.id, { verdict: replaced }, token)
+        : removeVerdict(rule.id, token),
+    )
+    undone.value = 'Taken back.'
+    await load(true)
+  } catch (error) {
+    undone.value = errorMessage(error)
+  } finally {
+    undoing.value = false
+  }
+}
+
 function pickView(view: ViewKey | undefined) {
   if (view) show({ view })
 }
@@ -319,7 +365,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 
       <ul v-if="items.length" class="incidents__list" data-test="incident-list">
         <li v-for="item in items" :key="item.id">
-          <IncidentCard :incident="item" />
+          <IncidentCard :incident="item" @judged="judged" />
         </li>
       </ul>
       <v-card v-else class="pa-5 pa-sm-6" data-test="incidents-empty">
@@ -378,6 +424,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </p>
     </template>
     <v-skeleton-loader v-else type="article, article" data-test="incidents-loading" />
+
+    <v-snackbar v-if="lately" v-model="saying" :timeout="UNDO_SECONDS * 1000" data-test="judged">
+      <span data-test="judged-text">{{ said }}</span>
+      <template v-if="!undone" #actions>
+        <v-btn variant="text" :loading="undoing" data-test="undo" @click="undo">Undo</v-btn>
+      </template>
+    </v-snackbar>
   </AppPage>
 </template>
 
