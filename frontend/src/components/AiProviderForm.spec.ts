@@ -402,8 +402,10 @@ describe('AiProviderForm', () => {
       const { find, input } = await open(ollama())
 
       expect(input('provider-url').attributes('placeholder')).toBe('http://192.168.1.50:11434')
-      expect(find('provider-url').text()).toContain('http://host.docker.internal:11434')
-      expect(find('provider-url').text()).toContain('localhost is the container itself')
+      expect(find('provider-url').text()).toContain('Where Ollama listens')
+      expect(find('provider-url-help').text()).toContain('http://localhost:11434')
+      expect(find('provider-url-help').text()).toContain('http://host.docker.internal:11434')
+      expect(find('provider-url-help').text()).toContain('localhost is the container itself')
       expect(find('provider-key').exists()).toBe(false)
       expect(find('provider-free').text()).toContain('costs nothing to ask')
       expect(find('provider-price').exists()).toBe(false)
