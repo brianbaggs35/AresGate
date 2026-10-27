@@ -172,3 +172,99 @@ test.describe('verdicts page', () => {
     await expect(activity.entries.first()).toContainText('A verdict was given')
   })
 })
+
+test.describe('verdicts from the list of incidents', () => {
+  test('quiets an incident with one press, says so, and takes it back', async ({
+    harness,
+    incidents,
+    verdicts,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER, signals: 2 }])
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(1)
+
+    await incidents.quick('not_suspicious').click()
+
+    await expect(incidents.judged).toHaveText(`Remembered: ${ATTACKER} is not suspicious.`)
+    // Nothing is left that needs anyone, so the incident leaves the list.
+    await expect(incidents.cards).toHaveCount(0)
+    await expect(incidents.empty).toContainText('Every incident is one you called')
+    await verdicts.goto()
+    await expect(verdicts.about()).toHaveText([ATTACKER])
+
+    await incidents.goto()
+    await incidents.quieted.click()
+    await incidents.quick('threat').click()
+    await expect(incidents.judged).toHaveText(
+      `Remembered: ${ATTACKER} is a real threat. It was not suspicious.`,
+    )
+    await incidents.undo.click()
+    await expect(incidents.judged).toHaveText('Taken back.')
+    await expect(incidents.quick('not_suspicious')).toBeVisible()
+    await verdicts.goto()
+    await expect(verdicts.says()).toHaveText(['Not suspicious'])
+  })
+
+  test('takes back a new verdict, and the incident comes back', async ({
+    harness,
+    incidents,
+    verdicts,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER }])
+    await incidents.goto()
+
+    await incidents.quick('low_priority').click()
+    await expect(incidents.cards).toHaveCount(0)
+    await incidents.undo.click()
+
+    await expect(incidents.judged).toHaveText('Taken back.')
+    await expect(incidents.cards).toHaveCount(1)
+    await verdicts.goto()
+    await expect(verdicts.empty).toBeVisible()
+  })
+
+  test('marks an incident a real threat and keeps it in the list', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER }])
+    await incidents.goto()
+
+    await incidents.quick('threat').click()
+
+    await expect(incidents.judged).toHaveText(`Remembered: ${ATTACKER} is a real threat.`)
+    await expect(incidents.cards).toHaveCount(1)
+    await expect(incidents.cards.first().getByTestId('verdict')).toHaveText('Real threat')
+  })
+
+  test('says so when the verdict could not be given, and can be tried again', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER }])
+    await incidents.goto()
+    await page.route('**/api/verdicts', (route) => route.abort())
+
+    await incidents.quick('low_priority').click()
+
+    await expect(page.getByTestId('quick-error')).toContainText("Can't reach AresGate")
+    await page.unroute('**/api/verdicts')
+    await incidents.quick('low_priority').click()
+    await expect(incidents.judged).toBeVisible()
+  })
+
+  test('leaves the card a link to the incident, with the buttons beside it', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER }])
+    await incidents.goto()
+
+    await expect(incidents.cards.first().getByTestId('quick-threat')).toHaveCount(0)
+    await incidents.cards.first().click()
+
+    await expect(page).toHaveURL(/\/incidents\/\d+$/)
+  })
+})

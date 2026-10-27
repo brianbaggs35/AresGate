@@ -76,8 +76,10 @@ class TestGivingAVerdict:
             "updated_at": "",
             "hits": 0,
             "last_hit_at": None,
+            "replaced": None,
         }
-        assert client.get(BASE).json()["items"] == [body]
+        listed = {key: value for key, value in body.items() if key != "replaced"}
+        assert client.get(BASE).json()["items"] == [listed]
         (event,) = audited(session, Action.VERDICT_GIVEN)
         assert event.outcome == Outcome.SUCCESS
         assert event.username == "brian"
@@ -149,6 +151,7 @@ class TestGivingAVerdict:
         assert again.status_code == 200
         assert again.json()["id"] == first["id"]
         assert again.json()["verdict"] == "threat"
+        assert again.json()["replaced"] == "not_suspicious"
         assert len(client.get(BASE).json()["items"]) == 1
         session.expire_all()
         assert session.scalars(select(Incident)).one().verdict == "threat"
@@ -165,6 +168,7 @@ class TestGivingAVerdict:
 
         assert again.status_code == 200
         assert again.json()["note"] == "a scanner I run"
+        assert again.json()["replaced"] == "not_suspicious"
         assert len(audited(session, Action.VERDICT_CHANGED)) == 1
 
     def test_saying_the_same_again_changes_nothing(
@@ -177,6 +181,7 @@ class TestGivingAVerdict:
 
         assert again.status_code == without.status_code == 200
         assert without.json()["note"] == "a scanner I run"
+        assert without.json()["replaced"] == "not_suspicious"
         assert audited(session, Action.VERDICT_CHANGED) == []
 
     @pytest.mark.parametrize(

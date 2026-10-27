@@ -370,7 +370,9 @@ when you give it, so what you said once holds from then on.
   but I don't care".
 - **A real threat** makes an incident as sure as can be, 100, with the reason, whatever else it
   holds and however low the signal was rated.
-- **Where you give one.** On an incident's page, *Your verdict* says what your verdicts make of
+- **Where you give one.** On a card in the incident list, three buttons give a verdict about the
+  incident's address (or its first alert, where it has no address) in one press, with *Undo*
+  for ten seconds. On an incident's page, *Your verdict* says what your verdicts make of
   it, lists the ones that apply (each with *Take back*) and gives a new one: choose what it is
   about (the incident's address, one of its alerts from any address, or one of its alerts from
   that address), perhaps say why, and press *Not suspicious*, *Low priority* or *Real threat*.
@@ -387,7 +389,8 @@ when you give it, so what you said once holds from then on.
   keeps what was said at the time. An incident with more than 1000 signals is judged by the
   1000 it lists.
 - **The API.** `GET /api/verdicts` lists them with how many signals each has been applied to
-  and when the last was; `POST` gives one (201, or 200 if it changes one that was there),
+  and when the last was; `POST` gives one (201, or 200 if it changes one that was there, and
+  `replaced` says what that one said),
   `PATCH /api/verdicts/{id}` changes the verdict or the note, and `DELETE` takes it back. Each
   incident and signal says what the verdicts said of it.
 - **Training.** The verdicts are what AresGate learns from: the baselines of what is normal on

@@ -27,6 +27,9 @@ export class IncidentsPage {
   readonly error: Locator
   readonly retry: Locator
   readonly stale: Locator
+  /** What the page says after a verdict was given from a card, and the button to take it back. */
+  readonly judged: Locator
+  readonly undo: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -47,6 +50,14 @@ export class IncidentsPage {
     this.error = page.getByTestId('incidents-error')
     this.retry = page.getByTestId('retry')
     this.stale = page.getByTestId('incidents-stale')
+    this.judged = page.getByTestId('judged-text')
+    this.undo = page.getByTestId('undo')
+  }
+
+  /** One of the three verdict buttons on a card of the list, by the verdict, such as
+   * `not_suspicious`, and the card's place in the list. */
+  quick(verdict: string, index = 0): Locator {
+    return this.page.getByTestId('incident-card').nth(index).getByTestId(`quick-${verdict}`)
   }
 
   /** The button that shows the incidents of one view, such as `resolved`. */

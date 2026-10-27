@@ -2,7 +2,7 @@ import { BellMinus, ShieldAlert, ShieldCheck } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type { IncidentDetail, Incident } from '@/api/incidents'
-import type { Verdict, VerdictKind, VerdictRequest } from '@/api/verdicts'
+import type { Verdict, VerdictGiven, VerdictKind, VerdictRequest } from '@/api/verdicts'
 import { isAboutRule } from '@/incidents'
 
 interface VerdictLook {
@@ -136,6 +136,14 @@ export function scopesOf(incident: Pick<IncidentDetail, 'subject' | 'signals'>):
     }
   }
   return scopes
+}
+
+/** A verdict given from a list, which the page that shows the list gets to say something of:
+ * what it said, what it is about and the verdict as it was kept. */
+export interface Judged {
+  kind: VerdictKind
+  scope: Scope
+  rule: VerdictGiven
 }
 
 /** What a verdict that was just given reads like afterwards: "Remembered: it is not suspicious." */

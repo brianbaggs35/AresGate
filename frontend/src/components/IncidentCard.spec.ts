@@ -1,11 +1,17 @@
+import { ApiError } from '@/api/client'
+import * as incidentsApi from '@/api/incidents'
+import * as verdictsApi from '@/api/verdicts'
 import IncidentCard from '@/components/IncidentCard.vue'
-import { incident } from '@/test/incidents'
-import { mountWithPlugins } from '@/test/mount'
+import { detail, incident, signal } from '@/test/incidents'
+import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { given } from '@/test/verdicts'
 
-async function show(changes: Parameters<typeof incident>[0] = {}) {
+async function show(changes: Parameters<typeof incident>[0] = {}, width?: number) {
   const mounted = await mountWithPlugins(IncidentCard, {
     props: { incident: incident(changes) },
     withApp: true,
+    signedIn: 'admin',
+    ...(width ? { width } : {}),
   })
   const text = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`).text()
   return { ...mounted, text }
@@ -25,7 +31,7 @@ describe('IncidentCard', () => {
     expect(text('incident-title')).toBe('Brute force on ssh (93.184.216.34)')
     expect(text('confidence-level')).toBe('High confidence')
     expect(text('confidence-value')).toBe('70 of 100')
-    expect(wrapper.find('[data-test="incident"]').attributes('style')).toContain(
+    expect(wrapper.find('[data-test="incident-card"]').attributes('style')).toContain(
       '--incident-accent: rgb(var(--v-theme-error))',
     )
   })
@@ -104,8 +110,132 @@ describe('IncidentCard', () => {
   it('takes its color from how serious it is', async () => {
     const { wrapper } = await show({ severity: 'low' })
 
-    expect(wrapper.find('[data-test="incident"]').attributes('style')).toContain(
+    expect(wrapper.find('[data-test="incident-card"]').attributes('style')).toContain(
       'rgb(var(--v-theme-success))',
     )
+  })
+
+  describe('saying what you think of it', () => {
+    const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
+
+    async function judge(changes: Parameters<typeof incident>[0] = {}, width?: number) {
+      const give = vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue(given())
+      const fetchIncident = vi.spyOn(incidentsApi, 'fetchIncident')
+      const mounted = await show(changes, width)
+      const press = async (kind: string) => {
+        await mounted.wrapper.find(`[data-test="quick-${kind}"]`).trigger('click')
+        await flushPromises()
+      }
+      const judged = () => mounted.wrapper.findComponent(IncidentCard).emitted('judged') ?? []
+      return { ...mounted, give, fetchIncident, press, judged }
+    }
+
+    it('offers the three verdicts beside the link, never inside it', async () => {
+      const { wrapper } = await judge()
+
+      const buttons = wrapper.findAll('fieldset [data-test^="quick-"]')
+      expect(buttons.map((button) => button.text())).toEqual([
+        'Not suspicious',
+        'Low priority',
+        'Real threat',
+      ])
+      expect(wrapper.find('a [data-test^="quick-"]').exists()).toBe(false)
+      expect(wrapper.find('fieldset legend').text()).toBe('Say what you think of it')
+    })
+
+    it('names what a verdict is about, for those who cannot see the card', async () => {
+      const { wrapper } = await judge()
+
+      expect(wrapper.find('[data-test="quick-threat"]').attributes('aria-label')).toBe(
+        'Real threat: everything about 93.184.216.34',
+      )
+    })
+
+    it('gives it about the address, with the security token, and says what it gave', async () => {
+      const { give, press, judged } = await judge()
+
+      await press('not_suspicious')
+
+      expect(give).toHaveBeenCalledWith(
+        { verdict: 'not_suspicious', address: '93.184.216.34' },
+        'a-security-token',
+      )
+      const [[said]] = judged() as [[{ kind: string; scope: { key: string } }]]
+      expect(said).toMatchObject({ kind: 'not_suspicious', scope: { key: 'address' } })
+    })
+
+    it('does not ask for the incident when it has an address', async () => {
+      const { fetchIncident, press } = await judge()
+
+      await press('low_priority')
+
+      expect(fetchIncident).not.toHaveBeenCalled()
+    })
+
+    it('judges an incident about a rule by the first alert in it', async () => {
+      const { give, fetchIncident, press } = await judge({
+        id: 9,
+        subject: 'rule:wazuh:Brute force on ssh',
+        addresses: [],
+      })
+      fetchIncident.mockResolvedValue(
+        detail({ subject: 'rule:wazuh:Brute force on ssh', signals: [signal()] }),
+      )
+
+      await press('low_priority')
+
+      expect(fetchIncident).toHaveBeenCalledWith(9)
+      expect(give).toHaveBeenCalledWith(
+        { verdict: 'low_priority', source: 'wazuh', signature: 'Brute force on ssh' },
+        'a-security-token',
+      )
+    })
+
+    it('says so when an incident about a rule has nothing to judge it by', async () => {
+      const { give, fetchIncident, press, text, judged } = await judge({
+        subject: 'rule:wazuh:sshd',
+        addresses: [],
+      })
+      fetchIncident.mockResolvedValue(
+        detail({ subject: 'rule:wazuh:sshd', signals: [signal({ signature: null })] }),
+      )
+
+      await press('threat')
+
+      expect(text('quick-error')).toContain('nothing to judge by')
+      expect(give).not.toHaveBeenCalled()
+      expect(judged()).toHaveLength(0)
+    })
+
+    it('says what went wrong, and lets it be tried again', async () => {
+      const { give, press, text, judged, wrapper } = await judge()
+      give.mockRejectedValueOnce(offline())
+
+      await press('threat')
+      expect(text('quick-error')).toBe("Can't reach AresGate.")
+      expect(judged()).toHaveLength(0)
+
+      await press('threat')
+      expect(wrapper.find('[data-test="quick-error"]').exists()).toBe(false)
+      expect(judged()).toHaveLength(1)
+    })
+
+    it('leaves the others alone while one is being given', async () => {
+      const { give, wrapper } = await judge()
+      give.mockReturnValue(new Promise(() => {}))
+
+      await wrapper.find('[data-test="quick-threat"]').trigger('click')
+
+      const disabled = wrapper
+        .findAll('button[data-test^="quick-"]')
+        .map((button) => button.attributes('disabled') !== undefined)
+      expect(disabled).toEqual([true, true, false])
+    })
+
+    it('stacks the icon over the name on a phone', async () => {
+      const { wrapper } = await judge({}, 400)
+
+      expect(wrapper.find('[data-test="quick-threat"]').classes()).toContain('v-btn--stacked')
+    })
   })
 })

@@ -86,6 +86,29 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('the three verdicts on an incident card sit side by side within it', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([{ address: '93.184.216.34', signals: 3 }])
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(1)
+
+    const [card, first, last] = await Promise.all([
+      incidents.cards.first().boundingBox(),
+      incidents.quick('not_suspicious').boundingBox(),
+      incidents.quick('threat').boundingBox(),
+    ])
+
+    expect(last?.y).toBe(first?.y)
+    expect(last?.x).toBeGreaterThan((first?.x ?? 0) + (first?.width ?? 0))
+    expect((last?.x ?? 0) + (last?.width ?? 0)).toBeLessThanOrEqual(
+      (card?.x ?? 0) + (card?.width ?? 0),
+    )
+    // Big enough to press with a thumb.
+    expect(first?.height).toBeGreaterThanOrEqual(44)
+  })
+
   test('puts the four numbers of an incident two to a row', async ({
     harness,
     incidents,

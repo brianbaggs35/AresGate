@@ -5,12 +5,12 @@ import * as verdictsApi from '@/api/verdicts'
 import VerdictPanel from '@/components/VerdictPanel.vue'
 import { detail, signal } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { verdict } from '@/test/verdicts'
+import { given, verdict } from '@/test/verdicts'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
 
 async function show(incident = detail(), verdicts: verdictsApi.Verdict[] = []) {
-  const give = vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue(verdict())
+  const give = vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue(given())
   const remove = vi.spyOn(verdictsApi, 'removeVerdict').mockResolvedValue(undefined)
   const mounted = await mountWithPlugins(VerdictPanel, {
     signedIn: 'admin',
