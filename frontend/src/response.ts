@@ -50,7 +50,8 @@ function holding(response: IncidentResponse): Ban[] {
 /** The latest time any of the bans runs out, or null when none has a time that is known. */
 function lastEnd(bans: readonly Ban[]): string | null {
   const ends = bans.flatMap((ban) => (ban.ends_at ? [ban.ends_at] : []))
-  return ends.length ? ends.reduce((a, b) => (new Date(a) > new Date(b) ? a : b)) : null
+  const latestFirst = [...ends].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+  return latestFirst[0] ?? null
 }
 
 function capitalised(text: string): string {
