@@ -75,7 +75,7 @@ describe('commandsFor', () => {
       title: 'Find incidents about 93.184.216.34',
       action: {
         kind: 'go',
-        to: { name: 'incidents', query: { view: 'all', address: '93.184.216.34' } },
+        to: { name: 'incidents', query: { view: 'all', q: '93.184.216.34' } },
       },
     })
     expect(rest).toEqual([])

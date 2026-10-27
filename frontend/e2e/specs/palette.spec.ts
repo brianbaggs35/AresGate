@@ -111,7 +111,7 @@ test.describe('the command palette', () => {
     await expect(shell.paletteRows.first()).toHaveText('Find incidents about 8.8.8.8')
     await page.keyboard.press('Enter')
 
-    await expect(page).toHaveURL('/incidents?view=all&address=8.8.8.8')
+    await expect(page).toHaveURL('/incidents?view=all&q=8.8.8.8')
     await expect(incidents.cards).toHaveCount(1)
     await expect(incidents.cards.first()).toContainText('8.8.8.8')
   })
