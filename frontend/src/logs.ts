@@ -248,7 +248,7 @@ export interface DetailField {
   /** What to copy, where it is not what is shown. */
   copy?: string
   /** The search for events that are alike in this: put into the box, it narrows to them. */
-  term?: string | undefined
+  term?: string
 }
 
 /** A value as a search says it, or nothing where it can't be said (it holds a quote). */
@@ -305,8 +305,15 @@ export interface JsonToken {
   text: string
 }
 
-const JSON_TOKEN =
-  /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(true|false|null)|([{}[\],:]|\s+)/g
+// A string (and a colon after it, which makes it a key), a number, a literal, and the rest.
+const JSON_STRING = String.raw`("(?:\\.|[^"\\])*")(\s*:)?`
+const JSON_NUMBER = String.raw`(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)`
+const JSON_LITERAL = '(true|false|null)'
+const JSON_PUNCTUATION = String.raw`([{}[\],:]|\s+)`
+const JSON_TOKEN = new RegExp(
+  [JSON_STRING, JSON_NUMBER, JSON_LITERAL, JSON_PUNCTUATION].join('|'),
+  'g',
+)
 
 /** A record as pretty-printed text. */
 export function rawText(raw: unknown): string {
