@@ -26,6 +26,8 @@ const props = defineProps<{
   /** What the line shows, in words. */
   trendLabel?: string
   to?: RouteLocationRaw
+  /** Without a card of its own, for a tile that sits inside another surface. */
+  flat?: boolean
 }>()
 
 const COLORS = { neutral: 'primary', good: 'success', warning: 'warning', bad: 'error' } as const
@@ -33,7 +35,13 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
 </script>
 
 <template>
-  <v-card :to="to" :hover="to !== undefined" class="stat-tile pa-5" data-test="stat-tile">
+  <v-card
+    :to="to"
+    :hover="to !== undefined"
+    class="stat-tile pa-5"
+    :class="{ 'stat-tile--flat': flat }"
+    data-test="stat-tile"
+  >
     <div class="stat-tile__label text-label-large text-medium-emphasis">
       <v-icon
         v-if="icon"
@@ -76,6 +84,13 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
   gap: 0.25rem;
   height: 100%;
   text-decoration: none;
+}
+
+/* Inside a surface that has its own edge and background, the tile only has its content. */
+.stat-tile--flat {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .stat-tile__label {

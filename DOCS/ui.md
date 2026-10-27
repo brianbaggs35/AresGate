@@ -18,10 +18,12 @@ something they don't do, change the part (or add a new one) rather than styling 
 ## The dashboard
 
 The first page is built from the parts above and the charts below, in this order, and a page
-that grows beside it should keep the order: what needs attention (`SecurityBanner`), the numbers
-(`StatTile`), then charts, then lists. The banner is never only a color: each of its four states
-has its own icon and words, it announces a change politely (`role="status"`), and it never says
-all is quiet while the collectors that would raise an alarm are not working. The time range and
+that grows beside it should keep the order: what needs attention (`StatusHero`, with the numbers
+that back it up, the `StatTile`s, inside it), then charts, then lists. The hero is never only a
+color: each of its four states has its own icon, label and words, it announces a change politely
+(it is an `output`), and it never says all is quiet while the collectors that would raise an
+alarm are not working. Its ring, glow and sweep are decoration that stops for anyone who asks
+their system for less motion ([DESIGN](design.md) has the rules). The time range and
 the refresh button sit in the page header; a chart's own filter (the interface for the traffic)
 sits in one row above it. The page asks again every 30 seconds with `usePolling`, which waits
 while the tab is in the background, and a quiet refresh does not dim the charts, only one that

@@ -1,4 +1,4 @@
-import '@fontsource-variable/inter'
+import '@fontsource-variable/inter/opsz.css'
 import 'vuetify/styles'
 import '@/styles/main.scss'
 import '@/styles/charts.scss'

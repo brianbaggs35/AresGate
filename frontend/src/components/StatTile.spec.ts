@@ -35,6 +35,16 @@ describe('StatTile', () => {
     expect(wrapper.find('.v-icon').classes()).toContain(color)
   })
 
+  it('can sit inside another surface without a card of its own', async () => {
+    const { wrapper } = await mountWithPlugins(StatTile, {
+      props: { label: 'Alerts', value: 5, flat: true },
+    })
+    const plain = await mountWithPlugins(StatTile, { props: { label: 'Alerts', value: 5 } })
+
+    expect(wrapper.find('.stat-tile').classes()).toContain('stat-tile--flat')
+    expect(plain.wrapper.find('.stat-tile').classes()).not.toContain('stat-tile--flat')
+  })
+
   it('leads to where the number comes from', async () => {
     const { wrapper, router } = await mountWithPlugins(StatTile, {
       props: { label: 'Integrations', value: 4, to: { name: 'integrations' } },
