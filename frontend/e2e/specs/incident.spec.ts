@@ -174,6 +174,52 @@ test.describe('an incident', () => {
     await expect(page.getByTestId('timeline-show-more')).toBeHidden()
   })
 
+  test('says why the signals of a bot that came back are one incident', async ({
+    harness,
+    incident,
+    page,
+  }) => {
+    await harness.createIncidents([
+      {
+        address: '8.8.4.10',
+        scan: true,
+        signals: 6,
+        neighbours: 2,
+        waves: 3,
+        ports: [22, 80, 443],
+        minutes_ago: 20,
+      },
+    ])
+
+    await openIncident(page, '8.8.4.10')
+
+    await expect(incident.groupingCard).toContainText('Why these signals are one incident')
+    await expect(incident.groupingCard.getByTestId('grouping-activity-scan')).toHaveText('Scanning')
+    await expect(incident.waves).toHaveText('3 waves')
+    await expect(incident.grouping.first()).toContainText(
+      'Signals from 3 addresses of 8.8.4.0/24 doing the same thing are grouped',
+    )
+    await expect(incident.grouping.nth(2)).toContainText('It came in 3 waves')
+    await expect(incident.ports).toHaveText(['22 (SSH)', '80 (HTTP)', '443 (HTTPS)'])
+    await expect(incident.signals).toHaveCount(6)
+  })
+
+  test('lists a couple of dozen of the ports a sweep touched, and the rest when asked', async ({
+    harness,
+    incident,
+    page,
+  }) => {
+    const ports = Array.from({ length: 40 }, (_, port) => 1000 + port)
+    await harness.createIncidents([{ address: '8.8.4.10', scan: true, signals: 40, ports }])
+
+    await openIncident(page, '8.8.4.10')
+
+    await expect(incident.ports).toHaveCount(24)
+    await incident.showMorePorts.click()
+    await expect(incident.ports).toHaveCount(40)
+    await expect(incident.showMorePorts).toBeHidden()
+  })
+
   test('goes back to the list', async ({ harness, incident, page }) => {
     await harness.createIncidents([BAD])
     await openIncident(page, ATTACKER)

@@ -1,4 +1,5 @@
 import {
+  ACTIVITY,
   CONFIDENCE_FILTERS,
   DEFAULT_VIEW,
   HIGH_CONFIDENCE,
@@ -15,6 +16,8 @@ import {
   isAddress,
   lasted,
   otherAddresses,
+  portLabel,
+  portsTouched,
   queryOf,
   reasonLabel,
   spanOf,
@@ -312,5 +315,24 @@ describe('spreadOf', () => {
     expect(
       spread.series.flatMap(({ values }) => values).reduce((sum, count) => sum + count, 0),
     ).toBe(1)
+  })
+})
+
+describe('what an incident was doing', () => {
+  it('names the kinds of activity', () => {
+    expect(ACTIVITY.scan.label).toBe('Scanning')
+    expect(ACTIVITY.brute_force.label).toBe('Brute force')
+  })
+
+  it('names a port by the service it is known for, if it is one', () => {
+    expect(portLabel(22)).toBe('22 (SSH)')
+    expect(portLabel(3389)).toBe('3389 (RDP)')
+    expect(portLabel(49152)).toBe('49152')
+  })
+
+  it('counts the ports it touched, and says "at least" when more were not kept', () => {
+    expect(portsTouched({ port_count: 1, ports_capped: false })).toBe('1 port')
+    expect(portsTouched({ port_count: 14, ports_capped: false })).toBe('14 ports')
+    expect(portsTouched({ port_count: 1000, ports_capped: true })).toBe('at least 1,000 ports')
   })
 })

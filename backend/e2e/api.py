@@ -184,6 +184,10 @@ class IncidentRequest(BaseModel):
     device: str = "192.168.1.20"
     device_name: str | None = None
     status: factories.IncidentStatusName = "open"
+    neighbours: int = Field(default=0, ge=0, le=20)
+    waves: int = Field(default=1, ge=1, le=10)
+    ports: list[Annotated[int, Field(ge=1, le=65_535)]] = Field(default=[], max_length=50)
+    scan: bool = False
 
 
 class IncidentsRequest(BaseModel):
@@ -214,6 +218,10 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 device=item.device,
                 device_name=item.device_name,
                 status=item.status,
+                neighbours=item.neighbours,
+                waves=min(item.waves, item.signals),
+                ports=item.ports,
+                scan=item.scan,
             )
             for item in body.incidents
         ],

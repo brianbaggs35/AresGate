@@ -11,6 +11,7 @@ from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.incidents import engine as correlation
+from app.incidents import episode
 from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
 from tests.helpers import new_event
 
@@ -859,3 +860,497 @@ class TestWhenTheOwnerChangesTheirMind:
         assert incident.signal_count == 3
         assert incident.verdict == "not_suspicious"
         assert incident.confidence == 0
+
+
+# The next address of the attacker's block.
+NEIGHBOUR = "93.184.216.99"
+BLOCK = "93.184.216.0/24"
+
+
+def scan(at: datetime = NOW, n: int = 1, **changes: Any) -> NewEvent:
+    return alert(at, n, **{"summary": "A scan", **changes})
+
+
+def brute(at: datetime = NOW, n: int = 1, **changes: Any) -> NewEvent:
+    return alert(at, n, **{"signature": "Brute force on ssh", **changes})
+
+
+def other(at: datetime = NOW, n: int = 1, **changes: Any) -> NewEvent:
+    return alert(at, n, **{"signature": "ET MALWARE Possible C2", "summary": "Beacon", **changes})
+
+
+class TestOneEpisodeIsOneIncident:
+    def test_scans_from_the_neighbouring_addresses_of_a_block_are_one_incident(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            scan(n=1),
+            scan(NOW + timedelta(minutes=1), n=2, src_address=NEIGHBOUR),
+            scan(NOW + timedelta(minutes=2), n=3, src_address="93.184.216.200"),
+        )
+
+        result = run(session)
+
+        assert result == correlation.Result(events=3, created=1, updated=0)
+        (incident,) = incidents(session)
+        assert incident.subject == ATTACKER
+        assert incident.block == BLOCK
+        assert incident.signal_count == 3
+        assert [str(address) for address in incident.addresses] == [
+            ATTACKER,
+            DEVICE,
+            NEIGHBOUR,
+            "93.184.216.200",
+        ]
+        assert incident.title == f"ET SCAN Potential SSH Scan ({BLOCK})"
+
+    def test_so_are_brute_forces(self, session: Session, settings: Settings) -> None:
+        store(
+            session,
+            settings,
+            brute(n=1),
+            brute(NOW + timedelta(minutes=1), n=2, src_address=NEIGHBOUR),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert (incident.activities, incident.signal_count) == (["brute_force"], 2)
+
+    def test_the_neighbour_of_a_scan_that_does_something_else_is_not_one_actor(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            scan(n=1),
+            other(NOW + timedelta(minutes=1), n=2, src_address=NEIGHBOUR),
+            brute(NOW + timedelta(minutes=2), n=3, src_address="93.184.216.200"),
+        )
+
+        assert run(session).created == 3
+
+    def test_an_address_of_another_block_is_not_a_neighbour(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            scan(n=1),
+            scan(NOW + timedelta(minutes=1), n=2, src_address="93.184.217.34"),
+            scan(NOW + timedelta(minutes=2), n=3, src_address=OTHER_ATTACKER),
+        )
+
+        assert run(session).created == 3
+
+    def test_an_address_of_the_owners_network_has_no_neighbours(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            scan(n=1, src_address="192.168.1.30", dst_address="192.168.1.31"),
+            scan(
+                NOW + timedelta(minutes=1),
+                n=2,
+                src_address="192.168.1.32",
+                dst_address="192.168.1.31",
+            ),
+        )
+
+        result = run(session)
+
+        assert result.created == 2
+        assert {incident.block for incident in incidents(session)} == {None}
+
+    def test_a_neighbour_joins_the_incident_that_is_still_going_not_one_that_is_over(
+        self, session: Session, settings: Settings
+    ) -> None:
+        later = NOW + episode.gap_of("scan") + timedelta(minutes=1)
+        store(session, settings, scan(n=1), scan(later, n=2, src_address=NEIGHBOUR))
+
+        assert run(session).created == 2
+
+    def test_a_neighbour_does_not_join_an_incident_that_is_resolved(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, scan(n=1))
+        run(session)
+        incidents(session)[0].status = "resolved"
+        session.commit()
+        store(session, settings, scan(NOW + HOUR, n=2, src_address=NEIGHBOUR))
+
+        assert run(session).created == 1
+
+    def test_the_same_address_joins_whatever_it_does_this_time(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, scan(n=1), other(NOW + timedelta(minutes=1), n=2))
+
+        assert run(session).created == 1
+
+
+class TestWhenAnEpisodeIsOver:
+    def test_a_scan_is_over_after_four_hours_of_quiet(
+        self, session: Session, settings: Settings
+    ) -> None:
+        gap = episode.gap_of("scan")
+        store(
+            session,
+            settings,
+            scan(n=1),
+            scan(NOW + gap, n=2),
+            scan(NOW + 2 * gap + timedelta(minutes=1), n=3),
+        )
+
+        result = run(session)
+
+        assert result.created == 2
+        first, second = incidents(session)
+        assert (first.signal_count, second.signal_count) == (2, 1)
+
+    def test_a_brute_force_goes_on_for_longer(self, session: Session, settings: Settings) -> None:
+        later = NOW + episode.gap_of("scan") + timedelta(minutes=1)
+        store(session, settings, brute(n=1), brute(later, n=2))
+
+        assert run(session).created == 1
+
+    def test_a_new_day_is_a_new_incident_however_steady_the_activity(
+        self, session: Session, settings: Settings
+    ) -> None:
+        every_three_hours = [NOW + timedelta(hours=3 * step) for step in range(10)]
+        store(session, settings, *(scan(at, n=n) for n, at in enumerate(every_three_hours[:8])))
+        run(session, NOW + 22 * HOUR)
+        store(session, settings, *(scan(at, n=n + 8) for n, at in enumerate(every_three_hours[8:])))
+
+        run(session, NOW + 28 * HOUR)
+
+        first, second = incidents(session)
+        assert (first.signal_count, first.last_seen_at) == (8, NOW + 21 * HOUR)
+        assert (second.signal_count, second.first_seen_at) == (2, NOW + 24 * HOUR)
+
+    def test_a_late_signal_from_before_a_day_old_incident_is_not_held_to_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, scan(NOW + 20 * HOUR, n=1))
+        run(session, NOW + 21 * HOUR)
+        store(session, settings, scan(NOW + 17 * HOUR + timedelta(minutes=30), n=2))
+
+        assert run(session, NOW + 22 * HOUR).created == 0
+
+
+class TestTheShapeOfAnEpisode:
+    def test_it_counts_the_waves_the_ports_and_the_kinds_of_activity(
+        self, session: Session, settings: Settings
+    ) -> None:
+        at = [0, 2, 4, 90, 92, 300]
+        store(
+            session,
+            settings,
+            *(
+                scan(NOW + timedelta(minutes=minute), n=n, dst_port=port)
+                for n, (minute, port) in enumerate(
+                    zip(at, [22, 80, 22, 443, None, 8080], strict=True)
+                )
+            ),
+            brute(NOW + timedelta(minutes=301), n=9, dst_port=22),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.waves == 3
+        assert incident.ports == [22, 80, 443, 8080]
+        assert incident.activities == ["brute_force", "scan"]
+
+    def test_a_late_signal_in_a_quiet_spell_does_not_start_a_wave(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, scan(n=1), scan(NOW + HOUR, n=2))
+        run(session)
+        store(session, settings, scan(NOW + timedelta(minutes=30), n=3))
+
+        run(session)
+
+        assert incidents(session)[0].waves == 2
+
+    def test_only_so_many_ports_are_kept(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(episode, "MAX_PORTS", 2)
+        store(
+            session,
+            settings,
+            *(
+                scan(NOW + timedelta(minutes=n), n=n, dst_port=port)
+                for n, port in enumerate([1, 2, 3])
+            ),
+        )
+
+        run(session)
+
+        assert incidents(session)[0].ports == [1, 2]
+
+    def test_what_the_owner_called_fine_adds_nothing_to_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "not_suspicious", signature="ET SCAN Potential SSH Scan")
+        store(
+            session,
+            settings,
+            scan(n=1, dst_port=22),
+            brute(NOW + timedelta(minutes=1), n=2, dst_port=2222),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert (incident.activities, incident.ports) == (["brute_force"], [2222])
+        # But it came in the time it came in.
+        assert incident.signal_count == 2
+
+
+def legacy(
+    session: Session,
+    subject: str,
+    times: list[datetime],
+    *,
+    status: str = "open",
+    signature: str = "ET SCAN Potential SSH Scan",
+    summary: str = "An alert",
+    verdict: str | None = None,
+    dst_port: int | None = None,
+) -> Incident:
+    """An incident as it was before episodes were known: none of what they say is worked out."""
+    incident = Incident(
+        subject=subject,
+        title="legacy",
+        severity=2,
+        confidence=25,
+        status=status,
+        first_seen_at=min(times),
+        last_seen_at=max(times),
+        signal_count=len(times),
+        sources=["wazuh"],
+        addresses=[ip_address(subject)] if subject[0].isdigit() else [],
+        top_source="wazuh",
+        top_summary="legacy",
+        verdict_counts={verdict: len(times)} if verdict else {},
+        waves=0,
+        status_changed_at=times[0] if status != "open" else None,
+    )
+    session.add(incident)
+    session.flush()
+    for number, at in enumerate(times):
+        session.add(
+            IncidentSignal(
+                incident_id=incident.id,
+                event_id=incident.id * 1000 + number,
+                occurred_at=at,
+                source="wazuh",
+                kind="alert",
+                severity=2,
+                summary=summary,
+                signature=signature,
+                src_address=ip_address(subject) if subject[0].isdigit() else None,
+                dst_port=dst_port,
+                verdict=verdict,
+            )
+        )
+    session.commit()
+    return incident
+
+
+class TestIncidentsFromBeforeEpisodesWereKnown:
+    def test_the_shape_of_each_is_worked_out_from_its_signals(self, session: Session) -> None:
+        legacy(
+            session,
+            ATTACKER,
+            [NOW, NOW + timedelta(minutes=2), NOW + HOUR],
+            dst_port=22,
+        )
+        legacy(session, "rule:wazuh:Something", [NOW], signature="Something")
+
+        result = run(session)
+
+        assert result == correlation.Result()
+        attacker, rule = incidents(session)
+        assert (attacker.block, attacker.waves, attacker.activities, attacker.ports) == (
+            BLOCK,
+            2,
+            ["scan"],
+            [22],
+        )
+        assert (rule.block, rule.waves, rule.activities, rule.ports) == (None, 1, [], [])
+
+    def test_it_is_done_once(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW])
+        run(session)
+        incidents(session)[0].waves = 5
+        session.commit()
+
+        run(session)
+
+        assert incidents(session)[0].waves == 5
+
+    def test_a_resolved_one_is_shaped_but_stays_as_it_is(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW], status="resolved")
+        legacy(session, NEIGHBOUR, [NOW + HOUR], status="resolved")
+
+        result = run(session)
+
+        assert result.merged == 0
+        assert [incident.waves for incident in incidents(session)] == [1, 1]
+
+    def test_what_the_owner_called_fine_is_what_they_are_described_by_when_nothing_else_is(
+        self, session: Session
+    ) -> None:
+        legacy(session, ATTACKER, [NOW], verdict="not_suspicious", dst_port=22)
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert (incident.activities, incident.ports) == (["scan"], [22])
+
+    def test_an_incident_with_no_signals_is_one_wave(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW])
+        session.execute(delete(IncidentSignal))
+        session.commit()
+
+        run(session)
+
+        assert incidents(session)[0].waves == 1
+
+    def test_the_ones_that_are_one_episode_are_merged(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW, NOW + HOUR], dst_port=22)
+        legacy(session, NEIGHBOUR, [NOW + 3 * HOUR], dst_port=80)
+        legacy(session, "93.184.216.200", [NOW + 5 * HOUR], dst_port=443)
+
+        result = run(session)
+
+        assert result == correlation.Result(merged=2)
+        (incident,) = incidents(session)
+        assert incident.subject == ATTACKER
+        assert incident.signal_count == 4
+        assert (incident.first_seen_at, incident.last_seen_at) == (NOW, NOW + 5 * HOUR)
+        assert incident.ports == [22, 80, 443]
+        assert incident.waves == 4
+        assert incident.title == f"legacy ({BLOCK})" or BLOCK in incident.title
+        assert {signal.incident_id for signal in signals(session)} == {incident.id}
+
+    def test_the_one_that_began_first_keeps_the_rest_whichever_was_listed_first(
+        self, session: Session
+    ) -> None:
+        later = legacy(session, NEIGHBOUR, [NOW + 3 * HOUR])
+        first = legacy(session, ATTACKER, [NOW])
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.id == first.id
+        assert incident.id != later.id
+
+    def test_it_does_not_join_what_is_further_apart_than_the_gap_or_a_day_long_together(
+        self, session: Session
+    ) -> None:
+        legacy(session, ATTACKER, [NOW, NOW + 20 * HOUR])
+        legacy(session, NEIGHBOUR, [NOW + 22 * HOUR, NOW + 25 * HOUR])
+        legacy(session, "93.184.216.200", [NOW + 40 * HOUR])
+
+        result = run(session, NOW + 41 * HOUR)
+
+        assert result.merged == 0
+        assert len(incidents(session)) == 3
+
+    def test_nor_what_has_nothing_in_common(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW])
+        legacy(session, NEIGHBOUR, [NOW + HOUR], signature="ET MALWARE Possible C2")
+        legacy(session, "93.184.216.200", [NOW + HOUR], signature="Brute force on ssh")
+
+        assert run(session).merged == 0
+
+    def test_nor_what_someone_has_a_say_in_that_the_other_has_not(self, session: Session) -> None:
+        legacy(session, ATTACKER, [NOW], status="investigating")
+        legacy(session, NEIGHBOUR, [NOW + HOUR])
+
+        result = run(session)
+
+        assert result.merged == 0
+        assert [incident.status for incident in incidents(session)] == ["investigating", "open"]
+
+    def test_but_two_that_are_being_looked_at_are_one_and_keep_the_latest_change_of_status(
+        self, session: Session
+    ) -> None:
+        legacy(session, ATTACKER, [NOW], status="investigating")
+        legacy(session, NEIGHBOUR, [NOW + HOUR], status="investigating")
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.status == "investigating"
+        assert incident.status_changed_at == NOW + HOUR
+        assert incident.created_at <= incident.updated_at
+
+    def test_nor_two_that_have_not_been_given_a_change_of_status_lose_none(
+        self, session: Session
+    ) -> None:
+        legacy(session, ATTACKER, [NOW])
+        legacy(session, NEIGHBOUR, [NOW + HOUR])
+
+        run(session)
+
+        assert incidents(session)[0].status_changed_at is None
+
+
+class TestMergingKeepsWhatWasSaid:
+    def test_the_verdicts_on_the_signals_of_both_stay_on_them(
+        self, session: Session, settings: Settings
+    ) -> None:
+        rule = say(session, "low_priority", address=NEIGHBOUR)
+        store(
+            session,
+            settings,
+            scan(n=1),
+            scan(NOW + 8 * HOUR, n=2, src_address=NEIGHBOUR),
+        )
+        run(session, NOW + 9 * HOUR)
+        assert len(incidents(session)) == 2
+
+        # What was missing arrives late and joins the later one, which makes them one episode.
+        store(session, settings, scan(NOW + 4 * HOUR, n=3))
+        result = run(session, NOW + 10 * HOUR)
+
+        assert result.merged == 1
+        (incident,) = incidents(session)
+        assert incident.signal_count == 3
+        assert incident.verdict_counts == {"low_priority": 1}
+        assert {(signal.src_address, signal.verdict) for signal in signals(session)} == {
+            (ip_address(ATTACKER), None),
+            (ip_address(NEIGHBOUR), "low_priority"),
+        }
+        assert [signal.verdict_rule_id for signal in signals(session) if signal.verdict] == [
+            rule.id
+        ]
+
+    def test_what_an_incident_counted_but_did_not_list_is_still_counted(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(correlation, "MAX_SIGNALS", 1)
+        store(
+            session,
+            settings,
+            scan(n=1),
+            scan(NOW + timedelta(minutes=1), n=2),
+            scan(NOW + 8 * HOUR, n=3, src_address=NEIGHBOUR),
+            scan(NOW + 8 * HOUR + timedelta(minutes=1), n=4, src_address=NEIGHBOUR),
+        )
+        run(session, NOW + 9 * HOUR)
+        store(session, settings, scan(NOW + 4 * HOUR, n=5))
+
+        run(session, NOW + 10 * HOUR)
+
+        (incident,) = incidents(session)
+        assert incident.signal_count == 5
+        assert len(signals(session)) == 2

@@ -305,8 +305,21 @@ and why, and lists the signals in the order they happened. The worker files them
   outside, it is the source. A signal that names no address (such as a log line from a
   host) is about the rule that raised it. Addresses that say nothing, such as `0.0.0.0`,
   loopback, multicast and broadcast, are ignored. An incident has been going until it has been
-  quiet for 6 hours; after that, the next signal about the subject starts another, so a scan on
-  Monday and another on Friday are two.
+  quiet for 6 hours (4 for a scan); after that, the next signal about the subject starts another,
+  so a scan on Monday and another on Friday are two.
+- **A bot that keeps coming back is one incident.** A scan or a brute force (read from the
+  signature and the words of the signal, since every program words them its own way) is also
+  grouped with the neighbouring addresses of the same block, a /24 for IPv4 and a /64 for IPv6,
+  doing the same thing, because botnets rent addresses next to each other: one actor spread over
+  five addresses is one incident, not five. An incident never runs for more than 24 hours, so the
+  same bot a day later is another incident, however steady it is. Inside an incident a quiet of a
+  quarter of an hour or more ends one *wave* and the next signal starts another; the incident
+  says how many waves there were, which ports they touched (as far as the first 1000) and why its
+  signals are one incident, in plain words (`grouping`), so you can see it and disagree. Private
+  addresses are never grouped with their neighbours: those are your own devices and say nothing
+  about an actor. Incidents filed before this was known are merged when a new signal touches
+  them, if they have the same status; one you resolved, dismissed or are investigating is yours
+  to say and stays as it is.
 - **How serious.** As serious as its most serious signal.
 - **How sure.** Confidence is 0 to 100 and is a sum of reasons, each with its points and a
   sentence, which the incident keeps so that you can see why and disagree:
@@ -334,8 +347,11 @@ and why, and lists the signals in the order they happened. The worker files them
   `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`. The answer's
   `counts` follow the `verdict` filter, and `quieted` says how many more incidents (not
   suspicious or low priority throughout) the other filters would have listed.
-  `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
-  network behind its addresses and the firewall's blocks. [The Incidents pages](#the-incidents-pages)
+  Each incident says its `activities` (`scan`, `brute_force`), `waves`, `port_count` (with
+  `ports_capped` when there were more than are kept) and `neighbours`, the other addresses of its
+  block that were grouped into it. `GET /api/incidents/{id}` has the reasons, the `grouping`
+  lines and `ports`, the timeline, the devices on your network behind its addresses and the
+  firewall's blocks. [The Incidents pages](#the-incidents-pages)
   show them.
 - **When they appear.** A run every 30 seconds files the signals that were stored at least 30
   seconds ago, so a new attack is an incident within about a minute of its first alert. The first

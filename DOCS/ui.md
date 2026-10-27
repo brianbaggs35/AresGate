@@ -36,8 +36,11 @@ route's query (`view`, `severity`, `confidence`, `address`), never in component 
 reproduces it. An incident's page reads in the order a person asks: what is it and what can I
 do (the header and its buttons), the numbers, why is AresGate sure (`IncidentReasons`: the bar
 and the list use the chart palette, in the same order, so a color is always the same reason),
-who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program) and then
-every signal (`IncidentTimeline`). The status is always an icon and a word
+who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program), why the
+signals are one incident (`IncidentGrouping`: a line to a fact, the waves and the ports a sweep
+touched, with the well-known ones named) and then every signal (`IncidentTimeline`). A card says
+what a bot was doing in the same way: a chip for scanning or brute force and, only when they
+apply, facts for its waves, ports and neighbouring addresses. The status is always an icon and a word
 (`IncidentStatusChip`), and the changes are named by what they do (*Resolve*, not *Done*). The
 primary action is the one to reach for next, and the page confirms a change in an `output`.
 Status looks, wording and the filters' choices are in `src/incidents.ts`.

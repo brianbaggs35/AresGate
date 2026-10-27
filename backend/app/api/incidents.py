@@ -10,13 +10,14 @@ from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.events.event import Severity
-from app.incidents import queries, rules
+from app.incidents import episode, queries, rules
 from app.models import Incident, IncidentSignal, utcnow
 
 router = APIRouter(prefix="/incidents", tags=["incidents"], dependencies=[Depends(signed_in)])
 
 Status = Literal["open", "investigating", "resolved", "dismissed"]
 Verdict = Literal["not_suspicious", "low_priority", "threat"]
+Activity = Literal["scan", "brute_force"]
 # What to ask for to get the incidents nobody has given a verdict to.
 VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
@@ -55,6 +56,17 @@ class IncidentOut(BaseModel):
     # signals they all called not suspicious or low priority is as sure as 0.
     verdict: Verdict | None
     verdict_counts: dict[Verdict, int]
+    # What kind of activity it was, where its signals say: scanning, brute force.
+    activities: list[Activity]
+    # How many bursts its signals came in, with at least a quarter of an hour of quiet between them.
+    waves: int
+    # How many different destination ports they touched (as far as are kept: ``ports_capped``
+    # says there were at least that many).
+    port_count: int
+    ports_capped: bool
+    # How many other addresses of the subject's block are in it: a bot spread over a block is one
+    # incident (see app/incidents/episode.py).
+    neighbours: int
 
 
 class ReasonOut(BaseModel):
@@ -96,6 +108,10 @@ class DeviceOut(BaseModel):
 class IncidentDetail(IncidentOut):
     # Why AresGate is as sure as it is: the reasons and their points add up to the confidence.
     reasons: list[ReasonOut]
+    # Why these signals are one incident, in plain words, a fact to a line.
+    grouping: list[str]
+    # The destination ports they touched, sorted.
+    ports: list[int]
     # Oldest first. Only the first so many are kept; ``signal_count`` has them all.
     signals: list[SignalOut]
     devices: list[DeviceOut]
@@ -143,6 +159,11 @@ def _incident(incident: Incident) -> IncidentOut:
         status_changed_at=incident.status_changed_at,
         verdict=cast(Verdict | None, incident.verdict),
         verdict_counts=cast(dict[Verdict, int], incident.verdict_counts),
+        activities=cast(list[Activity], incident.activities),
+        waves=max(incident.waves, 1),
+        port_count=len(incident.ports),
+        ports_capped=len(incident.ports) >= episode.MAX_PORTS,
+        neighbours=episode.neighbours_of(incident.subject, incident.block, incident.addresses),
     )
 
 
@@ -169,6 +190,16 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     return IncidentDetail(
         **_incident(incident).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
+        grouping=episode.explain(
+            subject=incident.subject,
+            block=incident.block,
+            neighbours=episode.neighbours_of(incident.subject, incident.block, incident.addresses),
+            activities=incident.activities,
+            waves=max(incident.waves, 1),
+            signals=incident.signal_count,
+            port_count=len(incident.ports),
+        ),
+        ports=incident.ports,
         signals=[_signal(signal) for signal in queries.signals(db, incident)],
         devices=[
             DeviceOut(

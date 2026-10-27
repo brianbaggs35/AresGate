@@ -46,6 +46,7 @@ class Incident(Base):
         ),
         Index("ix_incidents_last_seen_at", "last_seen_at"),
         Index("ix_incidents_subject_last_seen_at", "subject", "last_seen_at"),
+        Index("ix_incidents_block_last_seen_at", "block", "last_seen_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -67,6 +68,15 @@ class Incident(Base):
     sources: Mapped[list[str]] = mapped_column(ARRAY(String(32)), default=list)
     # Every address in the signals, the first fifty of them, subject first.
     addresses: Mapped[list[IPv4Address | IPv6Address]] = mapped_column(ARRAY(INET), default=list)
+    # The block of addresses the subject is in (its /24 or /64), where it is on the internet: the
+    # neighbours that do the same thing are the same incident (see episode.py).
+    block: Mapped[str | None] = mapped_column(String(64), default=None)
+    # What kinds of activity its signals were (``scan``, ``brute_force``), sorted.
+    activities: Mapped[list[str]] = mapped_column(ARRAY(String(16)), default=list)
+    # How many bursts its signals came in, and which destination ports they touched, sorted. No
+    # waves at all means it has not been worked out yet: the engine does it on its next run.
+    waves: Mapped[int] = mapped_column(Integer, default=0)
+    ports: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list)
     # Facts about the strongest signal and the rest, kept so scoring needs no old signals.
     top_source: Mapped[str] = mapped_column(String(32))
     top_summary: Mapped[str] = mapped_column(String(500))

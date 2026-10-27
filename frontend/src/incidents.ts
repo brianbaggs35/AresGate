@@ -1,7 +1,8 @@
-import { BellOff, CircleCheckBig, CircleDot, RotateCcw, Search } from '@lucide/vue'
+import { BellOff, CircleCheckBig, CircleDot, KeyRound, Radar, RotateCcw, Search } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type {
+  Activity,
   ConfidenceLevel,
   Incident,
   IncidentPage,
@@ -10,7 +11,7 @@ import type {
   Program,
   Signal,
 } from '@/api/incidents'
-import { formatDuration } from '@/format'
+import { formatCount, formatDuration } from '@/format'
 import type { Severity } from '@/severity'
 
 interface StatusLook {
@@ -88,6 +89,52 @@ export function actionsFor(status: IncidentStatus): readonly StatusAction[] {
 /** What a status's change reads like afterwards: "Marked as resolved." */
 export function changedTo(status: IncidentStatus): string {
   return status === 'open' ? 'Reopened.' : `Marked as ${STATUS[status].label.toLowerCase()}.`
+}
+
+interface ActivityLook {
+  label: string
+  icon: NonNullable<IconProps['icon']>
+}
+
+/** What each kind of activity is called, with an icon that is never the only way to tell. */
+export const ACTIVITY: Readonly<Record<Activity, ActivityLook>> = {
+  scan: { label: 'Scanning', icon: Radar },
+  brute_force: { label: 'Brute force', icon: KeyRound },
+}
+
+/** The services that the ports people know are for, from the IANA registry. */
+const SERVICES: Readonly<Record<number, string>> = {
+  21: 'FTP',
+  22: 'SSH',
+  23: 'Telnet',
+  25: 'SMTP',
+  53: 'DNS',
+  80: 'HTTP',
+  110: 'POP3',
+  139: 'NetBIOS',
+  143: 'IMAP',
+  443: 'HTTPS',
+  445: 'SMB',
+  993: 'IMAPS',
+  1433: 'SQL Server',
+  3306: 'MySQL',
+  3389: 'RDP',
+  5432: 'PostgreSQL',
+  5900: 'VNC',
+}
+
+/** A port with the service it is known for, if it is one people know: "22 (SSH)". */
+export function portLabel(port: number): string {
+  const service = SERVICES[port]
+  return service ? `${port.toString()} (${service})` : port.toString()
+}
+
+/** How many ports an incident touched, as it ends a sentence: "14 ports", or "at least 1,000
+ * ports" once it has more than are kept. */
+export function portsTouched(incident: Pick<Incident, 'port_count' | 'ports_capped'>): string {
+  const count = formatCount(incident.port_count)
+  const noun = incident.port_count === 1 ? 'port' : 'ports'
+  return incident.ports_capped ? `at least ${count} ${noun}` : `${count} ${noun}`
 }
 
 /** Low, medium and high, in the words people use. */

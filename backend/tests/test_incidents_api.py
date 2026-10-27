@@ -11,16 +11,19 @@ from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
+from app.incidents import episode
 from app.models import AuditEvent, Device, DeviceAddress, Incident, User
 from tests.helpers import OTHER_ORIGIN, new_event
 from tests.test_incidents_engine import (
     ATTACKER,
     DEVICE,
+    NEIGHBOUR,
     NOW,
     OTHER_ATTACKER,
     alert,
     run,
     say,
+    scan,
     store,
 )
 
@@ -119,6 +122,9 @@ class TestListing:
         assert attack["first_seen_at"].startswith("2026-10-26T06:00:00")
         assert attack["last_seen_at"].startswith("2026-10-26T06:02:00")
         assert attack["status_changed_at"] is None
+        assert attack["activities"] == ["brute_force"]
+        assert (attack["waves"], attack["port_count"], attack["neighbours"]) == (1, 0, 0)
+        assert attack["ports_capped"] is False
 
     def test_a_list_hasnt_the_timeline(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings
@@ -338,6 +344,70 @@ class TestOne:
         ]
         assert sum(reason["points"] for reason in body["reasons"]) == body["confidence"]
         assert body["reasons"][1]["text"] == "3 programs saw it: CrowdSec, OPNsense and Wazuh."
+
+    def test_it_says_what_made_it_one_incident(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            scan(NOW, n=1, dst_port=22),
+            scan(NOW + MINUTE, n=2, src_address=NEIGHBOUR, dst_port=80),
+            scan(NOW + 40 * MINUTE, n=3, src_address=NEIGHBOUR, dst_port=22),
+        )
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+
+        listing = listed(client)[0]
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert listing["title"] == "ET SCAN Potential SSH Scan (93.184.216.0/24)"
+        assert (listing["waves"], listing["port_count"], listing["neighbours"]) == (2, 2, 1)
+        assert listing["activities"] == ["scan"]
+        assert body["ports"] == [22, 80]
+        assert body["grouping"] == [
+            "Signals from 2 addresses of 93.184.216.0/24 doing the same thing are grouped: "
+            "a bot spread over a block is one actor.",
+            "Each scanning signal came less than 4 hours after the one before it. "
+            "A longer quiet, or more than 24 hours in all, starts another incident.",
+            "It came in 2 waves: 3 signals in bursts with at least 15 minutes of quiet "
+            "between them.",
+            "It touched 2 ports.",
+        ]
+
+    def test_an_incident_from_before_it_was_worked_out_is_one_wave(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+        incident.waves = 0
+        session.commit()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["waves"] == 1
+
+    def test_it_says_when_it_has_as_many_ports_as_it_keeps(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(episode, "MAX_PORTS", 2)
+        store(
+            session,
+            settings,
+            scan(NOW, n=1, dst_port=22),
+            scan(NOW + MINUTE, n=2, dst_port=80),
+            scan(NOW + 2 * MINUTE, n=3, dst_port=443),
+        )
+        run(session)
+
+        listing = listed(client)[0]
+
+        assert (listing["port_count"], listing["ports_capped"]) == (2, True)
 
     def test_it_has_a_timeline_oldest_first(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

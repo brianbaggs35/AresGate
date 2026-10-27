@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { CircleCheck, Clock, Gauge, Layers, Laptop, ShieldBan, Waypoints } from '@lucide/vue'
+import {
+  CircleCheck,
+  Clock,
+  Gauge,
+  Layers,
+  Laptop,
+  Repeat,
+  ShieldBan,
+  Waypoints,
+} from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -14,6 +23,7 @@ import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
 import AppPage from '@/components/AppPage.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
+import IncidentGrouping from '@/components/IncidentGrouping.vue'
 import IncidentReasons from '@/components/IncidentReasons.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import IncidentTimeline from '@/components/IncidentTimeline.vue'
@@ -26,6 +36,7 @@ import VerdictChip from '@/components/VerdictChip.vue'
 import VerdictPanel from '@/components/VerdictPanel.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import {
+  ACTIVITY,
   CONFIDENCE,
   STATUS,
   actionsFor,
@@ -286,6 +297,32 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </v-card>
 
       <SectionCard
+        title="Why these signals are one incident"
+        description="A bot that keeps coming back is one actor. The same activity on another day is another incident."
+        data-test="grouping-card"
+      >
+        <div v-if="shown.activities.length || shown.waves > 1" class="incident__kinds">
+          <v-chip
+            v-for="activity in shown.activities"
+            :key="activity"
+            :prepend-icon="ACTIVITY[activity].icon"
+            variant="outlined"
+            :data-test="`grouping-activity-${activity}`"
+          >
+            {{ ACTIVITY[activity].label }}
+          </v-chip>
+          <v-chip v-if="shown.waves > 1" :prepend-icon="Repeat" variant="tonal" data-test="waves">
+            {{ shown.waves }} waves
+          </v-chip>
+        </div>
+        <IncidentGrouping
+          :grouping="shown.grouping"
+          :ports="shown.ports"
+          :capped="shown.ports_capped"
+        />
+      </SectionCard>
+
+      <SectionCard
         title="Timeline"
         description="Every signal, whichever program saw it, oldest first."
         data-test="timeline-card"
@@ -339,6 +376,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.incident__kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .incident__notice {

@@ -8,6 +8,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A bot that keeps coming back is one incident**: a port scan or a brute force from one
+  address, or from the neighbouring addresses of its block (a /24 or /64) doing the same thing, is
+  one incident however many waves it takes, instead of one for each. An incident never runs more
+  than a day, so the same bot another day is another, and a scan that went quiet for four hours
+  (six for a brute force) is over. Each incident says what it was doing, how many waves it came
+  in, how many ports it touched and why its signals are one incident, on its card and in a new
+  section of its page; incidents filed before are merged when a new signal touches them if they
+  have the same status ([DOCS/operations.md](DOCS/operations.md#incidents)). The incidents API
+  gains `activities`, `waves`, `port_count`, `ports_capped` and `neighbours`, and `grouping` and
+  `ports` on one incident.
 - **Verdicts from the list of incidents**: each card has *Not suspicious*, *Low priority* and
   *Real threat* under its details, so you can judge an incident without opening it or going to
   Settings. A verdict from a card is about what the incident is about (its address, or the first
