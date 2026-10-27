@@ -61,39 +61,57 @@ function becoming(status: IncidentStatus): string {
   return status === 'open' ? 'reopened' : `marked as ${STATUS[status].label.toLowerCase()}`
 }
 
-/** What it says it would do, from what the API worked out, a sentence to a paragraph. */
-export function wouldDo(change: Change, result: BulkResult): string[] {
-  const about = `${incidentsOf(result.incidents)}, with ${signalsOf(result.signals)}.`
-  if (isStatus(change)) {
-    const { incidents, changed } = result
-    const already = incidents - changed
-    if (changed === 0) {
-      return [
-        about,
-        `Nothing to change: ${incidents === 1 ? 'it' : 'all'} already ${incidents === 1 ? 'is' : 'are'} ${STATUS[change.status].label.toLowerCase()}.`,
-      ]
-    }
-    const rest =
-      already > 0 ? `; ${formatCount(already)} already ${already === 1 ? 'is' : 'are'}.` : '.'
-    const first = already > 0 ? `${formatCount(changed)} will be` : 'All will be'
-    return [about, `${first} ${becoming(change.status)}${rest}`]
-  }
-  const paragraphs = [about]
+/** "it already is resolved", "all already are resolved". */
+function alreadyIn(incidents: number, status: IncidentStatus): string {
+  const which = incidents === 1 ? 'it' : 'all'
+  const verb = incidents === 1 ? 'is' : 'are'
+  return `${which} already ${verb} ${STATUS[status].label.toLowerCase()}`
+}
+
+/** "one verdict", "12 verdicts". */
+function verdictsOf(count: number): string {
+  return count === 1 ? 'one verdict' : `${formatCount(count)} verdicts`
+}
+
+/** The incidents a verdict could not be given for, as the reason they are left out. */
+function leftOut(skipped: number): string {
+  const one = skipped === 1
+  return `${incidentsOf(skipped)} name${one ? 's' : ''} no address and ${one ? 'has' : 'have'} no alert to judge by, so ${one ? 'it is' : 'they are'} left out.`
+}
+
+function statusWouldDo(status: IncidentStatus, result: BulkResult, about: string): string[] {
+  const { incidents, changed } = result
+  if (changed === 0) return [about, `Nothing to change: ${alreadyIn(incidents, status)}.`]
+  const already = incidents - changed
+  if (already === 0) return [about, `All will be ${becoming(status)}.`]
+  const verb = already === 1 ? 'is' : 'are'
+  return [
+    about,
+    `${formatCount(changed)} will be ${becoming(status)}; ${formatCount(already)} already ${verb}.`,
+  ]
+}
+
+function verdictWouldDo(verdict: VerdictKind, result: BulkResult, about: string): string[] {
   const { verdicts, skipped } = result
+  const paragraphs = [about]
   if (verdicts === 0) {
     paragraphs.push('Nothing to change: it is already said of all of them.')
   } else {
-    const count = verdicts === 1 ? 'One verdict' : `${formatCount(verdicts)} verdicts`
+    const count = verdictsOf(verdicts)
     paragraphs.push(
-      `${count} will be remembered as ${VERDICT[change.verdict].label.toLowerCase()}, one for each address or alert. A verdict holds for everything about it, so incidents you did not pick can change too.`,
+      `${count.charAt(0).toUpperCase()}${count.slice(1)} will be remembered as ${VERDICT[verdict].label.toLowerCase()}, one for each address or alert. A verdict holds for everything about it, so incidents you did not pick can change too.`,
     )
   }
-  if (skipped > 0) {
-    paragraphs.push(
-      `${incidentsOf(skipped)} name${skipped === 1 ? 's' : ''} no address and ${skipped === 1 ? 'has' : 'have'} no alert to judge by, so ${skipped === 1 ? 'it is' : 'they are'} left out.`,
-    )
-  }
+  if (skipped > 0) paragraphs.push(leftOut(skipped))
   return paragraphs
+}
+
+/** What it says it would do, from what the API worked out, a sentence to a paragraph. */
+export function wouldDo(change: Change, result: BulkResult): string[] {
+  const about = `${incidentsOf(result.incidents)}, with ${signalsOf(result.signals)}.`
+  return isStatus(change)
+    ? statusWouldDo(change.status, result, about)
+    : verdictWouldDo(change.verdict, result, about)
 }
 
 /** Whether there is nothing in it to go ahead with. */
@@ -101,26 +119,28 @@ export function nothingToDo(change: Change, result: BulkResult): boolean {
   return isStatus(change) ? result.changed === 0 : result.verdicts === 0
 }
 
-/** What it says when it was made: "Marked 3 incidents as resolved." */
-export function didDo(change: Change, result: BulkResult): string {
-  if (isStatus(change)) {
-    const { incidents, changed } = result
-    if (changed === 0)
-      return `Nothing changed: ${incidents === 1 ? 'it' : 'all'} already ${incidents === 1 ? 'is' : 'are'} ${STATUS[change.status].label.toLowerCase()}.`
-    const lead =
-      change.status === 'open'
-        ? `Reopened ${incidentsOf(changed)}`
-        : `Marked ${incidentsOf(changed)} as ${STATUS[change.status].label.toLowerCase()}`
-    const already = incidents - changed
-    return already > 0
-      ? `${lead}. ${formatCount(already)} already ${already === 1 ? 'was' : 'were'}.`
-      : `${lead}.`
-  }
+function statusDid(status: IncidentStatus, result: BulkResult): string {
+  const { incidents, changed } = result
+  if (changed === 0) return `Nothing changed: ${alreadyIn(incidents, status)}.`
+  const lead =
+    status === 'open'
+      ? `Reopened ${incidentsOf(changed)}`
+      : `Marked ${incidentsOf(changed)} as ${STATUS[status].label.toLowerCase()}`
+  const already = incidents - changed
+  if (already === 0) return `${lead}.`
+  return `${lead}. ${formatCount(already)} already ${already === 1 ? 'was' : 'were'}.`
+}
+
+function verdictDid(verdict: VerdictKind, result: BulkResult): string {
   const { verdicts, changed, skipped } = result
-  const said = VERDICT[change.verdict].label.toLowerCase()
   const lead =
     verdicts === 0
       ? `Nothing changed: it is already said of ${incidentsOf(result.incidents - skipped)}.`
-      : `Remembered ${verdicts === 1 ? 'one verdict' : `${formatCount(verdicts)} verdicts`} as ${said}, for ${incidentsOf(changed)}.`
+      : `Remembered ${verdictsOf(verdicts)} as ${VERDICT[verdict].label.toLowerCase()}, for ${incidentsOf(changed)}.`
   return skipped > 0 ? `${lead} ${incidentsOf(skipped)} left out: nothing to judge by.` : lead
+}
+
+/** What it says when it was made: "Marked 3 incidents as resolved." */
+export function didDo(change: Change, result: BulkResult): string {
+  return isStatus(change) ? statusDid(change.status, result) : verdictDid(change.verdict, result)
 }

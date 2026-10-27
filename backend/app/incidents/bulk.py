@@ -98,6 +98,49 @@ def _first_alerts(db: Session, incident_ids: list[int]) -> dict[int, tuple[str, 
     return {incident_id: (source, cast(str, signature)) for incident_id, source, signature in rows}
 
 
+def _by_scope(
+    db: Session, incidents: Sequence[Incident]
+) -> tuple[dict[Scope, list[Incident]], int]:
+    """The incidents about each address or alert, and how many name neither."""
+    alerts = _first_alerts(db, [i.id for i in incidents if i.subject.startswith("rule:")])
+    about: dict[Scope, list[Incident]] = {}
+    skipped = 0
+    for incident in incidents:
+        scope = scope_of(incident.subject, alerts.get(incident.id))
+        if scope is None:
+            skipped += 1
+        else:
+            about.setdefault(scope, []).append(incident)
+    return about, skipped
+
+
+def _is_said(rule: VerdictRule, verdict: str, note: str | None) -> bool:
+    """Whether a rule already says this, so that there is nothing to change."""
+    return rule.verdict == verdict and not (note and note != rule.note)
+
+
+def _add_rule(db: Session, scope: Scope, verdict: str, note: str | None) -> VerdictRule:
+    rule = VerdictRule(
+        verdict=verdict,
+        address=scope.address,
+        source=scope.source,
+        signature=scope.signature,
+        note=note or None,
+    )
+    db.add(rule)
+    db.flush()
+    return rule
+
+
+def _amend(rule: VerdictRule, verdict: str, note: str | None) -> tuple[int, str] | None:
+    """Gives a rule the verdict and the note. What to put back if the verdict changed."""
+    said = rule.verdict
+    rule.verdict = verdict
+    if note:
+        rule.note = note
+    return (rule.id, said) if said != verdict else None
+
+
 def give_verdict(
     db: Session,
     incidents: Sequence[Incident],
@@ -109,15 +152,7 @@ def give_verdict(
     """Says what is thought of what each incident is about, as a verdict like any other: one for
     each address or alert, whatever the number of incidents about it, and one that says so
     already is left alone. The caller then judges the signals again, and commits."""
-    alerts = _first_alerts(db, [i.id for i in incidents if i.subject.startswith("rule:")])
-    about: dict[Scope, list[Incident]] = {}
-    skipped = 0
-    for incident in incidents:
-        scope = scope_of(incident.subject, alerts.get(incident.id))
-        if scope is None:
-            skipped += 1
-        else:
-            about.setdefault(scope, []).append(incident)
+    about, skipped = _by_scope(db, incidents)
     known = {
         (rule.address, rule.source, rule.signature): rule
         for rule in db.scalars(select(VerdictRule))
@@ -128,32 +163,16 @@ def give_verdict(
     ids: list[int] = []
     for scope, found in about.items():
         rule = known.get((scope.address, scope.source, scope.signature))
-        if rule is None:
-            verdicts += 1
-            ids.extend(incident.id for incident in found)
-            if apply:
-                rule = VerdictRule(
-                    verdict=verdict,
-                    address=scope.address,
-                    source=scope.source,
-                    signature=scope.signature,
-                    note=note or None,
-                )
-                db.add(rule)
-                db.flush()
-                rules.append((rule.id, None))
-            continue
-        said = rule.verdict
-        if said == verdict and not (note and note != rule.note):
+        if rule is not None and _is_said(rule, verdict, note):
             continue
         verdicts += 1
         ids.extend(incident.id for incident in found)
-        if apply:
-            rule.verdict = verdict
-            if note:
-                rule.note = note
-            if said != verdict:
-                rules.append((rule.id, said))
+        if not apply:
+            continue
+        if rule is None:
+            rules.append((_add_rule(db, scope, verdict, note).id, None))
+        elif undo := _amend(rule, verdict, note):
+            rules.append(undo)
     return Done(
         incidents=len(incidents),
         signals=sum(incident.signal_count for incident in incidents),

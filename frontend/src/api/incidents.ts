@@ -200,8 +200,7 @@ export type BulkSelection = { ids: readonly number[] } | { matching: IncidentQue
 
 /** What to change in all of them: what is being done about them, or what is thought of what they
  * are about (with a note, to say why). */
-export type BulkChange =
-  { status: IncidentStatus } | { verdict: VerdictKind; note?: string | undefined }
+export type BulkChange = { status: IncidentStatus } | { verdict: VerdictKind; note?: string }
 
 /** How to take a change back, as the change said it. */
 export interface BulkUndo {
