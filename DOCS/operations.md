@@ -564,9 +564,10 @@ AresGate works without it. A test sends only the words "Say OK."
   `backend/app/ai/catalog.py` with the date they were read (`FREE_MODELS_AS_OF`), from the
   account page of an Ollama user on 2026-10-27, so they can go out of date: update that one list
   when Ollama changes them. A test that gets 402 says why: for a model that isn't on the free
-  list it says the model needs a paid plan and which free models there are; for a paid account it
-  says payment is still required and to check ollama.com/settings/usage; and it never lets one
-  paid-only model decide whether the connection works, because the test asks the model you chose.
+  list it says the model needs a paid plan and suggests up to three of the free models the
+  account has (or the first three on the list, if it has none of them); for a paid account it
+  says payment is still required and to check ollama.com/settings/usage. The test asks the model
+  you chose, so one paid-only model never decides whether the connection works.
 - **Test connection and Fetch models save first.** What you filled in is kept, then tested, so
   what is tested is what is used. A test asks for one token: the least that proves the key, the
   model and the address work.

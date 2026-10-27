@@ -219,27 +219,31 @@ async function forget() {
         </p>
       </template>
 
-      <v-radio-group
-        v-if="plans"
-        v-model="draft.plan"
-        inline
-        label="Your Ollama account"
-        hint="Free accounts can use only some of Ollama's cloud models, and nothing Ollama answers says which account a key is for. Choose yours; you can see it at ollama.com/settings/usage."
-        persistent-hint
-        data-test="provider-plan"
-      >
-        <v-radio label="Free" value="free" data-test="provider-plan-free" />
-        <v-radio label="Paid" value="paid" data-test="provider-plan-paid" />
-      </v-radio-group>
-      <p
-        v-if="plans && draft.plan === 'free'"
-        class="text-body-medium text-medium-emphasis"
-        data-test="provider-free-models"
-      >
-        Free usage covers {{ provider.free_models.join(', ') }}, as of {{ freeModelsAsOf }}. Ollama
-        can change this and names no page that lists it, so if one of these asks for payment, choose
-        Paid.
-      </p>
+      <div v-if="plans" class="provider__account">
+        <v-radio-group
+          v-model="draft.plan"
+          inline
+          hide-details
+          label="Your Ollama account"
+          data-test="provider-plan"
+        >
+          <v-radio label="Free" value="free" data-test="provider-plan-free" />
+          <v-radio label="Paid" value="paid" data-test="provider-plan-paid" />
+        </v-radio-group>
+        <p class="text-body-medium text-medium-emphasis" data-test="provider-plan-help">
+          Free accounts can use only some of Ollama's cloud models, and nothing Ollama answers says
+          which account a key is for, so choose yours. It is shown at ollama.com/settings/usage.
+        </p>
+        <p
+          v-if="draft.plan === 'free'"
+          class="text-body-medium text-medium-emphasis"
+          data-test="provider-free-models"
+        >
+          Free usage covers {{ provider.free_models.join(', ') }}, as of {{ freeModelsAsOf }}.
+          Ollama can change this and names no page that lists it, so if one of these asks for
+          payment, choose Paid.
+        </p>
+      </div>
 
       <v-select
         v-if="hosted"
@@ -399,6 +403,13 @@ async function forget() {
 </template>
 
 <style scoped>
+/* The title of an alert is a heading size by default, which is too much above a sentence. */
+.provider :deep(.v-alert-title) {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
 .provider__status {
   display: flex;
   justify-content: flex-end;
@@ -413,6 +424,16 @@ async function forget() {
 
 .provider__make-key {
   margin: -0.5rem 0 0;
+}
+
+.provider__account {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.provider__account p {
+  margin: 0;
 }
 
 .provider__make-key a,

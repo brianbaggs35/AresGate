@@ -261,22 +261,35 @@ def load_target(
     )
 
 
+def _either(names: list[str]) -> str:
+    """Names as a phrase: "a", "a or b", "a, b or c"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
+
+
 def _plan_note(
-    definition: ProviderDef, model: str, plan: str | None, failure: CallFailed | wire.AiFailed
+    definition: ProviderDef,
+    model: str,
+    plan: str | None,
+    failure: CallFailed | wire.AiFailed,
+    found: list[wire.FoundModel],
 ) -> str:
     """Why a model was not answered: for a 402 from a provider with plans, what the plan the
-    owner said they have means for the model, and else what the failure says."""
+    owner said they have means for the model, and else what the failure says. A model that
+    free usage covers is suggested from those the account has, and if it has none, from the
+    list."""
     if definition.has_plans and getattr(failure, "status", None) == 402:
         if plan == "paid":
             return (
-                "Ollama Cloud says payment is required (HTTP 402) for it, though the plan is "
-                "set to paid. Check the plan and the credits at ollama.com/settings/usage."
+                "Ollama says payment is required (HTTP 402), though the account is set to Paid. "
+                "Check the plan and the credits at ollama.com/settings/usage."
             )
         if model not in definition.free_models:
+            has = {item.name for item in found}
+            free = [name for name in definition.free_models if name in has]
+            suggest = _either((free or list(definition.free_models))[:3])
             return (
-                f"{model} isn't one of the models free usage credits cover (HTTP 402), so it "
-                f"needs a paid plan. Choose one of {', '.join(definition.free_models)}, or set "
-                "the plan to paid if it is."
+                "It isn't one of the models free usage covers (HTTP 402), so it needs a paid "
+                f"plan. Try {suggest}, or set the account to Paid if it is."
             )
     return str(failure)
 
@@ -314,7 +327,7 @@ async def check(
                     return Verdict(
                         False,
                         f"Reached it ({count}), but {model} didn't answer. "
-                        f"{_plan_note(definition, model, plan, failure)}",
+                        f"{_plan_note(definition, model, plan, failure, found)}",
                     )
                 return Verdict(True, f"Reached it ({count}), and {model} answered.")
             answer = await wire.complete(
