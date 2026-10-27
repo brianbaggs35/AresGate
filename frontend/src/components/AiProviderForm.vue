@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  ChevronDown,
   CircleCheck,
   ExternalLink,
   FlaskConical,
@@ -23,12 +24,14 @@ import {
   FIELD_ORDER,
   cachingNote,
   canTest,
-  describePrice,
   draftFrom,
   estimateNote,
+  foundHint,
   foundItems,
+  hasPlans,
   isChanged,
   longPromptNote,
+  modelHint,
   modelItems,
   problemsByField,
   providerFieldId,
@@ -36,19 +39,20 @@ import {
 } from '@/ai'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import SecretField from '@/components/SecretField.vue'
-import SectionCard from '@/components/SectionCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
-import { formatAgo, formatCount, formatDateTime } from '@/format'
+import { formatAgo, formatDateTime } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * One AI provider: how to reach it, which model to ask, and buttons to test it. A hosted
- * provider (Anthropic, OpenAI) takes an API key and one model of a list that comes with its
- * prices. An Ollama on the owner's computer takes an address, and Ollama's cloud a key; both
- * have whatever models they have, which a button asks for. Testing or asking for models saves
- * what was filled in first, so what is tested is what is kept.
+ * The settings of the AI provider that was chosen: how to reach it, which model to ask, and
+ * buttons to test it. A hosted provider (Anthropic, OpenAI) takes an API key and one model of a
+ * list that comes with its prices. An Ollama on the owner's computer takes an address, and
+ * Ollama's cloud a key; both have whatever models they have, which a button asks for and a list
+ * then offers. Testing or asking for models saves what was filled in first, so what is tested is
+ * what is kept. What goes between the model and the buttons (the switch that turns AI on) is the
+ * slot.
  */
-const props = defineProps<{ provider: AiProvider; pricedAsOf: string }>()
+const props = defineProps<{ provider: AiProvider; pricedAsOf: string; freeModelsAsOf: string }>()
 const emit = defineEmits<{ changed: [provider: AiProvider]; removed: [key: string] }>()
 
 const session = useSessionStore()
@@ -65,7 +69,7 @@ const hosted = computed(() => props.provider.kind === 'hosted')
 const chosen = computed(() => props.provider.models.find((model) => model.id === draft.model))
 const testable = computed(() => canTest(props.provider, draft))
 const askable = computed(() => !hosted.value && testable.value)
-const lookedUp = computed(() => props.provider.found.length)
+const plans = computed(() => hasPlans(props.provider))
 const host = (url: string) => new URL(url).hostname
 
 function begin(kind: 'save' | 'test' | 'models' | 'remove') {
@@ -135,7 +139,7 @@ async function forget() {
   begin('remove')
   try {
     await session.change((token) => removeProvider(props.provider.key, token))
-    Object.assign(draft, { model: props.provider.default_model ?? '', baseUrl: '', apiKey: '' })
+    Object.assign(draft, draftFrom({ ...props.provider, model: null, base_url: null, plan: null }))
     confirming.value = false
     emit('removed', props.provider.key)
   } catch (error) {
@@ -148,14 +152,10 @@ async function forget() {
 </script>
 
 <template>
-  <SectionCard
-    :title="provider.label"
-    :description="provider.summary"
-    :data-test="`provider-${provider.key}`"
-  >
-    <template v-if="provider.configured" #actions>
+  <div class="provider" :data-test="`provider-${provider.key}`">
+    <div v-if="provider.configured" class="provider__status">
       <StatusChip :status="provider.status" data-test="provider-status" />
-    </template>
+    </div>
 
     <v-alert
       v-if="provider.last_error"
@@ -188,7 +188,7 @@ async function forget() {
         v-model="draft.baseUrl"
         label="Address"
         placeholder="http://192.168.1.50:11434"
-        hint="Where Ollama listens on your network, with http:// and the port. Not localhost: AresGate runs in a container, so that is the container itself, not your computer. Ollama listens only on its own computer until it is told otherwise (OLLAMA_HOST)."
+        hint="Where Ollama listens, with http:// and the port, such as http://192.168.1.50:11434. If Ollama is on the computer that runs AresGate in Docker, use http://host.docker.internal:11434: inside the container, localhost is the container itself. Ollama listens only on its own computer until it is told otherwise (OLLAMA_HOST)."
         persistent-hint
         inputmode="url"
         autocomplete="off"
@@ -219,37 +219,56 @@ async function forget() {
         </p>
       </template>
 
+      <v-radio-group
+        v-if="plans"
+        v-model="draft.plan"
+        inline
+        label="Your Ollama account"
+        hint="Free accounts can use only some of Ollama's cloud models, and nothing Ollama answers says which account a key is for. Choose yours; you can see it at ollama.com/settings/usage."
+        persistent-hint
+        data-test="provider-plan"
+      >
+        <v-radio label="Free" value="free" data-test="provider-plan-free" />
+        <v-radio label="Paid" value="paid" data-test="provider-plan-paid" />
+      </v-radio-group>
+      <p
+        v-if="plans && draft.plan === 'free'"
+        class="text-body-medium text-medium-emphasis"
+        data-test="provider-free-models"
+      >
+        Free usage covers {{ provider.free_models.join(', ') }}, as of {{ freeModelsAsOf }}. Ollama
+        can change this and names no page that lists it, so if one of these asks for payment, choose
+        Paid.
+      </p>
+
       <v-select
         v-if="hosted"
         :id="id('model')"
         v-model="draft.model"
         label="Model"
         :items="modelItems(provider)"
+        :hint="chosen ? modelHint(chosen) : undefined"
+        persistent-hint
         :error-messages="problems.model"
         data-test="provider-model"
       />
-      <v-combobox
+      <!-- Ollama's models are whatever it has: asked for with Fetch models, which fills the list. -->
+      <v-select
         v-else
         :id="id('model')"
-        v-model="draft.model"
+        :model-value="draft.model || null"
         label="Model"
-        :items="foundItems(provider)"
-        :return-object="false"
-        :hint="
-          lookedUp > 0
-            ? `${formatCount(lookedUp)} found ${lookedUp === 1 ? 'model' : 'models'}: choose one, or type a name.`
-            : 'Fetch the models to choose from what it has, or type a name such as llama3.2:3b.'
-        "
+        :items="foundItems(provider, plans ? draft.plan : null, draft.model)"
+        :menu-icon="ChevronDown"
+        no-data-text="No models yet. Press Fetch models to list the ones it has."
+        :hint="foundHint(provider, plans ? draft.plan : null)"
         persistent-hint
-        autocomplete="off"
-        spellcheck="false"
-        autocapitalize="off"
         :error-messages="problems.model"
         data-test="provider-model"
+        @update:model-value="draft.model = $event ?? ''"
       />
 
       <div v-if="chosen" class="provider__price" data-test="provider-price">
-        <p class="text-body-large">{{ describePrice(chosen.price) }}.</p>
         <p
           v-if="cachingNote(chosen)"
           class="text-body-medium text-medium-emphasis"
@@ -310,6 +329,8 @@ async function forget() {
         <v-icon :icon="CircleCheck" color="success" aria-hidden="true" />
         {{ notice }}
       </output>
+
+      <slot />
 
       <div class="provider__actions">
         <v-btn
@@ -374,10 +395,16 @@ async function forget() {
         Its settings are deleted from AresGate. If it is the one AresGate asks, AI is turned off.
       </p>
     </ConfirmDialog>
-  </SectionCard>
+  </div>
 </template>
 
 <style scoped>
+.provider__status {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
 .provider__form {
   display: flex;
   flex-direction: column;

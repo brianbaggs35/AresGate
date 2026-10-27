@@ -125,6 +125,8 @@ export interface StandInRequest {
   username?: string
   password?: string
   models?: string[]
+  /** An Ollama's models that need a paid plan: listed, and answered with 402. */
+  paid?: string[]
   provider?: 'anthropic' | 'openai' | 'ollama_cloud'
 }
 

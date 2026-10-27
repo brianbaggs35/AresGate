@@ -14,6 +14,8 @@ from app.integrations.client import in_chain
 from app.integrations.netguard import (
     HOME_NETWORK,
     HOME_NETWORK_AND_LOOPBACK,
+    OLLAMA_IN_CONTAINER,
+    OLLAMA_ON_THIS_COMPUTER,
     PUBLIC_INTERNET,
     PUBLIC_INTERNET_AND_LOOPBACK,
     GuardedBackend,
@@ -138,6 +140,64 @@ def test_the_test_server_policy_adds_only_loopback() -> None:
     assert HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("10.0.0.1"))
     assert not HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("169.254.169.254"))
     assert not HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("8.8.8.8"))
+
+
+@pytest.mark.parametrize(
+    "address", ["127.0.0.1", "127.1.2.3", "::1", "::ffff:127.0.0.1", "192.168.1.50", "10.0.0.2"]
+)
+def test_an_ollama_may_be_on_the_computer_that_runs_aresgate(address: str) -> None:
+    assert OLLAMA_ON_THIS_COMPUTER.allows(ipaddress.ip_address(address))
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["8.8.8.8", "169.254.169.254", "fd00:ec2::254", "100.64.0.1", "0.0.0.0", "fe80::1"],  # noqa: S104
+)
+def test_an_ollama_is_still_only_on_this_computer_or_the_home_network(address: str) -> None:
+    assert not OLLAMA_ON_THIS_COMPUTER.allows(ipaddress.ip_address(address))
+    assert not OLLAMA_IN_CONTAINER.allows(ipaddress.ip_address(address))
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "::1", "::ffff:127.0.0.1"])
+def test_in_the_container_localhost_is_the_container_and_an_ollama_is_not_there(
+    address: str,
+) -> None:
+    assert not OLLAMA_IN_CONTAINER.allows(ipaddress.ip_address(address))
+    assert OLLAMA_IN_CONTAINER.allows(ipaddress.ip_address("192.168.65.254"))
+    assert OLLAMA_IN_CONTAINER.allows(ipaddress.ip_address("172.17.0.1"))
+
+
+def test_in_the_container_a_refusal_of_localhost_says_how_to_reach_the_computer() -> None:
+    with pytest.raises(Refused) as name:
+        allowed_addresses(OLLAMA_IN_CONTAINER, "localhost", [ipaddress.ip_address("::1")])
+    with pytest.raises(Refused) as typed:
+        allowed_addresses(OLLAMA_IN_CONTAINER, "127.0.0.1", [ipaddress.ip_address("127.0.0.1")])
+
+    assert str(name.value) == (
+        "localhost is at ::1, which is AresGate's container, not your computer, so AresGate "
+        "won't connect to it. Ollama has to be on your own network. For one on the computer that "
+        "runs AresGate, use host.docker.internal instead of localhost, such as "
+        "http://host.docker.internal:11434."
+    )
+    assert str(typed.value).startswith(
+        "127.0.0.1 is AresGate's container, not your computer, so AresGate won't connect to it."
+    )
+
+
+def test_an_ollama_that_is_refused_is_told_where_it_may_be() -> None:
+    with pytest.raises(Refused) as refused:
+        allowed_addresses(OLLAMA_ON_THIS_COMPUTER, "8.8.8.8", [ipaddress.ip_address("8.8.8.8")])
+    with pytest.raises(Refused) as metadata:
+        allowed_addresses(
+            OLLAMA_IN_CONTAINER, "169.254.169.254", [ipaddress.ip_address("169.254.169.254")]
+        )
+
+    assert str(refused.value) == (
+        "8.8.8.8 isn't a private network address, so AresGate won't connect to it. "
+        "Ollama has to be on this computer or on your own network."
+    )
+    # A cloud provider's metadata service says what it is, whatever else is said of loopback.
+    assert "metadata services" in str(metadata.value)
 
 
 @pytest.mark.parametrize(

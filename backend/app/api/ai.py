@@ -30,11 +30,11 @@ Key = Annotated[str, Path(pattern=NAME_PATTERN, description="A provider, such as
 
 
 def policy_for(definition: ProviderDef, request: Request) -> AddressPolicy:
-    """Which addresses a provider may be at: the home network for one on the owner's computer,
-    the internet for the others. The app sets them when it is made."""
+    """Which addresses a provider may be at: the owner's own computer or home network for one on
+    the owner's computer, the internet for the others. The app sets them when it is made."""
     state = request.app.state
     return cast(
-        "AddressPolicy", state.address_policy if definition.kind is Kind.LOCAL else state.ai_policy
+        "AddressPolicy", state.local_ai_policy if definition.kind is Kind.LOCAL else state.ai_policy
     )
 
 
@@ -109,13 +109,18 @@ class ProviderOut(BaseModel):
     # The models it said it has when they were last asked for.
     found: list[FoundModelOut]
     found_at: AwareDatetime | None
+    # For a provider whose plans differ in the models they may use: the models a free plan may use
+    # (none for one with no plans) and the plan the owner said the account has.
+    free_models: list[str]
+    plan: Literal["free", "paid"] | None
 
 
 class AiOut(BaseModel):
     enabled: bool
     provider: str | None
-    # When the prices were read from the providers' pages.
+    # When the prices were read from the providers' pages, and the free models were.
     priced_as_of: str
+    free_models_as_of: str
     providers: list[ProviderOut]
 
 
@@ -126,6 +131,8 @@ class ProviderIn(BaseModel):
     base_url: str | None = Field(default=None, max_length=255)
     # Left out or empty, the key that is kept stays.
     api_key: SecretStr | None = Field(default=None, max_length=1024)
+    # For a provider with plans, free or paid. Left out, the one that is kept stays.
+    plan: str | None = Field(default=None, max_length=8)
 
 
 class UseIn(BaseModel):
@@ -208,6 +215,8 @@ def _provider_out(db: Session, definition: ProviderDef, row: AiProvider | None) 
         last_error=row.last_error if row else None,
         found=[FoundModelOut.model_validate(found) for found in (row.models_found if row else [])],
         found_at=row.models_found_at if row else None,
+        free_models=list(definition.free_models),
+        plan=cast("Literal['free', 'paid'] | None", row.plan) if row else None,
     )
 
 
@@ -219,6 +228,7 @@ def _ai_out(db: Session) -> AiOut:
         enabled=chosen.enabled,
         provider=chosen.provider,
         priced_as_of=catalog.PRICES_AS_OF,
+        free_models_as_of=catalog.FREE_MODELS_AS_OF,
         providers=[
             _provider_out(db, definition, rows.get(definition.key))
             for definition in catalog.PROVIDERS
@@ -251,6 +261,7 @@ def set_up_provider(
         model=body.model,
         base_url=body.base_url,
         api_key=body.api_key.get_secret_value() if body.api_key else None,
+        plan=body.plan,
     )
     try:
         row = service.save(
@@ -315,7 +326,7 @@ def test_provider(
     try:
         target = service.load_target(db, settings, definition, row, origins(request))
         verdict = anyio.from_thread.run(
-            service.check, target, recorder, policy, definition, row.model
+            service.check, target, recorder, policy, definition, row.model, row.plan
         )
     except service.Incomplete as incomplete:
         verdict = Verdict(False, str(incomplete))

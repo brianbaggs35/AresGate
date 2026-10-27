@@ -86,12 +86,12 @@ def test_every_provider_is_listed_with_its_models_and_prices(
     body = response.json()
     assert (body["enabled"], body["provider"], body["priced_as_of"]) == (False, None, "2026-10-27")
     assert [item["key"] for item in body["providers"]] == [
-        "anthropic",
-        "openai",
         "ollama",
         "ollama_cloud",
+        "anthropic",
+        "openai",
     ]
-    anthropic, openai, ollama, cloud = body["providers"]
+    ollama, cloud, anthropic, openai = body["providers"]
     assert anthropic["models"][0]["id"] == "claude-haiku-5-5"
     assert anthropic["default_model"] == "claude-haiku-5-5"
     assert openai["default_model"] == "gpt-6-luna"
@@ -155,6 +155,10 @@ def test_every_provider_is_listed_with_its_models_and_prices(
         [],
     )
     assert (cloud["kind"], cloud["takes_url"], cloud["needs_key"]) == ("cloud", False, True)
+    # Only Ollama's cloud has plans, and the page is told which models a free one may use.
+    assert cloud["free_models"] == list(catalog.OLLAMA_CLOUD_FREE_MODELS)
+    assert (cloud["plan"], anthropic["free_models"], anthropic["plan"]) == (None, [], None)
+    assert body["free_models_as_of"] == "2026-10-27"
     assert all(
         (item["configured"], item["key_saved"], item["status"]) == (False, False, "not_connected")
         for item in body["providers"]
@@ -329,7 +333,7 @@ def test_the_models_an_ollama_has_are_fetched_and_kept(
     assert [item["name"] for item in body["provider"]["found"]] == ["llama3.2:3b", "qwen3:8b"]
     assert body["provider"]["found_at"] is not None
     assert body["provider"]["status"] == "connected"
-    assert [item["name"] for item in client.get(BASE).json()["providers"][2]["found"]] == [
+    assert [item["name"] for item in client.get(BASE).json()["providers"][0]["found"]] == [
         "llama3.2:3b",
         "qwen3:8b",
     ]
@@ -474,3 +478,25 @@ def test_the_catalog_and_the_listing_agree(client: TestClient, csrf_token: str) 
         assert [model["id"] for model in out["models"]] == [m.id for m in definition.models]
         assert out["pricing_url"] == definition.pricing_url
         assert out["models_url"] == definition.models_url
+
+
+def test_the_plan_of_ollamas_cloud_is_free_until_it_is_said_to_be_paid(
+    client: TestClient, csrf_token: str
+) -> None:
+    first = put(client, csrf_token, "ollama_cloud", {"model": "gpt-oss:20b", "api_key": KEY})
+    paid = put(client, csrf_token, "ollama_cloud", {"model": "glm-5.3", "plan": "paid"})
+    kept = put(client, csrf_token, "ollama_cloud", {"model": "glm-5.3"})
+
+    assert first.json()["plan"] == "free"
+    assert paid.json()["plan"] == "paid"
+    assert kept.json()["plan"] == "paid"
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "ollama_cloud"])
+def test_a_plan_that_is_not_one_is_refused(
+    client: TestClient, csrf_token: str, provider: str
+) -> None:
+    refused = put(client, csrf_token, provider, {"model": "", "api_key": KEY, "plan": "gold"})
+
+    assert refused.status_code == 422
+    assert refused.json()["detail"][0]["loc"] == ["body", "plan"]

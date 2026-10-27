@@ -105,6 +105,7 @@ RUN --mount=type=bind,source=docker/apk-retry.sh,target=/apk-retry.sh \
     sh /apk-retry.sh apk upgrade --no-cache; \
     rm -f /etc/nginx/conf.d/default.conf
 ENV PATH=/opt/venv/bin:/opt/supervisor/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    ARESGATE_IN_CONTAINER=true \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 COPY --from=backend-build /opt/venv /opt/venv

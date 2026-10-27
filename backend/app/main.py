@@ -76,6 +76,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Integrations have to be on the home network. (The end-to-end harness allows stand-ins on
     # its own machine instead; the product never does.)
     app.state.address_policy = netguard.HOME_NETWORK
+    # An Ollama on the owner's computer may also be that very computer, unless that is the
+    # container.
+    app.state.local_ai_policy = (
+        netguard.OLLAMA_IN_CONTAINER if settings.in_container else netguard.OLLAMA_ON_THIS_COMPUTER
+    )
     # AI providers are on the internet, and never on the home network or the machine itself.
     # (The harness points them at stand-ins on its own machine instead, with ``ai_origins``.)
     app.state.ai_policy = netguard.PUBLIC_INTERNET

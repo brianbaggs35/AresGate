@@ -22,6 +22,9 @@ class AiProvider(Base):
     # address that the catalog knows.
     base_url: Mapped[str | None] = mapped_column(String(255), default=None)
     model: Mapped[str] = mapped_column(String(128))
+    # The plan of the account, for a provider that has plans whose models differ (``free`` or
+    # ``paid``), which only its owner can say: nothing the provider answers tells.
+    plan: Mapped[str | None] = mapped_column(String(8), default=None)
     # The models that were installed or offered when they were last asked for, for the providers
     # that have no fixed list: each has a name, and may have its size and family.
     models_found: Mapped[list[dict[str, str | int | None]]] = mapped_column(JSONB, default=list)

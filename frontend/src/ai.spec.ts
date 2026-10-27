@@ -7,17 +7,21 @@ import {
   describePrice,
   estimateNote,
   draftFrom,
+  foundHint,
   foundItems,
   formatUsd,
+  hasPlans,
   incidentCost,
   isChanged,
   isReady,
   longPromptNote,
+  modelHint,
   modelItems,
   priceNote,
   problemsByField,
   providerFieldId,
   settingsFrom,
+  useNote,
 } from '@/ai'
 import {
   HAIKU,
@@ -46,7 +50,7 @@ describe('prices', () => {
   })
 
   it('says what a model costs in and out', () => {
-    expect(describePrice(HAIKU.price, 'en-US')).toBe('$0.10 in, $0.50 out per million tokens')
+    expect(describePrice(HAIKU.price, 'en-US')).toBe('$0.10 in · $0.50 out per million tokens')
   })
 
   it('works out a reading of one incident from the tokens it is assumed to take', () => {
@@ -104,7 +108,7 @@ describe('prices', () => {
 
   it('puts the price and the estimate under a model', () => {
     expect(priceNote(LUNA, 'en-US')).toBe(
-      '$0.10 in, $0.50 out per million tokens · about $0.0006 an incident',
+      '$0.10 in · $0.50 out per million tokens · about $0.0006 an incident',
     )
   })
 
@@ -126,7 +130,7 @@ describe('prices', () => {
         title: 'Claude Haiku 5.5',
         props: {
           subtitle:
-            'Fast and cheap: a good fit for reading every incident · $0.10 in, $0.50 out per million tokens · about $0.0006 an incident',
+            'Fast and cheap: a good fit for reading every incident · $0.10 in · $0.50 out per million tokens · about $0.0006 an incident',
         },
       },
       expect.objectContaining({ value: 'claude-sonnet-5-5' }),
@@ -140,30 +144,44 @@ describe('the form for a provider', () => {
       model: 'claude-haiku-5-5',
       baseUrl: '',
       apiKey: '',
+      plan: 'free',
     })
     expect(draftFrom(openai({ model: 'gpt-6-luna', configured: true }))).toEqual({
       model: 'gpt-6-luna',
       baseUrl: '',
       apiKey: '',
+      plan: 'free',
     })
     expect(
       draftFrom(ollama({ configured: true, base_url: 'http://192.168.1.50:11434', model: 'a:1b' })),
-    ).toEqual({ model: 'a:1b', baseUrl: 'http://192.168.1.50:11434', apiKey: '' })
-    expect(draftFrom(ollamaCloud())).toEqual({ model: '', baseUrl: '', apiKey: '' })
+    ).toEqual({ model: 'a:1b', baseUrl: 'http://192.168.1.50:11434', apiKey: '', plan: 'free' })
+    expect(draftFrom(ollamaCloud())).toEqual({ model: '', baseUrl: '', apiKey: '', plan: 'free' })
+  })
+
+  it('starts from the plan the owner said the account has', () => {
+    expect(draftFrom(ollamaCloud({ configured: true, plan: 'paid' })).plan).toBe('paid')
   })
 
   it('sends the key only if one was typed, and the address only if it takes one', () => {
+    const draft = { model: 'claude-haiku-5-5', baseUrl: '', apiKey: '', plan: 'free' } as const
+
     expect(
-      settingsFrom(anthropic(), { model: ' claude-haiku-5-5 ', baseUrl: 'x', apiKey: '' }),
-    ).toEqual({
+      settingsFrom(anthropic(), { ...draft, model: ' claude-haiku-5-5 ', baseUrl: 'x' }),
+    ).toEqual({ model: 'claude-haiku-5-5' })
+    expect(settingsFrom(anthropic(), { ...draft, apiKey: ' sk-new ' })).toEqual({
       model: 'claude-haiku-5-5',
+      api_key: 'sk-new',
     })
     expect(
-      settingsFrom(anthropic(), { model: 'claude-haiku-5-5', baseUrl: '', apiKey: ' sk-new ' }),
-    ).toEqual({ model: 'claude-haiku-5-5', api_key: 'sk-new' })
-    expect(
-      settingsFrom(ollama(), { model: '', baseUrl: ' http://192.168.1.50:11434 ', apiKey: '' }),
+      settingsFrom(ollama(), { ...draft, model: '', baseUrl: ' http://192.168.1.50:11434 ' }),
     ).toEqual({ model: '', base_url: 'http://192.168.1.50:11434' })
+  })
+
+  it('sends the plan only for a provider whose models depend on it', () => {
+    const draft = { model: 'gpt-oss:20b', baseUrl: '', apiKey: '', plan: 'paid' } as const
+
+    expect(settingsFrom(ollamaCloud(), draft)).toEqual({ model: 'gpt-oss:20b', plan: 'paid' })
+    expect(settingsFrom(anthropic(), draft)).toEqual({ model: 'gpt-oss:20b' })
   })
 
   it('is changed when it is not kept yet, or differs from what is', () => {
@@ -175,6 +193,15 @@ describe('the form for a provider', () => {
     expect(isChanged(kept, { ...draftFrom(kept), baseUrl: 'http://x' })).toBe(true)
     expect(isChanged(kept, { ...draftFrom(kept), apiKey: 'sk-new' })).toBe(true)
     expect(isChanged(kept, { ...draftFrom(kept), apiKey: '   ' })).toBe(false)
+  })
+
+  it('is changed when the plan differs, but only where the plan matters', () => {
+    const cloud = ollamaCloud({ configured: true, key_saved: true, model: 'gpt-oss:20b' })
+    const hosted = anthropic({ configured: true, key_saved: true, model: 'claude-haiku-5-5' })
+
+    expect(isChanged(cloud, draftFrom(cloud))).toBe(false)
+    expect(isChanged(cloud, { ...draftFrom(cloud), plan: 'paid' })).toBe(true)
+    expect(isChanged(hosted, { ...draftFrom(hosted), plan: 'paid' })).toBe(false)
   })
 
   it('can be tested once it has what it needs', () => {
@@ -225,10 +252,30 @@ describe('the models an Ollama has', () => {
     },
     { name: 'tiny:1b', size: null, family: null, parameters: null, quantization: null },
   ]
+  // What Ollama's cloud lists: no details, and a size that is 0 for some.
+  const hosted = [
+    { name: 'glm-5.2', size: 0, family: null, parameters: null, quantization: null },
+    {
+      name: 'gpt-oss:120b',
+      size: 65_290_180_781,
+      family: 'gptoss',
+      parameters: '116.8B',
+      quantization: 'MXFP4',
+    },
+  ]
 
-  it('says what each is', () => {
-    expect(describeFound(found[0]!)).toBe('qwen3 · 8.2B · Q4_K_M · 4.8 GB')
-    expect(describeFound(found[1]!)).toBe('')
+  it('says what each is on the owner’s computer, with how big it is', () => {
+    expect(describeFound(found[0]!, 'local')).toBe('qwen3 · 8.2B · Q4_K_M · 4.8 GB')
+    expect(describeFound(found[1]!, 'local')).toBe('')
+  })
+
+  it('leaves out a size of nothing', () => {
+    expect(describeFound({ ...found[0]!, size: 0 }, 'local')).toBe('qwen3 · 8.2B · Q4_K_M')
+  })
+
+  it('says only what a model in Ollama’s cloud is, never how big: it is not on this computer', () => {
+    expect(describeFound(hosted[0]!, 'cloud')).toBe('')
+    expect(describeFound(hosted[1]!, 'cloud')).toBe('gptoss · 116.8B')
   })
 
   it('lists them to choose from', () => {
@@ -241,5 +288,92 @@ describe('the models an Ollama has', () => {
       { value: 'tiny:1b', title: 'tiny:1b', props: { subtitle: '' } },
     ])
     expect(foundItems(ollama())).toEqual([])
+  })
+
+  it('lists those of Ollama’s cloud with no size', () => {
+    expect(foundItems(ollamaCloud({ found: hosted })).map((item) => item.props.subtitle)).toEqual([
+      '',
+      'gptoss · 116.8B',
+    ])
+  })
+
+  it('lists only the free ones for a free account, and all of them for a paid one', () => {
+    const cloud = ollamaCloud({ found: hosted })
+
+    expect(foundItems(cloud, 'free').map((item) => item.value)).toEqual(['gpt-oss:120b'])
+    expect(foundItems(cloud, 'paid').map((item) => item.value)).toEqual(['glm-5.2', 'gpt-oss:120b'])
+    expect(foundItems(cloud).map((item) => item.value)).toEqual(['glm-5.2', 'gpt-oss:120b'])
+    // Only a provider with plans keeps models out.
+    expect(foundItems(ollama({ found }), 'free')).toHaveLength(2)
+  })
+
+  it('keeps a model the free plan does not cover in the list when it is the one chosen', () => {
+    const cloud = ollamaCloud({ found: hosted, model: 'glm-5.2' })
+
+    expect(foundItems(cloud, 'free')[0]).toEqual({
+      value: 'glm-5.2',
+      title: 'glm-5.2',
+      props: { subtitle: 'Needs a paid plan' },
+    })
+    expect(foundItems({ ...cloud, model: 'gpt-oss:120b' }, 'free', 'glm-5.2')).toHaveLength(2)
+  })
+
+  it('says how many models there are to choose from, and how many the plan keeps out', () => {
+    const cloud = ollamaCloud({ found: hosted })
+
+    expect(foundHint(ollama())).toBe('Press Fetch models to list the ones it has.')
+    expect(foundHint(ollama({ found }))).toBe('2 models found: choose one.')
+    expect(foundHint(cloud, 'free')).toBe('1 model found: choose one. 1 more need a paid plan.')
+    expect(foundHint(cloud, 'paid')).toBe('2 models found: choose one.')
+  })
+
+  it('knows which providers have plans', () => {
+    expect(hasPlans(ollamaCloud())).toBe(true)
+    expect(hasPlans(ollama())).toBe(false)
+    expect(hasPlans(anthropic())).toBe(false)
+  })
+
+  it('always lists the model that is kept, saying so when it was not found', () => {
+    const kept = ollama({ model: 'llama3.2:3b' })
+
+    expect(foundItems(kept)).toEqual([
+      { value: 'llama3.2:3b', title: 'llama3.2:3b', props: { subtitle: 'The model you saved' } },
+    ])
+    expect(foundItems({ ...kept, found })[0]).toEqual({
+      value: 'llama3.2:3b',
+      title: 'llama3.2:3b',
+      props: { subtitle: 'Saved, but not among the models it has now' },
+    })
+    expect(foundItems({ ...kept, model: 'tiny:1b', found })).toHaveLength(2)
+  })
+})
+
+describe('what is said of the model and of AI', () => {
+  it('puts what a model is for beside what it costs', () => {
+    expect(modelHint(HAIKU, 'en-US')).toBe(
+      'Fast and cheap: a good fit for reading every incident · $0.10 in · $0.50 out per million tokens',
+    )
+  })
+
+  it('says AI is off unless it is on with a provider that is there', () => {
+    const providers = [anthropic({ configured: true, model: 'claude-haiku-5-5' }), ollama()]
+
+    expect(useNote({ enabled: false, provider: 'anthropic', providers })).toBe('Off')
+    expect(useNote({ enabled: true, provider: null, providers })).toBe('Off')
+    expect(useNote({ enabled: true, provider: 'gone', providers })).toBe('Off')
+  })
+
+  it('names the model it is on with: its label, else its name, else the provider', () => {
+    const named = anthropic({ configured: true, model: 'claude-haiku-5-5' })
+    const local = ollama({ configured: true, model: 'qwen3:8b' })
+    const bare = ollama({ configured: true, model: null })
+
+    expect(useNote({ enabled: true, provider: 'anthropic', providers: [named] })).toBe(
+      'On · Claude Haiku 5.5',
+    )
+    expect(useNote({ enabled: true, provider: 'ollama', providers: [local] })).toBe('On · qwen3:8b')
+    expect(useNote({ enabled: true, provider: 'ollama', providers: [bare] })).toBe(
+      'On · Ollama (on your computer)',
+    )
   })
 })

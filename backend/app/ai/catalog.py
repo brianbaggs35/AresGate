@@ -145,6 +145,12 @@ class ProviderDef:
     # The models it offers. Empty for a provider whose models are whatever is installed.
     models: tuple[ModelDef, ...]
     default_model: str | None
+    # For a provider whose plans differ in the models they may use: the ones a free plan may.
+    free_models: tuple[str, ...] = ()
+
+    @property
+    def has_plans(self) -> bool:
+        return bool(self.free_models)
 
     def model(self, model_id: str) -> ModelDef | None:
         return next((model for model in self.models if model.id == model_id), None)
@@ -194,7 +200,7 @@ def _gpt6(model_id: str, label: str, note: str, price: Price) -> ModelDef:
 ANTHROPIC = ProviderDef(
     key="anthropic",
     label="Anthropic",
-    summary="Claude models, asked over the internet with an API key.",
+    summary="Claude, with an API key from the Claude Console.",
     wire=Wire.ANTHROPIC,
     kind=Kind.HOSTED,
     origin="https://api.anthropic.com",
@@ -241,7 +247,7 @@ ANTHROPIC = ProviderDef(
 OPENAI = ProviderDef(
     key="openai",
     label="OpenAI",
-    summary="GPT models, asked over the internet with an API key.",
+    summary="GPT, with an API key from the OpenAI platform.",
     wire=Wire.OPENAI,
     kind=Kind.HOSTED,
     origin="https://api.openai.com",
@@ -323,10 +329,9 @@ OPENAI = ProviderDef(
 
 OLLAMA = ProviderDef(
     key="ollama",
-    label="Ollama (your computer)",
+    label="Ollama (on your computer)",
     summary=(
-        "Models that run on a computer of your own, so nothing leaves your network and it "
-        "costs nothing to ask."
+        "Runs models on your own hardware, so nothing leaves your network and nothing is billed."
     ),
     wire=Wire.OLLAMA,
     kind=Kind.LOCAL,
@@ -339,10 +344,27 @@ OLLAMA = ProviderDef(
     default_model=None,
 )
 
+# The cloud models that Ollama's free usage credits can be used with. Every other model answers
+# 402 Payment Required to a free account. Keep the list here, and its date with it, so that it is
+# one thing to update when Ollama changes it. Ollama's API and docs name no endpoint that says
+# which plan an account has, and docs.ollama.com/cloud refers to ollama.com/pricing and
+# ollama.com/settings/usage for plans and usage without listing the models: this list is from
+# the page of an account, which the owner copied on FREE_MODELS_AS_OF, so it can be out of date.
+FREE_MODELS_AS_OF = "2026-10-27"
+OLLAMA_CLOUD_FREE_MODELS: tuple[str, ...] = (
+    "beam",
+    "gemma4:31b",
+    "gpt-oss:120b",
+    "gpt-oss:20b",
+    "nemotron-3-nano:30b",
+    "nemotron-3-super",
+    "nemotron-3-ultra",
+)
+
 OLLAMA_CLOUD = ProviderDef(
     key="ollama_cloud",
     label="Ollama Cloud",
-    summary="Models that Ollama runs for you, asked over the internet with an API key.",
+    summary="Ollama's hosted models (ollama.com), with a key from your Ollama account.",
     wire=Wire.OLLAMA,
     kind=Kind.CLOUD,
     origin="https://ollama.com",
@@ -352,9 +374,11 @@ OLLAMA_CLOUD = ProviderDef(
     models_url="https://docs.ollama.com/cloud",
     models=(),
     default_model=None,
+    free_models=OLLAMA_CLOUD_FREE_MODELS,
 )
 
-PROVIDERS: tuple[ProviderDef, ...] = (ANTHROPIC, OPENAI, OLLAMA, OLLAMA_CLOUD)
+# In the order the page offers them: the ones that keep everything at home first.
+PROVIDERS: tuple[ProviderDef, ...] = (OLLAMA, OLLAMA_CLOUD, ANTHROPIC, OPENAI)
 BY_KEY: dict[str, ProviderDef] = {provider.key: provider for provider in PROVIDERS}
 
 

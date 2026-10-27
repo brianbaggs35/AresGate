@@ -333,7 +333,14 @@ test.describe('layout on a phone', () => {
       ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
       ['activity', () => activity.goto(), activity.entries.first()],
       ['verdicts', () => verdicts.goto(), verdicts.rows.first()],
-      ['ai', () => aiSettings.goto(), aiSettings.card('anthropic')],
+      [
+        'ai',
+        async () => {
+          await aiSettings.goto()
+          await aiSettings.choose('ollama_cloud')
+        },
+        aiSettings.card('ollama_cloud'),
+      ],
       ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()

@@ -9,10 +9,10 @@ from app.ai.catalog import Caching, Kind, Price, Wire
 
 def test_every_provider_is_found_by_its_key() -> None:
     assert [item.key for item in catalog.PROVIDERS] == [
-        "anthropic",
-        "openai",
         "ollama",
         "ollama_cloud",
+        "anthropic",
+        "openai",
     ]
     assert catalog.provider("openai") is catalog.OPENAI
     assert catalog.provider("nothing") is None

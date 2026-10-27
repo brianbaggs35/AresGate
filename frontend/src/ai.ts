@@ -1,5 +1,14 @@
 import type { Problem } from '@/api/client'
-import type { AiProvider, FoundModel, ModelChoice, Price, ProviderSettings } from '@/api/ai'
+import type {
+  Ai,
+  AiProvider,
+  FoundModel,
+  ModelChoice,
+  Plan,
+  Price,
+  ProviderKind,
+  ProviderSettings,
+} from '@/api/ai'
 import { formatBytes, formatCount } from '@/format'
 
 /** What reading one incident is assumed to take, in tokens: the incident and what surrounds it
@@ -20,9 +29,9 @@ export function formatUsd(value: number, locale?: string): string {
   })
 }
 
-/** What a price is, in a line: "$0.10 in, $0.50 out per million tokens". */
+/** What a price is, in a line: "$0.10 in · $0.50 out per million tokens". */
 export function describePrice(price: Price, locale?: string): string {
-  return `${formatUsd(price.input, locale)} in, ${formatUsd(price.output, locale)} out per million tokens`
+  return `${formatUsd(price.input, locale)} in · ${formatUsd(price.output, locale)} out per million tokens`
 }
 
 /** What reading one incident costs at a price, by the assumed tokens. With `cached`, the fixed
@@ -86,6 +95,7 @@ export interface ProviderDraft {
   baseUrl: string
   /** Only what was typed: a key that is kept is never here. */
   apiKey: string
+  plan: Plan
 }
 
 /** The form for a provider, starting from how it is saved. A model that was never chosen is the
@@ -95,6 +105,8 @@ export function draftFrom(provider: AiProvider): ProviderDraft {
     model: provider.model ?? provider.default_model ?? '',
     baseUrl: provider.base_url ?? '',
     apiKey: '',
+    // An account starts as a free one, which is what it is until it is paid for.
+    plan: provider.plan ?? 'free',
   }
 }
 
@@ -103,6 +115,7 @@ export function draftFrom(provider: AiProvider): ProviderDraft {
 export function settingsFrom(provider: AiProvider, draft: ProviderDraft): ProviderSettings {
   const settings: ProviderSettings = { model: draft.model.trim() }
   if (provider.takes_url) settings.base_url = draft.baseUrl.trim()
+  if (hasPlans(provider)) settings.plan = draft.plan
   const typed = draft.apiKey.trim()
   if (typed !== '') settings.api_key = typed
   return settings
@@ -115,8 +128,14 @@ export function isChanged(provider: AiProvider, draft: ProviderDraft): boolean {
   return (
     draft.model.trim() !== saved.model ||
     draft.baseUrl.trim() !== saved.baseUrl ||
-    draft.apiKey.trim() !== ''
+    draft.apiKey.trim() !== '' ||
+    (hasPlans(provider) && draft.plan !== saved.plan)
   )
+}
+
+/** Whether the models a provider allows depend on the plan of the account. */
+export function hasPlans(provider: AiProvider): boolean {
+  return provider.free_models.length > 0
 }
 
 /** Whether there is enough to test: the address of one on the owner's computer, and the key of
@@ -137,15 +156,18 @@ export function problemsByField(problems: readonly Problem[]): Record<string, st
   return byField
 }
 
-/** The line under a model an Ollama has: what it is and how big. */
-export function describeFound(model: FoundModel): string {
+/** The line under a model an Ollama has: what it is and, for one on the owner's own computer,
+ * how big it is, which is what decides the disk and memory it takes. The ones in Ollama's cloud
+ * are on its computers, so their size says nothing the owner can use (and is 0 for some). */
+export function describeFound(model: FoundModel, kind: ProviderKind): string {
+  const onThisComputer = kind === 'local'
   const parts = [
     model.family,
     model.parameters,
-    model.quantization,
-    model.size === null ? null : formatBytes(model.size),
+    onThisComputer ? model.quantization : null,
+    onThisComputer && model.size ? formatBytes(model.size) : null,
   ]
-  return parts.filter((part) => part !== null).join(' · ')
+  return parts.filter((part) => part !== null && part !== '').join(' · ')
 }
 
 /** Whether a provider can be asked: it is set up, has a model and, if it takes a key, has one. */
@@ -163,13 +185,55 @@ export function modelItems(provider: AiProvider, locale?: string) {
   }))
 }
 
-/** The models an Ollama said it has, to choose from. */
-export function foundItems(provider: AiProvider) {
-  return provider.found.map((model) => ({
+/** The models an Ollama said it has that the account may use: with a free plan, only the ones
+ * its free usage covers, because the others answer 402 Payment Required. */
+function usable(provider: AiProvider, plan: Plan | null): FoundModel[] {
+  if (plan !== 'free' || !hasPlans(provider)) return provider.found
+  return provider.found.filter((model) => provider.free_models.includes(model.name))
+}
+
+/** The models an Ollama said it has, to choose from. The model that is kept or chosen is always
+ * among them, so one can still be chosen when asking failed or hasn't been done, and it says why
+ * it is there when that isn't plain. */
+export function foundItems(provider: AiProvider, plan: Plan | null = null, chosen = '') {
+  const items = usable(provider, plan).map((model) => ({
     value: model.name,
     title: model.name,
-    props: { subtitle: describeFound(model) },
+    props: { subtitle: describeFound(model, provider.kind) },
   }))
+  for (const name of new Set([chosen, provider.model ?? ''])) {
+    if (!name || items.some((item) => item.value === name)) continue
+    const known = provider.found.some((model) => model.name === name)
+    let subtitle = 'The model you saved'
+    if (known) subtitle = 'Needs a paid plan'
+    else if (provider.found.length > 0) subtitle = 'Saved, but not among the models it has now'
+    items.unshift({ value: name, title: name, props: { subtitle } })
+  }
+  return items
+}
+
+/** The line under an Ollama's model list: how many models there are to choose from, and how many
+ * the plan keeps out. */
+export function foundHint(provider: AiProvider, plan: Plan | null = null): string {
+  if (provider.found.length === 0) return 'Press Fetch models to list the ones it has.'
+  const count = usable(provider, plan).length
+  const hidden = provider.found.length - count
+  const noun = count === 1 ? 'model' : 'models'
+  const base = `${formatCount(count)} ${noun} found: choose one.`
+  return hidden > 0 ? `${base} ${formatCount(hidden)} more need a paid plan.` : base
+}
+
+/** The line under the chosen model: what it is for, and what it costs. */
+export function modelHint(model: ModelChoice, locale?: string): string {
+  return `${model.note} · ${describePrice(model.price, locale)}`
+}
+
+/** What AI is doing, for the badge on the page: "On · GPT-6 Luna", or "Off". */
+export function useNote(ai: Pick<Ai, 'enabled' | 'provider' | 'providers'>): string {
+  const active = ai.providers.find((provider) => provider.key === ai.provider)
+  if (!ai.enabled || !active) return 'Off'
+  const model = active.models.find((choice) => choice.id === active.model)
+  return `On · ${model?.label ?? active.model ?? active.label}`
 }
 
 /** The fields of a provider in the order they are on the page, which is where a problem moves
