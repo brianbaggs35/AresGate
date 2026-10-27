@@ -242,15 +242,16 @@ const LOOKS: Readonly<
   background: rgba(var(--v-theme-surface), 0.55);
 }
 
-.hero__vitals :slotted(*) {
+/* The vitals are put in by whoever shows the hero, so they are reached through the slot. */
+.hero__vitals > :deep(*) {
   border-inline-start: 1px solid var(--hairline);
 }
 
-.hero__vitals :slotted(:nth-child(odd)) {
+.hero__vitals > :deep(:nth-child(odd)) {
   border-inline-start: 0;
 }
 
-.hero__vitals :slotted(:nth-child(n + 3)) {
+.hero__vitals > :deep(:nth-child(n + 3)) {
   border-top: 1px solid var(--hairline);
 }
 
@@ -277,11 +278,11 @@ const LOOKS: Readonly<
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .hero__vitals :slotted(:nth-child(n + 2)) {
+  .hero__vitals > :deep(:nth-child(n + 2)) {
     border-inline-start: 1px solid var(--hairline);
   }
 
-  .hero__vitals :slotted(:nth-child(n + 3)) {
+  .hero__vitals > :deep(:nth-child(n + 3)) {
     border-top: 0;
   }
 }
@@ -334,10 +335,10 @@ const LOOKS: Readonly<
 
 @media (prefers-reduced-motion: reduce) {
   .hero,
-  .hero .hero__arc,
-  .hero[data-state] .hero__arc,
-  .hero .hero__sweep,
-  .hero[data-state] .hero__ring::after {
+  .hero__arc,
+  .hero[data-state='attention'] .hero__arc,
+  .hero__sweep,
+  .hero[data-state='attention'] .hero__ring::after {
     animation: none;
   }
 }
