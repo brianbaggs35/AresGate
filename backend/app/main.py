@@ -76,6 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Integrations have to be on the home network. (The end-to-end harness allows stand-ins on
     # its own machine instead; the product never does.)
     app.state.address_policy = netguard.HOME_NETWORK
+    # AI providers are on the internet, and never on the home network or the machine itself.
+    # (The harness points them at stand-ins on its own machine instead, with ``ai_origins``.)
+    app.state.ai_policy = netguard.PUBLIC_INTERNET
+    app.state.ai_origins = {}
     app.add_middleware(RequestContext)
     app.add_exception_handler(Exception, server_error)
     app.add_exception_handler(RequestValidationError, invalid_request)
