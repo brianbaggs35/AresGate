@@ -96,4 +96,44 @@
       box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary));
     }
   }
+
+  // Depth. Behind the page, a faint light from the top, in the colors the theme is built on, so
+  // the dark theme reads as a lit room and not a flat fill; and on a card, a sheen that fades
+  // out by the middle, so surfaces sit above the page.
+  .v-application.v-theme--dark {
+    background-image:
+      radial-gradient(60rem 26rem at 12% -8rem, rgba(34, 211, 238, 0.07), transparent 70%),
+      radial-gradient(48rem 24rem at 100% -6rem, rgba(167, 139, 250, 0.06), transparent 70%);
+    background-repeat: no-repeat;
+  }
+
+  .v-application.v-theme--light {
+    background-image: radial-gradient(
+      60rem 22rem at 10% -6rem,
+      rgba(14, 116, 144, 0.07),
+      transparent 70%
+    );
+    background-repeat: no-repeat;
+  }
+
+  .v-theme--dark .v-card {
+    background-image: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0) 55%
+    );
+  }
+
+  // The page you are on lights up in the menu, as well as being marked by the bar.
+  .v-theme--dark .app-drawer .v-list-item--active {
+    box-shadow:
+      inset 3px 0 0 rgb(var(--v-theme-primary)),
+      0 0 28px -10px rgba(var(--v-theme-primary), 0.55);
+  }
+
+  // Numbers line up in a column and don't jump as they change.
+  .v-card :is(.text-headline-large, .text-headline-medium, .text-display-small) {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
+  }
 }

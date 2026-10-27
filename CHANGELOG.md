@@ -8,6 +8,14 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A status hero on the dashboard**: the first thing on the dashboard is now one sentence in the
+  biggest type on the page (*Needs your attention*, *Keep an eye on it*, *All clear*, *Set up*)
+  with a ring and a glow in the color of the answer, and the four numbers that back it up inside
+  it, where there used to be a flat banner above a row of tiles. Cards have a faint sheen in dark
+  mode, the page a soft ambient light, the active navigation item a glow, headline numbers use
+  tabular figures, and Inter is loaded with its optical-size axis. The ring, glow and sweep stop
+  for anyone who asks their system for less motion. [DOCS/design.md](DOCS/design.md) says what the
+  look is for and where the ideas come from.
 - **Verdicts from the list of incidents**: each card has *Not suspicious*, *Low priority* and
   *Real threat* under its details, so you can judge an incident without opening it or going to
   Settings. A verdict from a card is about what the incident is about (its address, or the first

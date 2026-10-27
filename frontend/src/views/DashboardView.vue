@@ -13,8 +13,8 @@ import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RecentAlerts from '@/components/RecentAlerts.vue'
 import SectionCard from '@/components/SectionCard.vue'
-import SecurityBanner from '@/components/SecurityBanner.vue'
 import StatTile from '@/components/StatTile.vue'
+import StatusHero from '@/components/StatusHero.vue'
 import TrafficCard from '@/components/TrafficCard.vue'
 import {
   bucketLabel,
@@ -235,10 +235,9 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         {{ loadError }} What is shown is from {{ updated }}.
       </v-alert>
 
-      <SecurityBanner :posture="posture" :action="postureAction" />
-
-      <div class="dashboard__tiles" data-test="tiles">
+      <StatusHero :posture="posture" :action="postureAction">
         <StatTile
+          flat
           label="Alerts"
           :value="alertsTile.value"
           :hint="`In ${lastWords}`"
@@ -250,6 +249,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-alerts"
         />
         <StatTile
+          flat
           label="Blocked connections"
           :value="blockedTile.value"
           :hint="`In ${lastWords}`"
@@ -260,6 +260,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-blocked"
         />
         <StatTile
+          flat
           label="New devices"
           :value="formatFigure(data.devices.new)"
           :hint="`${formatCount(data.devices.total)} known, first seen in ${lastWords}`"
@@ -267,6 +268,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-devices"
         />
         <StatTile
+          flat
           label="Collection"
           :value="(collection as Collection).label"
           :hint="collectionTile.hint"
@@ -275,7 +277,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           :to="collectionTile.to"
           data-test="tile-collection"
         />
-      </div>
+      </StatusHero>
 
       <div class="dashboard__charts">
         <TrafficCard :times="traffic.times" :traffic="traffic.interfaces" :loading="loading" />
@@ -342,7 +344,6 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   container-type: inline-size;
 }
 
-.dashboard__tiles,
 .dashboard__charts,
 .dashboard__lists {
   display: grid;
@@ -350,23 +351,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   gap: 1.5rem;
 }
 
-/* Two numbers to a row on a phone, so the four fit without a long scroll. */
-.dashboard__tiles {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-@container (min-width: 640px) {
-  .dashboard__tiles {
-    gap: 1.5rem;
-  }
-}
-
 @container (min-width: 900px) {
-  .dashboard__tiles {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .dashboard__charts {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   }
