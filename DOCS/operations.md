@@ -211,10 +211,11 @@ and connection, what kind it is, how serious, the addresses and ports, the rule 
 one-line summary and the program's own record of it. Reading the same thing twice, which
 overlapping requests do, stores it once. So far the collectors that store events are
 OPNsense's [firewall log](integrations.md#the-firewall-log) and
-[Suricata alerts](integrations.md#suricata-alerts), CrowdSec's [bans](integrations.md#bans),
-Wazuh's [alerts](integrations.md#alerts) and [silent agents](integrations.md#agents), and
-ntopng's [flow and host alerts](integrations.md#flow-alerts-and-host-alerts); the others come
-with the integrations.
+[Suricata alerts](integrations.md#suricata-alerts), CrowdSec's [bans](integrations.md#bans) (and
+the [bans and alerts](integrations.md#crowdsec-on-opnsense) of its OPNsense plugin), Wazuh's
+[alerts](integrations.md#alerts) and [silent agents](integrations.md#agents), and ntopng's
+[flow and host alerts](integrations.md#flow-alerts-and-host-alerts); the others come with the
+integrations.
 
 - **How long they're kept.** 30 days. Change that for everything with
   `ARESGATE_EVENT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. An

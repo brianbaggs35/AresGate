@@ -82,6 +82,65 @@ that is all AresGate can go by.
   network and a Suricata that has never alerted look the same. If OPNsense can't ask Suricata at
   all (it answers with nothing), the Collection card says so.
 
+### CrowdSec on OPNsense
+
+If the CrowdSec plugin (`os-crowdsec`) is installed, AresGate reads its bans and its alerts every
+minute through the same OPNsense connection, with no second key, and keeps each as an event
+([Stored events](operations.md#stored-events)). A CrowdSec that runs anywhere else is the separate
+[CrowdSec](#crowdsec) integration; if the same ban is read both ways it is stored once, because
+both give it the same identity.
+
+- **Bans.** The decisions in force, as `decision` events with the address, the scenario that
+  fired, for how long it runs and where the address is (the country and the network's name, when
+  the plugin knows them). As with the other CrowdSec integration, only the origins about your
+  network are kept (`crowdsec`, `cscli`, `cscli-import` and `console`, never the community
+  blocklist), a ban is medium and any other remedy is low, and an event is dated by the run that
+  first saw it. A ban that has run out is left out. How many are in force is the metric
+  `decisions.active`, labelled with the connection `opnsense`, so a run that finds none still
+  records that there are none.
+- **Alerts.** What the scenarios noticed, as `alert` events with the scenario, the address, where
+  it is and what was decided (`ban:1`). Unlike a ban, an alert says when it was made, so it is
+  dated by that. It is medium when CrowdSec decided something about it and low when it only
+  noticed. A row whose time has no time zone is left out, because nothing says which it is in.
+- **What it reads.** `/api/crowdsec/decisions/search` and `/api/crowdsec/alerts/search`, the
+  searches behind the tables of the plugin's own pages, for the newest 1000 rows each time. They
+  run `cscli decisions list` and `cscli alerts list` on the firewall and change nothing.
+- **What the user needs.** **CrowdSec** in OPNsense's privileges. It covers all of
+  `/api/crowdsec/`, so unlike most of what AresGate reads it also allows lifting a ban or
+  changing the plugin's settings; AresGate only searches, but make the user for AresGate with only
+  the privileges it needs. Without it, the plugin is listed under Services as not allowed for the
+  key's user, and the Collection card shows both jobs failing with *OPNsense didn't accept the
+  credentials, or the user isn't allowed to read this (HTTP 403)*.
+- **When it runs.** Only if testing the connection found the plugin installed, and AresGate starts
+  within a few minutes of the plugin being installed. Switch off **CrowdSec** under Services on
+  the OPNsense page to leave it alone. What was stored is kept for its retention period.
+- **Nothing in the list.** When `cscli` prints nothing the plugin answers *unable to retrieve
+  data*, and `cscli` prints nothing both when no one is banned and when CrowdSec is not running.
+  AresGate reads it as none, so a CrowdSec that has stopped looks like a quiet network; the
+  Services list, which asks the plugin for its status, shows it as stopped.
+
+#### Where this comes from, and what isn't tried
+
+Taken from OPNsense's and the plugin's own pages and source, not guessed:
+
+- The calls are in OPNsense's
+  [API reference for the plugin](https://docs.opnsense.org/development/api/plugins/crowdsec.html),
+  which lists the controllers but not what a row holds.
+- The rows, from the plugin's source in the
+  [opnsense/plugins](https://github.com/opnsense/plugins/tree/master/security/crowdsec)
+  repository: `AlertsController.php` and `DecisionsController.php` (an alert's `id`, `value`,
+  `reason`, `country`, `as`, `decisions` and `created`; a decision's `id`, `source`, `scope_value`,
+  `reason`, `action`, `country`, `as`, `events_count`, `expiration` and `alert_id`, with the ones
+  that ran out left out and *unable to retrieve data* for nothing),
+  `actions_crowdsec.conf` (the `cscli` commands behind them) and `ACL.xml` (the privilege).
+- That a search takes its row count from the body of a POST, in core's search form.
+
+Not tried against a live firewall: the answers are tested against a stand-in built from those
+pages. That the time of an alert is written the way `cscli` writes its dates (RFC 3339), and that
+the decisions list leaves out the community blocklist as `cscli` does when run by hand, are
+assumed; an alert whose time can't be read is left out, the origins kept make the second not
+matter, and the Collection card and the API log show what the firewall answered.
+
 ### Health, traffic and gateways
 
 Once OPNsense is connected, AresGate reads how the firewall is doing every minute and keeps the
@@ -162,8 +221,9 @@ OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its
 settings. Leave it off if you don't use Zenarmor.
 
 **Suricata** has no API outside OPNsense: it is the intrusion detection plugin, and it appears
-under Services; its alerts are read as above. **CrowdSec** on OPNsense is read the same way. A CrowdSec that runs anywhere
-else (a Raspberry Pi, a server) is the separate **CrowdSec** integration below.
+under Services; its alerts are read as above. **CrowdSec** on OPNsense is read the same way (see
+[CrowdSec on OPNsense](#crowdsec-on-opnsense)). A CrowdSec that runs anywhere else (a Raspberry
+Pi, a server) is the separate **CrowdSec** integration below.
 
 ## ntopng
 
@@ -353,7 +413,9 @@ ban that was only simulated is info. How many decisions are in force is kept as 
 - **Ranges.** A ban of a whole range (`203.0.113.0/24`) is kept with its summary, but has no
   source address, because an event's address is one address.
 - **Alerts aren't read yet.** The alerts behind the decisions, with the events that made them, need
-  a machine login (`cscli machines add`) rather than a bouncer's key, so they come later.
+  a machine login (`cscli machines add`) rather than a bouncer's key, so they come later. The
+  CrowdSec plugin on OPNsense gives them already: see
+  [CrowdSec on OPNsense](#crowdsec-on-opnsense).
 
 #### Where this comes from, and what isn't tried
 

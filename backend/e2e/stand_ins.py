@@ -490,6 +490,89 @@ def sample_crowdsec_decisions() -> list[dict[str, object]]:
     ]
 
 
+def sample_crowdsec_plugin_decisions() -> list[dict[str, object]]:
+    """Four decisions in force on the CrowdSec plugin of OPNsense, in the form its API gives
+    them: a scenario that fired here banned an address (the one the standalone CrowdSec sample
+    bans too, so one attacker seen both ways is one event), a ban by hand of a range, a ban from
+    the community blocklist, which is not about this network, and one that has run out."""
+    return [
+        {
+            "id": "101",
+            "source": "crowdsec",
+            "scope_value": "Ip:198.51.100.7",
+            "reason": "crowdsecurity/ssh-bf",
+            "action": "ban",
+            "country": "DE",
+            "as": "Example Hosting GmbH",
+            "events_count": 6,
+            "expiration": "3h59m12s",
+            "alert_id": "11",
+        },
+        {
+            "id": "112",
+            "source": "cscli",
+            "scope_value": "Range:203.0.113.0/24",
+            "reason": "manual 'ban' from 'localhost'",
+            "action": "ban",
+            "country": "",
+            "as": "",
+            "events_count": 1,
+            "expiration": "23h58m1s",
+            "alert_id": "12",
+        },
+        {
+            "id": "113",
+            "source": "CAPI",
+            "scope_value": "Ip:192.0.2.99",
+            "reason": "crowdsecurity/http-probing",
+            "action": "ban",
+            "country": "NL",
+            "as": "Example Cloud B.V.",
+            "events_count": 1,
+            "expiration": "142h3m",
+            "alert_id": "13",
+        },
+        {
+            "id": "114",
+            "source": "crowdsec",
+            "scope_value": "Ip:2001:db8::7",
+            "reason": "crowdsecurity/ssh-bf",
+            "action": "ban",
+            "country": "US",
+            "as": "Example Networks",
+            "events_count": 6,
+            "expiration": "-5m2s",
+            "alert_id": "14",
+        },
+    ]
+
+
+def sample_crowdsec_plugin_alerts() -> list[dict[str, object]]:
+    """Two alerts of the CrowdSec plugin of OPNsense from the last ten minutes, newest first: a
+    scenario that banned the address, and one that only noticed it."""
+    now = datetime.now(UTC)
+    return [
+        {
+            "id": "11",
+            "value": "Ip:198.51.100.7",
+            "reason": "crowdsecurity/ssh-bf",
+            "country": "DE",
+            "as": "Example Hosting GmbH",
+            "decisions": "ban:1",
+            "created": f"{now - timedelta(minutes=3):%Y-%m-%dT%H:%M:%SZ}",
+        },
+        {
+            "id": "15",
+            "value": "Ip:192.0.2.77",
+            "reason": "crowdsecurity/http-crawl-non_statics",
+            "country": "FR",
+            "as": "Example Telecom",
+            "decisions": "",
+            "created": f"{now - timedelta(minutes=8):%Y-%m-%dT%H:%M:%SZ}",
+        },
+    ]
+
+
 def _opnsense_time(zone: timedelta) -> str:
     """The time as OPNsense shows it, which is PHP's ``D M j G:i:s T Y``, in a time zone that is
     ``zone`` ahead of UTC."""
@@ -835,6 +918,15 @@ def _rows_asked(body: bytes) -> int:
     return asked if isinstance(asked, int) and asked > 0 else 9999
 
 
+def _plugin_search(seen: Seen, rows: Sequence[Mapping[str, object]]) -> Answer:
+    """A search of a plugin's table, which is a POST: asked any other way, it gives the page
+    that it shows when opened, with nothing in it."""
+    if seen.method != "POST":
+        return _json({"total": 0, "rowCount": 0, "current": 1, "rows": []})
+    shown = list(rows)[: _rows_asked(seen.body)]
+    return _json({"total": len(rows), "rowCount": len(shown), "current": 1, "rows": shown})
+
+
 def opnsense(
     api_key: str,
     api_secret: str,
@@ -845,12 +937,15 @@ def opnsense(
     arp_table: Sequence[Mapping[str, object]] = (),
     dnsmasq_leases: Sequence[Mapping[str, object]] = (),
     kea_leases: Sequence[Mapping[str, object]] = (),
+    crowdsec_decisions: Sequence[Mapping[str, object]] = (),
+    crowdsec_alerts: Sequence[Mapping[str, object]] = (),
     zone: timedelta = timedelta(0),
 ) -> Handler:
     """OPNsense's API with one key and secret. The services named are installed and running; the
     others answer 404, as a plugin that isn't installed does. It has a clock in a time zone that
     is ``zone`` ahead of UTC, the lines given in its firewall log, newest first, the entries
-    given in its ARP table and, if Suricata, Dnsmasq or Kea is installed, its alerts or leases."""
+    given in its ARP table and, if Suricata, Dnsmasq, Kea or CrowdSec is installed, its alerts,
+    leases, or the alerts and decisions of the plugin."""
     expected = _basic(api_key, api_secret)
     paths = {module.path: module.key for module in OPNSENSE_MODULES if module.path}
 
@@ -886,6 +981,10 @@ def opnsense(
                 return _json([])
             rows = list(suricata_alerts)[: _rows_asked(seen.body)]
             return _json({"filters": {}, "rows": rows, "rowCount": len(rows), "current": 1})
+        if seen.path == "/api/crowdsec/decisions/search" and "crowdsec" in services:
+            return _plugin_search(seen, crowdsec_decisions)
+        if seen.path == "/api/crowdsec/alerts/search" and "crowdsec" in services:
+            return _plugin_search(seen, crowdsec_alerts)
         if paths.get(seen.path) in services:
             return _json({"status": "running"})
         return _json({"status": 404, "message": "Not found"}, 404)
@@ -1310,6 +1409,8 @@ class StandIns:
                 arp_table=sample_arp_table(),
                 dnsmasq_leases=sample_dnsmasq_leases(),
                 kea_leases=sample_kea_leases(),
+                crowdsec_decisions=sample_crowdsec_plugin_decisions(),
+                crowdsec_alerts=sample_crowdsec_plugin_alerts(),
             ),
             "zenarmor": zenarmor(api_key),
             "wazuh": wazuh(username, password, sample_wazuh_alerts(now), sample_wazuh_agents(now)),
