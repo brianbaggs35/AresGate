@@ -1,5 +1,7 @@
 import type { Locator, Page } from '@playwright/test'
 
+import { SavedSearchesPanel } from './saved-searches'
+
 /** The Logs page: every event that was collected, a table of them on a computer and cards on a
  * phone, and the sheet that opens one whole. */
 export class LogsPage {
@@ -11,6 +13,8 @@ export class LogsPage {
   readonly terms: Locator
   readonly searchHelp: Locator
   readonly searchPanel: Locator
+  /** The searches kept under a name, in that panel. */
+  readonly saved: SavedSearchesPanel
   readonly recent: Locator
   readonly facets: Locator
   /** The chart of how many events there were when, and how many were found. */
@@ -69,6 +73,7 @@ export class LogsPage {
     this.terms = page.getByTestId('search-term')
     this.searchHelp = page.getByTestId('search-help')
     this.searchPanel = page.getByTestId('search-panel')
+    this.saved = new SavedSearchesPanel(page)
     this.recent = page.getByTestId('search-recent')
     this.facets = page.getByTestId('facets')
     this.volume = page.getByTestId('volume-card')

@@ -57,7 +57,7 @@ Status looks, wording and the filters' choices are in `src/incidents.ts`.
 
 The search is `SearchBox`: a labelled text field in a `role="search"` landmark, a panel
 behind its help button (a disclosure, not a menu, so it is plain buttons that work with a screen
-reader and a thumb) with the ways to search and the searches made before, and one button for each
+reader and a thumb) with the saved searches, the ways to search and the searches made before, and one button for each
 term the API understood (`terms` in the answer, which is also where the wording of each comes
 from, so none of the language is repeated in the web app). What is typed is applied after a
 pause, or with Enter or on leaving the box; an error from the API is the field's message, and the
@@ -68,7 +68,10 @@ the width of the choices would widen the page). The slash key is handled by the 
 not while a field has the keyboard. A search that names a status or a verdict moves the view to
 *All* or switches on the quieted ones, so what the buttons say is true. The Logs page uses the
 same `SearchBox` and `SearchFacets` with the words of its own language (`LOG_SEARCH` in
-`src/search.ts`).
+`src/search.ts`). The saved searches are `SavedSearches`, in the panel (so they are read when it
+is first opened, not on every visit): a button to use each, a bin to forget it, and a name field
+with *Save* (it says *Replace* when the name is taken), shown only while the box holds something
+the API understood. Each kind of search says which `scope` it keeps its searches under.
 
 Verdicts follow the same rule as severity: each is an icon and a name, never only a color
 (`VerdictChip`, looks and wording in `src/verdicts.ts`). `VerdictPanel` sits between the reasons

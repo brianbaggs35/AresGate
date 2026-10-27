@@ -227,7 +227,9 @@ overlapping.
   write a compiler `(Clause, Context) -> (condition, label)`, add it to `FIELDS` (and
   `ALIASES`, if it has a short name), and add a case to `tests/test_incidents_search.py` (or
   `tests/test_events_search.py`) that runs it against rows, and a line to the list of ways to
-  search in `frontend/src/search.ts`.
+  search in `frontend/src/search.ts`. A saved search (`api/searches.py`, the `saved_searches`
+  table) keeps the words, not the terms, and checks them with the dialect of its `scope`; a new
+  place that searches adds its dialect to `LANGUAGES` and its name to the table's check.
   `queries.search` takes the conditions as `extra`, and answers with `facets` (the counts per
   severity and integration of everything found, not of the page).
 - **The logs** are `api/logs.py`, with the queries in `events/queries.py` (so the AI analyst can

@@ -1,5 +1,7 @@
 import type { Locator, Page } from '@playwright/test'
 
+import { SavedSearchesPanel } from './saved-searches'
+
 /** The list of incidents. */
 export class IncidentsPage {
   readonly heading: Locator
@@ -16,6 +18,8 @@ export class IncidentsPage {
   readonly terms: Locator
   readonly searchHelp: Locator
   readonly searchPanel: Locator
+  /** The searches kept under a name, in that panel. */
+  readonly saved: SavedSearchesPanel
   readonly recent: Locator
   readonly facets: Locator
   /** The switch that includes the incidents the owner's verdicts quiet, and the button in the
@@ -68,6 +72,7 @@ export class IncidentsPage {
     this.terms = page.getByTestId('search-term')
     this.searchHelp = page.getByTestId('search-help')
     this.searchPanel = page.getByTestId('search-panel')
+    this.saved = new SavedSearchesPanel(page)
     this.recent = page.getByTestId('search-recent')
     this.facets = page.getByTestId('facets')
     this.clear = page.getByTestId('clear-filters')

@@ -1,7 +1,9 @@
 import type { SearchTerm } from '@/api/incidents'
+import * as searchesApi from '@/api/searches'
 import SearchBox from '@/components/SearchBox.vue'
 import { INCIDENT_SEARCH, LOG_RECENT_KEY, LOG_SEARCH, RECENT_KEY, SEARCH_EXAMPLES } from '@/search'
-import { mountWithPlugins } from '@/test/mount'
+import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { saved } from '@/test/searches'
 
 const term = (label: string, start: number, end: number, negated = false): SearchTerm => ({
   field: null,
@@ -11,7 +13,11 @@ const term = (label: string, start: number, end: number, negated = false): Searc
   end,
 })
 
-async function open(props: Partial<InstanceType<typeof SearchBox>['$props']> = {}) {
+async function open(
+  props: Partial<InstanceType<typeof SearchBox>['$props']> = {},
+  kept: searchesApi.SavedSearch[] = [],
+) {
+  const fetch = vi.spyOn(searchesApi, 'fetchSavedSearches').mockResolvedValue(kept)
   const mounted = await mountWithPlugins(SearchBox, {
     signedIn: 'admin',
     props: { kind: INCIDENT_SEARCH, modelValue: '', terms: [], error: null, ...props },
@@ -19,7 +25,7 @@ async function open(props: Partial<InstanceType<typeof SearchBox>['$props']> = {
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const box = () => mounted.wrapper.find<HTMLInputElement>('[data-test="search"] input')
   const emitted = () => mounted.wrapper.emitted('update:modelValue') ?? []
-  return { ...mounted, find, box, emitted }
+  return { ...mounted, find, box, emitted, fetch }
 }
 
 afterEach(() => {
@@ -235,6 +241,46 @@ describe('SearchBox', () => {
 
       expect(box().element.value).toBe(SEARCH_EXAMPLES[0]?.text)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+  })
+
+  describe('the saved searches', () => {
+    it('are the ones of its own page, and are read when the panel is opened', async () => {
+      const { find, fetch } = await open({ kind: LOG_SEARCH })
+      expect(fetch).not.toHaveBeenCalled()
+
+      await find('search-help').trigger('click')
+      await flushPromises()
+
+      expect(fetch).toHaveBeenCalledWith('logs')
+      expect(find('search-panel').find('[data-test="saved-searches"]').exists()).toBe(true)
+    })
+
+    it('can be added to from what is typed, once it is something that is understood', async () => {
+      const { wrapper, find, box } = await open()
+      await find('search-help').trigger('click')
+      expect(find('saved-form').exists()).toBe(false)
+
+      await box().setValue('  ')
+      expect(find('saved-form').exists()).toBe(false)
+
+      await box().setValue('source:wazuh')
+      expect(find('saved-form').exists()).toBe(true)
+
+      await wrapper.setProps({ error: 'No such field.' })
+      expect(find('saved-form').exists()).toBe(false)
+    })
+
+    it('are used with a tap, which applies at once and puts the panel away', async () => {
+      const { find, box, emitted } = await open({}, [saved({ query: 'port:22' })])
+      await find('search-help').trigger('click')
+      await flushPromises()
+
+      await find('saved-use').trigger('click')
+
+      expect(emitted()).toEqual([['port:22']])
+      expect(box().element.value).toBe('port:22')
+      expect(find('search-panel').exists()).toBe(false)
     })
   })
 
