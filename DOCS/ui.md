@@ -42,6 +42,17 @@ every signal (`IncidentTimeline`). The status is always an icon and a word
 primary action is the one to reach for next, and the page confirms a change in an `output`.
 Status looks, wording and the filters' choices are in `src/incidents.ts`.
 
+Verdicts follow the same rule as severity: each is an icon and a name, never only a color
+(`VerdictChip`, looks and wording in `src/verdicts.ts`). `VerdictPanel` sits between the reasons
+and the chart because it is what you do after you have seen why AresGate is sure: it says what
+your verdicts make of the incident, lists the ones that apply with *Take back*, and gives a new
+one with three buttons that stack on a phone. A signal your verdicts keep from counting is a
+hollow dot and a chip in the timeline, so it reads as less in words and in shape. The list
+leaves out the incidents your verdicts quiet, because nothing in them needs you, and says so with
+a switch that shows how many; `quieted` is in the route's query like the other choices. The
+Settings page (`VerdictsView`) is where verdicts are reviewed, changed (`VerdictDialog`) and
+taken back (`ConfirmDialog`, which says how many signals are judged again).
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

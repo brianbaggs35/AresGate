@@ -9,6 +9,7 @@ from sqlalchemy import ColumnElement, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
+from app.incidents.verdicts import MUTING
 from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Event, Incident, IncidentSignal
 
 # How far either side of an incident the firewall's blocks of its address still count as part of
@@ -24,6 +25,16 @@ class Page:
 
     total: int
     incidents: list[Incident]
+    # How many more would have matched if the owner's verdicts weren't asked about: the ones they
+    # said are not suspicious or low priority, which a search for anything else leaves out.
+    quieted: int
+
+
+def _verdict_condition(verdicts: list[str]) -> ColumnElement[bool]:
+    """Incidents the owner said this of. A verdict of none is those they said nothing of."""
+    wanted = [verdict for verdict in verdicts if verdict != NO_VERDICT]
+    nothing = Incident.verdict.is_(None) if NO_VERDICT in verdicts else false()
+    return or_(Incident.verdict.in_(wanted), nothing)
 
 
 def search(
@@ -43,13 +54,6 @@ def search(
     conditions: list[ColumnElement[bool]] = []
     if statuses:
         conditions.append(Incident.status.in_(statuses))
-    if verdicts:
-        conditions.append(
-            or_(
-                Incident.verdict.in_([verdict for verdict in verdicts if verdict != NO_VERDICT]),
-                Incident.verdict.is_(None) if NO_VERDICT in verdicts else false(),
-            )
-        )
     if min_severity is not None:
         conditions.append(Incident.severity >= min_severity)
     if min_confidence:
@@ -58,6 +62,16 @@ def search(
         conditions.append(Incident.addresses.contains([address]))
     if since is not None:
         conditions.append(Incident.last_seen_at >= since)
+    quieted = (
+        db.scalar(
+            select(func.count())
+            .select_from(Incident)
+            .where(*conditions, Incident.verdict.in_(MUTING))
+        )
+        or 0
+    )
+    if verdicts:
+        conditions.append(_verdict_condition(verdicts))
     total = db.scalar(select(func.count()).select_from(Incident).where(*conditions)) or 0
     found = db.scalars(
         select(Incident)
@@ -66,13 +80,16 @@ def search(
         .limit(limit)
         .offset(offset)
     ).all()
-    return Page(total=total, incidents=list(found))
+    return Page(total=total, incidents=list(found), quieted=quieted)
 
 
-def counts(db: Session) -> dict[str, int]:
-    """How many incidents there are in each status, whatever a search is for."""
-    rows = db.execute(select(Incident.status, func.count()).group_by(Incident.status)).all()
-    found = dict(rows)
+def counts(db: Session, verdicts: list[str]) -> dict[str, int]:
+    """How many incidents there are in each status, whatever else a search is for, among the
+    ones the verdicts asked for (all of them if none were)."""
+    query = select(Incident.status, func.count()).group_by(Incident.status)
+    if verdicts:
+        query = query.where(_verdict_condition(verdicts))
+    found = dict(db.execute(query).all())
     return {status: found.get(status, 0) for status in INCIDENT_STATUSES}
 
 

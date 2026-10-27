@@ -22,9 +22,16 @@ describe('SettingsNav', () => {
       '/settings/account',
       '/settings/sign-ins',
       '/settings/activity',
+      '/settings/verdicts',
       '/settings/data',
     ])
-    expect(links.map((link) => link.text())).toEqual(['Account', 'Sign-ins', 'Activity', 'Data'])
+    expect(links.map((link) => link.text())).toEqual([
+      'Account',
+      'Sign-ins',
+      'Activity',
+      'Verdicts',
+      'Data',
+    ])
   })
 
   it('marks the page that is open', async () => {
@@ -46,9 +53,16 @@ describe('SettingsNav', () => {
       '/settings/account',
       '/settings/sign-ins',
       '/settings/activity',
+      '/settings/verdicts',
       '/settings/data',
     ])
-    expect(tabs.map((tab) => tab.text())).toEqual(['Account', 'Sign-ins', 'Activity', 'Data'])
+    expect(tabs.map((tab) => tab.text())).toEqual([
+      'Account',
+      'Sign-ins',
+      'Activity',
+      'Verdicts',
+      'Data',
+    ])
     expect(tabs[2]?.classes()).toContain('v-tab--selected')
   })
 })

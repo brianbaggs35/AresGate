@@ -39,6 +39,23 @@ describe('IncidentTimeline', () => {
     expect(rows()[1]?.find('[data-test="severity"]').text()).toBe('Low')
   })
 
+  it('says what you said of a signal, and draws one that does not count as a hollow dot', async () => {
+    const { rows } = await show([
+      signal({ occurred_at: new Date(AT).toISOString() }),
+      signal({ occurred_at: new Date(AT + 60_000).toISOString(), verdict: 'low_priority' }),
+      signal({ occurred_at: new Date(AT + 120_000).toISOString(), verdict: 'threat' }),
+    ])
+
+    expect(rows().map((row) => row.find('[data-test="verdict"]').exists())).toEqual([
+      false,
+      true,
+      true,
+    ])
+    expect(rows()[1]?.find('[data-test="verdict"]').text()).toBe('Low priority')
+    expect(rows()[2]?.find('[data-test="verdict"]').text()).toBe('Real threat')
+    expect(rows().map((row) => row.classes('timeline__item--quiet'))).toEqual([false, true, false])
+  })
+
   it('gives the time down to the second, machine-readable', async () => {
     const { rows } = await show()
 

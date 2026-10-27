@@ -28,6 +28,14 @@ describe('incidents', () => {
     )
   })
 
+  it('narrows the list by what the owner said of the incidents', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
+
+    await fetchIncidents({ verdicts: ['none', 'threat'] })
+
+    expect(get).toHaveBeenCalledWith('/incidents?verdict=none&verdict=threat')
+  })
+
   it('leaves out what means everything', async () => {
     const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
 

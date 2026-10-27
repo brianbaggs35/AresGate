@@ -58,6 +58,62 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the verdicts, on an incident and in the settings, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      incidents,
+      incident,
+      verdicts,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        { address: '93.184.216.34', severity: 'high', programs: ['wazuh', 'opnsense'], signals: 4 },
+        { address: '8.8.8.8', programs: ['wazuh'], signals: 2 },
+      ])
+      await harness.createVerdicts([
+        { verdict: 'not_suspicious', address: '8.8.8.8', note: 'my scanner' },
+        { verdict: 'low_priority', source: 'wazuh', signature: 'ET SCAN Potential SSH Scan' },
+      ])
+      await incidents.goto('?quieted=1')
+      await expect(incidents.cards).toHaveCount(2)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      // The list with the incidents your verdicts quiet, and its switch.
+      await expect(incidents.quieted).toBeVisible()
+      await expectAccessible(page)
+
+      // An incident with signals that don't count, and the verdict that says so.
+      await incidents.goto('?quieted=1&address=93.184.216.34')
+      await incidents.cards.first().click()
+      await expect(incident.applied).toHaveCount(1)
+      await expect(incident.signals.first()).toBeVisible()
+      await expectAccessible(page)
+
+      await incident.give('threat').click()
+      await expect(incident.verdictNotice).toBeVisible()
+      await expectAccessible(page)
+
+      // An incident that is quieted as a whole, by two verdicts: the milder says so.
+      await incidents.goto('?quieted=1&address=8.8.8.8')
+      await incidents.cards.first().click()
+      await expect(incident.verdictChip).toHaveText('Low priority')
+      await expectAccessible(page)
+
+      await verdicts.goto()
+      await expect(verdicts.rows).toHaveCount(3)
+      await expectAccessible(page)
+
+      await verdicts.rows.first().getByTestId('verdict-change').click()
+      await expect(verdicts.dialog).toBeVisible()
+      await expectAccessible(page)
+      await verdicts.cancel.click()
+      await expect(verdicts.dialog).toBeHidden()
+
+      await verdicts.rows.first().getByTestId('verdict-remove').click()
+      await expect(verdicts.confirmTitle).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the not-found page has no WCAG 2.2 AA problems', async ({ page, shell }) => {
       await page.goto('/no/such/page')
       await shell.chooseTheme(theme)

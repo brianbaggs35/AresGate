@@ -264,6 +264,151 @@ test.describe('an incident', () => {
     await expect(incident.action('resolved')).toBeEnabled()
   })
 
+  test.describe('your verdict', () => {
+    test('says nothing has been said of it, and offers what it could be about', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([BAD])
+
+      await openIncident(page, ATTACKER)
+
+      await expect(incident.verdictCard).toContainText('Your verdict')
+      await expect(incident.standing).toHaveText("You haven't said anything about it yet.")
+      await expect(incident.verdictChip).toBeHidden()
+      await expect(incident.applied).toHaveCount(0)
+      await incident.scope.click()
+      await expect(page.getByRole('option').first()).toContainText(ATTACKER)
+      await expect(page.getByRole('option')).toHaveCount(1 + 4 + 4)
+    })
+
+    test('quiets an address for good: nothing in it counts, and it is no longer listed', async ({
+      harness,
+      incident,
+      incidents,
+      page,
+    }) => {
+      await harness.createIncidents([BAD])
+      await openIncident(page, ATTACKER)
+      await incident.why.fill('my scanner')
+
+      await incident.give('not_suspicious').click()
+
+      await expect(incident.verdictNotice).toHaveText(`Remembered: ${ATTACKER} is not suspicious.`)
+      await expect(incident.verdictChip).toHaveText('Not suspicious')
+      await expect(incident.standing).toContainText('will not raise an alarm')
+      await expect(incident.confidence).toHaveText('Low confidence')
+      await expect(incident.reasons.getByTestId('reason-label')).toHaveText([
+        'Left out by your verdicts',
+      ])
+      await expect(incident.reasons.getByTestId('reason-points')).toHaveText(['0'])
+      await expect(incident.signalsTile).toContainText('7 not counted')
+      await expect(incident.signals).toHaveCount(7)
+      await expect(incident.signals.getByTestId('verdict')).toHaveCount(7)
+      await expect(incident.applied).toHaveCount(1)
+      await expect(incident.applied).toContainText(ATTACKER)
+      await expect(incident.why).toHaveValue('')
+
+      await incident.back.click()
+      await expect(incidents.cards).toHaveCount(0)
+      await expect(incidents.empty).toContainText('Nothing needs you')
+    })
+
+    test('quiets one alert and leaves the rest of the incident counting', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([BAD])
+      await openIncident(page, ATTACKER)
+      await incident.about(/Brute force on ssh.* From any address/)
+
+      await incident.give('low_priority').click()
+
+      await expect(incident.verdictNotice).toHaveText(
+        'Remembered: “Brute force on ssh” is low priority.',
+      )
+      // Only the first of its signals is that alert, so the rest still count.
+      await expect(incident.verdictChip).toBeHidden()
+      await expect(incident.standing).toHaveText(
+        '1 of its 7 signals match a verdict you gave and are not counted.',
+      )
+      await expect(incident.signalsTile).toContainText('1 not counted')
+      await expect(incident.signals.getByTestId('verdict')).toHaveText(['Low priority'])
+      await expect(incident.signals.first().getByTestId('verdict')).toHaveText('Low priority')
+    })
+
+    test('is certain of a threat, whatever else it saw', async ({ harness, incident, page }) => {
+      await harness.createIncidents([{ address: ATTACKER, severity: 'low', signals: 1 }])
+      await openIncident(page, ATTACKER)
+
+      await incident.give('threat').click()
+
+      await expect(incident.verdictChip).toHaveText('Real threat')
+      await expect(incident.standing).toHaveText(
+        'You said it is a real threat, so AresGate is certain of it.',
+      )
+      await expect(incident.confidence).toHaveText('High confidence')
+      await expect(incident.reasons.getByTestId('reason-label')).toContainText([
+        'You said it is a real threat',
+      ])
+    })
+
+    test('is taken back, and the incident counts again', async ({ harness, incident, page }) => {
+      await harness.createIncidents([BAD])
+      await harness.createVerdicts([{ verdict: 'not_suspicious', address: ATTACKER }])
+      await page.goto('/incidents?quieted=1')
+      await page.getByTestId('incident').click()
+      await expect(incident.verdictChip).toHaveText('Not suspicious')
+
+      await incident.applied.getByTestId('take-back').click()
+
+      await expect(incident.verdictNotice).toHaveText(`Taken back: ${ATTACKER}.`)
+      await expect(incident.verdictChip).toBeHidden()
+      await expect(incident.standing).toHaveText("You haven't said anything about it yet.")
+      await expect(incident.confidence).toHaveText('High confidence')
+      await expect(incident.applied).toHaveCount(0)
+    })
+
+    test('says why a verdict was not remembered, and keeps what it has', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([BAD])
+      await openIncident(page, ATTACKER)
+      await page.route('**/api/verdicts', (route) =>
+        route.request().method() === 'POST' ? route.abort() : route.continue(),
+      )
+
+      await incident.give('not_suspicious').click()
+
+      await expect(incident.verdictError).toBeVisible()
+      await expect(incident.verdictChip).toBeHidden()
+      await expect(incident.give('not_suspicious')).toBeEnabled()
+    })
+
+    test('is on the Settings page once given, to review it there', async ({
+      harness,
+      incident,
+      page,
+      verdicts,
+    }) => {
+      await harness.createIncidents([BAD])
+      await openIncident(page, ATTACKER)
+      await incident.why.fill('my scanner')
+      await incident.give('not_suspicious').click()
+      await expect(incident.verdictNotice).toBeVisible()
+
+      await verdicts.goto()
+
+      await expect(verdicts.rows).toHaveCount(1)
+      await expect(verdicts.about()).toHaveText([ATTACKER])
+      await expect(verdicts.rows.first().getByTestId('verdict-why')).toHaveText('Why: my scanner')
+    })
+  })
+
   test('says an incident that is not there may have been removed', async ({ incident, page }) => {
     await incident.goto(999_999)
 

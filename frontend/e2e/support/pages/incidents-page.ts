@@ -10,6 +10,10 @@ export class IncidentsPage {
   readonly confidence: Locator
   readonly address: Locator
   readonly clear: Locator
+  /** The switch that includes the incidents the owner's verdicts quiet, and the button in the
+   * empty list that turns it on. */
+  readonly quieted: Locator
+  readonly showQuieted: Locator
   /** The incidents, and what is shown when there are none. */
   readonly list: Locator
   readonly cards: Locator
@@ -31,6 +35,8 @@ export class IncidentsPage {
     this.confidence = page.getByTestId('filter-confidence')
     this.address = page.getByTestId('filter-address')
     this.clear = page.getByTestId('clear-filters')
+    this.quieted = page.getByTestId('filter-quieted')
+    this.showQuieted = page.getByTestId('empty-quieted')
     this.list = page.getByTestId('incident-list')
     this.cards = page.getByTestId('incident')
     this.empty = page.getByTestId('incidents-empty')

@@ -23,7 +23,7 @@ from app.events.store import record as record_events
 from app.incidents import engine as incident_engine
 from app.metrics.sample import NewSample
 from app.metrics.store import record as record_samples
-from app.models import CollectorHealth, Incident, SystemInfo, User
+from app.models import CollectorHealth, Incident, SystemInfo, User, VerdictRule
 from app.security import passwords
 from app.security.accounts import normalize_username
 
@@ -314,3 +314,31 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             )
         )
     return events
+
+
+class VerdictSpec(NamedTuple):
+    """A verdict for `verdicts` to give: what it says and what it is about."""
+
+    verdict: Literal["not_suspicious", "low_priority", "threat"]
+    address: str | None = None
+    source: str | None = None
+    signature: str | None = None
+    note: str | None = None
+
+
+def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
+    """Gives the verdicts the way the Settings page does, and judges the incidents that are
+    there by them, so that the order a test makes incidents and verdicts in doesn't matter."""
+    for spec in specs:
+        session.add(
+            VerdictRule(
+                verdict=spec.verdict,
+                address=ip_address(spec.address) if spec.address else None,
+                source=spec.source,
+                signature=spec.signature,
+                note=spec.note,
+            )
+        )
+    session.flush()
+    incident_engine.reapply(session)
+    return len(specs)

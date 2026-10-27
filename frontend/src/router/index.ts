@@ -89,6 +89,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ActivityView.vue'),
       },
       {
+        path: 'verdicts',
+        name: 'settings-verdicts',
+        component: () => import('@/views/VerdictsView.vue'),
+      },
+      {
         path: 'data',
         name: 'settings-data',
         component: () => import('@/views/DataView.vue'),
