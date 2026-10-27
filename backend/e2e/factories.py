@@ -7,7 +7,7 @@ work on any session, so the backend's own tests can use them too.
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from ipaddress import ip_address
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -337,6 +337,58 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             )
         )
     return events
+
+
+class EventSpec(NamedTuple):
+    """An event for `events` to store, as a program would have reported it."""
+
+    source: str = "opnsense"
+    connection: str | None = None
+    kind: str = "firewall"
+    severity: Severity = Severity.INFO
+    summary: str = "Blocked tcp"
+    signature: str | None = None
+    src_address: str | None = None
+    src_port: int | None = None
+    dst_address: str | None = None
+    dst_port: int | None = None
+    protocol: str | None = None
+    # How long ago the last of them happened.
+    seconds_ago: int = 60
+    # The program's own record of it, when it has one.
+    raw: Mapping[str, Any] | None = None
+    # How many to make, that far apart (the first of them the oldest).
+    repeat: int = 1
+    every_seconds: int = 30
+
+
+def events(session: Session, settings: Settings, now: datetime, specs: Sequence[EventSpec]) -> int:
+    """Stores events as of now, for the Logs page to show, and returns how many. They are not
+    filed into incidents."""
+    stored: list[NewEvent] = []
+    for number, spec in enumerate(specs):
+        for place in range(spec.repeat):
+            behind = spec.every_seconds * (spec.repeat - 1 - place)
+            stored.append(
+                NewEvent(
+                    source=spec.source,
+                    connection=spec.connection or _CONNECTIONS.get(spec.source, "e2e"),
+                    kind=spec.kind,
+                    severity=spec.severity,
+                    occurred_at=now - timedelta(seconds=spec.seconds_ago + behind),
+                    identity=(f"e2e-event-{number}-{place}",),
+                    summary=spec.summary,
+                    signature=spec.signature,
+                    src_address=spec.src_address,
+                    src_port=spec.src_port,
+                    dst_address=spec.dst_address,
+                    dst_port=spec.dst_port,
+                    protocol=spec.protocol,
+                    raw=spec.raw,
+                )
+            )
+    record_events(session, settings, stored, now)
+    return len(stored)
 
 
 class VerdictSpec(NamedTuple):

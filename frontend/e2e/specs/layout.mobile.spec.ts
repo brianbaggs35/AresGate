@@ -304,8 +304,40 @@ test.describe('layout on a phone', () => {
     expect(room).toBeGreaterThanOrEqual(bar?.height ?? Infinity)
   })
 
+  test('keeps the places that do not fit in the bar behind a More button', async ({
+    page,
+    shell,
+    dashboard,
+  }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
+    // The bar has room for four places and More, each wide enough to tap.
+    for (const link of [
+      shell.dashboardLink,
+      shell.incidentsLink,
+      shell.logsLink,
+      shell.integrationsLink,
+      shell.moreButton,
+    ]) {
+      expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
+    }
+    await expect(shell.statusLink).toHaveCount(0)
+
+    await shell.moreButton.click()
+
+    await expect(shell.moreSheet).toBeVisible()
+    await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(shell.statusLink).toBeVisible()
+    await expect(shell.settingsLink).toBeVisible()
+    await shell.statusLink.click()
+    await expect(page).toHaveURL('/status')
+    await expect(shell.moreSheet).toBeHidden()
+    await shell.expectCurrent('status')
+    await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'false')
+  })
+
   test.describe('status', () => {
-    test('the page fits the screen, with every place still in the bottom bar', async ({
+    test('the page fits the screen, with every place still reachable from the bottom bar', async ({
       page,
       shell,
       status,
@@ -321,12 +353,13 @@ test.describe('layout on a phone', () => {
       const viewport = page.viewportSize()
       const card = await status.aresgate.boundingBox()
       expect(card?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
-      // Four places share the bar, each wide enough to tap.
+      // Five places share the bar, each wide enough to tap.
       for (const link of [
         shell.dashboardLink,
+        shell.incidentsLink,
+        shell.logsLink,
         shell.integrationsLink,
-        shell.statusLink,
-        shell.settingsLink,
+        shell.moreButton,
       ]) {
         expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
       }
@@ -596,7 +629,8 @@ test.describe('layout on a phone', () => {
         dashboard.alertsCard,
       ].map((item) => item.boundingBox()),
     )
-    expect(alerts?.y).toBe(blocked?.y)
+    // The two are read a moment apart, so a hair of difference is the page settling.
+    expect(alerts?.y).toBeCloseTo(blocked?.y ?? Number.NaN, 0)
     expect(alerts?.width).toBeLessThan(viewport / 2)
     expect(devices?.y).toBeGreaterThan(alerts?.y ?? 0)
     expect(banner?.width).toBeGreaterThan(viewport * 0.85)

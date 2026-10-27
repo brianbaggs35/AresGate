@@ -1,6 +1,6 @@
 import type { SearchTerm } from '@/api/incidents'
-import IncidentSearch from '@/components/IncidentSearch.vue'
-import { RECENT_KEY, SEARCH_EXAMPLES } from '@/search'
+import SearchBox from '@/components/SearchBox.vue'
+import { INCIDENT_SEARCH, LOG_RECENT_KEY, LOG_SEARCH, RECENT_KEY, SEARCH_EXAMPLES } from '@/search'
 import { mountWithPlugins } from '@/test/mount'
 
 const term = (label: string, start: number, end: number, negated = false): SearchTerm => ({
@@ -11,10 +11,10 @@ const term = (label: string, start: number, end: number, negated = false): Searc
   end,
 })
 
-async function open(props: Partial<InstanceType<typeof IncidentSearch>['$props']> = {}) {
-  const mounted = await mountWithPlugins(IncidentSearch, {
+async function open(props: Partial<InstanceType<typeof SearchBox>['$props']> = {}) {
+  const mounted = await mountWithPlugins(SearchBox, {
     signedIn: 'admin',
-    props: { modelValue: '', terms: [], error: null, ...props },
+    props: { kind: INCIDENT_SEARCH, modelValue: '', terms: [], error: null, ...props },
   })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const box = () => mounted.wrapper.find<HTMLInputElement>('[data-test="search"] input')
@@ -27,13 +27,33 @@ afterEach(() => {
   localStorage.clear()
 })
 
-describe('IncidentSearch', () => {
+describe('SearchBox', () => {
   it('is a search landmark with a labelled box that has what is applied in it', async () => {
     const { wrapper, box } = await open({ modelValue: 'source:wazuh' })
 
     expect(wrapper.find('[role="search"]').attributes('aria-label')).toBe('Search incidents')
     expect(wrapper.find('label').text()).toBe('Search incidents')
     expect(box().element.value).toBe('source:wazuh')
+  })
+
+  it('is for what it is given to search: its name, its hint, its ways and its own memory', async () => {
+    const { wrapper, find, box } = await open({ kind: LOG_SEARCH })
+
+    expect(wrapper.find('[role="search"]').attributes('aria-label')).toBe('Search logs')
+    expect(box().attributes('placeholder')).toBe(LOG_SEARCH.placeholder)
+
+    await box().setValue('kind:alert')
+    await box().trigger('keydown.enter')
+    await find('search-help').trigger('click')
+
+    expect(JSON.parse(localStorage.getItem(LOG_RECENT_KEY) ?? '[]')).toEqual(['kind:alert'])
+    expect(localStorage.getItem(RECENT_KEY)).toBeNull()
+    expect(find('search-panel').findAll('[data-test="search-example"]')).toHaveLength(
+      LOG_SEARCH.examples.length,
+    )
+
+    await find('search-forget').trigger('click')
+    expect(localStorage.getItem(LOG_RECENT_KEY)).toBeNull()
   })
 
   it('hints at the slash key while the box is empty, where there is a keyboard', async () => {

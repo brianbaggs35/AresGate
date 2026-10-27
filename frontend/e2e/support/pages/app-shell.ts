@@ -2,6 +2,12 @@ import { expect, type Locator, type Page } from '@playwright/test'
 
 export type ThemeChoice = 'light' | 'dark' | 'system'
 
+/** The places in the menu, by the names of their routes. */
+export type Place = 'home' | 'incidents' | 'logs' | 'integrations' | 'status' | 'settings'
+
+/** The places that do not fit in a phone's bottom bar, which has a More button for them. */
+const BEHIND_MORE: readonly Place[] = ['status', 'settings']
+
 /**
  * What's around every page: the logo, which links home, the menu (at the side on a computer or
  * tablet, at the bottom on a phone), the page's title and the theme switcher.
@@ -12,9 +18,13 @@ export class AppShell {
   /** The places in the menu. */
   readonly dashboardLink: Locator
   readonly incidentsLink: Locator
+  readonly logsLink: Locator
   readonly integrationsLink: Locator
   readonly statusLink: Locator
   readonly settingsLink: Locator
+  /** A phone's button for the places that do not fit in the bar, and the sheet it opens. */
+  readonly moreButton: Locator
+  readonly moreSheet: Locator
   /** The account's button in the bar, which opens the menu with Sign out in it. */
   readonly userMenu: Locator
   readonly signOut: Locator
@@ -47,9 +57,12 @@ export class AppShell {
     this.menu = page.getByRole('navigation', { name: 'Main' })
     this.dashboardLink = page.getByTestId('nav-home')
     this.incidentsLink = page.getByTestId('nav-incidents')
+    this.logsLink = page.getByTestId('nav-logs')
     this.integrationsLink = page.getByTestId('nav-integrations')
     this.statusLink = page.getByTestId('nav-status')
     this.settingsLink = page.getByTestId('nav-settings')
+    this.moreButton = page.getByTestId('nav-more')
+    this.moreSheet = page.getByTestId('more-sheet')
     this.userMenu = page.getByTestId('user-menu')
     this.signOut = page.getByTestId('sign-out')
     this.signOutError = page.getByTestId('sign-out-error')
@@ -98,6 +111,27 @@ export class AppShell {
   async chooseCommand(search: string): Promise<void> {
     await this.paletteSearch.fill(search)
     await this.page.keyboard.press('Enter')
+  }
+
+  /** Goes to a place in the menu. On a phone, the ones behind More are reached through it. */
+  async goTo(place: Place): Promise<void> {
+    if (await this.isBehindMore(place)) await this.moreButton.click()
+    await this.page.getByTestId(`nav-${place}`).click()
+  }
+
+  /** Waits until the menu marks a place as the one that is open: on a phone, More stands for the
+   * places behind it. */
+  async expectCurrent(place: Place): Promise<void> {
+    if (await this.isBehindMore(place)) {
+      await expect(this.moreButton).toHaveAttribute('aria-current', 'true')
+    } else {
+      await expect(this.page.getByTestId(`nav-${place}`)).toHaveAttribute('aria-current', 'page')
+    }
+  }
+
+  private async isBehindMore(place: Place): Promise<boolean> {
+    await expect(this.menu).toBeVisible()
+    return BEHIND_MORE.includes(place) && (await this.moreButton.count()) > 0
   }
 
   /** Signs out from the account's menu in the bar. */

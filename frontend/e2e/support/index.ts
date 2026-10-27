@@ -5,6 +5,8 @@ export {
   Harness,
   type ApiCoverage,
   type BaselineData,
+  type EventRequest,
+  type EventsRecord,
   type FixtureName,
   type IncidentRequest,
   type IncidentsRecord,
@@ -19,11 +21,12 @@ export {
 export { ActivityPage } from './pages/activity-page'
 export { AiSettingsPage } from './pages/ai-settings-page'
 export { DataPage } from './pages/data-page'
-export { AppShell, type ThemeChoice } from './pages/app-shell'
+export { AppShell, type Place, type ThemeChoice } from './pages/app-shell'
 export { IncidentPage } from './pages/incident-page'
 export { IncidentsPage } from './pages/incidents-page'
 export { IntegrationPage } from './pages/integration-page'
 export { IntegrationsPage } from './pages/integrations-page'
+export { LogsPage } from './pages/logs-page'
 export { DashboardPage } from './pages/dashboard-page'
 export { SecurityPage } from './pages/security-page'
 export { SettingsPage } from './pages/settings-page'

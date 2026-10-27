@@ -3,6 +3,7 @@
 import base64
 import socket
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -838,6 +839,55 @@ def test_a_bot_sweeping_from_a_block_in_waves_is_one_incident(e2e: TestClient) -
     detail = e2e.get(f"/api/incidents/{sweep['id']}").json()
     assert detail["ports"] == [22, 80, 443]
     assert detail["grouping"][0].startswith("Signals from 3 addresses of 8.8.4.0/24")
+
+
+def test_events_can_be_made_to_order_for_the_logs(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/events",
+        json={
+            "events": [
+                {
+                    "source": "wazuh",
+                    "kind": "alert",
+                    "severity": "high",
+                    "summary": "sshd: authentication failed",
+                    "signature": "Brute force on ssh",
+                    "src_address": "93.184.216.34",
+                    "src_port": 41000,
+                    "dst_address": "192.168.1.20",
+                    "dst_port": 22,
+                    "protocol": "tcp",
+                    "seconds_ago": 120,
+                    "raw": {"rule": {"id": "5710"}},
+                },
+                {"summary": "Blocked tcp", "repeat": 3, "every_seconds": 10, "seconds_ago": 5},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"events": 4}
+    sign_in(e2e)
+    page = e2e.get("/api/logs").json()
+    assert [item["summary"] for item in page["items"]] == [
+        "Blocked tcp",
+        "Blocked tcp",
+        "Blocked tcp",
+        "sshd: authentication failed",
+    ]
+    attack = page["items"][-1]
+    assert (attack["source"], attack["connection"], attack["severity"]) == (
+        "wazuh",
+        "indexer",
+        "high",
+    )
+    assert e2e.get(f"/api/logs/{attack['cursor']}").json()["raw"] == {"rule": {"id": "5710"}}
+    # The three of a run are as far apart as asked, the last of them as long ago as asked.
+    times = [datetime.fromisoformat(item["at"]) for item in page["items"][:3]]
+    assert (times[0] - times[1]).total_seconds() == 10
+    assert (times[1] - times[2]).total_seconds() == 10
+    assert page["summary"]["matched"] == 4
 
 
 def test_verdicts_can_be_given_and_judge_the_incidents_there_are(e2e: TestClient) -> None:

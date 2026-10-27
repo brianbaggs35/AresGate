@@ -55,7 +55,7 @@ apply, facts for its waves, ports and neighbouring addresses. The status is alwa
 primary action is the one to reach for next, and the page confirms a change in an `output`.
 Status looks, wording and the filters' choices are in `src/incidents.ts`.
 
-The search is `IncidentSearch`: a labelled text field in a `role="search"` landmark, a panel
+The search is `SearchBox`: a labelled text field in a `role="search"` landmark, a panel
 behind its help button (a disclosure, not a menu, so it is plain buttons that work with a screen
 reader and a thumb) with the ways to search and the searches made before, and one button for each
 term the API understood (`terms` in the answer, which is also where the wording of each comes
@@ -66,7 +66,9 @@ fails contrast), until the search is fixed. `SearchFacets` is the summary of the
 buttons with `aria-pressed`, a row that scrolls sideways on a phone (`contain: inline-size`, or
 the width of the choices would widen the page). The slash key is handled by the list page, and
 not while a field has the keyboard. A search that names a status or a verdict moves the view to
-*All* or switches on the quieted ones, so what the buttons say is true.
+*All* or switches on the quieted ones, so what the buttons say is true. The Logs page uses the
+same `SearchBox` and `SearchFacets` with the words of its own language (`LOG_SEARCH` in
+`src/search.ts`).
 
 Verdicts follow the same rule as severity: each is an icon and a name, never only a color
 (`VerdictChip`, looks and wording in `src/verdicts.ts`). `VerdictPanel` sits between the reasons
@@ -100,6 +102,23 @@ fewer than 10 incidents given a status is made at once, with `BulkNotice` and *U
 change goes through `BulkDialog`, which asks the API for a `preview` and says what the answer
 means in words (`wouldDo` in `src/bulk.ts`; none of the counting is in the web app). The button
 that goes ahead is off while there is nothing to change.
+
+The Logs page (`LogsView`) lists events in `LogTable` on a computer and in `LogCards` below the
+`md` breakpoint (the column menu, `LogColumns`, only exists on a computer). The table is a real
+`<table>` with a hidden caption and a heading that sticks under the top bar (`--v-layout-top`),
+which needs its wrapper to be `overflow: clip`, since `hidden` would stop it sticking; a click
+anywhere on a row opens the event unless text was just selected, and the summary in each row is
+a button for the keyboard (the arrow keys, `Home` and `End` move between them). `LogVolume` is a
+`BarChart` with `selectable`: a click, `Enter` or `Space` on a bar narrows the search to that
+time, and a touch needs a second tap on the same bar since the first reads it. The sheet,
+`LogDrawer`, is a `v-dialog` shaped by an unscoped style into a sheet at the right (the whole
+screen on a phone); `j` and `k` are heard on the window while it is open, because the keyboard
+starts in the dialog's own box and not in the card. `RawRecord` colors a record by tokens
+(`jsonTokens`) and never with `v-html`, so nothing an integration sent is read as markup. New
+events come from `tail()`, which asks for events after the newest on screen (a minute earlier,
+and left out by id when already shown) and, while the page is scrolled down, holds them behind a
+button rather than moving what is being read. `src/logs.ts` has the columns, the merging and the
+formatting, and the tests for it.
 
 Settings > AI (`AiSettingsView`) is one card, "AI provider". At the top is an `AiProviderPicker`:
 the four providers as cards that are really a group of radio buttons (the arrow keys move
@@ -234,7 +253,9 @@ the keyboard are not in it yet.
 - **Color.** Only theme colors (`primary`, `error`, `success`, `warning`, `info` and the surface
   tokens), so both themes work. A color never says something on its own.
 - **Phones.** Everything works at 360 px wide with no sideways scrolling; the menu becomes a bar at
-  the bottom and `AppPage` already clears it. Tap targets are at least 44 px: on a touch screen
+  the bottom and `AppPage` already clears it. The bar holds four places and a *More* button that
+  opens the rest in a sheet (`BOTTOM_BAR_LIMIT` and `bottomBar()` in `src/navigation.ts`); *More* is
+  marked as current while the page is one of them. Tap targets are at least 44 px: on a touch screen
   (`pointer: coarse`) every Vuetify button is made that tall, small ones and icon buttons
   included, in `styles/main.scss`, so a page does not size its own. A list that would push the
   rest of the page far down (the Needs you lane) is swiped through instead, in a row that goes to

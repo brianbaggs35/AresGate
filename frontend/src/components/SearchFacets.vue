@@ -1,65 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-
-import type { Facets } from '@/api/incidents'
-import { hasTerm } from '@/search'
-import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
+import type { FacetGroup } from '@/search'
 import { formatCount } from '@/format'
 
 /**
- * What the incidents found are made of: how many at each severity, and how many each integration
- * reported part of. Each is a button that adds that term to the search, or takes it out if it is
- * there, so the search can be narrowed without typing. A choice nothing is left to match is not
- * offered, unless it is the one that made the list so short.
+ * What the results of a search are made of, as groups of choices: how many at each severity, how
+ * many each integration reported. Each is a button that adds that term to the search, or takes it
+ * out if it is there, so the search can be narrowed without typing.
  */
-const props = defineProps<{
-  facets: Facets
-  /** The search that is applied, to tell which choices are on. */
-  search: string
-}>()
+defineProps<{ groups: readonly FacetGroup[] }>()
 const emit = defineEmits<{ toggle: [term: string] }>()
-
-interface Choice {
-  term: string
-  label: string
-  count: number
-  on: boolean
-  /** A theme color, for the severities. */
-  color?: string
-  icon?: (typeof SEVERITY)[Severity]['icon']
-}
-
-const severities = computed<Choice[]>(() =>
-  SEVERITIES.slice()
-    .reverse()
-    .map((level) => {
-      const term = `severity:${level}`
-      const { label, color, icon } = SEVERITY[level]
-      return {
-        term,
-        label,
-        count: props.facets.severity[level],
-        on: hasTerm(props.search, term),
-        color,
-        icon,
-      }
-    })
-    .filter(({ count, on }) => count > 0 || on),
-)
-
-const sources = computed<Choice[]>(() =>
-  props.facets.sources.map(({ key, name, count }) => {
-    const term = `source:${key}`
-    return { term, label: name, count, on: hasTerm(props.search, term) }
-  }),
-)
-
-const groups = computed(() =>
-  [
-    { name: 'Severity', choices: severities.value },
-    { name: 'Reported by', choices: sources.value },
-  ].filter(({ choices }) => choices.length > 0),
-)
 </script>
 
 <template>

@@ -266,6 +266,71 @@ describe('BarChart', () => {
     })
   })
 
+  describe('picking a category', () => {
+    const slot = (wrapper: Awaited<ReturnType<typeof mountBars>>['wrapper'], index: number) =>
+      wrapper.findAll('[data-test="bar-slot"]')[index]
+
+    it('says nothing unless it is told that categories can be picked', async () => {
+      const { wrapper } = await mountBars()
+
+      await slot(wrapper, 1)?.trigger('click')
+      await wrapper.find('.chart-svg').trigger('keydown', { key: 'ArrowDown' })
+      await wrapper.find('.chart-svg').trigger('keydown', { key: 'Enter' })
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+      expect(wrapper.find('.bar-chart__slot--pick').exists()).toBe(false)
+      expect(wrapper.find('.chart-svg').attributes('aria-label')).not.toContain('Enter')
+    })
+
+    it('says which one was clicked, and shows that it can be', async () => {
+      const { wrapper } = await mountBars({ selectable: true })
+
+      await slot(wrapper, 1)?.trigger('pointerdown', { pointerType: 'mouse' })
+      await slot(wrapper, 1)?.trigger('click')
+
+      expect(wrapper.emitted('select')).toEqual([[1]])
+      expect(slot(wrapper, 1)?.classes()).toContain('bar-chart__slot--pick')
+      expect(wrapper.find('.chart-svg').attributes('aria-label')).toContain('Enter')
+    })
+
+    it('says which one the keyboard is on with Enter or the space bar', async () => {
+      const { wrapper } = await mountBars({ selectable: true })
+      const chart = wrapper.find('.chart-svg')
+
+      await chart.trigger('keydown', { key: 'Enter' })
+      expect(wrapper.emitted('select')).toBeUndefined()
+
+      await chart.trigger('keydown', { key: 'ArrowDown' })
+      await chart.trigger('keydown', { key: 'ArrowDown' })
+      await chart.trigger('keydown', { key: 'Enter' })
+      await chart.trigger('keydown', { key: ' ' })
+
+      expect(wrapper.emitted('select')).toEqual([[1], [1]])
+    })
+
+    it('reads a category with the first tap of a finger and picks it with the next', async () => {
+      const { wrapper } = await mountBars({ selectable: true })
+
+      // A finger arrives over the category just before it presses, which is not a tap.
+      await slot(wrapper, 2)?.trigger('pointerenter', { pointerType: 'touch' })
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+      await slot(wrapper, 2)?.trigger('pointerdown', { pointerType: 'touch' })
+      await slot(wrapper, 2)?.trigger('click')
+      expect(wrapper.emitted('select')).toBeUndefined()
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(true)
+
+      await slot(wrapper, 2)?.trigger('pointerenter', { pointerType: 'touch' })
+      await slot(wrapper, 2)?.trigger('pointerdown', { pointerType: 'touch' })
+      await slot(wrapper, 2)?.trigger('click')
+      expect(wrapper.emitted('select')).toEqual([[2]])
+
+      await slot(wrapper, 0)?.trigger('pointerenter', { pointerType: 'touch' })
+      await slot(wrapper, 0)?.trigger('pointerdown', { pointerType: 'touch' })
+      await slot(wrapper, 0)?.trigger('click')
+      expect(wrapper.emitted('select')).toEqual([[2]])
+    })
+  })
+
   describe('as a table, with series turned off, and in its other states', () => {
     it('lists every value, and a total when it is stacked', async () => {
       const { wrapper } = await mountBars({

@@ -1,21 +1,36 @@
-import type { Facets } from '@/api/incidents'
 import SearchFacets from '@/components/SearchFacets.vue'
+import type { FacetGroup } from '@/search'
 import { mountWithPlugins } from '@/test/mount'
 
-const facets = (changes: Partial<Facets> = {}): Facets => ({
-  severity: { info: 0, low: 2, medium: 0, high: 5, critical: 1 },
-  sources: [
-    { key: 'wazuh', name: 'Wazuh', count: 7 },
-    { key: 'crowdsec', name: 'CrowdSec', count: 1 },
-  ],
-  ...changes,
-})
+const groups = (): FacetGroup[] => [
+  {
+    name: 'Severity',
+    choices: [
+      {
+        term: 'severity:critical',
+        label: 'Critical',
+        count: 1,
+        on: false,
+        color: 'error',
+        icon: 'mdi-alert',
+      },
+      { term: 'severity:high', label: 'High', count: 5, on: true, color: 'error' },
+    ],
+  },
+  {
+    name: 'Reported by',
+    choices: [
+      { term: 'source:wazuh', label: 'Wazuh', count: 7, on: false },
+      { term: 'source:crowdsec', label: 'CrowdSec', count: 12345, on: true },
+    ],
+  },
+]
 
-async function open(props: { facets?: Facets; search?: string } = {}) {
+async function open(props: { groups?: FacetGroup[] } = {}) {
   const mounted = await mountWithPlugins(SearchFacets, {
     signedIn: 'admin',
     withApp: true,
-    props: { facets: facets(), search: '', ...props },
+    props: { groups: groups(), ...props },
   })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const choices = (group: string) =>
@@ -28,50 +43,35 @@ async function open(props: { facets?: Facets; search?: string } = {}) {
 }
 
 describe('SearchFacets', () => {
-  it('counts the severities that have any, the most serious first', async () => {
-    const { choices } = await open()
+  it('has a group of buttons for each group it is given, named for a screen reader', async () => {
+    const { wrapper, choices } = await open()
 
-    expect(choices('Severity')).toEqual(['Critical1', 'High5', 'Low2'])
+    expect(wrapper.findAll('legend').map((legend) => legend.text())).toEqual([
+      'Severity',
+      'Reported by',
+    ])
+    expect(choices('Severity')).toEqual(['Critical1', 'High5'])
+    expect(choices('Reported by')).toEqual([
+      'Wazuh7',
+      expect.stringMatching(/^CrowdSec12[,.\s]?345$/),
+    ])
   })
 
-  it('counts what each integration reported, in the order it is given', async () => {
-    const { choices } = await open()
-
-    expect(choices('Reported by')).toEqual(['Wazuh7', 'CrowdSec1'])
-  })
-
-  it('shows a count with a thousands separator', async () => {
-    const { choices } = await open({
-      facets: facets({ sources: [{ key: 'wazuh', name: 'Wazuh', count: 12345 }] }),
-    })
-
-    expect(choices('Reported by')).toEqual([expect.stringMatching(/^Wazuh12[,.\s]?345$/)])
-  })
-
-  it('has a button for each, with an icon for the severities', async () => {
+  it('has a button for each, with an icon where it has one', async () => {
     const { find } = await open()
 
-    expect(find('facet-severity:critical').find('svg').exists()).toBe(true)
-    expect(find('facet-source:wazuh').find('svg').exists()).toBe(false)
+    expect(find('facet-severity:critical').find('svg, i').exists()).toBe(true)
+    expect(find('facet-source:wazuh').find('svg, i').exists()).toBe(false)
     expect(find('facet-severity:critical').attributes('type')).toBe('button')
   })
 
-  it('says which are on, by the search that is applied', async () => {
-    const { find } = await open({ search: 'ssh severity:high source:crowdsec' })
+  it('says which are on', async () => {
+    const { find } = await open()
 
     expect(find('facet-severity:high').attributes('aria-pressed')).toBe('true')
     expect(find('facet-severity:critical').attributes('aria-pressed')).toBe('false')
     expect(find('facet-source:crowdsec').attributes('aria-pressed')).toBe('true')
     expect(find('facet-source:wazuh').attributes('aria-pressed')).toBe('false')
-  })
-
-  it('still offers a severity that is on when nothing is left at it', async () => {
-    const { choices } = await open({
-      facets: facets({ severity: { info: 0, low: 0, medium: 0, high: 0, critical: 0 } }),
-      search: 'severity:medium',
-    })
-
-    expect(choices('Severity')).toEqual(['Medium0'])
   })
 
   it('says which term was chosen', async () => {
@@ -87,12 +87,7 @@ describe('SearchFacets', () => {
   })
 
   it('has nothing to show when there is nothing to choose', async () => {
-    const { find } = await open({
-      facets: {
-        severity: { info: 0, low: 0, medium: 0, high: 0, critical: 0 },
-        sources: [],
-      },
-    })
+    const { find } = await open({ groups: [] })
 
     expect(find('facets').exists()).toBe(false)
   })

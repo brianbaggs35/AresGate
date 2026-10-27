@@ -1,15 +1,9 @@
 """Incidents: the alerts, bans and other signals from every integration that belong together,
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
-from collections.abc import Generator
-from contextlib import contextmanager
-from datetime import UTC
-from functools import lru_cache
 from typing import Annotated, Literal, Self, cast
-from zoneinfo import ZoneInfo, available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
-from psycopg.errors import QueryCanceled
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -19,8 +13,8 @@ from pydantic import (
     model_validator,
 )
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
 
+from app.api import asking
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
@@ -38,9 +32,6 @@ Activity = Literal["scan", "brute_force"]
 # What to ask for to get the incidents nobody has given a verdict to.
 VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
-# How long a search may take before the database gives up on it, so that nothing a person types
-# can keep it busy.
-SEARCH_TIMEOUT_MS = 5000
 IncidentId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
 
@@ -358,18 +349,6 @@ def _found(db: Db, incident_id: int) -> Incident:
     return incident
 
 
-@lru_cache
-def _zones() -> frozenset[str]:
-    return frozenset(available_timezones())
-
-
-def _context(zone: str | None) -> search.Context:
-    """Where the person is and when, for the words in a search that depend on it."""
-    if zone is not None and zone not in _zones():
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That isn't a time zone.")
-    return search.Context(zone=ZoneInfo(zone) if zone else UTC, now=utcnow())
-
-
 def _facets(found: queries.Facets) -> FacetsOut:
     return FacetsOut(
         severity={name: found.severity.get(level, 0) for level, name in SEVERITY_NAMES.items()},
@@ -381,30 +360,7 @@ def _facets(found: queries.Facets) -> FacetsOut:
 
 
 def _ask(db: Db, text: str, zone: str | None) -> search.Search:
-    """What a search says. One that says something is limited in time: whatever it asks for, the
-    database stops it before it holds anything up."""
-    try:
-        asked = search.parse(text, _context(zone))
-    except search.SearchError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
-    if asked.terms:
-        db.execute(select(func.set_config("statement_timeout", str(SEARCH_TIMEOUT_MS), True)))
-    return asked
-
-
-@contextmanager
-def _in_time(db: Db) -> Generator[None]:
-    """Turns the database giving up on a search into what a person is told about it."""
-    try:
-        yield
-    except OperationalError as error:
-        if not isinstance(error.orig, QueryCanceled):
-            raise
-        db.rollback()
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "That search took too long. Narrow it, for example with since:7d.",
-        ) from None
+    return asking.ask(db, text, zone, search.parse)
 
 
 def _minimum(name: SeverityName | None) -> Severity | None:
@@ -449,7 +405,7 @@ def list_incidents(
     """Incidents, the ones that were going most recently first unless asked for the most
     serious and surest first."""
     asked = _ask(db, q, tz)
-    with _in_time(db):
+    with asking.in_time(db):
         page = queries.search(
             db,
             verdicts=list(verdict or []),
@@ -494,7 +450,7 @@ def _picked(db: Db, body: BulkIn) -> list[Incident]:
         )
     matching = cast(Matching, body.matching)
     asked = _ask(db, matching.q, matching.tz)
-    with _in_time(db):
+    with asking.in_time(db):
         total, found = queries.selected(
             db,
             verdicts=list(matching.verdict),

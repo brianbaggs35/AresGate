@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api import incidents
+from app.api import asking
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
@@ -379,7 +379,7 @@ class TestSearching:
             return search.Search((search.Term(None, False, "Slow", 0, 1, slow),))
 
         monkeypatch.setattr(search, "parse", parse)
-        monkeypatch.setattr(incidents, "SEARCH_TIMEOUT_MS", 50)
+        monkeypatch.setattr(asking, "SEARCH_TIMEOUT_MS", 50)
 
         response = client.get(BASE, params={"q": "x"})
 
@@ -397,7 +397,7 @@ class TestSearching:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         make(session, settings)
-        monkeypatch.setattr(incidents, "SEARCH_TIMEOUT_MS", 1)
+        monkeypatch.setattr(asking, "SEARCH_TIMEOUT_MS", 1)
 
         assert len(listed(client)) == 2
 

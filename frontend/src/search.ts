@@ -1,15 +1,26 @@
 /**
- * The search box, from the side of the person typing: the words of its language to show as help,
- * how a term is taken out of the text or put into it, and the searches this browser remembers.
- * What a search means is decided by the API (`app/incidents/search.py`), which answers with the
- * terms it understood; none of its rules are repeated here.
+ * The search boxes, from the side of the person typing: the words of their languages to show as
+ * help, how a term is taken out of the text or put into it, and the searches this browser
+ * remembers. What a search means is decided by the API (`app/incidents/search.py` for incidents,
+ * `app/events/search.py` for logs), which answers with the terms it understood; none of the
+ * rules are repeated here.
  */
-import type { SearchTerm } from '@/api/incidents'
+import type { SearchTerm, SourceCount } from '@/api/incidents'
+import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
 
 /** One way to search, as help. `text` is what it types into the box. */
 export interface SearchExample {
   text: string
   meaning: string
+}
+
+/** What a search box is for: how it is named, what it hints at, how to search it and where the
+ * searches made in it are remembered. */
+export interface SearchKind {
+  label: string
+  placeholder: string
+  examples: readonly SearchExample[]
+  recentKey: string
 }
 
 export const SEARCH_EXAMPLES: readonly SearchExample[] = [
@@ -42,6 +53,45 @@ export const SEARCH_EXAMPLES: readonly SearchExample[] = [
   { text: '-source:wazuh', meaning: 'A minus in front turns any term around' },
 ]
 
+export const RECENT_KEY = 'aresgate.incidents.searches'
+export const LOG_RECENT_KEY = 'aresgate.logs.searches'
+
+export const LOG_EXAMPLES: readonly SearchExample[] = [
+  { text: 'failed', meaning: 'Words in what the event says or the rule that fired' },
+  { text: '"failed password"', meaning: 'Quotes keep words together' },
+  { text: '203.0.113.7', meaning: 'An address, from or to' },
+  { text: 'address:203.0.113.0/24', meaning: 'Any address in a range' },
+  { text: 'from:203.0.113.7', meaning: 'Only where it came from (to: is where it went)' },
+  {
+    text: 'source:opnsense',
+    meaning: 'Reported by an integration: opnsense, ntopng, wazuh, crowdsec',
+  },
+  { text: 'severity>=high', meaning: 'At least this serious: info, low, medium, high, critical' },
+  { text: 'kind:firewall', meaning: 'A kind of event, such as alert, firewall or decision' },
+  { text: 'port:22,443', meaning: 'A destination port (sport: is the source port)' },
+  { text: 'protocol:udp', meaning: 'The protocol, such as tcp, udp or icmp' },
+  { text: 'signature:"ET SCAN"', meaning: 'Part of the rule that fired' },
+  { text: 'raw:sshd', meaning: "Looks through the program's own record (slower: add a time)" },
+  { text: 'incident:yes', meaning: 'Only events AresGate filed into an incident' },
+  { text: 'since:1h', meaning: 'In the last 1h, 6h, 2d, 1w, or since today, yesterday or a date' },
+  { text: 'before:2026-10-01', meaning: 'Before a time' },
+  { text: '-source:ntopng', meaning: 'A minus in front turns any term around' },
+]
+
+export const INCIDENT_SEARCH: SearchKind = {
+  label: 'Search incidents',
+  placeholder: 'severity>=high source:wazuh -port:22 ssh',
+  examples: SEARCH_EXAMPLES,
+  recentKey: RECENT_KEY,
+}
+
+export const LOG_SEARCH: SearchKind = {
+  label: 'Search logs',
+  placeholder: 'severity>=high source:opnsense -port:22 since:1h',
+  examples: LOG_EXAMPLES,
+  recentKey: LOG_RECENT_KEY,
+}
+
 /** The time zone this browser is in, such as America/Halifax, for what `today` means. */
 export function zone(): string | undefined {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
@@ -64,6 +114,62 @@ export function hasTerm(text: string, term: string): boolean {
   return pattern(term).test(text)
 }
 
+/** One button of the summary under a search: a term that is added to the search or taken out. */
+export interface FacetChoice {
+  term: string
+  label: string
+  count: number
+  on: boolean
+  /** A theme color, for the severities. */
+  color?: string
+  icon?: (typeof SEVERITY)[Severity]['icon']
+}
+
+export interface FacetGroup {
+  name: string
+  choices: FacetChoice[]
+}
+
+/** The severities that have any, the most serious first. A choice nothing is left to match is not
+ * offered, unless it is the one that made the list so short. */
+export function severityChoices(
+  counts: Readonly<Record<Severity, number>>,
+  search: string,
+): FacetChoice[] {
+  return SEVERITIES.slice()
+    .reverse()
+    .map((level) => {
+      const term = `severity:${level}`
+      const { label, color, icon } = SEVERITY[level]
+      return { term, label, count: counts[level], on: hasTerm(search, term), color, icon }
+    })
+    .filter(({ count, on }) => count > 0 || on)
+}
+
+/** The integrations, in the order the API gives them (the most first). */
+export function sourceChoices(sources: readonly SourceCount[], search: string): FacetChoice[] {
+  return sources.map(({ key, name, count }) => {
+    const term = `source:${key}`
+    return { term, label: name, count, on: hasTerm(search, term) }
+  })
+}
+
+/** The kinds of event, in the order the API gives them (the most first). */
+export function kindChoices(
+  kinds: readonly { kind: string; count: number }[],
+  search: string,
+): FacetChoice[] {
+  return kinds.map(({ kind, count }) => {
+    const term = `kind:${kind}`
+    return { term, label: kind, count, on: hasTerm(search, term) }
+  })
+}
+
+/** The groups that have anything to choose from. */
+export function groupsOf(...groups: FacetGroup[]): FacetGroup[] {
+  return groups.filter(({ choices }) => choices.length > 0)
+}
+
 /** The text with the term put at its end, or taken out if it is there. */
 export function toggled(text: string, term: string): string {
   if (hasTerm(text, term)) return text.replace(pattern(term), ' ').replace(/\s+/g, ' ').trim()
@@ -78,13 +184,13 @@ export function impliedBy(text: string): { allStatuses: boolean; quieted: boolea
   return { allStatuses: names('status'), quieted: names('verdict') }
 }
 
-export const RECENT_KEY = 'aresgate.incidents.searches'
 export const MAX_RECENT = 8
 
-/** The searches that were made in this browser, the newest first. */
-export function readRecent(): string[] {
+/** The searches that were made in this browser, for the box that keeps them under `key`, the
+ * newest first. */
+export function readRecent(key: string): string[] {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? '[]')
     if (!Array.isArray(stored)) return []
     return (stored as unknown[])
       .filter((item): item is string => typeof item === 'string' && item.trim() !== '')
@@ -96,22 +202,22 @@ export function readRecent(): string[] {
 
 /** Remembers a search, in front of the others and once, and returns all that are remembered.
  * Where storage is off, the search is remembered until the page is closed. */
-export function remember(text: string): string[] {
+export function remember(text: string, key: string): string[] {
   const search = text.trim()
-  const searches = readRecent()
+  const searches = readRecent(key)
   if (!search) return searches
   const kept = [search, ...searches.filter((item) => item !== search)].slice(0, MAX_RECENT)
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(kept))
+    localStorage.setItem(key, JSON.stringify(kept))
   } catch {
     // Storage can be unavailable; the list still works for this visit.
   }
   return kept
 }
 
-export function forget(): void {
+export function forget(key: string): void {
   try {
-    localStorage.removeItem(RECENT_KEY)
+    localStorage.removeItem(key)
   } catch {
     // Nothing to take back if nothing could be kept.
   }

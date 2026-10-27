@@ -10,6 +10,7 @@ import { IncidentPage } from './pages/incident-page'
 import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
 import { IntegrationsPage } from './pages/integrations-page'
+import { LogsPage } from './pages/logs-page'
 import { DashboardPage } from './pages/dashboard-page'
 import { SecurityPage } from './pages/security-page'
 import { SettingsPage } from './pages/settings-page'
@@ -27,6 +28,8 @@ export interface AresGateFixtures {
   /** The list of incidents, and the page for one. */
   incidents: IncidentsPage
   incident: IncidentPage
+  /** Every event that was collected, and the sheet that opens one. */
+  logs: LogsPage
   integrations: IntegrationsPage
   integration: IntegrationPage
   signIn: SignInPage
@@ -106,6 +109,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   incident: async ({ page }, use) => {
     await use(new IncidentPage(page))
+  },
+
+  logs: async ({ page }, use) => {
+    await use(new LogsPage(page))
   },
 
   integrations: async ({ page }, use) => {

@@ -8,6 +8,22 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A Logs page**: every event the collectors stored, with the record each integration sent next
+  to what AresGate made of it. On a computer, a table with a sticky heading, a heading for each
+  day, columns you choose (and whether the time is exact or *how long ago*) and the arrow keys
+  to move through it; on a phone, a card for each event. *Live* follows along every 5 seconds,
+  holding new events behind a button while you are scrolled down. The same search as the
+  incidents (`severity>=high source:opnsense -port:22 since:1h "failed password"`, plus `from:`,
+  `to:`, `kind:`, `protocol:`, `incident:yes` and `raw:` for the integration's own record), with
+  buttons that count the severities, integrations and kinds, and a chart of events over time
+  where a tap on a bar narrows the search to that time. Open an event for a sheet with every
+  field (each with *copy* and *show events with this*), the incident it was filed into, links
+  to all events with each address, and the pretty-printed record; `j` and `k` step through the
+  events. *Export* saves what a search finds as CSV or JSON (the newest 50,000, one entry in the
+  activity log). `GET /api/logs`, `GET /api/logs/{cursor}` and `GET /api/logs/export`
+  ([DOCS/operations.md](DOCS/operations.md#the-logs-page)).
+- **A *More* button on a phone**: the bottom bar holds four places and the rest, Status and
+  Settings, are behind *More*, which is marked while one of them is open.
 - **Change many incidents at once**: every card in the incident list has a box, a row above the
   list picks the page (shift picks a range, Escape lets go), and once some are picked the row
   holds *Status* and the three verdicts. A status change to a few is made at once with *Undo* for
@@ -32,6 +48,8 @@ Every release's notes are here, newest first. The format follows
   and the search is in the address of the page, so it can be sent as a link. `GET /api/incidents`
   takes `q` and `tz` (the time zone, for `today`) and answers with `terms` and `facets`; a search
   is limited in length and terms, and the database stops one after 5 seconds. The address field
+  it replaces still works from older links. Saved searches are to come
+  ([DOCS/operations.md](DOCS/operations.md#the-incidents-pages)).
   it replaces still works from older links. Saved searches and the same search for the logs are
   to come ([DOCS/operations.md](DOCS/operations.md#the-incidents-pages)).
 - **A phone pass over the app**: on a phone the incidents that need a decision are a row to swipe

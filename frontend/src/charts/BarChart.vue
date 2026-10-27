@@ -42,6 +42,8 @@ const props = withDefaults(
     whole?: boolean
     /** The height of a vertical chart, with its labels. */
     height?: number
+    /** Each category can be picked, with a click, Enter, or a second tap: the chart says which. */
+    selectable?: boolean
     loading?: boolean
     emptyTitle?: string
     emptyDescription?: string
@@ -54,11 +56,14 @@ const props = withDefaults(
     format: undefined,
     whole: false,
     height: 220,
+    selectable: false,
     loading: false,
     emptyTitle: undefined,
     emptyDescription: undefined,
   },
 )
+
+const emit = defineEmits<{ select: [category: number] }>()
 
 /** About how wide a character of the 12px labels is. */
 const CHARACTER = 7
@@ -210,10 +215,34 @@ const readout = computed(() => {
 })
 
 function onKey(event: KeyboardEvent) {
+  if (props.selectable && active.value !== null && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault()
+    emit('select', active.value)
+    return
+  }
   const next = stepIndex(event.key, active.value, props.categories.length)
   if (next === undefined) return
   event.preventDefault()
   active.value = next
+}
+
+/** Whether what is being pressed was already being read: a finger reads a category with its
+ * first tap and picks it with the next, a pointer does both at once. */
+let armed = true
+
+function press(index: number, event: PointerEvent) {
+  armed = event.pointerType !== 'touch' || active.value === index
+  active.value = index
+}
+
+function pick(index: number) {
+  if (props.selectable && armed) emit('select', index)
+}
+
+/** A pointer reads what it is over. A finger reads what it touches only once it presses, since
+ * it arrives over the category just before, and that must not count as the first tap. */
+function hover(index: number, event: PointerEvent) {
+  if (event.pointerType !== 'touch') active.value = index
 }
 
 /** A finger stays on what it touched until it touches something else; a pointer leaves with it. */
@@ -241,7 +270,7 @@ function leave(event: PointerEvent) {
         tabindex="0"
         :width="width"
         :height="drawnHeight"
-        :aria-label="`${title}. Use the arrow keys to read each one, or show it as a table.`"
+        :aria-label="`${title}. Use the arrow keys to read each one${selectable ? ', Enter to look at it' : ''}, or show it as a table.`"
         @keydown="onKey"
         @blur="active = null"
         @pointerleave="leave"
@@ -324,9 +353,11 @@ function leave(event: PointerEvent) {
           :width="vertical ? band : width"
           :height="vertical ? drawnHeight : band"
           fill="transparent"
+          :class="{ 'bar-chart__slot--pick': selectable }"
           data-test="bar-slot"
-          @pointerdown="active = index"
-          @pointerenter="active = index"
+          @pointerdown="press(index, $event)"
+          @pointerenter="hover(index, $event)"
+          @click="pick(index)"
         />
       </svg>
       <ChartTooltip
@@ -353,6 +384,10 @@ function leave(event: PointerEvent) {
 
 .bar-chart__mark {
   transition: opacity 0.15s;
+}
+
+.bar-chart__slot--pick {
+  cursor: pointer;
 }
 
 /* The category being read stands out by the others stepping back. */

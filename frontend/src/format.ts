@@ -12,6 +12,28 @@ export function formatTimestamp(iso: string, locale?: string): string {
   )
 }
 
+/** The time of day a moment was at, down to the second ("08:03:12"), for a column of a log. */
+export function formatClock(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { timeStyle: 'medium' }).format(new Date(iso))
+}
+
+/** The day a moment was on, as a heading: "Today", "Yesterday", or "Mon, Oct 26" (with the year
+ * once it is not this one). */
+export function formatDay(iso: string, now: number = Date.now(), locale?: string): string {
+  const moment = new Date(iso)
+  const today = new Date(now)
+  const midnight = (date: Date) => new Date(date).setHours(0, 0, 0, 0)
+  const days = Math.round((midnight(today) - midnight(moment)) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(moment.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+  }).format(moment)
+}
+
 /** How long ago a moment was, in words ("5 minutes ago"), or "just now" within a minute. */
 export function formatAgo(iso: string, now: number = Date.now(), locale?: string): string {
   const seconds = (new Date(iso).getTime() - now) / 1000

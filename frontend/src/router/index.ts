@@ -42,6 +42,12 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/logs',
+    name: 'logs',
+    component: () => import('@/views/LogsView.vue'),
+    meta: { title: 'Logs' },
+  },
+  {
     // The list, and a page for each integration. Both belong to the one place in the menu.
     path: '/integrations',
     children: [

@@ -139,6 +139,108 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the logs, a search of them and the sheet for an event have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      logs,
+      shell,
+    }) => {
+      await harness.createEvents([
+        {
+          source: 'opnsense',
+          summary: 'Blocked tcp from 203.0.113.7',
+          src_address: '203.0.113.7',
+          src_port: 51234,
+          dst_address: '192.168.1.20',
+          dst_port: 443,
+          protocol: 'tcp',
+          seconds_ago: 60,
+          raw: { action: 'block', interface: 'wan', reason: 'match' },
+        },
+        {
+          source: 'wazuh',
+          kind: 'alert',
+          severity: 'critical',
+          summary: 'sshd: Failed password for root',
+          signature: '5710 sshd: Attempt to login using a non-existent user',
+          src_address: '203.0.113.7',
+          dst_address: '192.168.1.20',
+          dst_port: 22,
+          seconds_ago: 120,
+          raw: { rule: { id: '5710', level: 10 }, full_log: 'Failed password for root' },
+        },
+        {
+          source: 'opnsense',
+          kind: 'alert',
+          severity: 'high',
+          summary: 'ET SCAN',
+          seconds_ago: 180,
+        },
+        {
+          source: 'ntopng',
+          kind: 'flow',
+          severity: 'low',
+          summary: 'Long flow',
+          seconds_ago: 7200,
+        },
+        {
+          source: 'crowdsec',
+          kind: 'decision',
+          severity: 'medium',
+          summary: 'Banned',
+          seconds_ago: 9000,
+        },
+      ])
+      await logs.goto()
+      await expect(logs.events).toHaveCount(5)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expect(logs.volume).toBeVisible()
+      await expectAccessible(page)
+
+      // A search, the terms it was understood as, and what the results are made of.
+      await logs.search('severity>=low -port:443')
+      await expect(logs.terms).toHaveCount(2)
+      await expect(logs.facets).toBeVisible()
+      await expectAccessible(page)
+
+      // The ways to search, and the searches made before.
+      await logs.searchHelp.click()
+      await expect(logs.searchPanel).toBeVisible()
+      await expect(logs.recent).toHaveCount(1)
+      await expectAccessible(page)
+      await logs.searchHelp.click()
+
+      // A search that can not be understood, and one that finds nothing.
+      await logs.search('sevrity:high')
+      await expect(logs.searchField).toContainText('Did you mean')
+      await expectAccessible(page)
+      await logs.search('198.51.100.99')
+      await expect(logs.empty).toContainText('Nothing matches')
+      await expectAccessible(page)
+
+      // The files that can be downloaded, and the live switch turned off.
+      await logs.goto()
+      await expect(logs.events).toHaveCount(5)
+      await logs.export.click()
+      await expect(logs.exportCsv).toBeVisible()
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+      await logs.live.click()
+      await expect(logs.live).toHaveAttribute('aria-pressed', 'false')
+      await expectAccessible(page)
+
+      // An event in its sheet, with its record, and one that has none.
+      await logs.open('sshd: Failed password').click()
+      await expect(logs.rawText).toBeVisible()
+      await expect(logs.drawerNoIncident).toBeVisible()
+      await expectAccessible(page)
+      await logs.drawerOlder.click()
+      await expect(logs.drawerTitle).toHaveText('ET SCAN')
+      await expect(logs.rawNone).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the AI page, with a provider working, one failing and a model list open, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

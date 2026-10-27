@@ -1,4 +1,4 @@
-import { BOTTOM_BAR_LIMIT, navItems } from '@/navigation'
+import { BOTTOM_BAR_LIMIT, bottomBar, navItems } from '@/navigation'
 import { routes } from '@/router'
 
 describe('navigation', () => {
@@ -11,9 +11,29 @@ describe('navigation', () => {
     expect(new Set(navItems.map((item) => item.route)).size).toBe(navItems.length)
   })
 
-  // A sixth place needs the phone's bar to make room, e.g. a "More" button that opens the rest
-  // in a sheet. Add that, with its tests, along with the sixth item.
-  it("has no more places than a phone's bottom bar holds", () => {
-    expect(navItems.length).toBeLessThanOrEqual(BOTTOM_BAR_LIMIT)
+  it('has a bottom bar that holds all the places while they fit', () => {
+    const items = navItems.slice(0, 3)
+
+    expect(bottomBar(items, 5)).toEqual({ bar: items, more: [] })
+    expect(bottomBar(navItems.slice(0, 5), 5).more).toEqual([])
+  })
+
+  it('puts the places that do not fit behind More, leaving room for its button', () => {
+    const { bar, more } = bottomBar(navItems, 5)
+
+    expect(bar).toHaveLength(BOTTOM_BAR_LIMIT - 1)
+    expect([...bar, ...more]).toEqual(navItems)
+    expect(more.length).toBeGreaterThan(0)
+  })
+
+  it('keeps Logs in the menu, between Incidents and Integrations', () => {
+    expect(navItems.map((item) => item.route)).toEqual([
+      'home',
+      'incidents',
+      'logs',
+      'integrations',
+      'status',
+      'settings',
+    ])
   })
 })

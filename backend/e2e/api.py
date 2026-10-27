@@ -5,7 +5,7 @@ coverage. Only ``e2e.main`` mounts them.
 """
 
 from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import coverage
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -228,6 +228,67 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
     )
     db.commit()
     return IncidentsRecord(**stored._asdict())
+
+
+class EventRequest(BaseModel):
+    """One event, or a run of them, as a program would have reported it. All of it is optional."""
+
+    source: str = Field(default="opnsense", max_length=32)
+    connection: str | None = Field(default=None, max_length=32)
+    kind: str = Field(default="firewall", max_length=32)
+    severity: Literal["info", "low", "medium", "high", "critical"] = "info"
+    summary: str = Field(default="Blocked tcp", max_length=500)
+    signature: str | None = Field(default=None, max_length=256)
+    src_address: str | None = None
+    src_port: int | None = Field(default=None, ge=0, le=65_535)
+    dst_address: str | None = None
+    dst_port: int | None = Field(default=None, ge=0, le=65_535)
+    protocol: str | None = Field(default=None, max_length=16)
+    seconds_ago: int = Field(default=60, ge=0, le=60 * 60 * 24 * 20)
+    raw: dict[str, Any] | None = None
+    repeat: int = Field(default=1, ge=1, le=500)
+    every_seconds: int = Field(default=30, ge=1, le=60 * 60 * 24)
+
+
+class EventsRequest(BaseModel):
+    events: list[EventRequest]
+
+
+class EventsRecord(BaseModel):
+    events: int
+
+
+@router.post("/factories/events", status_code=status.HTTP_201_CREATED)
+def make_events(body: EventsRequest, db: Db, settings: SettingsDep) -> EventsRecord:
+    """Stores events as of now, as the programs would have reported them, for the Logs page to
+    show. They are not filed into incidents."""
+    stored = factories.events(
+        db,
+        settings,
+        utcnow(),
+        [
+            factories.EventSpec(
+                source=item.source,
+                connection=item.connection,
+                kind=item.kind,
+                severity=Severity[item.severity.upper()],
+                summary=item.summary,
+                signature=item.signature,
+                src_address=item.src_address,
+                src_port=item.src_port,
+                dst_address=item.dst_address,
+                dst_port=item.dst_port,
+                protocol=item.protocol,
+                seconds_ago=item.seconds_ago,
+                raw=item.raw,
+                repeat=item.repeat,
+                every_seconds=item.every_seconds,
+            )
+            for item in body.events
+        ],
+    )
+    db.commit()
+    return EventsRecord(events=stored)
 
 
 class VerdictRequest(BaseModel):

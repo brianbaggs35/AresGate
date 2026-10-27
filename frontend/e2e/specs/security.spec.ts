@@ -10,11 +10,11 @@ test.describe('settings area', () => {
   }) => {
     await page.goto('/')
 
-    await shell.settingsLink.click()
+    await shell.goTo('settings')
 
     await expect(page).toHaveURL('/settings/account')
     await expect(page).toHaveTitle('Settings · AresGate')
-    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('settings')
     await expect(settings.heading).toHaveText('Settings')
     await expect(security.accountName).toHaveText(baseline.account.username)
   })
@@ -72,7 +72,7 @@ test.describe('settings area', () => {
     await expect(page).toHaveURL('/settings/account')
     await expect(security.passwordCard).toBeVisible()
     // Settings stays marked in the menu, whichever page of it is open.
-    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('settings')
   })
 
   test('keeps Settings marked in the menu on every page of the area', async ({
@@ -81,10 +81,10 @@ test.describe('settings area', () => {
     activity,
   }) => {
     await signIns.goto()
-    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('settings')
 
     await activity.goto()
-    await expect(shell.settingsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('settings')
   })
 
   test('asks for the cards in order: who, password, passkeys, two-step verification', async ({
