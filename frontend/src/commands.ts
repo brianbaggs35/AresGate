@@ -2,7 +2,7 @@ import { Moon, Monitor, Search, ShieldAlert, Sun } from '@lucide/vue'
 import type { RouteLocationRaw } from 'vue-router'
 import type { IconProps } from 'vuetify'
 
-import { isAddress, VIEWS } from '@/incidents'
+import { VIEWS } from '@/incidents'
 import { navItems } from '@/navigation'
 import { settingsSections } from '@/settings'
 import type { ThemePreference } from '@/stores/theme'
@@ -83,6 +83,14 @@ function rank(command: Command, terms: readonly string[]): number | null {
   return terms.every((term) => title.includes(term)) ? 1 : 2
 }
 
+const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/
+const IPV6 = /^(?=(?:[^:]*:){2})[0-9a-f:.]{2,45}$/i
+
+/** Whether text is a whole IP address, which is what the incidents search takes to look for. */
+function isAddress(text: string): boolean {
+  return IPV4.test(text) || IPV6.test(text)
+}
+
 /** The command that finds the incidents about an address that was typed whole. */
 function findAddress(address: string): Command {
   return {
@@ -91,7 +99,7 @@ function findAddress(address: string): Command {
     title: `Find incidents about ${address}`,
     icon: Search,
     keywords: address,
-    action: { kind: 'go', to: { name: 'incidents', query: { view: 'all', address } } },
+    action: { kind: 'go', to: { name: 'incidents', query: { view: 'all', q: address } } },
   }
 }
 

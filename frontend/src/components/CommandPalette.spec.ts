@@ -140,7 +140,7 @@ describe('CommandPalette', () => {
     await vi.waitFor(() => {
       expect(router.currentRoute.value.name).toBe('incidents')
     })
-    expect(router.currentRoute.value.query).toEqual({ view: 'all', address: '93.184.216.34' })
+    expect(router.currentRoute.value.query).toEqual({ view: 'all', q: '93.184.216.34' })
   })
 
   it('ignores the other keys in the field', async () => {
