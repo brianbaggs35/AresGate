@@ -112,7 +112,7 @@ async function give(kind: VerdictKind) {
     </label>
     <RouterLink
       :to="{ name: 'incident', params: { id: incident.id } }"
-      class="incident-card__link pa-4 pa-sm-5"
+      class="incident-card__link"
       data-test="incident"
     >
       <div class="incident-card__top">
@@ -237,8 +237,15 @@ async function give(kind: VerdictKind) {
 
 .incident-card__link {
   display: block;
+  padding: 1rem;
   color: inherit;
   text-decoration: none;
+}
+
+@media (min-width: 600px) {
+  .incident-card__link {
+    padding: 1.25rem;
+  }
 }
 
 .incident-card__link:hover {
@@ -276,9 +283,9 @@ async function give(kind: VerdictKind) {
   outline-offset: 3px;
 }
 
-/* The padding of the link comes from a utility class, which only `!important` can go past. */
+/* Room for the box in the corner. */
 .incident-card--selectable .incident-card__link {
-  padding-inline-start: 3.25rem !important;
+  padding-inline-start: 3.25rem;
 }
 
 .incident-card--selected {
