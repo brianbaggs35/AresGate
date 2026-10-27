@@ -3,6 +3,7 @@ import { test as base, type BrowserContext, type Page } from '@playwright/test'
 import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
+import { AiSettingsPage } from './pages/ai-settings-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { IncidentPage } from './pages/incident-page'
@@ -37,6 +38,8 @@ export interface AresGateFixtures {
   activity: ActivityPage
   /** The settings page for how long data is kept. */
   data: DataPage
+  /** The settings page for which AI AresGate may ask. */
+  aiSettings: AiSettingsPage
   status: StatusPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
@@ -139,6 +142,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   data: async ({ page }, use) => {
     await use(new DataPage(page))
+  },
+
+  aiSettings: async ({ page }, use) => {
+    await use(new AiSettingsPage(page))
   },
 
   status: async ({ page }, use) => {

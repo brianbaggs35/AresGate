@@ -485,6 +485,49 @@ and each incident has a page of its own.
 - **What it doesn't do yet.** It does not block, isolate or notify anything. Response actions
   come later, and the analyst will read incidents the way you do.
 
+## AI providers
+
+**Settings > AI** is where you choose the AI that AresGate may ask. AI is **off** until you turn it
+on, nothing about your network is sent to a provider by setting one up, and everything else in
+AresGate works without it. A test sends only the words "Say OK."
+
+- **Four providers.** Anthropic and OpenAI are asked over the internet with an API key you make
+  at the provider (the page links to where). Ollama runs on a computer of your own, so nothing
+  leaves your network and it costs nothing to ask; Ollama Cloud is the same API run by Ollama,
+  with a key from ollama.com.
+- **Models and prices.** Anthropic starts on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, the
+  cheap, fast models that fit reading every incident, and each offers its larger models, with what
+  they cost per million tokens (and for Haiku, what a prompt over 100,000 tokens costs), what
+  cached input costs, and a rough price for reading one incident. The prices were read from the
+  providers' own pages (Anthropic's pricing page and OpenAI's pricing page) on the date the page
+  shows, and are in `backend/app/ai/catalog.py`: check them there when a provider changes its
+  prices. The estimate assumes about 3,000 tokens in and 600 out for one incident; the usage page
+  shows what was really used.
+- **Ollama.** Give the address it listens on, such as `http://192.168.1.50:11434`: not
+  `localhost`, which for AresGate's container is the container itself, and an address on your own
+  network (the ranges 10.x, 172.16-31.x and 192.168.x), since AresGate refuses to reach anywhere
+  else for it. Ollama listens only on its own computer until it is told otherwise (the
+  `OLLAMA_HOST` setting). **Fetch models** asks it which models it has (`GET /api/tags`) and
+  offers them, with their size; **Test connection** asks it for them and then for one token from
+  the model you chose. Ollama Cloud has the same two buttons once a key is entered.
+- **Test connection and Fetch models save first.** What you filled in is kept, then tested, so
+  what is tested is what is used. A test asks for one token: the least that proves the key, the
+  model and the address work.
+- **The key.** It is only ever written. It is sealed with the app secret key (AES-256-GCM) in the
+  credential store, shown as *Saved* and never sent back, and leaving the field empty keeps it. No
+  API response, log line or audit entry contains it, and a test checks that it is in no table
+  unsealed. Removing a provider deletes it from AresGate; it still works at the provider until you
+  delete it there.
+- **Where AresGate may connect.** A hosted provider is reached only at its own address, over
+  https, and never at an address that leads to your network, the machine itself or a cloud
+  metadata service, even if a name has been made to point there. Every call is in the API log.
+- **Use AI.** The switch and the choice of which provider to ask need a provider that is set up
+  with a model (and a key, if it takes one). Removing the provider that is asked turns AI off.
+- **The API.** `GET /api/ai` lists the providers, their models and prices and how they are set
+  up; `PUT /api/ai/providers/{key}` keeps one, `DELETE` forgets it, `POST .../test` tests it and
+  `POST .../models` asks an Ollama for its models; `PUT /api/ai/use` turns AI on or off. Each
+  change is in the activity log.
+
 ## Signing in
 
 AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create

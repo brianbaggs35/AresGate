@@ -17,6 +17,7 @@ export {
   type WorkerPulse,
 } from './harness'
 export { ActivityPage } from './pages/activity-page'
+export { AiSettingsPage } from './pages/ai-settings-page'
 export { DataPage } from './pages/data-page'
 export { AppShell, type ThemeChoice } from './pages/app-shell'
 export { IncidentPage } from './pages/incident-page'

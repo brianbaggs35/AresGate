@@ -1,0 +1,140 @@
+import type { Problem } from '@/api/client'
+import type { AiProvider, FoundModel, ModelChoice, Price, ProviderSettings } from '@/api/ai'
+import { formatBytes } from '@/format'
+
+/** What reading one incident is assumed to take, in tokens: the incident and what surrounds it
+ * go in, and a class, a confidence, a story and what to check come out. It is a round guess to
+ * make prices comparable, not a measurement; the usage page shows what was really used. */
+export const ASSUMED_TOKENS = { input: 3000, output: 600 } as const
+
+/** US dollars, with as many decimals as the price needs: $2.00, $0.10, $0.075, $0.0006. */
+export function formatUsd(value: number, locale?: string): string {
+  if (value > 0 && value < 0.0001) return 'less than $0.0001'
+  return value.toLocaleString(locale, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })
+}
+
+/** What a price is, in a line: "$0.10 in, $0.50 out per million tokens". */
+export function describePrice(price: Price, locale?: string): string {
+  return `${formatUsd(price.input, locale)} in, ${formatUsd(price.output, locale)} out per million tokens`
+}
+
+/** What reading one incident costs at a price, by the assumed tokens. */
+export function incidentCost(price: Price): number {
+  return (ASSUMED_TOKENS.input * price.input + ASSUMED_TOKENS.output * price.output) / 1_000_000
+}
+
+/** The line under a model that says what it costs, to choose by. */
+export function priceNote(model: ModelChoice, locale?: string): string {
+  return `${describePrice(model.price, locale)} · about ${formatUsd(incidentCost(model.price), locale)} an incident`
+}
+
+/** Prices that depend on the size of the prompt: what it costs past the threshold. */
+export function longPromptNote(price: Price, locale?: string): string | null {
+  if (price.long_over === null || price.long_input === null || price.long_output === null)
+    return null
+  return `A prompt over ${price.long_over.toLocaleString(locale)} tokens costs ${formatUsd(price.long_input, locale)} in and ${formatUsd(price.long_output, locale)} out.`
+}
+
+/** What is being filled in for a provider, as the form holds it. */
+export interface ProviderDraft {
+  model: string
+  baseUrl: string
+  /** Only what was typed: a key that is kept is never here. */
+  apiKey: string
+}
+
+/** The form for a provider, starting from how it is saved. A model that was never chosen is the
+ * default one, for the providers that have one. */
+export function draftFrom(provider: AiProvider): ProviderDraft {
+  return {
+    model: provider.model ?? provider.default_model ?? '',
+    baseUrl: provider.base_url ?? '',
+    apiKey: '',
+  }
+}
+
+/** What to send: the address only for a provider that takes one, and the key only if one was
+ * typed, since the one that is kept stays. */
+export function settingsFrom(provider: AiProvider, draft: ProviderDraft): ProviderSettings {
+  const settings: ProviderSettings = { model: draft.model.trim() }
+  if (provider.takes_url) settings.base_url = draft.baseUrl.trim()
+  const typed = draft.apiKey.trim()
+  if (typed !== '') settings.api_key = typed
+  return settings
+}
+
+/** Whether the form differs from what is saved, so a test has to save it first. */
+export function isChanged(provider: AiProvider, draft: ProviderDraft): boolean {
+  if (!provider.configured) return true
+  const saved = draftFrom(provider)
+  return (
+    draft.model.trim() !== saved.model ||
+    draft.baseUrl.trim() !== saved.baseUrl ||
+    draft.apiKey.trim() !== ''
+  )
+}
+
+/** Whether there is enough to test: the address of one on the owner's computer, and the key of
+ * one that takes a key (typed now or kept). */
+export function canTest(provider: AiProvider, draft: ProviderDraft): boolean {
+  if (provider.takes_url && draft.baseUrl.trim() === '') return false
+  return !provider.needs_key || provider.key_saved || draft.apiKey.trim() !== ''
+}
+
+/** What was wrong with each field of a save, by field name. The first problem for a field is the
+ * one kept. */
+export function problemsByField(problems: readonly Problem[]): Record<string, string> {
+  const byField: Record<string, string> = {}
+  for (const { path, message } of problems) {
+    const field = path[0]
+    if (field !== undefined && !(field in byField)) byField[field] = message
+  }
+  return byField
+}
+
+/** The line under a model an Ollama has: what it is and how big. */
+export function describeFound(model: FoundModel): string {
+  const parts = [
+    model.family,
+    model.parameters,
+    model.quantization,
+    model.size === null ? null : formatBytes(model.size),
+  ]
+  return parts.filter((part) => part !== null).join(' · ')
+}
+
+/** Whether a provider can be asked: it is set up, has a model and, if it takes a key, has one. */
+export function isReady(provider: AiProvider): provider is AiProvider & { model: string } {
+  return provider.configured && !!provider.model && (!provider.needs_key || provider.key_saved)
+}
+
+/** The models a hosted provider offers, to choose from: the name, and under it what it is for
+ * and what it costs. */
+export function modelItems(provider: AiProvider, locale?: string) {
+  return provider.models.map((model) => ({
+    value: model.id,
+    title: model.label,
+    props: { subtitle: `${model.note} · ${priceNote(model, locale)}` },
+  }))
+}
+
+/** The models an Ollama said it has, to choose from. */
+export function foundItems(provider: AiProvider) {
+  return provider.found.map((model) => ({
+    value: model.name,
+    title: model.name,
+    props: { subtitle: describeFound(model) },
+  }))
+}
+
+/** The fields of a provider in the order they are on the page, which is where a problem moves
+ * the keyboard to. */
+export const FIELD_ORDER = ['base_url', 'api_key', 'model'] as const
+
+/** The id of a provider's field, which is what a problem with it moves the keyboard to. */
+export const providerFieldId = (provider: string, field: string) => `${provider}-${field}`

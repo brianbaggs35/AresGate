@@ -61,6 +61,18 @@ the incident can say, so the card asks for it then. The card says nothing itself
 back and changes one that replaced another back to what it was. On a phone the buttons stack
 their icon over the name so that all three fit in a row.
 
+Settings > AI (`AiSettingsView`) is an `AiUseCard` (the switch for using AI and the choice of which
+provider to ask, which cannot be turned on until a provider is ready) above a `AiProviderCard` for
+each provider. A card shows the same things for all four, in the same order, so they can be
+compared: the key as a `SecretField` (written, never shown), the model, what it costs, and
+*Save*, *Test connection*, *Fetch models* (only for the ones whose models are whatever they have)
+and *Remove*. A price is always words and numbers ("$0.10 in, $0.50 out per million tokens") with
+the rough price of reading one incident and where the price was read; a model is chosen from a
+list that shows both under its name. Testing or asking for the models saves what was filled in
+first, so a person never has to remember to press *Save*; what the save refused is under the field
+and moves the keyboard to the first one. How a test went is a status chip and, when it failed, the
+reason in an alert that stays until the next try. Looks and wording for prices are in `src/ai.ts`.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

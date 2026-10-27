@@ -81,6 +81,8 @@ describe('router', () => {
       ['/settings/account', 'settings-account'],
       ['/settings/sign-ins', 'settings-sign-ins'],
       ['/settings/activity', 'settings-activity'],
+      ['/settings/verdicts', 'settings-verdicts'],
+      ['/settings/ai', 'settings-ai'],
       ['/settings/data', 'settings-data'],
     ] as const) {
       const page = await visit(path)
