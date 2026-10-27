@@ -57,7 +57,7 @@ describe('BulkBar', () => {
     const { find } = await show({ count: 1500 })
 
     expect(find('bulk-count').text()).toBe('1,500 selected')
-    expect(find('bulk-count').attributes('role')).toBe('status')
+    expect(find('bulk-count').element.tagName).toBe('OUTPUT')
     expect(
       ['not_suspicious', 'low_priority', 'threat'].map((kind) => find(`bulk-${kind}`).text()),
     ).toEqual(['Not suspicious', 'Low priority', 'Real threat'])
