@@ -1,6 +1,10 @@
+import { Siren } from '@lucide/vue'
+import type { VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
+import type { ChartMark } from '@/charts/types'
+import { formatDateTime } from '@/format'
 import { mountWithPlugins } from '@/test/mount'
 
 const HOUR = 3_600_000
@@ -354,6 +358,178 @@ describe('TimeSeriesChart', () => {
       const { wrapper } = await mountLines({ loading: true })
 
       expect(wrapper.find('.chart-frame__plot--loading').exists()).toBe(true)
+    })
+  })
+
+  describe('marks', () => {
+    const mark = (id: number, hours: number, changes: Partial<ChartMark> = {}): ChartMark => ({
+      id: `incident-${id.toString()}`,
+      time: start + hours * HOUR,
+      weight: id,
+      label: `Incident ${id.toString()}`,
+      heading: `Began at hour ${hours.toString()}`,
+      rows: [{ value: 'High', label: `About ${id.toString()}`, color: 'red' }],
+      color: 'red',
+      icon: Siren,
+      to: { name: 'incident', params: { id } },
+      ...changes,
+    })
+    const flagsOf = (wrapper: VueWrapper) => wrapper.findAll('[data-test="chart-flag"]')
+
+    it('flags each one above the chart, on a line down to when it began, and links to it', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(7, 6), mark(9, 18)] })
+
+      expect(wrapper.find('[data-test="chart-flags"]').attributes('aria-label')).toBe(
+        'Incidents in this time',
+      )
+      const flags = flagsOf(wrapper)
+      expect(flags.map((flag) => flag.attributes('href'))).toEqual(['/incidents/7', '/incidents/9'])
+      expect(flags.map((flag) => flag.attributes('aria-label'))).toEqual([
+        'Incident 7',
+        'Incident 9',
+      ])
+      expect(wrapper.findAll('[data-test="chart-flag-line"]')).toHaveLength(2)
+      expect(wrapper.find('[data-test="chart-flag-count"]').exists()).toBe(false)
+      // Later is further along.
+      const lefts = wrapper
+        .findAll('.time-series__flag')
+        .map((flag) =>
+          Number.parseFloat(flag.attributes('style')?.match(/left: ([\d.]+)px/)?.[1] ?? ''),
+        )
+      expect(lefts[1]).toBeGreaterThan(lefts[0] as number)
+    })
+
+    it('makes room above the plot for them, and only when there are some', async () => {
+      const without = await mountLines()
+      const withMarks = await mountLines({ marks: [mark(7, 6)] })
+      const top = (wrapper: VueWrapper) =>
+        wrapper
+          .find('g[transform]')
+          .attributes('transform')
+          ?.match(/,([\d.]+)\)/)?.[1]
+
+      expect(without.wrapper.find('[data-test="chart-flags"]').exists()).toBe(false)
+      expect(Number(top(withMarks.wrapper))).toBeGreaterThan(Number(top(without.wrapper)))
+    })
+
+    it('keeps one that is outside the time of the chart at its nearest end', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(1, -30), mark(2, 90)] })
+
+      const lines = wrapper.findAll('[data-test="chart-flag-line"]')
+      expect(lines[0]?.attributes('x1')).toBe('0')
+      expect(Number(lines[1]?.attributes('x1'))).toBeGreaterThan(300)
+    })
+
+    it('draws those too close to tell apart as one flag that says how many it stands for', async () => {
+      const { wrapper } = await mountLines({
+        marks: [mark(1, 6), mark(2, 6.5, { weight: 50 }), mark(3, 7)],
+      })
+
+      const [flag, ...others] = flagsOf(wrapper)
+      expect(others).toHaveLength(0)
+      expect(wrapper.find('[data-test="chart-flag-count"]').text()).toBe('3')
+      // It says the one that matters most, and where that leads.
+      expect(flag?.attributes('aria-label')).toBe(
+        '3 incidents close together, the most serious first: Incident 2',
+      )
+      expect(flag?.attributes('href')).toBe('/incidents/2')
+    })
+
+    it('reads out an incident when it is pointed at or focused, and not after', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(7, 6), mark(9, 18)] })
+      const flags = flagsOf(wrapper)
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+
+      await flags[1]?.trigger('pointerenter')
+      expect(wrapper.find('.chart-tooltip__heading').text()).toBe('Began at hour 18')
+      expect(wrapper.find('[data-test="chart-tooltip-row"]').text()).toContain('About 9')
+      await flags[1]?.trigger('pointerleave')
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+
+      await flags[0]?.trigger('focus')
+      expect(wrapper.find('.chart-tooltip__heading').text()).toBe('Began at hour 6')
+      await flags[0]?.trigger('blur')
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+    })
+
+    it('opens the readout of a flag on the right to the left, and of one on the left to the right', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(7, 2), mark(9, 23)] })
+      const [early, late] = flagsOf(wrapper)
+
+      await early?.trigger('pointerenter')
+      expect(wrapper.find('.chart-tooltip--flip').exists()).toBe(false)
+      await late?.trigger('pointerenter')
+      expect(wrapper.find('.chart-tooltip--flip').exists()).toBe(true)
+    })
+
+    it('lists the first of those a flag stands for in its readout, and how many more there are', async () => {
+      const { wrapper } = await mountLines({
+        marks: [1, 2, 3, 4, 5, 6].map((id) => mark(id, 6 + id / 100, { weight: id })),
+      })
+
+      await flagsOf(wrapper)[0]?.trigger('pointerenter')
+
+      expect(wrapper.find('.chart-tooltip__heading').text()).toBe(
+        `6 incidents around ${formatDateTime(new Date(start + 6.06 * HOUR).toISOString())}`,
+      )
+      const rows = wrapper.findAll('[data-test="chart-tooltip-row"]').map((row) => row.text())
+      expect(rows).toHaveLength(5)
+      expect(rows[0]).toContain('About 6')
+      expect(rows.at(-1)).toContain('and 2 more')
+    })
+
+    it('does not add a line to the readout for six, but lists three as they are', async () => {
+      const { wrapper } = await mountLines({
+        marks: [1, 2, 3].map((id) => mark(id, 6 + id / 100, { weight: id })),
+      })
+
+      await flagsOf(wrapper)[0]?.trigger('pointerenter')
+
+      const rows = wrapper.findAll('[data-test="chart-tooltip-row"]').map((row) => row.text())
+      expect(rows).toHaveLength(3)
+      expect(rows.join(' ')).not.toContain('more')
+    })
+
+    it('stops reading out a flag that is not there any more', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(7, 6)] })
+      await flagsOf(wrapper)[0]?.trigger('pointerenter')
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(true)
+
+      await wrapper.setProps({ marks: [] })
+
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+    })
+
+    it('lists them in the table, with the reading each began in', async () => {
+      const { wrapper } = await mountLines({ marks: [mark(7, 6.5), mark(9, 18)] })
+
+      await wrapper.find('[data-test="chart-view"]').trigger('click')
+
+      expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+        'Time',
+        'Download',
+        'Incidents',
+      ])
+      const rows = wrapper
+        .findAll('[data-test="chart-table-row"]')
+        .map((row) => row.findAll('td').at(-1)?.text())
+      expect(rows[6]).toBe('Incident 7')
+      expect(rows[18]).toBe('Incident 9')
+      expect(rows[0]).toBe('None')
+    })
+
+    it('has no column of incidents when there are none', async () => {
+      const { wrapper } = await mountLines()
+
+      await wrapper.find('[data-test="chart-view"]').trigger('click')
+
+      expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(['Time', 'Download'])
+    })
+
+    it('flags nothing on a chart that has nothing to show', async () => {
+      const { wrapper } = await mountLines({ series: [], marks: [mark(7, 6)] })
+
+      expect(wrapper.find('[data-test="chart-flags"]').exists()).toBe(false)
     })
   })
 })

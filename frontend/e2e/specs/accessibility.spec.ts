@@ -491,6 +491,14 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toBeVisible()
       await expectAccessible(page)
 
+      // The incident flagged above the lines, with what it says about it showing.
+      await expect(dashboard.trafficFlags).toHaveCount(1)
+      await page.mouse.move(0, 0)
+      await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toBeHidden()
+      await dashboard.trafficFlags.first().focus()
+      await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toContainText('Began')
+      await expectAccessible(page)
+
       for (const card of [dashboard.trafficCard, dashboard.alertsCard, dashboard.sourcesCard]) {
         await card.getByTestId('chart-view').click()
         await expect(card.getByTestId('chart-table')).toBeVisible()

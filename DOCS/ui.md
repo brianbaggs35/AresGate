@@ -226,6 +226,15 @@ What every chart does, and a new one must:
 - **Phones.** A chart draws at the width it has, names only as many ticks and labels as fit and
   drops its end labels when they would crowd. A heatmap keeps its cells touchable and scrolls
   sideways instead of squeezing them.
+- **Flags.** A `TimeSeriesChart` takes `marks`, things that happened at a moment: each is a flag
+  above the plot with a dashed line down to its time, a link to where it is explained, and a
+  tooltip (for the pointer and for keyboard focus) that says what it is. The chart makes room for
+  flags only when there are some. Flags less than 28 px apart become one flag at the place of the
+  most serious, with a count, and its link goes to that one. A mark outside the chart's time
+  stands at the nearest end, so one that began before it is not lost, and the table gains a
+  column for them. The dashboard flags the incidents of its window (medium or worse, not
+  dismissed, not judged unworthy of a look) on the traffic chart, so a spike can be read against
+  what was going on.
 - **Not yet.** A texture for each series (diagonal hatching) for print and forced-colors, which
   the legend and table stand in for until it lands.
 

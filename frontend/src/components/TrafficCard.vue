@@ -3,18 +3,24 @@ import { computed, ref } from 'vue'
 
 import type { InterfaceTraffic } from '@/api/dashboard'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
+import type { ChartMark } from '@/charts/types'
 import { formatBitrate } from '@/format'
 
 /**
  * How fast data went through one of the firewall's interfaces, received and sent. The busiest
- * interface is shown first; with more than one, a menu picks another.
+ * interface is shown first; with more than one, a menu picks another. Incidents that began in
+ * the window are flagged above it (`marks`), so a spike can be read against what was going on.
  */
-const props = defineProps<{
-  /** When each reading starts, in milliseconds since 1970. */
-  times: readonly number[]
-  traffic: readonly InterfaceTraffic[]
-  loading?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** When each reading starts, in milliseconds since 1970. */
+    times: readonly number[]
+    traffic: readonly InterfaceTraffic[]
+    marks?: readonly ChartMark[]
+    loading?: boolean
+  }>(),
+  { marks: () => [], loading: false },
+)
 
 const chosen = ref<string | null>(null)
 const names = computed(() => props.traffic.map(({ interface: name }) => name))
@@ -56,6 +62,7 @@ const series = computed(() =>
       :times="times"
       :series="series"
       :format="formatBitrate"
+      :marks="marks"
       :loading="loading"
       empty-title="No traffic recorded yet"
       empty-description="Once OPNsense is connected, the bytes through each of its interfaces are read every minute and charted here."

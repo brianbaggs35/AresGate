@@ -11,11 +11,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import ColumnElement, Interval, and_, func, literal, select
+from sqlalchemy import ColumnElement, Interval, and_, func, literal, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
-from app.models import Device, Event, MetricSample, MetricSeries
+from app.incidents.verdicts import MUTING
+from app.models import Device, Event, Incident, MetricSample, MetricSeries
 from app.models.base import UTCDateTime
 
 # The firewall's byte counters, which only rise until the firewall restarts.
@@ -31,6 +32,10 @@ IS_BLOCK = and_(Event.kind == "firewall", Event.severity >= Severity.LOW)
 
 RECENT_ALERTS = 8
 TOP_SOURCES = 8
+# How many incidents are marked on the charts, and how serious one has to be to be marked: a
+# chart with a flag for every low-severity scan says nothing.
+MARKED_INCIDENTS = 12
+MARKED_FROM = Severity.MEDIUM
 
 
 @dataclass(frozen=True)
@@ -187,6 +192,28 @@ def recent_alerts(db: Session, win: Window, limit: int = RECENT_ALERTS) -> list[
             .limit(limit)
         )
     )
+
+
+def marked_incidents(db: Session, win: Window, limit: int = MARKED_INCIDENTS) -> list[Incident]:
+    """The incidents worth a flag on the charts, in the order they began: those that were going on
+    in the window and are serious enough, whose owner has not dismissed them or said they are not
+    suspicious or low priority. If there are more than there is room for, the most serious are
+    kept, then the surest and the most recent."""
+    chosen = (
+        select(Incident)
+        .where(
+            Incident.first_seen_at < win.end,
+            Incident.last_seen_at >= win.start,
+            Incident.status != "dismissed",
+            Incident.severity >= MARKED_FROM,
+            or_(Incident.verdict.is_(None), Incident.verdict.not_in(MUTING)),
+        )
+        .order_by(
+            Incident.severity.desc(), Incident.confidence.desc(), Incident.last_seen_at.desc()
+        )
+        .limit(limit)
+    )
+    return sorted(db.scalars(chosen), key=lambda incident: (incident.first_seen_at, incident.id))
 
 
 @dataclass(frozen=True)

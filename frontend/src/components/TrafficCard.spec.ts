@@ -1,6 +1,9 @@
+import { Siren } from '@lucide/vue'
 import { VSelect } from 'vuetify/components'
 
 import type { InterfaceTraffic } from '@/api/dashboard'
+import type { ChartMark } from '@/charts/types'
+import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import TrafficCard from '@/components/TrafficCard.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -27,6 +30,29 @@ describe('TrafficCard', () => {
     expect(wrapper.findAll('[data-test="line"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('Received')
     expect(wrapper.text()).toContain('Sent')
+  })
+
+  it('hands the incidents to the chart, to flag above the lines', async () => {
+    const mark: ChartMark = {
+      id: 'incident-1',
+      time: 1_800_000,
+      weight: 3070,
+      label: 'High incident: Brute force',
+      heading: 'Began 2:30 PM',
+      rows: [{ label: 'High', value: 'Brute force' }],
+      color: 'red',
+      icon: Siren,
+      to: { name: 'incident', params: { id: 1 } },
+    }
+    const { wrapper } = await mountWithPlugins(TrafficCard, {
+      props: { times, traffic: [igc0], marks: [mark] },
+    })
+    expect(wrapper.findComponent(TimeSeriesChart).props('marks')).toEqual([mark])
+  })
+
+  it('flags nothing unless told', async () => {
+    const { wrapper } = await mount([igc0])
+    expect(wrapper.findComponent(TimeSeriesChart).props('marks')).toEqual([])
   })
 
   it('reads speeds in bits a second', async () => {

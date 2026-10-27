@@ -23,6 +23,7 @@ import {
   bucketLabel,
   changeOf,
   collectionOf,
+  marksOf,
   postureOf,
   sumBuckets,
   type Collection,
@@ -206,6 +207,9 @@ const traffic = computed(() => {
   }
 })
 
+/** The incidents that began in the window, flagged on the traffic. */
+const marks = computed(() => marksOf(view.value.shown.marks))
+
 const updated = computed(() =>
   new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(updatedAt.value as Date),
 )
@@ -318,7 +322,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       />
 
       <div class="dashboard__charts">
-        <TrafficCard :times="traffic.times" :traffic="traffic.interfaces" :loading="loading" />
+        <TrafficCard
+          :times="traffic.times"
+          :traffic="traffic.interfaces"
+          :marks="marks"
+          :loading="loading"
+        />
         <v-card class="pa-5 pa-sm-6" data-test="alerts-card">
           <BarChart
             title="Alerts by severity"

@@ -271,6 +271,69 @@ test.describe('dashboard', () => {
     ).toContainText('20 Mb/s')
   })
 
+  test('flags the incidents that began in the day on the traffic, and links to each', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents(WAITING)
+
+    await dashboard.goto()
+
+    // The serious one is flagged; the quiet scan is not worth a flag.
+    await expect(dashboard.trafficFlags).toHaveCount(1)
+    const flag = dashboard.trafficFlags.first()
+    await expect(flag).toHaveAccessibleName(`Critical incident: Brute force on ssh (${ATTACKER})`)
+    await expect(dashboard.trafficFlagCounts).toHaveCount(0)
+
+    await flag.hover()
+    await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toContainText(/Began/)
+    await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toContainText(
+      `Brute force on ssh (${ATTACKER})`,
+    )
+    await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toContainText('Banned')
+    await expect(dashboard.trafficChart.getByTestId('chart-tooltip')).toContainText(
+      'by an integration',
+    )
+
+    await dashboard.trafficChart.getByTestId('chart-view').click()
+    await expect(dashboard.trafficChart.getByRole('columnheader')).toHaveText([
+      'Time',
+      'Received',
+      'Sent',
+      'Incidents',
+    ])
+    await expect(
+      dashboard.trafficChart
+        .getByTestId('chart-table-row')
+        .filter({ hasText: `Critical incident: Brute force on ssh (${ATTACKER})` }),
+    ).toHaveCount(1)
+
+    await dashboard.trafficChart.getByTestId('chart-view').click()
+    await flag.click()
+    await expect(page).toHaveURL(/\/incidents\/\d+$/)
+  })
+
+  test('leaves the traffic without flags when nothing serious began', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents([WAITING[0] as IncidentRequest])
+
+    await dashboard.goto()
+
+    await expect(dashboard.trafficChart.getByTestId('line')).toHaveCount(2)
+    await expect(dashboard.trafficFlags).toHaveCount(0)
+    await dashboard.trafficChart.getByTestId('chart-view').click()
+    await expect(dashboard.trafficChart.getByRole('columnheader')).toHaveText([
+      'Time',
+      'Received',
+      'Sent',
+    ])
+  })
+
   test('charts another interface when asked', async ({ page, harness, dashboard }) => {
     await harness.createActivity(BUSY)
     await dashboard.goto()
