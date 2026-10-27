@@ -90,15 +90,10 @@ class TestSaving:
     def test_a_hosted_provider_takes_a_model_from_its_list_only(
         self, session: Session, settings: Settings
     ) -> None:
+        submission = Submission(model="claude-nothing", api_key=KEY)
+
         with pytest.raises(SettingsError) as caught:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.ANTHROPIC,
-                Submission(model="claude-nothing", api_key=KEY),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.ANTHROPIC, submission, NOW)
 
         assert list(caught.value.problems) == ["model"]
         assert session.get(AiProvider, "anthropic") is None
@@ -108,15 +103,10 @@ class TestSaving:
     def test_a_key_is_needed_the_first_time(
         self, session: Session, settings: Settings, key: str | None
     ) -> None:
+        submission = Submission(model="gpt-6-luna", api_key=key)
+
         with pytest.raises(SettingsError) as caught:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.OPENAI,
-                Submission(model="gpt-6-luna", api_key=key),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.OPENAI, submission, NOW)
 
         assert caught.value.problems == {API_KEY: "Enter the API key."}
 
@@ -149,15 +139,10 @@ class TestSaving:
     def test_a_key_that_cannot_be_one_is_refused(
         self, session: Session, settings: Settings, key: str
     ) -> None:
+        submission = Submission(model="gpt-6-luna", api_key=key)
+
         with pytest.raises(SettingsError) as caught:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.OPENAI,
-                Submission(model="gpt-6-luna", api_key=key),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.OPENAI, submission, NOW)
 
         assert list(caught.value.problems) == [API_KEY]
         assert key not in json.dumps(caught.value.problems)
@@ -188,27 +173,22 @@ class TestSaving:
     def test_an_ollama_at_home_must_be_somewhere_at_home(
         self, session: Session, settings: Settings, address: str
     ) -> None:
+        submission = Submission(model="", base_url=address)
+
         with pytest.raises(SettingsError) as caught:
-            service.save(
-                session, settings, HOME, catalog.OLLAMA, Submission(model="", base_url=address), NOW
-            )
+            service.save(session, settings, HOME, catalog.OLLAMA, submission, NOW)
 
         assert list(caught.value.problems) == ["base_url"]
 
     def test_an_ollama_at_home_takes_no_key_and_a_name_that_is_a_name(
         self, session: Session, settings: Settings
     ) -> None:
+        submission = Submission(
+            model="not a name", base_url="http://192.168.1.50:11434", api_key="sk-a-key"
+        )
+
         with pytest.raises(SettingsError) as caught:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.OLLAMA,
-                Submission(
-                    model="not a name", base_url="http://192.168.1.50:11434", api_key="sk-a-key"
-                ),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.OLLAMA, submission, NOW)
 
         assert set(caught.value.problems) == {"model", API_KEY}
 
@@ -323,8 +303,10 @@ class TestRemoving:
         saved(session, settings, catalog.ANTHROPIC)
         service.choose(session, enabled=True, provider="anthropic", now=NOW)
 
-        assert service.remove(session, catalog.ANTHROPIC, NOW + timedelta(minutes=1))
+        removed = service.remove(session, catalog.ANTHROPIC, NOW + timedelta(minutes=1))
         session.commit()
+
+        assert removed
 
         assert session.get(AiProvider, "anthropic") is None
         assert not service.key_saved(session, catalog.ANTHROPIC)
@@ -339,8 +321,9 @@ class TestRemoving:
         saved(session, settings, catalog.OPENAI)
         service.choose(session, enabled=True, provider="openai", now=NOW)
 
-        assert service.remove(session, catalog.ANTHROPIC, NOW)
+        removed = service.remove(session, catalog.ANTHROPIC, NOW)
 
+        assert removed
         chosen = service.usage(session, NOW)
         assert (chosen.enabled, chosen.provider) == (True, "openai")
 
@@ -349,11 +332,15 @@ class TestRemoving:
         session.delete(session.get(AiProvider, "openai"))
         session.flush()
 
-        assert service.remove(session, catalog.OPENAI, NOW)
+        removed = service.remove(session, catalog.OPENAI, NOW)
+
+        assert removed
         assert not service.key_saved(session, catalog.OPENAI)
 
     def test_nothing_set_up_is_nothing_to_forget(self, session: Session) -> None:
-        assert not service.remove(session, catalog.OPENAI, NOW)
+        removed = service.remove(session, catalog.OPENAI, NOW)
+
+        assert not removed
 
 
 class TestReachingAProvider:

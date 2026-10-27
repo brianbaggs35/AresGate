@@ -27,7 +27,7 @@ What each provider's API takes and answers is from its own documentation:
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import cast
+from typing import TypeIs, cast
 
 from app.ai.catalog import ProviderDef, Wire
 from app.integrations.client import ApiClient, Reply
@@ -68,8 +68,12 @@ class FoundModel:
     quantization: str | None
 
 
+def _is_object(value: object) -> TypeIs[dict[str, object]]:
+    return isinstance(value, dict)
+
+
 def _object(value: object) -> dict[str, object]:
-    return cast("dict[str, object]", value) if isinstance(value, dict) else {}
+    return value if _is_object(value) else {}
 
 
 def _list(value: object) -> list[object]:
@@ -216,9 +220,9 @@ def read_completion(provider: ProviderDef, reply: Reply) -> Completion:
     if not reply.ok:
         raise AiFailed(explain(reply.status, provider))
     data = reply.json()
-    if not isinstance(data, dict):
+    if not _is_object(data):
         raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
-    return _READERS[provider.wire](cast("dict[str, object]", data))
+    return _READERS[provider.wire](data)
 
 
 async def complete(
@@ -265,10 +269,10 @@ async def list_models(
     if not reply.ok:
         raise AiFailed(explain(reply.status, provider))
     data = reply.json()
-    if not isinstance(data, dict):
+    if not _is_object(data):
         raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
     unique: dict[str, FoundModel] = {}
-    for entry in _list(cast("dict[str, object]", data).get("models"))[:MAX_MODELS]:
+    for entry in _list(data.get("models"))[:MAX_MODELS]:
         model = _found(entry)
         if model is not None:
             unique.setdefault(model.name, model)
