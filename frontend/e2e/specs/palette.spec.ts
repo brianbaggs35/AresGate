@@ -35,6 +35,7 @@ test.describe('the command palette', () => {
     await shell.searchButton.focus()
     await page.keyboard.press('Enter')
     await expect(shell.palette).toBeVisible()
+    await shell.waitForPaletteToSettle()
     await page.keyboard.press('Escape')
     await expect(shell.palette).toBeHidden()
     await expect(shell.searchButton).toBeFocused()
