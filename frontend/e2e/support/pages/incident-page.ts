@@ -21,6 +21,16 @@ export class IncidentPage {
   /** Where the addresses and devices are, and the facts. */
   readonly addressesCard: Locator
   readonly addresses: Locator
+  /** What the owner thinks of it: the standing line, the verdicts that apply and the form for
+   * giving another. */
+  readonly verdictCard: Locator
+  readonly standing: Locator
+  readonly verdictChip: Locator
+  readonly applied: Locator
+  readonly scope: Locator
+  readonly why: Locator
+  readonly verdictNotice: Locator
+  readonly verdictError: Locator
   /** The chart of signals over time, and the timeline. */
   readonly spreadCard: Locator
   readonly timelineCard: Locator
@@ -48,6 +58,14 @@ export class IncidentPage {
     this.reasons = page.getByTestId('reason')
     this.addressesCard = page.getByTestId('addresses-card')
     this.addresses = page.getByTestId('address')
+    this.verdictCard = page.getByTestId('verdict-card')
+    this.standing = page.getByTestId('verdict-standing')
+    this.verdictChip = page.locator('.incident__chips').getByTestId('verdict')
+    this.applied = page.getByTestId('applied')
+    this.scope = page.getByTestId('verdict-scope')
+    this.why = page.getByTestId('verdict-note').locator('input')
+    this.verdictNotice = page.getByTestId('verdict-notice')
+    this.verdictError = page.getByTestId('verdict-error')
     this.spreadCard = page.getByTestId('spread-card')
     this.timelineCard = page.getByTestId('timeline-card')
     this.signals = page.getByTestId('signal')
@@ -61,6 +79,17 @@ export class IncidentPage {
   /** The button that changes the status to one, such as `resolved`. */
   action(status: string): Locator {
     return this.page.getByTestId(`action-${status}`)
+  }
+
+  /** The button that gives a verdict, such as `not_suspicious`. */
+  give(verdict: string): Locator {
+    return this.page.getByTestId(`give-${verdict}`)
+  }
+
+  /** Chooses what the verdict is about, by its name in the menu. */
+  async about(label: string | RegExp): Promise<void> {
+    await this.scope.click()
+    await this.page.getByRole('option', { name: label }).click()
   }
 
   async goto(id: number): Promise<void> {

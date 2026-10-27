@@ -86,6 +86,8 @@ describe('IncidentReasons', () => {
 
     expect(rows()).toHaveLength(4)
     expect(wrapper.findAll('.reasons__segment')).toHaveLength(3)
+    // Nothing added is shown as 0, not as a plus sign with nothing after it.
+    expect(rows()[0]?.find('[data-test="reason-points"]').text()).toBe('0')
   })
 
   it('calls a reason this version does not know by its key', async () => {

@@ -69,6 +69,8 @@ describe('reasonLabel', () => {
   it('names the reasons there are, and uses the key for one it does not know', () => {
     expect(reasonLabel('corroborated')).toBe('Other programs agree')
     expect(reasonLabel('banned')).toBe('Banned')
+    expect(reasonLabel('muted')).toBe('Left out by your verdicts')
+    expect(reasonLabel('threat')).toBe('You said it is a real threat')
     expect(reasonLabel('geo')).toBe('geo')
   })
 })
@@ -110,9 +112,15 @@ describe('queryOf', () => {
   it('asks for the statuses of the view and nothing else by default', () => {
     expect(queryOf(NO_FILTERS, 25)).toEqual({
       statuses: ['open', 'investigating'],
+      verdicts: ['none', 'threat'],
       minConfidence: 0,
       limit: 25,
     })
+  })
+
+  it('leaves out the incidents the owner quieted unless asked for them', () => {
+    expect(queryOf(NO_FILTERS, 10).verdicts).toEqual(['none', 'threat'])
+    expect(queryOf({ ...NO_FILTERS, quieted: true }, 10)).not.toHaveProperty('verdicts')
   })
 
   it('adds what the list is narrowed to', () => {
@@ -121,6 +129,7 @@ describe('queryOf', () => {
       severity: 'high' as const,
       confidence: HIGH_CONFIDENCE,
       address: ' 93.184.216.34 ',
+      quieted: true,
     }
 
     expect(queryOf(filters, 10)).toEqual({
@@ -149,9 +158,16 @@ describe('activeFilters', () => {
     expect(activeFilters({ ...NO_FILTERS, confidence: MEDIUM_CONFIDENCE })).toBe(1)
     expect(activeFilters({ ...NO_FILTERS, address: '10.0.0.1' })).toBe(1)
     expect(activeFilters({ ...NO_FILTERS, address: '10.0' })).toBe(0)
+    expect(activeFilters({ ...NO_FILTERS, quieted: true })).toBe(1)
     expect(
-      activeFilters({ view: 'all', severity: 'high', confidence: 65, address: '10.0.0.1' }),
-    ).toBe(3)
+      activeFilters({
+        view: 'all',
+        severity: 'high',
+        confidence: 65,
+        address: '10.0.0.1',
+        quieted: true,
+      }),
+    ).toBe(4)
   })
 
   it('offers the confidence the words low, medium and high are drawn at', () => {

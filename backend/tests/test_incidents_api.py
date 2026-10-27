@@ -78,6 +78,7 @@ class TestListing:
             "total": 0,
             "items": [],
             "counts": {"open": 0, "investigating": 0, "resolved": 0, "dismissed": 0},
+            "quieted": 0,
         }
 
     def test_the_ones_going_most_recently_come_first(
@@ -281,6 +282,40 @@ class TestVerdicts:
 
     def test_nonsense_is_refused(self, client: TestClient, csrf_token: str) -> None:
         assert client.get(BASE, params={"verdict": "maybe"}).status_code == 422
+
+    def test_a_search_for_anything_else_says_how_many_it_left_out(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.calm(session, settings)
+
+        asked = client.get(BASE, params={"verdict": ["none", "threat"]}).json()
+        everything = client.get(BASE).json()
+
+        assert [item["subject"] for item in asked["items"]] == [ATTACKER]
+        assert (asked["total"], asked["quieted"]) == (1, 1)
+        assert (everything["total"], everything["quieted"]) == (2, 1)
+
+    def test_what_it_left_out_is_only_of_the_search(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.calm(session, settings)
+
+        elsewhere = client.get(BASE, params={"address": ATTACKER, "verdict": "none"}).json()
+        resolved = client.get(BASE, params={"status": "resolved", "verdict": "none"}).json()
+
+        assert elsewhere["quieted"] == 0
+        assert resolved["quieted"] == 0
+
+    def test_the_counts_follow_the_verdicts_asked_about(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.calm(session, settings)
+
+        hiding = client.get(BASE, params={"verdict": ["none", "threat"]}).json()["counts"]
+        showing = client.get(BASE).json()["counts"]
+
+        assert hiding == {"open": 1, "investigating": 0, "resolved": 0, "dismissed": 0}
+        assert showing == {"open": 2, "investigating": 0, "resolved": 0, "dismissed": 0}
 
 
 class TestOne:

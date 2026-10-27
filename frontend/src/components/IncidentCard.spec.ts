@@ -83,6 +83,16 @@ describe('IncidentCard', () => {
     expect(resolved.text('incident-status')).toBe('Resolved')
   })
 
+  it('says what you said of it, unless you said nothing', async () => {
+    const plain = await show()
+    const quiet = await show({ verdict: 'not_suspicious' })
+    const threat = await show({ verdict: 'threat' })
+
+    expect(plain.wrapper.find('[data-test="verdict"]').exists()).toBe(false)
+    expect(quiet.text('verdict')).toBe('Not suspicious')
+    expect(threat.text('verdict')).toBe('Real threat')
+  })
+
   it('says when an address was banned', async () => {
     const plain = await show()
     const banned = await show({ banned: true })

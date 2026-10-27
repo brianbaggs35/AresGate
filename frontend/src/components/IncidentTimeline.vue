@@ -4,9 +4,11 @@ import { computed, ref } from 'vue'
 
 import type { Signal } from '@/api/incidents'
 import SeverityChip from '@/components/SeverityChip.vue'
+import VerdictChip from '@/components/VerdictChip.vue'
 import { formatCount } from '@/format'
 import { flowOf } from '@/incidents'
 import { SEVERITY } from '@/severity'
+import { isMuting } from '@/verdicts'
 
 /**
  * What happened, oldest first, whichever program saw it: when, who reported it, how serious they
@@ -39,6 +41,8 @@ const rows = computed(() =>
       flow: flowOf(signal),
       // A ban is the one kind that isn't an alert: say so.
       ban: signal.kind === 'decision',
+      // One the owner called not suspicious or low priority is listed, but doesn't count.
+      quiet: signal.verdict !== null && isMuting(signal.verdict),
       // What the program called it, when that isn't just what it said.
       name: signal.signature && signal.signature !== signal.summary ? signal.signature : null,
     }
@@ -55,6 +59,7 @@ const unlisted = computed(() => props.total - props.signals.length)
         v-for="(row, index) in rows"
         :key="index"
         class="timeline__item"
+        :class="{ 'timeline__item--quiet': row.quiet }"
         :style="{
           '--signal-color': `rgb(var(--v-theme-${SEVERITY[row.signal.severity].color}))`,
         }"
@@ -77,6 +82,7 @@ const unlisted = computed(() => props.total - props.signals.length)
                 row.signal.source_name
               }}</v-chip>
               <SeverityChip :severity="row.signal.severity" size="small" />
+              <VerdictChip v-if="row.signal.verdict" :verdict="row.signal.verdict" size="small" />
               <v-chip
                 v-if="row.ban"
                 size="small"
@@ -183,6 +189,13 @@ const unlisted = computed(() => props.total - props.signals.length)
   display: flex;
   justify-content: center;
   margin: 0.5rem 0 1rem;
+}
+
+/* A signal that doesn't count is drawn as a hollow dot, so it reads as less than the rest in
+ * words and in shape, not only in color. */
+.timeline__item--quiet .timeline__dot {
+  background: rgb(var(--v-theme-surface));
+  border: 2px solid rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 
 .timeline__flow {

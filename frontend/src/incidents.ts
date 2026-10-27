@@ -109,6 +109,8 @@ const REASONS: Readonly<Record<string, string>> = {
   repeated: 'It keeps happening',
   banned: 'Banned',
   spread: 'It reaches several addresses',
+  muted: 'Left out by your verdicts',
+  threat: 'You said it is a real threat',
 }
 
 /** The name of a reason, or its key for one this version doesn't know. */
@@ -161,6 +163,9 @@ export interface Filters {
   confidence: number
   /** What was typed: an address only counts once it is whole. */
   address: string
+  /** Whether to include the incidents the owner called not suspicious or low priority, which
+   * the list leaves out unless asked. */
+  quieted: boolean
 }
 
 export const NO_FILTERS: Readonly<Filters> = {
@@ -168,6 +173,7 @@ export const NO_FILTERS: Readonly<Filters> = {
   severity: null,
   confidence: 0,
   address: '',
+  quieted: false,
 }
 
 const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/
@@ -187,6 +193,7 @@ export function queryOf(filters: Filters, limit: number): IncidentQuery {
     ...(filters.severity ? { minSeverity: filters.severity } : {}),
     minConfidence: filters.confidence,
     ...(isAddress(address) ? { address } : {}),
+    ...(filters.quieted ? {} : { verdicts: ['none', 'threat'] as const }),
     limit,
   }
 }
@@ -196,7 +203,8 @@ export function activeFilters(filters: Filters): number {
   return (
     Number(filters.severity !== null) +
     Number(filters.confidence !== 0) +
-    Number(isAddress(filters.address.trim()))
+    Number(isAddress(filters.address.trim())) +
+    Number(filters.quieted)
   )
 }
 

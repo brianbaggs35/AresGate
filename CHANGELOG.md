@@ -17,7 +17,11 @@ Every release's notes are here, newest first. The format follows
   and giving, changing or taking back a verdict is applied at once to the incidents that are not
   over and is in the activity log ([DOCS/operations.md](DOCS/operations.md#verdicts)). It is
   `GET`, `POST`, `PATCH` and `DELETE /api/verdicts`, and incidents can be narrowed by `verdict`.
-  The controls on the pages come next.
+- **Verdict controls**: an incident's page has *Your verdict* to say whether its address or one of
+  its alerts is not suspicious, low priority or a real threat, to see which verdicts apply and to
+  take one back; its signals say which of them don't count. The incident list leaves out what you
+  quieted, with a switch to show it and how many there are. **Settings > Verdicts** lists every
+  verdict to review, change or take back.
 - **Incidents**: the alerts and bans that belong together, whichever integration reported them,
   filed by the worker every 30 seconds. Suricata's alert, Wazuh's log line and CrowdSec's ban of
   one address are one incident, with its severity, how sure AresGate is and a list of the reasons

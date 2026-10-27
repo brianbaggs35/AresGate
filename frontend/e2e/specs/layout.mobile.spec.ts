@@ -45,6 +45,47 @@ test.describe('layout on a phone', () => {
     expect(await overflow()).toBeLessThanOrEqual(0)
   })
 
+  test('an incident with verdicts fits the screen, and its three buttons stack', async ({
+    page,
+    harness,
+    incidents,
+    incident,
+  }) => {
+    await harness.createIncidents([
+      {
+        address: '93.184.216.34',
+        severity: 'high',
+        programs: ['wazuh', 'opnsense'],
+        signals: 6,
+        device_name: 'a-device-with-quite-a-long-name-on-the-network',
+      },
+    ])
+    await harness.createVerdicts([
+      {
+        verdict: 'low_priority',
+        source: 'wazuh',
+        signature: 'ET SCAN Potential SSH Scan',
+        note: 'a reason that is long enough to need more than one line on a phone, to see it wrap',
+      },
+    ])
+    await incidents.goto()
+    await incidents.cards.first().click()
+    await expect(incident.applied).toHaveCount(1)
+
+    const [low, threat] = await Promise.all([
+      incident.give('low_priority').boundingBox(),
+      incident.give('threat').boundingBox(),
+    ])
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+
+    // One below the other, each as wide as the card.
+    expect(threat?.y).toBeGreaterThan(low?.y ?? 0)
+    expect(threat?.x).toBe(low?.x)
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
   test('puts the four numbers of an incident two to a row', async ({
     harness,
     incidents,
@@ -256,12 +297,18 @@ test.describe('layout on a phone', () => {
     security,
     signIns,
     activity,
+    verdicts,
+    harness,
     data,
   }) => {
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: '93.184.216.34', note: 'a long reason '.repeat(8) },
+    ])
     for (const [name, show, ready] of [
       ['account', () => security.goto(), security.twoFactorOff],
       ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
       ['activity', () => activity.goto(), activity.entries.first()],
+      ['verdicts', () => verdicts.goto(), verdicts.rows.first()],
       ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()

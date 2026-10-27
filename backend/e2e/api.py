@@ -221,6 +221,34 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
     return IncidentsRecord(**stored._asdict())
 
 
+class VerdictRequest(BaseModel):
+    """One verdict, as the owner would give it: what it says and at least one thing it is about."""
+
+    verdict: Literal["not_suspicious", "low_priority", "threat"]
+    address: str | None = None
+    source: str | None = None
+    signature: str | None = None
+    note: str | None = None
+
+
+class VerdictsRequest(BaseModel):
+    verdicts: list[VerdictRequest]
+
+
+class VerdictsRecord(BaseModel):
+    verdicts: int
+
+
+@router.post("/factories/verdicts", status_code=status.HTTP_201_CREATED)
+def make_verdicts(body: VerdictsRequest, db: Db) -> VerdictsRecord:
+    """Gives some verdicts and judges the incidents there are by them."""
+    given = factories.verdicts(
+        db, [factories.VerdictSpec(**item.model_dump()) for item in body.verdicts]
+    )
+    db.commit()
+    return VerdictsRecord(verdicts=given)
+
+
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)
 def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""
