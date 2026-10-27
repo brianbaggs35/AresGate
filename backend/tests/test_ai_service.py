@@ -593,11 +593,10 @@ class TestTesting:
 
         assert plan == "free"
         assert not verdict.ok
-        assert verdict.message.startswith(
+        assert verdict.message == (
             "Reached it (2 models), but big:675b didn't answer. "
-            "big:675b isn't one of the models free usage credits cover (HTTP 402), so it needs "
-            "a paid plan. Choose one of beam, gemma4:31b, gpt-oss:120b, gpt-oss:20b, "
-            "nemotron-3-nano:30b, nemotron-3-super, nemotron-3-ultra"
+            "It isn't one of the models free usage covers (HTTP 402), so it needs a paid plan. "
+            "Try gpt-oss:20b, or set the account to Paid if it is."
         )
         assert [call.path for call in log.calls] == ["/api/tags", "/api/chat"]
 
@@ -609,9 +608,37 @@ class TestTesting:
         verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "big:675b", plan=plan)
 
         assert verdict.message.endswith(
-            "Ollama Cloud says payment is required (HTTP 402) for it, though the plan is set to "
-            "paid. Check the plan and the credits at ollama.com/settings/usage."
+            "Ollama says payment is required (HTTP 402), though the account is set to Paid. "
+            "Check the plan and the credits at ollama.com/settings/usage."
         )
+
+    def test_it_suggests_up_to_three_of_the_free_models_the_account_has(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        has = {"big:675b", "beam", "gemma4:31b", "gpt-oss:120b", "gpt-oss:20b", "other:1b"}
+        server = serve(stand_ins.ollama("key-1", has, {"big:675b"}))
+        row = saved(session, settings, catalog.OLLAMA_CLOUD, model="big:675b", api_key="key-1")
+        target = service.load_target(
+            session, settings, catalog.OLLAMA_CLOUD, row, {"ollama_cloud": server.url}
+        )
+
+        verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "big:675b", plan="free")
+
+        assert "Try beam, gemma4:31b or gpt-oss:120b, or set the account to Paid" in verdict.message
+        assert "gpt-oss:20b" not in verdict.message
+
+    def test_it_suggests_the_free_list_when_the_account_has_none_of_them(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        server = serve(stand_ins.ollama("key-1", {"big:675b"}, {"big:675b"}))
+        row = saved(session, settings, catalog.OLLAMA_CLOUD, model="big:675b", api_key="key-1")
+        target = service.load_target(
+            session, settings, catalog.OLLAMA_CLOUD, row, {"ollama_cloud": server.url}
+        )
+
+        verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "big:675b", plan="free")
+
+        assert "Try beam, gemma4:31b or gpt-oss:120b, or set" in verdict.message
 
     def test_a_free_model_that_is_refused_says_what_ollama_said(
         self, session: Session, settings: Settings, serve: Serve
