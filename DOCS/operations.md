@@ -322,7 +322,8 @@ and why, and lists the signals in the order they happened. The worker files them
   It is capped at 100 and called **low** below 35, **medium** from 35 and **high** from 65.
   One program's single medium alert is therefore low; the same alert seen by a second program
   and followed by a ban is high. The points are a judgement, written in one place
-  (`backend/app/incidents/rules.py`) so that they can be argued with.
+  (`backend/app/incidents/rules.py`) so that they can be argued with. [Your verdicts](#verdicts)
+  come before all of it.
 - **What you can say about it.** An incident is *open*, *investigating*, *resolved* or
   *dismissed*, which you set with `PATCH /api/incidents/{id}` (each change is in the
   [activity log](security.md)). A resolved incident is over: a later signal about the same
@@ -330,7 +331,8 @@ and why, and lists the signals in the order they happened. The worker files them
   status.
 - **Where to read them.** `GET /api/incidents` lists them, newest activity first, and can be
   narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`
-  and `since`. `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
+  `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`.
+  `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
   network behind its addresses and the firewall's blocks. [The Incidents pages](#the-incidents-pages)
   show them.
 - **When they appear.** A run every 30 seconds files the signals that were stored at least 30
@@ -345,6 +347,43 @@ and why, and lists the signals in the order they happened. The worker files them
   yet.
 - **Pausing it.** Turning collecting off (`ARESGATE_COLLECTORS_ENABLED=false`) pauses filing too:
   nothing new is stored, so there is nothing to file.
+
+### Verdicts
+
+You decide what is worth your attention, and AresGate remembers. A **verdict** says that the
+signals that match something are *not suspicious*, *low priority* or *a real threat*. It is kept
+as a rule that is applied to every signal that follows, and to the incidents that are not over
+when you give it, so what you said once holds from then on.
+
+- **What a verdict is about.** An address, a program (such as `wazuh`), a signature, or any
+  mix of them: a signal has to match everything the verdict names. An address matches the
+  address a signal is *about* (see [incidents](#incidents)) or came from, and not where it was
+  going: calling your NAS fine does not excuse an attack on it, only what it does itself. A
+  verdict has to name at least one of the three.
+- **Not suspicious and low priority** keep a signal from ever raising an alarm. It is still
+  listed in the incident's timeline and still counted in its signals, but it adds nothing to the
+  incident's severity, programs, addresses, ban or confidence, and an incident made only of such
+  signals is sure of nothing (confidence 0) and says why. The two differ in what they mean to
+  you, which is kept: *not suspicious* is "this is normal here", *low priority* is "this is real
+  but I don't care".
+- **A real threat** makes an incident as sure as can be, 100, with the reason, whatever else it
+  holds and however low the signal was rated.
+- **When rules disagree**, the one that names more wins, so a verdict on one signature from one
+  program beats a verdict on the address it came from; and of the same weight, the stronger
+  verdict (threat, then low priority, then not suspicious), since you said so about at least
+  that much.
+- **Changing your mind.** Giving the same verdict again of the same thing changes it, changing
+  or taking it back is applied at once to the incidents that are open, investigating or
+  dismissed, and each is in the [activity log](security.md). A resolved incident is history and
+  keeps what was said at the time. An incident with more than 1000 signals is judged by the
+  1000 it lists.
+- **The API.** `GET /api/verdicts` lists them with how many signals each has been applied to
+  and when the last was; `POST` gives one (201, or 200 if it changes one that was there),
+  `PATCH /api/verdicts/{id}` changes the verdict or the note, and `DELETE` takes it back. Each
+  incident and signal says what the verdicts said of it.
+- **Training.** The verdicts are what AresGate learns from: the baselines of what is normal on
+  your network and the AI analyst will read them as examples of what you do and don't want to
+  hear about.
 
 ### Reading the logs
 

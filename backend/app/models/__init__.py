@@ -20,9 +20,11 @@ from app.models.metrics import MetricRetention, MetricSample, MetricSeries
 from app.models.passkeys import Passkey, PasskeyChallenge
 from app.models.retention import SourceRetention
 from app.models.system import SystemInfo
+from app.models.verdicts import VERDICTS, VerdictRule
 
 __all__ = [
     "INCIDENT_STATUSES",
+    "VERDICTS",
     "ApiCall",
     "AuditEvent",
     "Base",
@@ -48,6 +50,7 @@ __all__ = [
     "UTCDateTime",
     "User",
     "UserSession",
+    "VerdictRule",
     "WorkerBeat",
     "utcnow",
 ]

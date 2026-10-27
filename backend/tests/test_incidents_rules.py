@@ -142,6 +142,40 @@ def test_a_confidence_is_low_medium_or_high(confidence: int, level: str) -> None
     assert rules.level_of(confidence) == level
 
 
+class TestVerdicts:
+    def test_an_incident_of_signals_all_called_fine_is_sure_of_nothing(self) -> None:
+        assessment = rules.assess(facts(signal_count=0, muted=3, severity=Severity.CRITICAL))
+
+        assert assessment.confidence == 0
+        assert [reason.rule for reason in assessment.reasons] == ["muted"]
+        assert "Every signal in it matches a verdict you gave" in assessment.reasons[0].text
+
+    def test_signals_called_fine_are_left_out_of_the_rest(self) -> None:
+        assessment = rules.assess(facts(signal_count=1, muted=4))
+
+        assert assessment.confidence == 25
+        assert points(assessment) == {"strongest": 25, "muted": 0}
+        assert assessment.reasons[-1].text == (
+            "Left out: 4 of its 5 signals match a verdict you gave "
+            "(not suspicious or low priority)."
+        )
+
+    def test_a_signal_called_a_threat_makes_it_certain_whatever_else_it_is(self) -> None:
+        assessment = rules.assess(facts(severity=Severity.LOW, threats=1))
+
+        assert assessment.confidence == 100
+        assert points(assessment) == {"strongest": 10, "threat": 100}
+        assert (
+            assessment.reasons[-1].text == "You said at least one of its signals is a real threat."
+        )
+
+    def test_a_threat_is_still_certain_beside_signals_called_fine(self) -> None:
+        assessment = rules.assess(facts(signal_count=1, muted=2, threats=1))
+
+        assert assessment.confidence == 100
+        assert [reason.rule for reason in assessment.reasons] == ["strongest", "muted", "threat"]
+
+
 def test_an_integration_this_version_doesnt_know_is_called_by_its_key() -> None:
     assert rules.name_of("wazuh") == "Wazuh"
     assert rules.name_of("zeek") == "zeek"

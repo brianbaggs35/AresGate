@@ -31,6 +31,9 @@ const TITLES: Readonly<Record<string, string>> = {
   'events.retention_changed': 'How long events are kept was changed',
   'metrics.retention_changed': 'How long metrics are kept was changed',
   'incident.status_changed': "An incident's status was changed",
+  'verdict.given': 'A verdict was given',
+  'verdict.changed': 'A verdict was changed',
+  'verdict.removed': 'A verdict was taken back',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

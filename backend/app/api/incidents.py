@@ -16,6 +16,9 @@ from app.models import Incident, IncidentSignal, utcnow
 router = APIRouter(prefix="/incidents", tags=["incidents"], dependencies=[Depends(signed_in)])
 
 Status = Literal["open", "investigating", "resolved", "dismissed"]
+Verdict = Literal["not_suspicious", "low_priority", "threat"]
+# What to ask for to get the incidents nobody has given a verdict to.
+VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
 IncidentId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
@@ -46,6 +49,12 @@ class IncidentOut(BaseModel):
     # Whether an integration banned the address.
     banned: bool
     status_changed_at: AwareDatetime | None
+    # What the owner's verdicts say of it as a whole: a real threat, not suspicious or low
+    # priority, or nothing. The signals they gave a verdict to are listed and counted in
+    # ``signal_count``, but everything else here is about the ones they didn't, and an incident of
+    # signals they all called not suspicious or low priority is as sure as 0.
+    verdict: Verdict | None
+    verdict_counts: dict[Verdict, int]
 
 
 class ReasonOut(BaseModel):
@@ -69,6 +78,9 @@ class SignalOut(BaseModel):
     dst_address: str | None
     dst_port: int | None
     protocol: str | None
+    # What the owner's verdicts said of it, and the rule they said it by while that exists.
+    verdict: Verdict | None
+    verdict_rule_id: int | None
 
 
 class DeviceOut(BaseModel):
@@ -125,6 +137,8 @@ def _incident(incident: Incident) -> IncidentOut:
         addresses=[str(address) for address in incident.addresses],
         banned=incident.banned,
         status_changed_at=incident.status_changed_at,
+        verdict=cast(Verdict | None, incident.verdict),
+        verdict_counts=cast(dict[Verdict, int], incident.verdict_counts),
     )
 
 
@@ -142,6 +156,8 @@ def _signal(signal: IncidentSignal) -> SignalOut:
         dst_address=str(signal.dst_address) if signal.dst_address else None,
         dst_port=signal.dst_port,
         protocol=signal.protocol,
+        verdict=cast(Verdict | None, signal.verdict),
+        verdict_rule_id=signal.verdict_rule_id,
     )
 
 
@@ -178,6 +194,10 @@ def list_incidents(
         list[Status] | None,
         Query(alias="status", description="Only these, e.g. open. Repeat it for several."),
     ] = None,
+    verdict: Annotated[
+        list[VerdictFilter] | None,
+        Query(description="Only these, e.g. threat, or none for those without. Repeat it."),
+    ] = None,
     min_severity: Annotated[SeverityName | None, Query()] = None,
     min_confidence: Annotated[int, Query(ge=0, le=rules.MAX_CONFIDENCE)] = 0,
     address: Annotated[IPvAnyAddress | None, Query(description="Ones that name this.")] = None,
@@ -192,6 +212,7 @@ def list_incidents(
     page = queries.search(
         db,
         statuses=list(state or []),
+        verdicts=list(verdict or []),
         min_severity=minimum,
         min_confidence=min_confidence,
         address=address,

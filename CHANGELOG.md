@@ -8,6 +8,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Verdicts**: say that an address, a program, a signature or a mix of them is *not
+  suspicious*, *low priority* or *a real threat*, and AresGate remembers it as a rule and holds
+  you to it from then on. Signals that match a verdict of not suspicious or low priority are still
+  listed and counted, but add nothing to how serious an incident is or how sure AresGate is, so an
+  incident of nothing else never raises an alarm; one you call a real threat is certain. A rule
+  that names more beats one that names less, a verdict on an address does not excuse attacks on it,
+  and giving, changing or taking back a verdict is applied at once to the incidents that are not
+  over and is in the activity log ([DOCS/operations.md](DOCS/operations.md#verdicts)). It is
+  `GET`, `POST`, `PATCH` and `DELETE /api/verdicts`, and incidents can be narrowed by `verdict`.
+  The controls on the pages come next.
 - **Incidents**: the alerts and bans that belong together, whichever integration reported them,
   filed by the worker every 30 seconds. Suricata's alert, Wazuh's log line and CrowdSec's ban of
   one address are one incident, with its severity, how sure AresGate is and a list of the reasons
