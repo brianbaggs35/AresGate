@@ -1,22 +1,32 @@
 """Incidents: the alerts, bans and other signals from every integration that belong together,
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC
 from functools import lru_cache
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal, Self, cast
 from zoneinfo import ZoneInfo, available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from psycopg.errors import QueryCanceled
-from pydantic import AwareDatetime, BaseModel, ConfigDict, IPvAnyAddress
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    IPvAnyAddress,
+    model_validator,
+)
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
+from app.api.verdicts import Note
 from app.audit import Action, Outcome
 from app.events.event import Severity
-from app.incidents import episode, queries, rules, search
+from app.incidents import bulk, engine, episode, queries, rules, search
 from app.incidents.queries import Order
 from app.models import Incident, IncidentSignal, utcnow
 
@@ -176,6 +186,93 @@ class StatusIn(BaseModel):
     status: Status
 
 
+IncidentNumber = Annotated[int, Field(ge=1, le=2**63 - 1)]
+SomeIncidents = Annotated[list[IncidentNumber], Field(min_length=1, max_length=bulk.MAX_INCIDENTS)]
+
+
+class Matching(BaseModel):
+    """The incidents a list of them is of: what it was asked, said the way the list is asked."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: list[Status] = []
+    verdict: list[VerdictFilter] = []
+    min_severity: SeverityName | None = None
+    min_confidence: int = Field(default=0, ge=0, le=rules.MAX_CONFIDENCE)
+    address: IPvAnyAddress | None = None
+    since: AwareDatetime | None = None
+    q: str = ""
+    tz: str | None = None
+
+
+class BulkIn(BaseModel):
+    """A change to many incidents, which is made all together or not at all."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Which: the ones that were picked, or all that a list of incidents would show.
+    ids: SomeIncidents | None = None
+    matching: Matching | None = None
+    # What to change: what is being done about them, or what is thought of what they are about.
+    status: Status | None = None
+    verdict: Verdict | None = None
+    note: Note | None = None
+    # Only say what it would do, and change nothing.
+    preview: bool = False
+
+    @model_validator(mode="after")
+    def _one_of_each(self) -> Self:
+        if (self.ids is None) == (self.matching is None):
+            raise ValueError("Say which incidents, by their ids or by what matches.")
+        if (self.status is None) == (self.verdict is None):
+            raise ValueError("Say what to change: a status, or a verdict.")
+        if self.note is not None and self.verdict is None:
+            raise ValueError("A note goes with a verdict.")
+        if self.ids is not None:
+            self.ids = list(dict.fromkeys(self.ids))
+        return self
+
+
+class RuleBack(BaseModel):
+    """A verdict a change made: it goes, or says again what it said before."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: IncidentNumber
+    replaced: Verdict | None = None
+
+
+class Undo(BaseModel):
+    """What it takes to take a change back, as the change said it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The incidents that were changed, by the status they had.
+    statuses: dict[Status, SomeIncidents] = {}
+    rules: Annotated[list[RuleBack], Field(max_length=bulk.MAX_INCIDENTS)] = []
+
+
+class BulkOut(BaseModel):
+    preview: bool
+    # How many incidents it is about, and how many signals are in them.
+    incidents: int
+    signals: int
+    # In how many of them it changes anything (the others already are so).
+    changed: int
+    # For a verdict: how many incidents it could not be given on, as they name no address and
+    # no alert, and how many verdicts it makes or changes, since one covers every incident about
+    # the same address or alert.
+    skipped: int
+    verdicts: int
+    # How to take it back, if it changed anything and was not only asked about.
+    undo: Undo | None
+
+
+class UndoOut(BaseModel):
+    incidents: int
+    verdicts: int
+
+
 def _program(key: str) -> ProgramOut:
     return ProgramOut(key=key, name=rules.name_of(key))
 
@@ -283,6 +380,39 @@ def _facets(found: queries.Facets) -> FacetsOut:
     )
 
 
+def _ask(db: Db, text: str, zone: str | None) -> search.Search:
+    """What a search says. One that says something is limited in time: whatever it asks for, the
+    database stops it before it holds anything up."""
+    try:
+        asked = search.parse(text, _context(zone))
+    except search.SearchError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    if asked.terms:
+        db.execute(select(func.set_config("statement_timeout", str(SEARCH_TIMEOUT_MS), True)))
+    return asked
+
+
+@contextmanager
+def _in_time(db: Db) -> Generator[None]:
+    """Turns the database giving up on a search into what a person is told about it."""
+    try:
+        yield
+    except OperationalError as error:
+        if not isinstance(error.orig, QueryCanceled):
+            raise
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "That search took too long. Narrow it, for example with since:7d.",
+        ) from None
+
+
+def _minimum(name: SeverityName | None) -> Severity | None:
+    if name is None:
+        return None
+    return next(level for level, known in SEVERITY_NAMES.items() if known == name)
+
+
 @router.get("")
 def list_incidents(
     db: Db,
@@ -318,39 +448,24 @@ def list_incidents(
 ) -> IncidentPage:
     """Incidents, the ones that were going most recently first unless asked for the most
     serious and surest first."""
-    minimum = None
-    if min_severity is not None:
-        minimum = next(level for level, name in SEVERITY_NAMES.items() if name == min_severity)
-    try:
-        asked = search.parse(q, _context(tz))
-    except search.SearchError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
-    if asked.terms:
-        # Whatever it asks for, the database stops it before it holds anything up.
-        db.execute(select(func.set_config("statement_timeout", str(SEARCH_TIMEOUT_MS), True)))
-    try:
+    asked = _ask(db, q, tz)
+    with _in_time(db):
         page = queries.search(
             db,
-            statuses=list(state or []),
             verdicts=list(verdict or []),
-            min_severity=minimum,
-            min_confidence=min_confidence,
-            address=address,
-            since=since,
+            where=queries.conditions(
+                statuses=list(state or []),
+                min_severity=_minimum(min_severity),
+                min_confidence=min_confidence,
+                address=address,
+                since=since,
+                extra=asked.conditions(),
+            ),
             limit=limit,
             offset=offset,
             order=order,
-            extra=asked.conditions(),
         )
         counts = queries.counts(db, list(verdict or []))
-    except OperationalError as error:
-        if not isinstance(error.orig, QueryCanceled):
-            raise
-        db.rollback()
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "That search took too long. Narrow it, for example with since:7d.",
-        ) from None
     return IncidentPage(
         total=page.total,
         items=[_incident(incident) for incident in page.incidents],
@@ -368,6 +483,132 @@ def list_incidents(
         counts=cast(dict[Status, int], counts),
         quieted=page.quieted,
     )
+
+
+def _picked(db: Db, body: BulkIn) -> list[Incident]:
+    """The incidents a change is for: those that were picked and still exist, or all that match
+    what a list was asked, unless that is more than can be looked over."""
+    if body.ids is not None:
+        return list(
+            db.scalars(select(Incident).where(Incident.id.in_(body.ids)).order_by(Incident.id))
+        )
+    matching = cast(Matching, body.matching)
+    asked = _ask(db, matching.q, matching.tz)
+    with _in_time(db):
+        total, found = queries.selected(
+            db,
+            verdicts=list(matching.verdict),
+            where=queries.conditions(
+                statuses=list(matching.status),
+                min_severity=_minimum(matching.min_severity),
+                min_confidence=matching.min_confidence,
+                address=matching.address,
+                since=matching.since,
+                extra=asked.conditions(),
+            ),
+            limit=bulk.MAX_INCIDENTS,
+        )
+    if total > bulk.MAX_INCIDENTS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"That is {total:,} incidents, and {bulk.MAX_INCIDENTS:,} is the most that can be "
+            "changed at once. Narrow it down first.",
+        )
+    # Only finding them was to be quick; what is done to them is not held to the same limit.
+    db.execute(select(func.set_config("statement_timeout", "0", True)))
+    return found
+
+
+@router.post("/bulk")
+def change_incidents(
+    body: BulkIn,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> BulkOut:
+    """Says what is being done about many incidents, or what is thought of what they are about,
+    in one go: all of them or none. A verdict is one for each address (or alert, where an
+    incident names no address), not for each incident, and it is judged again at once, as any
+    verdict is. With ``preview`` nothing is changed and the answer says what would be. Otherwise it
+    says how to take the change back, and the activity log has one entry for it, with the ids."""
+    apply = not body.preview
+    incidents = _picked(db, body)
+    if body.status is not None:
+        done = bulk.set_status(incidents, body.status, now=utcnow(), apply=apply)
+        facts: dict[str, str | int | bool] = {"change": "status", "to": body.status}
+    else:
+        verdict = cast(Verdict, body.verdict)
+        if apply:
+            engine.hold(db)
+        done = bulk.give_verdict(db, incidents, verdict, body.note, apply=apply)
+        facts = {"change": "verdict", "verdict": verdict, "verdicts": done.verdicts}
+    undo = None
+    if apply and done.ids:
+        record_audit(
+            db,
+            request,
+            Action.INCIDENTS_CHANGED,
+            Outcome.SUCCESS,
+            user=auth.user,
+            detail={
+                **facts,
+                "incidents": done.changed,
+                "ids": ",".join(str(incident_id) for incident_id in done.ids),
+            },
+        )
+        if body.verdict is not None:
+            engine.reapply(db)
+        db.commit()
+        if done.statuses or done.rules:
+            undo = Undo(
+                statuses=cast(dict[Status, SomeIncidents], done.statuses),
+                rules=[
+                    RuleBack(id=rule_id, replaced=cast(Verdict | None, replaced))
+                    for rule_id, replaced in done.rules
+                ],
+            )
+    return BulkOut(
+        preview=body.preview,
+        incidents=done.incidents,
+        signals=done.signals,
+        changed=done.changed,
+        skipped=done.skipped,
+        verdicts=done.verdicts,
+        undo=undo,
+    )
+
+
+@router.post("/bulk/undo")
+def take_back_change(
+    body: Undo,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> UndoOut:
+    """Takes back a change made to many incidents in one go, as it said how to: the statuses go
+    back to what they were, and each verdict it made goes or says again what it said. One entry
+    in the activity log says so."""
+    if body.rules:
+        engine.hold(db)
+    restored, changed = bulk.take_back(
+        db,
+        {status: list(ids) for status, ids in body.statuses.items()},
+        [(rule.id, rule.replaced) for rule in body.rules],
+        now=utcnow(),
+    )
+    if restored or changed:
+        record_audit(
+            db,
+            request,
+            Action.INCIDENTS_CHANGE_UNDONE,
+            Outcome.SUCCESS,
+            user=auth.user,
+            detail={"incidents": restored, "verdicts": changed},
+        )
+        if changed:
+            engine.reapply(db)
+        db.commit()
+    return UndoOut(incidents=restored, verdicts=changed)
 
 
 @router.get("/{incident_id}")

@@ -60,49 +60,72 @@ def _verdict_condition(verdicts: list[str]) -> ColumnElement[bool]:
     return or_(Incident.verdict.in_(wanted), nothing)
 
 
-def search(
-    db: Session,
+def conditions(
     *,
     statuses: list[str],
-    verdicts: list[str],
     min_severity: Severity | None,
     min_confidence: int,
     address: IPv4Address | IPv6Address | None,
     since: datetime | None,
+    extra: Sequence[ColumnElement[bool]] = (),
+) -> list[ColumnElement[bool]]:
+    """What the incidents of a search have to be, except what the owner said of them. Nothing
+    given matches everything. ``extra`` is what else has to be true (see search.py)."""
+    found: list[ColumnElement[bool]] = list(extra)
+    if statuses:
+        found.append(Incident.status.in_(statuses))
+    if min_severity is not None:
+        found.append(Incident.severity >= min_severity)
+    if min_confidence:
+        found.append(Incident.confidence >= min_confidence)
+    if address is not None:
+        found.append(Incident.addresses.contains([address]))
+    if since is not None:
+        found.append(Incident.last_seen_at >= since)
+    return found
+
+
+def _asked(where: Sequence[ColumnElement[bool]], verdicts: list[str]) -> list[ColumnElement[bool]]:
+    """The conditions with what the owner said of the incidents, if that was asked about."""
+    return [*where, _verdict_condition(verdicts)] if verdicts else list(where)
+
+
+def search(
+    db: Session,
+    *,
+    verdicts: list[str],
+    where: Sequence[ColumnElement[bool]],
     limit: int,
     offset: int,
     order: Order = "recent",
-    extra: Sequence[ColumnElement[bool]] = (),
 ) -> Page:
-    """Incidents that match, the ones that were going most recently first, or the most serious
-    and surest first. Nothing given matches everything. A verdict of none is the incidents the
-    owner has said nothing of. ``extra`` is what else has to be true (see search.py)."""
-    conditions: list[ColumnElement[bool]] = list(extra)
-    if statuses:
-        conditions.append(Incident.status.in_(statuses))
-    if min_severity is not None:
-        conditions.append(Incident.severity >= min_severity)
-    if min_confidence:
-        conditions.append(Incident.confidence >= min_confidence)
-    if address is not None:
-        conditions.append(Incident.addresses.contains([address]))
-    if since is not None:
-        conditions.append(Incident.last_seen_at >= since)
+    """Incidents that meet the conditions (see ``conditions``), the ones that were going most
+    recently first, or the most serious and surest first. A verdict of none is the incidents the
+    owner has said nothing of."""
     quieted = (
         db.scalar(
-            select(func.count())
-            .select_from(Incident)
-            .where(*conditions, Incident.verdict.in_(MUTING))
+            select(func.count()).select_from(Incident).where(*where, Incident.verdict.in_(MUTING))
         )
         or 0
     )
-    if verdicts:
-        conditions.append(_verdict_condition(verdicts))
-    total = db.scalar(select(func.count()).select_from(Incident).where(*conditions)) or 0
+    asked = _asked(where, verdicts)
+    total = db.scalar(select(func.count()).select_from(Incident).where(*asked)) or 0
     found = db.scalars(
-        select(Incident).where(*conditions).order_by(*_ORDERINGS[order]).limit(limit).offset(offset)
+        select(Incident).where(*asked).order_by(*_ORDERINGS[order]).limit(limit).offset(offset)
     ).all()
-    return Page(total=total, incidents=list(found), facets=facets(db, conditions), quieted=quieted)
+    return Page(total=total, incidents=list(found), facets=facets(db, asked), quieted=quieted)
+
+
+def selected(
+    db: Session, *, verdicts: list[str], where: Sequence[ColumnElement[bool]], limit: int
+) -> tuple[int, list[Incident]]:
+    """How many incidents meet the conditions, and those of them, the lowest ids first, unless
+    there are more than the limit: then none, since a change must not be made to some only."""
+    asked = _asked(where, verdicts)
+    total = db.scalar(select(func.count()).select_from(Incident).where(*asked)) or 0
+    if total > limit:
+        return total, []
+    return total, list(db.scalars(select(Incident).where(*asked).order_by(Incident.id)))
 
 
 def facets(db: Session, conditions: Sequence[ColumnElement[bool]]) -> Facets:

@@ -112,6 +112,17 @@ describe('ConfirmDialog', () => {
     expect(inDialog('[data-test="confirm-accept"]')?.className).toContain('bg-error')
   })
 
+  it('cannot be gone ahead with while there is nothing to go ahead with', async () => {
+    const { inDialog, openIt, confirmed } = await mountDialog({ disabled: true })
+    await openIt()
+
+    expect(inDialog('[data-test="confirm-accept"]')?.disabled).toBe(true)
+    inDialog('[data-test="confirm-accept"]')!.click()
+    await flushPromises()
+
+    expect(confirmed).not.toHaveBeenCalled()
+  })
+
   it('closes on Escape, as dialogs do', async () => {
     const { inDialog, openIt, open } = await mountDialog()
     await openIt()

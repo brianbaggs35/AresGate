@@ -4,8 +4,20 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 
 import { ApiError, errorMessage } from '@/api/client'
-import { fetchIncidents, type Incident, type IncidentPage } from '@/api/incidents'
+import {
+  changeIncidents,
+  fetchIncidents,
+  type BulkSelection,
+  type BulkUndo,
+  type Incident,
+  type IncidentPage,
+  type IncidentStatus,
+} from '@/api/incidents'
+import type { VerdictKind } from '@/api/verdicts'
 import AppPage from '@/components/AppPage.vue'
+import BulkBar from '@/components/BulkBar.vue'
+import BulkDialog from '@/components/BulkDialog.vue'
+import BulkNotice from '@/components/BulkNotice.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
 import IncidentSearch from '@/components/IncidentSearch.vue'
@@ -13,6 +25,7 @@ import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchFacets from '@/components/SearchFacets.vue'
+import { LOOK_OVER_FROM, didDo, type Change } from '@/bulk'
 import { formatCount } from '@/format'
 import {
   CONFIDENCE_FILTERS,
@@ -27,6 +40,7 @@ import {
 } from '@/incidents'
 import { usePolling } from '@/polling'
 import { impliedBy, toggled } from '@/search'
+import { useSelection } from '@/selection'
 import { SEVERITIES, type Severity } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import type { Judged } from '@/verdicts'
@@ -94,6 +108,7 @@ function clearFilters() {
 const data = ref<IncidentPage | null>(null)
 /** The incidents on screen: the first page, and any that were asked for after it. */
 const items = ref<Incident[]>([])
+const picking = useSelection(items)
 const loadError = ref<string | null>(null)
 /** Why the search could not be understood, while it can't. What was on screen stays, with a note. */
 const searchError = ref<string | null>(null)
@@ -171,6 +186,7 @@ async function loadMore() {
 
 // A new choice starts the list again from the top.
 watch(filters, () => {
+  picking.clear()
   void load(false, true)
 })
 
@@ -235,6 +251,64 @@ const updated = computed(() =>
 )
 
 const notice = ref<{ show: (verdict: Judged) => void } | null>(null)
+const bulkNotice = ref<{ show: (text: string, undo: BulkUndo | null) => void } | null>(null)
+
+/** How many incidents are picked: all that match, or the ones ticked. */
+const picked = computed(() =>
+  picking.everything.value ? (data.value as IncidentPage).total : picking.picked.value.size,
+)
+
+/** Which they are, as the API is told: the ones ticked, or all that the list was asked for. */
+const selection = computed<BulkSelection>(() =>
+  picking.everything.value
+    ? { matching: queryOf(filters.value, PAGE_SIZE) }
+    : { ids: [...picking.picked.value] },
+)
+
+/** The change that is being looked over in a dialog, before it is made. */
+const asking = ref<Change | null>(null)
+const reviewing = ref(false)
+const making = ref(false)
+const failure = ref<string | null>(null)
+
+/** A change to a few incidents is made at once, and can be taken back; one to many, or to all
+ * that match, or any verdict (which holds for more than the incidents picked, and can say why),
+ * is looked over first. */
+function ask(change: Change) {
+  failure.value = null
+  if ('status' in change && !picking.everything.value && picked.value < LOOK_OVER_FROM) {
+    void make(change, '')
+    return
+  }
+  asking.value = change
+  reviewing.value = true
+}
+
+async function make(change: Change, note: string) {
+  making.value = true
+  failure.value = null
+  const said = 'verdict' in change && note.trim() ? { ...change, note: note.trim() } : change
+  try {
+    const result = await session.change((token) => changeIncidents(selection.value, said, token))
+    reviewing.value = false
+    bulkNotice.value?.show(didDo(change, result), result.undo)
+    picking.clear()
+    void load(true)
+  } catch (error) {
+    if (reviewing.value) failure.value = errorMessage(error)
+    else bulkNotice.value?.show(errorMessage(error), null)
+  } finally {
+    making.value = false
+  }
+}
+
+function askStatus(status: IncidentStatus) {
+  ask({ status })
+}
+
+function askVerdict(verdict: VerdictKind) {
+  ask({ verdict })
+}
 
 /** A card gave a verdict: say so, and ask again, since it can leave the list. */
 function judged(verdict: Judged) {
@@ -260,8 +334,13 @@ function pickQuieted(include: boolean | null) {
 
 const searchBox = ref<{ focus: () => void } | null>(null)
 
-/** The slash key goes to the search box from anywhere on the page but another field. */
+/** The slash key goes to the search box from anywhere on the page but another field, and Escape
+ * lets go of the incidents that were picked. */
 function onKey(event: KeyboardEvent) {
+  if (event.key === 'Escape' && picking.any.value && !reviewing.value) {
+    picking.clear()
+    return
+  }
   if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return
   const { target } = event
   if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]')) {
@@ -398,9 +477,30 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         to update them.
       </p>
 
+      <BulkBar
+        v-if="items.length"
+        :count="picked"
+        :total="data.total"
+        :shown="items.length"
+        :whole="picking.wholePage.value"
+        :everything="picking.everything.value"
+        :busy="making"
+        @toggle-page="picking.togglePage"
+        @pick-everything="picking.pickEverything"
+        @clear="picking.clear"
+        @status="askStatus"
+        @verdict="askVerdict"
+      />
+
       <ul v-if="items.length" class="incidents__list" data-test="incident-list">
         <li v-for="item in items" :key="item.id">
-          <IncidentCard :incident="item" @judged="judged" />
+          <IncidentCard
+            :incident="item"
+            selectable
+            :selected="picking.has(item.id)"
+            @judged="judged"
+            @select="(range) => picking.toggle(item.id, range)"
+          />
         </li>
       </ul>
       <v-card v-else class="pa-5 pa-sm-6" data-test="incidents-empty">
@@ -460,7 +560,18 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
     </template>
     <v-skeleton-loader v-else type="article, article" data-test="incidents-loading" />
 
+    <BulkDialog
+      v-if="asking"
+      v-model="reviewing"
+      :change="asking"
+      :selection="selection"
+      :count="picked"
+      :busy="making"
+      :error="failure"
+      @confirm="(note) => make(asking as Change, note)"
+    />
     <JudgedNotice ref="notice" @undone="load(true)" />
+    <BulkNotice ref="bulkNotice" @undone="load(true)" />
   </AppPage>
 </template>
 

@@ -39,6 +39,17 @@ for (const theme of ['light', 'dark'] as const) {
       await shell.expectTheme(theme)
       await expectAccessible(page)
 
+      // Some of them picked, with the row that changes them, and a change looked over.
+      await incidents.picks.nth(0).click()
+      await incidents.picks.nth(1).click()
+      await expect(incidents.picked).toHaveText('2 selected')
+      await expectAccessible(page)
+      await incidents.bulkVerdict('not_suspicious').click()
+      await expect(incidents.dialogLines.first()).toBeVisible()
+      await expectAccessible(page)
+      await incidents.dialogCancel.click()
+      await incidents.letGo.click()
+
       // A search, the terms it was understood as, and what the results are made of.
       await incidents.search('severity>=high -address:8.8.8.8')
       await expect(incidents.terms).toHaveCount(2)

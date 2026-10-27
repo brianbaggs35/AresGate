@@ -293,4 +293,54 @@ describe('IncidentCard', () => {
       expect(wrapper.find('[data-test="quick-threat"]').classes()).toContain('v-btn--stacked')
     })
   })
+
+  describe('picking it', () => {
+    async function pickable(props: { selectable?: boolean; selected?: boolean } = {}) {
+      const mounted = await mountWithPlugins(IncidentCard, {
+        props: { incident: incident(), ...props },
+        withApp: true,
+        signedIn: 'admin',
+      })
+      const box = () => mounted.wrapper.find('[data-test="incident-select"]')
+      const picks = () => mounted.wrapper.findComponent(IncidentCard).emitted('select') ?? []
+      return { ...mounted, box, picks }
+    }
+
+    it('has no box unless it can be picked', async () => {
+      const { box, wrapper } = await pickable()
+
+      expect(box().exists()).toBe(false)
+      expect(wrapper.find('[data-test="incident-card"]').classes()).not.toContain(
+        'incident-card--selectable',
+      )
+    })
+
+    it('has a box that is named after it', async () => {
+      const { box, wrapper } = await pickable({ selectable: true })
+
+      expect(box().attributes('aria-label')).toBe('Select: Brute force on ssh (93.184.216.34)')
+      expect((box().element as HTMLInputElement).checked).toBe(false)
+      expect(wrapper.find('[data-test="incident-card"]').classes()).toContain(
+        'incident-card--selectable',
+      )
+    })
+
+    it('shows that it is picked, in the box and on the card', async () => {
+      const { box, wrapper } = await pickable({ selectable: true, selected: true })
+
+      expect((box().element as HTMLInputElement).checked).toBe(true)
+      expect(wrapper.find('[data-test="incident-card"]').classes()).toContain(
+        'incident-card--selected',
+      )
+    })
+
+    it('says when it was ticked, and whether the shift key was held', async () => {
+      const { box, picks } = await pickable({ selectable: true })
+
+      await box().trigger('click')
+      await box().trigger('click', { shiftKey: true })
+
+      expect(picks()).toEqual([[false], [true]])
+    })
+  })
 })

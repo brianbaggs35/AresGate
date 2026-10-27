@@ -1,4 +1,5 @@
 import type {
+  BulkResult,
   Incident,
   IncidentDetail,
   IncidentDevice,
@@ -151,4 +152,18 @@ export function page(items: Incident[] = [incident()], changes: Partial<Incident
     quieted: 0,
     ...changes,
   } satisfies IncidentPage
+}
+
+/** What a change to many incidents says it did: two incidents, both changed, nothing to undo. */
+export function bulkResult(changes: Partial<BulkResult> = {}): BulkResult {
+  return {
+    preview: false,
+    incidents: 2,
+    signals: 5,
+    changed: 2,
+    skipped: 0,
+    verdicts: 0,
+    undo: null,
+    ...changes,
+  }
 }
