@@ -36,6 +36,14 @@ describe('incidents', () => {
     expect(get).toHaveBeenCalledWith('/incidents?verdict=none&verdict=threat')
   })
 
+  it('can ask for the most serious first', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
+
+    await fetchIncidents({ order: 'priority', limit: 3 })
+
+    expect(get).toHaveBeenCalledWith('/incidents?limit=3&order=priority')
+  })
+
   it('leaves out what means everything', async () => {
     const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
 

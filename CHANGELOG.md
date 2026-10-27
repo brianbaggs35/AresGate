@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A Needs you lane on the dashboard**: under the status hero, the three open incidents that most
+  need a decision, the most serious and surest first, each with *Not suspicious*, *Low priority*
+  and *Real threat* right on its card. A verdict from the lane says what AresGate remembered, with
+  *Undo*, and the lane asks again, so the incident you judged leaves it. When nothing needs a
+  decision there is no lane. `GET /api/incidents` takes `order=priority` for the most serious
+  first (the default is still the most recent).
 - **A status hero on the dashboard**: the first thing on the dashboard is now one sentence in the
   biggest type on the page (*Needs your attention*, *Keep an eye on it*, *All clear*, *Set up*)
   with a ring and a glow in the color of the answer, and the four numbers that back it up inside

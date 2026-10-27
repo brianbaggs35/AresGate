@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_address
-from typing import Final
+from typing import Any, Final, Literal
 
 from sqlalchemy import ColumnElement, false, func, or_, select
 from sqlalchemy.orm import Session
@@ -17,6 +17,18 @@ from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Event, Incident
 CONTEXT: Final = timedelta(hours=1)
 # What to search for to find the incidents no verdict has been given to.
 NO_VERDICT: Final = "none"
+
+# The order a search comes in: what was going on most recently, or what most needs a decision.
+Order = Literal["recent", "priority"]
+_ORDERINGS: Final[dict[Order, tuple[ColumnElement[Any], ...]]] = {
+    "recent": (Incident.last_seen_at.desc(), Incident.id.desc()),
+    "priority": (
+        Incident.severity.desc(),
+        Incident.confidence.desc(),
+        Incident.last_seen_at.desc(),
+        Incident.id.desc(),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -48,9 +60,11 @@ def search(
     since: datetime | None,
     limit: int,
     offset: int,
+    order: Order = "recent",
 ) -> Page:
-    """Incidents that match, the ones that were going most recently first. Nothing given
-    matches everything. A verdict of none is the incidents the owner has said nothing of."""
+    """Incidents that match, the ones that were going most recently first, or the most serious
+    and surest first. Nothing given matches everything. A verdict of none is the incidents the
+    owner has said nothing of."""
     conditions: list[ColumnElement[bool]] = []
     if statuses:
         conditions.append(Incident.status.in_(statuses))
@@ -74,11 +88,7 @@ def search(
         conditions.append(_verdict_condition(verdicts))
     total = db.scalar(select(func.count()).select_from(Incident).where(*conditions)) or 0
     found = db.scalars(
-        select(Incident)
-        .where(*conditions)
-        .order_by(Incident.last_seen_at.desc(), Incident.id.desc())
-        .limit(limit)
-        .offset(offset)
+        select(Incident).where(*conditions).order_by(*_ORDERINGS[order]).limit(limit).offset(offset)
     ).all()
     return Page(total=total, incidents=list(found), quieted=quieted)
 

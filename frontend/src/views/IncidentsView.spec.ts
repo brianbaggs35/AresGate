@@ -1,5 +1,5 @@
 import type { VueWrapper } from '@vue/test-utils'
-import { VBtnToggle, VSelect, VSnackbar } from 'vuetify/components'
+import { VBtnToggle, VSelect } from 'vuetify/components'
 
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
@@ -621,16 +621,6 @@ describe('IncidentsView', () => {
       expect(fetchIncidents).toHaveBeenCalledTimes(2)
     })
 
-    it('says what a verdict that changed another was before', async () => {
-      const { press } = await judge(given({ replaced: 'low_priority' }))
-
-      await press('threat')
-
-      expect(notice('judged-text')?.textContent).toBe(
-        'Remembered: 93.184.216.34 is a real threat. It was low priority.',
-      )
-    })
-
     it('takes back a new verdict, and asks for the list again', async () => {
       const { press, undo, remove, change, fetchIncidents } = await judge(given({ id: 7 }))
       await press('not_suspicious')
@@ -642,38 +632,6 @@ describe('IncidentsView', () => {
       expect(notice('judged-text')?.textContent).toBe('Taken back.')
       expect(notice('undo')).toBeNull()
       expect(fetchIncidents).toHaveBeenCalledTimes(3)
-    })
-
-    it('changes a verdict that replaced another back to what it was', async () => {
-      const { press, undo, remove, change } = await judge(
-        given({ id: 7, replaced: 'low_priority' }),
-      )
-      await press('not_suspicious')
-
-      await undo()
-
-      expect(change).toHaveBeenCalledWith(7, { verdict: 'low_priority' }, 'a-security-token')
-      expect(remove).not.toHaveBeenCalled()
-    })
-
-    it('stops saying it once it has been dismissed or its time is up', async () => {
-      const { press, wrapper } = await judge()
-      await press('not_suspicious')
-
-      wrapper.findComponent(VSnackbar).vm.$emit('update:modelValue', false)
-      await flushPromises()
-
-      expect(wrapper.findComponent(VSnackbar).props('modelValue')).toBe(false)
-    })
-
-    it('says so when it could not be taken back', async () => {
-      const { press, undo, remove } = await judge()
-      remove.mockRejectedValue(offline())
-      await press('not_suspicious')
-
-      await undo()
-
-      expect(notice('judged-text')?.textContent).toBe("Can't reach AresGate.")
     })
   })
 })

@@ -295,9 +295,20 @@ for (const theme of ['light', 'dark'] as const) {
         traffic: { igc0: 80, igc1: 5 },
         devices: 2,
       })
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'critical',
+          programs: ['wazuh', 'opnsense'],
+          ban: true,
+        },
+        { address: '8.8.8.8', severity: 'low', programs: ['opnsense'], signals: 1 },
+      ])
       await dashboard.goto()
       await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
-      await expect(dashboard.alertRows).toHaveCount(7)
+      // The list of latest alerts is as long as it gets, with the incidents' alerts among them.
+      await expect(dashboard.alertRows).toHaveCount(8)
+      await expect(dashboard.needsYouCards).toHaveCount(2)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       await expectAccessible(page)

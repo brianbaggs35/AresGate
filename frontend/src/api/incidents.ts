@@ -109,9 +109,11 @@ export interface IncidentQuery {
   address?: string
   limit?: number
   offset?: number
+  /** `priority` puts the most serious and surest first; the default is the most recent. */
+  order?: 'recent' | 'priority'
 }
 
-/** The incidents that match, the ones going most recently first. */
+/** The incidents that match, the ones going most recently first unless asked for the most serious. */
 export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage> {
   const params = new URLSearchParams()
   for (const status of query.statuses ?? []) params.append('status', status)
@@ -121,6 +123,7 @@ export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage>
   if (query.address) params.set('address', query.address)
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
+  if (query.order) params.set('order', query.order)
   const search = params.toString()
   return apiGet<IncidentPage>(search ? `/incidents?${search}` : '/incidents')
 }
