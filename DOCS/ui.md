@@ -61,19 +61,24 @@ the incident can say, so the card asks for it then. The card says nothing itself
 back and changes one that replaced another back to what it was. On a phone the buttons stack
 their icon over the name so that all three fit in a row.
 
-Settings > AI (`AiSettingsView`) is an `AiUseCard` (the switch for using AI and the choice of which
-provider to ask, which cannot be turned on until a provider is ready) above a `AiProviderCard` for
-each provider. A card shows the same things for all four, in the same order, so they can be
-compared: the key as a `SecretField` (written, never shown), the model, what it costs, and
-*Save*, *Test connection*, *Fetch models* (only for the ones whose models are whatever they have)
-and *Remove*. A price is always words and numbers ("$0.10 in, $0.50 out per million tokens") with
-how the model is cached and what that costs, what a long prompt costs, the rough price of reading
-one incident (also once the cache is warm) and where the price was read; a model the provider
-has deprecated says so with a warning icon and words, never colour alone. A model is chosen from
-a list that shows the price and the estimate under its name. Testing or asking for the models saves what was filled in
-first, so a person never has to remember to press *Save*; what the save refused is under the field
-and moves the keyboard to the first one. How a test went is a status chip and, when it failed, the
-reason in an alert that stays until the next try. Looks and wording for prices are in `src/ai.ts`.
+Settings > AI (`AiSettingsView`) is one card, "AI provider". At the top is an `AiProviderPicker`:
+the four providers as cards that are really a group of radio buttons (the arrow keys move
+between them, one is heard as chosen, and the one AresGate asks says *In use*). Under it is an
+`AiProviderForm` for the provider that is chosen and no other, with the same things in the same
+order for all four: the address or the key as a `SecretField` (written, never shown), for Ollama
+Cloud the account (*Free* or *Paid*), the model, what it costs, and *Save*, *Test connection*,
+*Fetch models* (only for the ones whose models are whatever they have) and *Remove*; between the
+model and the buttons is the `AiUseSwitch` for using AI with this provider, which cannot be
+turned on until it is ready. A price is always words and numbers ("$0.10 in, $0.50 out per
+million tokens") with how the model is cached and what that costs, what a long prompt costs, the
+rough price of reading one incident (also once the cache is warm) and where the price was read; a
+model the provider has deprecated says so with a warning icon and words, never colour alone. A
+hosted provider's model, and the models an Ollama has, are chosen from a list: a hosted model
+shows its price under its name, an Ollama model what it is. Testing or asking for the models
+saves what was filled in first, so a person never has to remember to press *Save*; what the save
+refused is under the field and moves the keyboard to the first one. How a test went is a status
+chip and, when it failed, the reason in an alert that stays until the next try. Looks and wording
+for prices and models are in `src/ai.ts`.
 
 ## States
 

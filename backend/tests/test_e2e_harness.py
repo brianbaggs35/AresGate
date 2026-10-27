@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import coverage
+import httpx2
 import pytest
 from coverage.data import CoverageData
 from fastapi import FastAPI
@@ -526,6 +527,22 @@ def test_an_ai_stand_in_that_is_not_for_a_provider_changes_nothing_about_where_t
 
     assert started.status_code == 201
     assert harness.state.ai_origins == {}
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_an_ollama_stand_in_answers_402_for_the_models_that_need_a_paid_plan(
+    e2e: TestClient,
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={"kind": "ollama", "models": ["free:1b", "big:675b"], "paid": ["big:675b"]},
+    ).json()
+
+    def ask(model: str) -> int:
+        return httpx2.post(f"{started['url']}/api/chat", json={"model": model}).status_code
+
+    assert ask("big:675b") == 402
+    assert ask("free:1b") == 200
 
 
 def test_the_production_app_cannot_start_a_stand_in(client: TestClient) -> None:

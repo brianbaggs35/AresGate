@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # auth, so there's no password (sonar-project.properties tells SonarQube so).
     database_url: str = "postgresql+psycopg://aresgate@/aresgate?host=/run/postgresql"
     database_echo: bool = False
+    # Whether AresGate runs in its container, which the image says. There "localhost" is the
+    # container itself, so an Ollama on the same computer is reached at host.docker.internal.
+    in_container: bool = False
     # Interactive OpenAPI docs are off unless explicitly enabled.
     enable_docs: bool = False
 

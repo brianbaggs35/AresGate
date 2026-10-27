@@ -192,6 +192,52 @@ class TestSaving:
 
         assert set(caught.value.problems) == {"model", API_KEY}
 
+    def test_ollamas_cloud_starts_on_the_free_plan_and_keeps_the_plan_that_was_said(
+        self, session: Session, settings: Settings
+    ) -> None:
+        first = saved(session, settings, catalog.OLLAMA_CLOUD, model="gpt-oss:20b")
+        assert first.plan == "free"
+
+        said = service.save(
+            session,
+            settings,
+            HOME,
+            catalog.OLLAMA_CLOUD,
+            Submission(model="gpt-oss:20b", plan="paid"),
+            NOW,
+        )
+        again = service.save(
+            session, settings, HOME, catalog.OLLAMA_CLOUD, Submission(model="glm-5.3"), NOW
+        )
+
+        assert (said.plan, again.plan) == ("paid", "paid")
+
+    def test_a_plan_is_free_or_paid_and_only_for_a_provider_that_has_them(
+        self, session: Session, settings: Settings
+    ) -> None:
+        with pytest.raises(SettingsError) as odd:
+            service.save(
+                session,
+                settings,
+                HOME,
+                catalog.OLLAMA_CLOUD,
+                Submission(model="", api_key=KEY, plan="gold"),
+                NOW,
+            )
+        with pytest.raises(SettingsError) as none:
+            service.save(
+                session,
+                settings,
+                HOME,
+                catalog.ANTHROPIC,
+                Submission(model="claude-haiku-5-5", api_key=KEY, plan="free"),
+                NOW,
+            )
+
+        assert odd.value.problems == {"plan": "Choose free or paid."}
+        assert none.value.problems == {"plan": "Anthropic has no plans."}
+        assert saved(session, settings, catalog.ANTHROPIC).plan is None
+
     def test_ollamas_cloud_has_no_address_to_fill_in(
         self, session: Session, settings: Settings
     ) -> None:
@@ -421,9 +467,10 @@ class TestTesting:
         definition: catalog.ProviderDef,
         model: str,
         policy: AddressPolicy = PUBLIC_INTERNET_AND_LOOPBACK,
+        plan: str | None = None,
     ) -> tuple[Verdict, Log]:
         log = Log()
-        verdict = asyncio.run(service.check(target, log, policy, definition, model))
+        verdict = asyncio.run(service.check(target, log, policy, definition, model, plan))
         return verdict, log
 
     def test_a_hosted_provider_answers_and_says_what_it_counted(
@@ -512,6 +559,84 @@ class TestTesting:
 
         assert not verdict.ok
         assert "Fetch the models" in verdict.message
+
+    def cloud(
+        self,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+        model: str,
+        plan: str | None = None,
+    ) -> tuple[Target, str]:
+        """Ollama's cloud: ``big:675b`` needs a paid plan, ``gpt-oss:20b`` does not."""
+        server = serve(stand_ins.ollama("key-1", {"gpt-oss:20b", "big:675b"}, {"big:675b"}))
+        row = service.save(
+            session,
+            settings,
+            HOME,
+            catalog.OLLAMA_CLOUD,
+            Submission(model=model, api_key="key-1", plan=plan),
+            NOW,
+        )
+        session.commit()
+        target = service.load_target(
+            session, settings, catalog.OLLAMA_CLOUD, row, {"ollama_cloud": server.url}
+        )
+        return target, row.plan or ""
+
+    def test_a_model_a_free_account_cannot_use_says_so_and_names_the_ones_it_can(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        target, plan = self.cloud(session, settings, serve, "big:675b")
+
+        verdict, log = self.run(target, catalog.OLLAMA_CLOUD, "big:675b", plan=plan)
+
+        assert plan == "free"
+        assert not verdict.ok
+        assert verdict.message.startswith(
+            "Reached it (2 models), but big:675b didn't answer. "
+            "big:675b isn't one of the models free usage credits cover (HTTP 402), so it needs "
+            "a paid plan. Choose one of beam, gemma4:31b, gpt-oss:120b, gpt-oss:20b, "
+            "nemotron-3-nano:30b, nemotron-3-super, nemotron-3-ultra"
+        )
+        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat"]
+
+    def test_a_model_that_is_refused_on_a_paid_plan_points_at_the_credits(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        target, plan = self.cloud(session, settings, serve, "big:675b", "paid")
+
+        verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "big:675b", plan=plan)
+
+        assert verdict.message.endswith(
+            "Ollama Cloud says payment is required (HTTP 402) for it, though the plan is set to "
+            "paid. Check the plan and the credits at ollama.com/settings/usage."
+        )
+
+    def test_a_free_model_that_is_refused_says_what_ollama_said(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        # A free model that answers 402 anyway: the list may be out of date, so say what the
+        # provider said, not that it is not on the list.
+        server = serve(stand_ins.ollama("key-1", {"gpt-oss:20b"}, {"gpt-oss:20b"}))
+        row = saved(session, settings, catalog.OLLAMA_CLOUD, model="gpt-oss:20b", api_key="key-1")
+        target = service.load_target(
+            session, settings, catalog.OLLAMA_CLOUD, row, {"ollama_cloud": server.url}
+        )
+
+        verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "gpt-oss:20b", plan="free")
+
+        assert "payment is required (HTTP 402) for this model" in verdict.message
+        assert "free usage credits cover" not in verdict.message
+
+    def test_a_free_model_is_answered_on_a_free_plan(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        target, plan = self.cloud(session, settings, serve, "gpt-oss:20b")
+
+        verdict, _ = self.run(target, catalog.OLLAMA_CLOUD, "gpt-oss:20b", plan=plan)
+
+        assert verdict == Verdict(True, "Reached it (2 models), and gpt-oss:20b answered.")
 
     def test_the_models_an_ollama_has_are_listed(
         self, session: Session, settings: Settings, serve: Serve

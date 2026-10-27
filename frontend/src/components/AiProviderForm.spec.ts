@@ -1,8 +1,8 @@
-import { VCombobox, VSelect } from 'vuetify/components'
+import { VSelect } from 'vuetify/components'
 
 import * as aiApi from '@/api/ai'
 import { ApiError } from '@/api/client'
-import AiProviderCard from '@/components/AiProviderCard.vue'
+import AiProviderForm from '@/components/AiProviderForm.vue'
 import { UNCACHED, anthropic, ollama, ollamaCloud, openai } from '@/test/ai'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -15,19 +15,19 @@ async function open(provider: aiApi.AiProvider = anthropic()) {
   const test = vi.spyOn(aiApi, 'testProvider')
   const models = vi.spyOn(aiApi, 'fetchProviderModels')
   const remove = vi.spyOn(aiApi, 'removeProvider').mockResolvedValue(undefined)
-  const mounted = await mountWithPlugins(AiProviderCard, {
+  const mounted = await mountWithPlugins(AiProviderForm, {
     signedIn: 'admin',
     withApp: true,
-    props: { provider, pricedAsOf: '2026-10-27' },
+    props: { provider, pricedAsOf: '2026-10-27', freeModelsAsOf: '2026-10-25' },
   })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const text = (selector: string) => find(selector).text()
   const input = (selector: string) => find(selector).find('input')
-  const card = () => mounted.wrapper.findComponent(AiProviderCard)
+  const card = () => mounted.wrapper.findComponent(AiProviderForm)
   const changed = () => card().emitted('changed') ?? []
   const removed = () => card().emitted('removed') ?? []
-  const pickModel = async (model: string) => {
-    const field = mounted.wrapper.findComponent(provider.kind === 'hosted' ? VSelect : VCombobox)
+  const pickModel = async (model: string | null) => {
+    const field = mounted.wrapper.findComponent(VSelect)
     field.vm.$emit('update:modelValue', model)
     await flushPromises()
   }
@@ -63,15 +63,11 @@ const kept = (overrides: Partial<aiApi.AiProvider> = {}) =>
     ...overrides,
   })
 
-describe('AiProviderCard', () => {
+describe('AiProviderForm', () => {
   describe('a hosted provider', () => {
-    it('names it, says what it is and takes a key and a model from its list', async () => {
-      const { wrapper, find, input, text } = await open()
+    it('takes a key and a model from its list', async () => {
+      const { find, input } = await open()
 
-      expect(wrapper.find('h2').text()).toBe('Anthropic')
-      expect(text('section-description')).toBe(
-        'Claude models, asked over the internet with an API key.',
-      )
       expect(input('provider-key').attributes('id')).toBe('anthropic-api_key')
       expect(find('provider-url').exists()).toBe(false)
       expect(find('provider-model').text()).toContain('Claude Haiku 5.5')
@@ -90,10 +86,13 @@ describe('AiProviderCard', () => {
       expect(find('provider-key-help').text()).toContain('kept encrypted and never shown again')
     })
 
-    it('says what the chosen model costs, with where the price comes from', async () => {
+    it('says what the chosen model is for and costs, with where the price comes from', async () => {
       const { find, text } = await open()
 
-      expect(find('provider-price').text()).toContain('$0.10 in, $0.50 out per million tokens.')
+      expect(find('provider-model').text()).toContain(
+        'Fast and cheap: a good fit for reading every incident · $0.10 in · $0.50 out per million tokens',
+      )
+      expect(find('provider-price').text()).not.toContain('$0.10 in')
       expect(text('provider-caching')).toBe(
         'Caches the fixed start of each prompt for 5 minutes: $0.01 to read it back and $0.125 to write it, per million tokens.',
       )
@@ -116,7 +115,9 @@ describe('AiProviderCard', () => {
 
       await pickModel('claude-sonnet-5-5')
 
-      expect(find('provider-price').text()).toContain('$2.00 in, $10.00 out per million tokens.')
+      expect(find('provider-model').text()).toContain(
+        'Better reasoning for harder incidents · $2.00 in · $10.00 out per million tokens',
+      )
       expect(find('provider-price').text()).not.toContain('over 100,000')
       expect(text('provider-estimate')).toContain('about $0.012')
     })
@@ -401,7 +402,8 @@ describe('AiProviderCard', () => {
       const { find, input } = await open(ollama())
 
       expect(input('provider-url').attributes('placeholder')).toBe('http://192.168.1.50:11434')
-      expect(find('provider-url').text()).toContain('Not localhost')
+      expect(find('provider-url').text()).toContain('http://host.docker.internal:11434')
+      expect(find('provider-url').text()).toContain('localhost is the container itself')
       expect(find('provider-key').exists()).toBe(false)
       expect(find('provider-free').text()).toContain('costs nothing to ask')
       expect(find('provider-price').exists()).toBe(false)
@@ -458,25 +460,76 @@ describe('AiProviderCard', () => {
         ollama({ configured: true, base_url: 'http://10.0.0.5:11434', model: 'b:1b' }),
       )
 
-      expect(find('provider-model').text()).toContain('2 found models: choose one, or type a name.')
+      expect(find('provider-model').text()).toContain('2 models found: choose one.')
       await pickModel('b:1b')
       await press('provider-save')
 
       expect(save.mock.calls[0]?.[1]).toEqual({ model: 'b:1b', base_url: 'http://10.0.0.5:11434' })
     })
 
-    it('gives the name of a model that is chosen, not the whole entry of the list', async () => {
-      const { wrapper } = await open(ollama())
+    it('keeps no model when the one chosen is cleared', async () => {
+      const { find, pickModel, press, save } = await open(
+        ollama({ configured: true, base_url: 'http://10.0.0.5:11434', model: 'a:1b' }),
+      )
+      save.mockResolvedValue(ollama({ configured: true, base_url: 'http://10.0.0.5:11434' }))
 
-      expect(wrapper.findComponent(VCombobox).props('returnObject')).toBe(false)
+      await pickModel(null)
+      await press('provider-save')
+
+      expect(save.mock.calls[0]?.[1]).toEqual({ model: '', base_url: 'http://10.0.0.5:11434' })
+      expect(find('provider-model').exists()).toBe(true)
     })
 
-    it('is drawn like the other fields', async () => {
+    it('is a list to choose from, not a box to type in', async () => {
       const { wrapper } = await open(ollama())
 
-      expect(wrapper.findComponent(VCombobox).find('.v-field--variant-outlined').exists()).toBe(
-        true,
+      const field = wrapper.findComponent(VSelect)
+      expect(field.exists()).toBe(true)
+      expect(field.find('.v-field--variant-outlined').exists()).toBe(true)
+      expect(wrapper.find('.v-combobox').exists()).toBe(false)
+    })
+
+    it('says there are none to choose from until the models are fetched', async () => {
+      const { wrapper, find } = await open(ollama())
+
+      expect(wrapper.findComponent(VSelect).props('noDataText')).toBe(
+        'No models yet. Press Fetch models to list the ones it has.',
       )
+      expect(find('provider-model').text()).toContain('Press Fetch models to list the ones it has.')
+    })
+
+    it('still offers the model that is kept when the models have not been fetched', async () => {
+      const { wrapper, find } = await open(
+        ollama({ configured: true, base_url: 'http://10.0.0.5:11434', model: 'llama3.2:3b' }),
+      )
+
+      expect(wrapper.findComponent(VSelect).props('items')).toEqual([
+        { value: 'llama3.2:3b', title: 'llama3.2:3b', props: { subtitle: 'The model you saved' } },
+      ])
+      expect(find('provider-model').text()).toContain('llama3.2:3b')
+    })
+
+    it('says what the models are, with their size for one on the owner’s computer', async () => {
+      const found = [
+        {
+          name: 'qwen3:8b',
+          size: 5_200_000_000,
+          family: 'qwen3',
+          parameters: '8.2B',
+          quantization: 'Q4_K_M',
+        },
+      ]
+      const { wrapper } = await open(
+        ollama({ configured: true, base_url: 'http://10.0.0.5:11434', model: 'qwen3:8b', found }),
+      )
+
+      expect(wrapper.findComponent(VSelect).props('items')).toEqual([
+        {
+          value: 'qwen3:8b',
+          title: 'qwen3:8b',
+          props: { subtitle: 'qwen3 · 8.2B · Q4_K_M · 4.8 GB' },
+        },
+      ])
     })
 
     it('says "model" when there is one', async () => {
@@ -487,13 +540,7 @@ describe('AiProviderCard', () => {
         ollama({ configured: true, base_url: 'http://10.0.0.5:11434', found }),
       )
 
-      expect(find('provider-model').text()).toContain('1 found model: choose one')
-    })
-
-    it('says to fetch them when none are known', async () => {
-      const { find } = await open(ollama())
-
-      expect(find('provider-model').text()).toContain('Fetch the models to choose from')
+      expect(find('provider-model').text()).toContain('1 model found: choose one.')
     })
 
     it('can be tested with the address alone', async () => {
@@ -524,6 +571,106 @@ describe('AiProviderCard', () => {
       await input('provider-key').setValue('sk-cloud')
 
       expect(find('provider-models-fetch').attributes('disabled')).toBeUndefined()
+    })
+
+    describe('free and paid accounts', () => {
+      const found = [
+        { name: 'glm-5.2', size: 0, family: null, parameters: null, quantization: null },
+        { name: 'gpt-oss:120b', size: 0, family: null, parameters: null, quantization: null },
+        { name: 'gpt-oss:20b', size: 0, family: null, parameters: null, quantization: null },
+      ]
+      const account = (overrides: Partial<aiApi.AiProvider> = {}) =>
+        ollamaCloud({
+          configured: true,
+          key_saved: true,
+          model: 'gpt-oss:20b',
+          found,
+          ...overrides,
+        })
+      const itemsOf = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+        wrapper
+          .findComponent(VSelect)
+          .props('items')
+          ?.map((item: { value: string }) => item.value)
+
+      it('asks which account it is, free until it is said to be paid', async () => {
+        const { find } = await open(ollamaCloud())
+
+        expect(find('provider-plan').text()).toContain('Your Ollama account')
+        expect(find('provider-plan').text()).toContain('nothing Ollama answers says which account')
+        expect(find('provider-plan-free').find('input').element.checked).toBe(true)
+        expect(find('provider-plan-paid').find('input').element.checked).toBe(false)
+        expect(find('provider-free-models').text()).toBe(
+          'Free usage covers gemma4:31b, gpt-oss:120b, gpt-oss:20b, as of 2026-10-25. Ollama can change this and names no page that lists it, so if one of these asks for payment, choose Paid.',
+        )
+      })
+
+      it('offers only the models free usage covers to a free account, and says how many it leaves out', async () => {
+        const { wrapper, find } = await open(account())
+
+        expect(itemsOf(wrapper)).toEqual(['gpt-oss:120b', 'gpt-oss:20b'])
+        expect(find('provider-model').text()).toContain(
+          '2 models found: choose one. 1 more need a paid plan.',
+        )
+      })
+
+      it('offers every model to a paid account, and drops the note about free usage', async () => {
+        const { wrapper, find } = await open(account())
+
+        await find('provider-plan-paid').find('input').setValue(true)
+
+        expect(itemsOf(wrapper)).toEqual(['glm-5.2', 'gpt-oss:120b', 'gpt-oss:20b'])
+        expect(find('provider-model').text()).toContain('3 models found: choose one.')
+        expect(find('provider-free-models').exists()).toBe(false)
+      })
+
+      it('starts from the plan that is kept', async () => {
+        const { wrapper, find } = await open(account({ plan: 'paid', model: 'glm-5.2' }))
+
+        expect(find('provider-plan-paid').find('input').element.checked).toBe(true)
+        expect(itemsOf(wrapper)).toContain('glm-5.2')
+      })
+
+      it('keeps a model free usage does not cover in the list when it is the one kept', async () => {
+        const { wrapper } = await open(account({ model: 'glm-5.2' }))
+
+        expect(itemsOf(wrapper)).toEqual(['glm-5.2', 'gpt-oss:120b', 'gpt-oss:20b'])
+      })
+
+      it('saves the plan with the rest', async () => {
+        const { find, press, save } = await open(account())
+        save.mockResolvedValue(account({ plan: 'paid' }))
+
+        await find('provider-plan-paid').find('input').setValue(true)
+        await press('provider-save')
+
+        expect(save).toHaveBeenCalledWith(
+          'ollama_cloud',
+          { model: 'gpt-oss:20b', plan: 'paid' },
+          'a-security-token',
+        )
+      })
+
+      it('saves a change of plan before it asks for the models', async () => {
+        const { find, press, save, models } = await open(account())
+        save.mockResolvedValue(account({ plan: 'paid' }))
+        models.mockResolvedValue({ ok: true, message: 'It has 3 models.', provider: account() })
+
+        await find('provider-plan-paid').find('input').setValue(true)
+        await press('provider-models-fetch')
+
+        expect(save).toHaveBeenCalledTimes(1)
+        expect(models).toHaveBeenCalledOnce()
+      })
+
+      it('has no account to choose for a provider whose models do not depend on it', async () => {
+        for (const provider of [ollama(), anthropic()]) {
+          const { find } = await open(provider)
+
+          expect(find('provider-plan').exists()).toBe(false)
+          expect(find('provider-free-models').exists()).toBe(false)
+        }
+      })
     })
 
     it('says what went wrong when the models could not be fetched', async () => {
@@ -594,7 +741,7 @@ describe('AiProviderCard', () => {
       inDialog('confirm-accept')?.click()
       await flushPromises()
 
-      expect(find('provider-model').find('input').element.value).toBe('')
+      expect(find('provider-model').find('.v-select__selection').exists()).toBe(false)
       expect(find('provider-url').find('input').element.value).toBe('')
     })
 
