@@ -220,8 +220,15 @@ class IncidentSpec(NamedTuple):
     # Who saw it, in turn: the signals are shared between them.
     programs: Sequence[str] = ("wazuh",)
     signals: int = 1
-    # Whether CrowdSec banned the address afterwards.
+    # Whether CrowdSec banned the address afterwards, and the time it said was left of the ban
+    # when it was first read (a Go duration; none given when empty).
     ban: bool = False
+    ban_left: str = "3h59m12s"
+    # How many times the firewall turned the address away before the ban and after it, and how
+    # many alerts Suricata stopped.
+    blocks: int = 0
+    blocks_after_ban: int = 0
+    dropped: int = 0
     # How long ago the last signal was.
     minutes_ago: int = 10
     # The device on the network that was attacked, and what it is called when it is known.
@@ -323,20 +330,81 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
                 protocol="tcp",
             )
         )
+    banned_at = last + timedelta(seconds=30)
     if spec.ban:
-        events.append(
-            NewEvent(
-                source="crowdsec",
-                connection="lapi",
-                kind="decision",
-                severity=Severity.LOW,
-                occurred_at=last + timedelta(seconds=30),
-                identity=(f"e2e-incident-{number}-ban",),
-                summary=f"Ban {address} for ssh-bruteforce",
-                src_address=address,
-            )
+        events.append(_ban(number, address, spec.ban_left, banned_at))
+    events.extend(
+        _turned_away(number, address, "before", last - timedelta(seconds=10 * (place + 1)), place)
+        for place in range(spec.blocks)
+    )
+    events.extend(
+        _turned_away(
+            number, address, "after", banned_at + timedelta(seconds=15 * (place + 1)), place
         )
+        for place in range(spec.blocks_after_ban)
+    )
+    events.extend(
+        _stopped(number, address, spec.device, last - timedelta(seconds=5 * (place + 1)), place)
+        for place in range(spec.dropped)
+    )
     return events
+
+
+def _ban(number: int, address: str, left: str, at: datetime) -> NewEvent:
+    """CrowdSec's ban of an address, as its collector keeps it: dated by the minute it was read."""
+    return NewEvent(
+        source="crowdsec",
+        connection="lapi",
+        kind="decision",
+        severity=Severity.LOW,
+        occurred_at=at,
+        identity=(f"e2e-incident-{number}-ban",),
+        summary=f"Ban {address} for {left}: crowdsecurity/ssh-bf" if left else f"Ban {address}",
+        signature="crowdsecurity/ssh-bf",
+        src_address=address,
+        raw={
+            "id": number + 1,
+            "origin": "crowdsec",
+            "type": "ban",
+            "scope": "Ip",
+            "value": address,
+            "scenario": "crowdsecurity/ssh-bf",
+            **({"duration": left} if left else {}),
+        },
+    )
+
+
+def _turned_away(number: int, address: str, when: str, at: datetime, place: int) -> NewEvent:
+    return NewEvent(
+        source="opnsense",
+        connection="api",
+        kind="firewall",
+        severity=Severity.LOW,
+        occurred_at=at,
+        identity=(f"e2e-incident-{number}-block-{when}-{place}",),
+        summary=f"Blocked tcp {address}",
+        src_address=address,
+        protocol="tcp",
+    )
+
+
+def _stopped(number: int, address: str, device: str, at: datetime, place: int) -> NewEvent:
+    """An alert that Suricata stopped, as the firewall's collector keeps it."""
+    return NewEvent(
+        source="opnsense",
+        connection="api",
+        kind="alert",
+        severity=Severity.LOW,
+        occurred_at=at,
+        identity=(f"e2e-incident-{number}-dropped-{place}",),
+        summary=f"ET SCAN Potential SSH Scan (blocked): tcp {address} to {device}:22",
+        signature="ET SCAN Potential SSH Scan",
+        src_address=address,
+        dst_address=device,
+        dst_port=22,
+        protocol="tcp",
+        raw={"alert_action": "blocked"},
+    )
 
 
 class EventSpec(NamedTuple):

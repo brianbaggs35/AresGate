@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import IPv4Address, IPv6Address
 from typing import Any, Final, Literal
 
 from sqlalchemy import ColumnElement, false, func, or_, select, true
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.events.event import Severity
 from app.incidents.verdicts import MUTING
-from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Event, Incident, IncidentSignal
+from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Incident, IncidentSignal
 
 # How far either side of an incident the firewall's blocks of its address still count as part of
 # the picture: it often turns the address away before anything else notices it.
@@ -185,20 +185,3 @@ def devices(db: Session, incident: Incident) -> list[tuple[IPv4Address | IPv6Add
     for address, device in rows:
         latest.setdefault(address, device)
     return [(address, latest[address]) for address in incident.addresses if address in latest]
-
-
-def blocks(db: Session, incident: Incident) -> int | None:
-    """How many times the firewall turned the incident's address away around the time of it, or
-    None for an incident about a rule rather than an address. They aren't part of it, because
-    the internet knocks all day, but they say how persistent it was."""
-    if incident.subject.startswith("rule:"):
-        return None
-    return db.scalar(
-        select(func.count()).where(
-            Event.kind == "firewall",
-            Event.severity >= Severity.LOW,
-            Event.src_address == ip_address(incident.subject),
-            Event.occurred_at >= incident.first_seen_at - CONTEXT,
-            Event.occurred_at <= incident.last_seen_at + CONTEXT,
-        )
-    )

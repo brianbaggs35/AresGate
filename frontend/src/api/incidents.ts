@@ -18,6 +18,47 @@ export interface Program {
 /** What kind of activity its signals say it was: a scan of ports, or guessing at logins. */
 export type Activity = 'scan' | 'brute_force'
 
+/** What was done about an incident, in a word: an address CrowdSec banned (`banned`, or `partly`
+ * when only some of the addresses of a block were), a ban that has run out, an address the
+ * firewall or Suricata turned away, nothing yet, or an incident about a rule, with no address to
+ * act on. */
+export type ResponseState = 'banned' | 'partly' | 'ban_ended' | 'blocked' | 'none' | 'no_address'
+
+/** A decision CrowdSec made about one of an incident's addresses. */
+export interface Ban {
+  address: string
+  /** What kind of remedy it was: a ban, nearly always. */
+  kind: string
+  scenario: string | null
+  /** Where the decision came from, in words. */
+  origin: string | null
+  /** When AresGate first read it, which is when it knows of it. */
+  seen_at: string
+  /** When it runs out, if the time CrowdSec said was left is understood. */
+  ends_at: string | null
+  /** A ban that CrowdSec only pretended to make (its simulation mode). */
+  simulated: boolean
+  /** Whether it still holds, as far as is known. */
+  in_force: boolean
+}
+
+/** What was done about an incident: the bans, and how often it was turned away. */
+export interface IncidentResponse {
+  state: ResponseState
+  /** The state in words, for a chip. */
+  label: string
+  bans: Ban[]
+  /** How often the firewall turned the address away, and how often of those after the first
+   * ban (null without one), and when it last did. */
+  blocked: number
+  blocked_since_ban: number | null
+  last_blocked_at: string | null
+  /** How many alerts Suricata stopped. */
+  dropped: number
+  /** What AresGate can't tell, and why. */
+  unknown: string[]
+}
+
 export interface Incident {
   id: number
   title: string
@@ -37,6 +78,8 @@ export interface Incident {
   addresses: string[]
   /** Whether an integration banned the address. */
   banned: boolean
+  /** What was done about it. */
+  response: IncidentResponse
   status_changed_at: string | null
   /** What the owner's verdicts say of it as a whole: a real threat, not suspicious or low
    * priority (because every signal is), or nothing. */

@@ -8,6 +8,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **What was done about an incident**: every card in the incident list now has a chip that says
+  *Banned*, *Partly banned*, *Ban ended*, *Blocked* or *No response yet* (an incident about a
+  rule, with no address to act on, has none), and the incident's page has a *What was done about
+  it* section: a sentence ("CrowdSec banned 182.161.66.3. The ban has 3h 12m left."), each ban
+  with the scenario that made it, where it came from and when it runs out, how often the
+  firewall turned the address away (and how often after the ban) and how many alerts Suricata
+  stopped, the steps in order (first seen, banned, still trying, ban ends) and what AresGate
+  cannot tell, such as a program that is not connected. It is read from the events already
+  stored, so nothing asks a program anything. `GET /api/incidents` and `GET /api/incidents/{id}`
+  carry it as `response` ([DOCS/operations.md](DOCS/operations.md#what-was-done-about-an-incident)).
 - **Saved searches**: the button beside the search box on the incidents and the logs pages now
   lists the searches you saved. Type a name under *Saved searches* and press *Save* to keep what
   is in the box (it says *Replace* when the name is taken); press one to use it, or the bin to

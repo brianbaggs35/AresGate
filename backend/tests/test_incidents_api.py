@@ -28,6 +28,7 @@ from tests.test_incidents_engine import (
     scan,
     store,
 )
+from tests.test_incidents_response import SCENARIO, decision, stopped, turned_away
 
 BASE = "/api/incidents"
 MINUTE = timedelta(minutes=1)
@@ -762,6 +763,93 @@ class TestOne:
         self, client: TestClient, csrf_token: str, incident_id: str
     ) -> None:
         assert client.get(f"{BASE}/{incident_id}").status_code == 422
+
+
+class TestWhatWasDoneAboutIt:
+    def test_the_list_says_what_was_done_about_each(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        done = {item["subject"]: item["response"] for item in listed(client)}
+
+        assert done[ATTACKER]["state"] == "banned"
+        assert done[ATTACKER]["label"] == "Banned"
+        assert done[ATTACKER]["bans"] == [
+            {
+                "address": ATTACKER,
+                "kind": "ban",
+                "scenario": None,
+                "origin": None,
+                "seen_at": (NOW + 2 * MINUTE).isoformat().replace("+00:00", "Z"),
+                "ends_at": None,
+                "simulated": False,
+                "in_force": True,
+            }
+        ]
+        assert done[OTHER_ATTACKER]["state"] == "none"
+        assert done[OTHER_ATTACKER]["label"] == "No response yet"
+        assert done[OTHER_ATTACKER]["bans"] == []
+
+    def test_the_incident_says_how_the_ban_went(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW),
+            decision(NOW + 2 * MINUTE, duration="4h"),
+            turned_away(NOW + 3 * MINUTE, 1),
+            turned_away(NOW + 90 * MINUTE, 2),
+            stopped(NOW + 3 * MINUTE, 5),
+        )
+        run(session)
+        incident = session.scalars(select(Incident).where(Incident.subject == ATTACKER)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        # The ban ran out four hours after it was read, which is long ago by now.
+        assert body["response"]["state"] == "ban_ended"
+        assert body["response"]["bans"][0]["in_force"] is False
+        assert body["response"]["bans"][0]["ends_at"] == (
+            (NOW + 2 * MINUTE + timedelta(hours=4)).isoformat().replace("+00:00", "Z")
+        )
+        assert body["response"]["bans"][0]["scenario"] == SCENARIO
+        assert body["response"]["bans"][0]["origin"] == "CrowdSec's own detection"
+        assert body["response"]["blocked"] == body["blocked"] == 2
+        assert body["response"]["blocked_since_ban"] == 2
+        assert body["response"]["last_blocked_at"] == (
+            (NOW + 90 * MINUTE).isoformat().replace("+00:00", "Z")
+        )
+        assert body["response"]["dropped"] == 1
+        assert body["response"]["unknown"] == [
+            "A ban is dated by when AresGate first read it, which may be a little later.",
+        ]
+
+    def test_without_a_ban_there_is_no_count_since_one(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW), turned_away(NOW + MINUTE, 1))
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["response"]["state"] == "blocked"
+        assert body["response"]["blocked_since_ban"] is None
+
+    def test_an_incident_about_a_rule_has_nothing_to_act_on(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(src_address=None, dst_address=None))
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+
+        body = client.get(f"{BASE}/{incident.id}").json()
+
+        assert body["response"]["state"] == "no_address"
+        assert body["response"]["label"] == "Nothing to block"
+        assert body["blocked"] is None
 
 
 class TestSayingWhatIsBeingDone:

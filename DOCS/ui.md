@@ -46,7 +46,9 @@ the order a person asks: what is it and what can I do (the header and its button
 dashboard's hero: a ring drawn to the confidence, a sentence made from what the incident holds
 by `storyOf`, and the numbers inside it), why is AresGate sure (`IncidentReasons`: the bar
 and the list use the chart palette, in the same order, so a color is always the same reason),
-who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program), why the
+what was done about it (`ResponseDetails`: a sentence, the bans, what else turned the address away, the steps in
+order and what cannot be told; the chip on a card is `ResponseChip`, and like a status it is always an icon and a word,
+with the wording and looks in `src/response.ts`), who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program), why the
 signals are one incident (`IncidentGrouping`: a line to a fact, the waves and the ports a sweep
 touched, with the well-known ones named) and then every signal (`IncidentTimeline`). A card says
 what a bot was doing in the same way: a chip for scanning or brute force and, only when they

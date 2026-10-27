@@ -180,6 +180,10 @@ class IncidentRequest(BaseModel):
     programs: list[str] = ["wazuh"]
     signals: int = Field(default=1, ge=1, le=50)
     ban: bool = False
+    ban_left: str = Field(default="3h59m12s", max_length=40)
+    blocks: int = Field(default=0, ge=0, le=100)
+    blocks_after_ban: int = Field(default=0, ge=0, le=100)
+    dropped: int = Field(default=0, ge=0, le=50)
     minutes_ago: int = Field(default=10, ge=0, le=60 * 20)
     device: str = "192.168.1.20"
     device_name: str | None = None
@@ -214,6 +218,10 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 programs=item.programs,
                 signals=item.signals,
                 ban=item.ban,
+                ban_left=item.ban_left,
+                blocks=item.blocks,
+                blocks_after_ban=item.blocks_after_ban,
+                dropped=item.dropped,
                 minutes_ago=item.minutes_ago,
                 device=item.device,
                 device_name=item.device_name,

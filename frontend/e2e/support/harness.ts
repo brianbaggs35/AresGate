@@ -76,8 +76,15 @@ export interface IncidentRequest {
   programs?: string[]
   /** How many alerts there are, a few minutes apart. */
   signals?: number
-  /** Whether CrowdSec banned the address. */
+  /** Whether CrowdSec banned the address, and the time it said was left of the ban when it was
+   * first read, as a Go duration ("3h59m12s" unless said). */
   ban?: boolean
+  ban_left?: string
+  /** How many times the firewall turned the address away before the ban and after it, and how
+   * many alerts Suricata stopped. */
+  blocks?: number
+  blocks_after_ban?: number
+  dropped?: number
   /** How long ago the last signal was. */
   minutes_ago?: number
   /** The device on the network that was attacked, and what it is called when it is known. */

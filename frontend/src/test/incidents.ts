@@ -1,6 +1,8 @@
 import type {
+  Ban,
   BulkResult,
   Incident,
+  IncidentResponse,
   IncidentDetail,
   IncidentDevice,
   IncidentPage,
@@ -32,6 +34,7 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     ],
     addresses: ['93.184.216.34', '192.168.1.20'],
     banned: false,
+    response: response(),
     status_changed_at: null,
     verdict: null,
     verdict_counts: {},
@@ -40,6 +43,36 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     port_count: 0,
     ports_capped: false,
     neighbours: 0,
+    ...changes,
+  }
+}
+
+/** What was done about an incident: nothing yet, with whatever is given changed. */
+export function response(changes: Partial<IncidentResponse> = {}): IncidentResponse {
+  return {
+    state: 'none',
+    label: 'No response yet',
+    bans: [],
+    blocked: 0,
+    blocked_since_ban: null,
+    last_blocked_at: null,
+    dropped: 0,
+    unknown: [],
+    ...changes,
+  }
+}
+
+/** A ban of the incident's address that is in force and has about four hours left. */
+export function ban(changes: Partial<Ban> = {}): Ban {
+  return {
+    address: '93.184.216.34',
+    kind: 'ban',
+    scenario: 'crowdsecurity/ssh-bf',
+    origin: "CrowdSec's own detection",
+    seen_at: new Date(NOW - 10 * MINUTE).toISOString(),
+    ends_at: new Date(NOW + 230 * MINUTE).toISOString(),
+    simulated: false,
+    in_force: true,
     ...changes,
   }
 }
