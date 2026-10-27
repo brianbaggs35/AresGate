@@ -215,24 +215,13 @@ class TestSaving:
     def test_a_plan_is_free_or_paid_and_only_for_a_provider_that_has_them(
         self, session: Session, settings: Settings
     ) -> None:
+        gold = Submission(model="", api_key=KEY, plan="gold")
+        free_anthropic = Submission(model="claude-haiku-5-5", api_key=KEY, plan="free")
+
         with pytest.raises(SettingsError) as odd:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.OLLAMA_CLOUD,
-                Submission(model="", api_key=KEY, plan="gold"),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.OLLAMA_CLOUD, gold, NOW)
         with pytest.raises(SettingsError) as none:
-            service.save(
-                session,
-                settings,
-                HOME,
-                catalog.ANTHROPIC,
-                Submission(model="claude-haiku-5-5", api_key=KEY, plan="free"),
-                NOW,
-            )
+            service.save(session, settings, HOME, catalog.ANTHROPIC, free_anthropic, NOW)
 
         assert odd.value.problems == {"plan": "Choose free or paid."}
         assert none.value.problems == {"plan": "Anthropic has no plans."}
