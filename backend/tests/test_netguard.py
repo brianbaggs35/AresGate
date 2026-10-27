@@ -168,10 +168,13 @@ def test_in_the_container_localhost_is_the_container_and_an_ollama_is_not_there(
 
 
 def test_in_the_container_a_refusal_of_localhost_says_how_to_reach_the_computer() -> None:
+    loopback_v6 = [ipaddress.ip_address("::1")]
+    loopback_v4 = [ipaddress.ip_address("127.0.0.1")]
+
     with pytest.raises(Refused) as name:
-        allowed_addresses(OLLAMA_IN_CONTAINER, "localhost", [ipaddress.ip_address("::1")])
+        allowed_addresses(OLLAMA_IN_CONTAINER, "localhost", loopback_v6)
     with pytest.raises(Refused) as typed:
-        allowed_addresses(OLLAMA_IN_CONTAINER, "127.0.0.1", [ipaddress.ip_address("127.0.0.1")])
+        allowed_addresses(OLLAMA_IN_CONTAINER, "127.0.0.1", loopback_v4)
 
     assert str(name.value) == (
         "localhost is at ::1, which is AresGate's container, not your computer, so AresGate "
@@ -185,12 +188,13 @@ def test_in_the_container_a_refusal_of_localhost_says_how_to_reach_the_computer(
 
 
 def test_an_ollama_that_is_refused_is_told_where_it_may_be() -> None:
+    on_the_internet = [ipaddress.ip_address("8.8.8.8")]
+    cloud_metadata = [ipaddress.ip_address("169.254.169.254")]
+
     with pytest.raises(Refused) as refused:
-        allowed_addresses(OLLAMA_ON_THIS_COMPUTER, "8.8.8.8", [ipaddress.ip_address("8.8.8.8")])
+        allowed_addresses(OLLAMA_ON_THIS_COMPUTER, "8.8.8.8", on_the_internet)
     with pytest.raises(Refused) as metadata:
-        allowed_addresses(
-            OLLAMA_IN_CONTAINER, "169.254.169.254", [ipaddress.ip_address("169.254.169.254")]
-        )
+        allowed_addresses(OLLAMA_IN_CONTAINER, "169.254.169.254", cloud_metadata)
 
     assert str(refused.value) == (
         "8.8.8.8 isn't a private network address, so AresGate won't connect to it. "

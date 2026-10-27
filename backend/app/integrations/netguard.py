@@ -137,7 +137,7 @@ PUBLIC_INTERNET = AddressPolicy(
 # For the test server only: the end-to-end harness points integrations at stand-ins on the same
 # machine. The product never uses it.
 HOME_NETWORK_AND_LOOPBACK = AddressPolicy(
-    allowed=(*HOME_NETWORK.allowed, *_networks("127.0.0.0/8", "::1/128")),
+    allowed=(*HOME_NETWORK.allowed, *THIS_COMPUTER),
     refused=CLOUD_METADATA,
 )
 # The same, for hosted AI providers' stand-ins.
