@@ -189,5 +189,8 @@ class TestForgettingASearch:
     def test_an_id_is_a_whole_number_above_nothing(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.delete(f"{BASE}/0", headers=headers(csrf_token)).status_code == 422
-        assert client.delete(f"{BASE}/abc", headers=headers(csrf_token)).status_code == 422
+        answers = [
+            client.delete(f"{BASE}/{part}", headers=headers(csrf_token)) for part in ("0", "abc")
+        ]
+
+        assert [answer.status_code for answer in answers] == [422, 422]
