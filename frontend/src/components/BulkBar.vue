@@ -67,11 +67,12 @@ const offer = () => props.whole && !props.everything && props.total > props.show
       Select incidents to change them together
     </p>
     <template v-else>
-      <p class="bulk__count text-title-medium" role="status" data-test="bulk-count">
+      <output class="bulk__count text-title-medium" data-test="bulk-count">
         {{ formatCount(count) }} selected
-      </p>
+      </output>
 
-      <div class="bulk__actions" role="group" aria-label="What to change">
+      <fieldset class="bulk__actions">
+        <legend class="bulk__legend">What to change</legend>
         <v-menu>
           <template #activator="{ props: menu }">
             <v-btn
@@ -114,7 +115,7 @@ const offer = () => props.whole && !props.everything && props.total > props.show
         >
           {{ VERDICT[kind].label }}
         </v-btn>
-      </div>
+      </fieldset>
 
       <v-btn
         variant="text"
@@ -193,6 +194,15 @@ const offer = () => props.whole && !props.everything && props.total > props.show
   margin: 0;
 }
 
+.bulk__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .bulk__hint {
   grid-column: 2 / -1;
 }
@@ -208,6 +218,10 @@ const offer = () => props.whole && !props.everything && props.total > props.show
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .bulk__clear,
