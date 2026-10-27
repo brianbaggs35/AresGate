@@ -114,6 +114,42 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the AI page, with a provider working, one failing and a model list open, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiSettings,
+      shell,
+    }) => {
+      await harness.standIn({
+        kind: 'anthropic',
+        api_key: 'sk-a-key-for-the-stand-in',
+        models: ['claude-haiku-5-5'],
+        provider: 'anthropic',
+      })
+      await harness.standIn({ kind: 'openai', api_key: 'another-key', provider: 'openai' })
+      const ollama = await harness.standIn({ kind: 'ollama', models: ['qwen3:8b', 'llama3.2:3b'] })
+      await aiSettings.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await aiSettings.apiKey('anthropic').fill('sk-a-key-for-the-stand-in')
+      await aiSettings.test('anthropic').click()
+      await expect(aiSettings.status('anthropic')).toHaveText('Connected')
+      await aiSettings.enabled.check()
+      await aiSettings.apiKey('openai').fill('the-wrong-key')
+      await aiSettings.test('openai').click()
+      await expect(aiSettings.lastError('openai')).toBeVisible()
+      await aiSettings.address('ollama').fill(ollama.url)
+      await aiSettings.fetchModels('ollama').click()
+      await expect(aiSettings.notice('ollama')).toHaveText('It has 2 models.')
+      await expectAccessible(page)
+
+      await aiSettings.model('anthropic').locator('.v-field').click()
+      await expect(page.getByRole('option', { name: /Sonnet 5\.5/ })).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the not-found page has no WCAG 2.2 AA problems', async ({ page, shell }) => {
       await page.goto('/no/such/page')
       await shell.chooseTheme(theme)

@@ -14,6 +14,15 @@ Every release's notes are here, newest first. The format follows
   alert where it names no address); the page says what it remembered, with *Undo* for ten seconds
   (a verdict that changed another goes back to what it was), and an incident that nothing else
   needs leaves the list. `POST /api/verdicts` now also says what a verdict replaced (`replaced`).
+- **AI providers**: **Settings > AI** sets up Anthropic, OpenAI, Ollama on your own computer and
+  Ollama Cloud, tests each with a single token, and turns AI on for one of them. Anthropic starts
+  on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, and the other models they offer are listed with
+  their prices, read from the providers' pages. Ollama has *Fetch models* and *Test connection*,
+  and so has Ollama Cloud once it has a key. API keys are sealed in the credential store and never
+  shown again, hosted providers are reached only at their own addresses, and AI is off until you
+  turn it on ([DOCS/operations.md](DOCS/operations.md#ai-providers)). It is `GET /api/ai`,
+  `PUT` and `DELETE /api/ai/providers/{key}`, `POST` `.../test` and `.../models`, and
+  `PUT /api/ai/use`.
 - **Verdicts**: say that an address, a program, a signature or a mix of them is *not
   suspicious*, *low priority* or *a real threat*, and AresGate remembers it as a rule and holds
   you to it from then on. Signals that match a verdict of not suspicious or low priority are still

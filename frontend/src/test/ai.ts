@@ -1,0 +1,142 @@
+import type { Ai, AiProvider, ModelChoice } from '@/api/ai'
+
+/** AI providers as the API describes them, for tests of pages that show them. */
+
+export const HAIKU: ModelChoice = {
+  id: 'claude-haiku-5-5',
+  label: 'Claude Haiku 5.5',
+  note: 'Fast and cheap: a good fit for reading every incident',
+  price: {
+    input: 0.1,
+    output: 0.5,
+    cached_input: 0.01,
+    long_over: 100_000,
+    long_input: 0.5,
+    long_output: 2.5,
+  },
+}
+
+export const SONNET: ModelChoice = {
+  id: 'claude-sonnet-5-5',
+  label: 'Claude Sonnet 5.5',
+  note: 'Better reasoning for harder incidents',
+  price: {
+    input: 2,
+    output: 10,
+    cached_input: 0.1,
+    long_over: null,
+    long_input: null,
+    long_output: null,
+  },
+}
+
+export const LUNA: ModelChoice = {
+  id: 'gpt-6-luna',
+  label: 'GPT-6 Luna',
+  note: 'Fast and cheap: a good fit for reading every incident',
+  price: {
+    input: 0.1,
+    output: 0.5,
+    cached_input: 0.01,
+    long_over: null,
+    long_input: null,
+    long_output: null,
+  },
+}
+
+const NOT_SET_UP: Pick<
+  AiProvider,
+  | 'configured'
+  | 'base_url'
+  | 'model'
+  | 'key_saved'
+  | 'status'
+  | 'last_attempt_at'
+  | 'last_success_at'
+  | 'last_error'
+  | 'found'
+  | 'found_at'
+> = {
+  configured: false,
+  base_url: null,
+  model: null,
+  key_saved: false,
+  status: 'not_connected',
+  last_attempt_at: null,
+  last_success_at: null,
+  last_error: null,
+  found: [],
+  found_at: null,
+}
+
+export const anthropic = (overrides: Partial<AiProvider> = {}): AiProvider => ({
+  key: 'anthropic',
+  label: 'Anthropic',
+  summary: 'Claude models, asked over the internet with an API key.',
+  kind: 'hosted',
+  needs_key: true,
+  takes_url: false,
+  key_url: 'https://platform.claude.com/settings/keys',
+  pricing_url: 'https://platform.claude.com/docs/en/about-claude/pricing',
+  models_url: 'https://platform.claude.com/docs/en/about-claude/models/overview',
+  models: [HAIKU, SONNET],
+  default_model: HAIKU.id,
+  ...NOT_SET_UP,
+  ...overrides,
+})
+
+export const openai = (overrides: Partial<AiProvider> = {}): AiProvider => ({
+  key: 'openai',
+  label: 'OpenAI',
+  summary: 'GPT models, asked over the internet with an API key.',
+  kind: 'hosted',
+  needs_key: true,
+  takes_url: false,
+  key_url: 'https://platform.openai.com/api-keys',
+  pricing_url: 'https://developers.openai.com/api/docs/pricing',
+  models_url: 'https://developers.openai.com/api/docs/models',
+  models: [LUNA],
+  default_model: LUNA.id,
+  ...NOT_SET_UP,
+  ...overrides,
+})
+
+export const ollama = (overrides: Partial<AiProvider> = {}): AiProvider => ({
+  key: 'ollama',
+  label: 'Ollama (your computer)',
+  summary: 'Models that run on a computer of your own.',
+  kind: 'local',
+  needs_key: false,
+  takes_url: true,
+  key_url: null,
+  pricing_url: null,
+  models_url: 'https://docs.ollama.com/api/tags',
+  models: [],
+  default_model: null,
+  ...NOT_SET_UP,
+  ...overrides,
+})
+
+export const ollamaCloud = (overrides: Partial<AiProvider> = {}): AiProvider => ({
+  key: 'ollama_cloud',
+  label: 'Ollama Cloud',
+  summary: 'Models that Ollama runs for you.',
+  kind: 'cloud',
+  needs_key: true,
+  takes_url: false,
+  key_url: 'https://ollama.com/settings/keys',
+  pricing_url: null,
+  models_url: 'https://docs.ollama.com/cloud',
+  models: [],
+  default_model: null,
+  ...NOT_SET_UP,
+  ...overrides,
+})
+
+export const ai = (overrides: Partial<Ai> = {}): Ai => ({
+  enabled: false,
+  provider: null,
+  priced_as_of: '2026-10-27',
+  providers: [anthropic(), openai(), ollama(), ollamaCloud()],
+  ...overrides,
+})

@@ -107,11 +107,15 @@ export interface VerdictsRecord {
 }
 
 /** The kinds of integration a stand-in can answer like. */
-export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh'
+export type StandInKind =
+  'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh' | 'anthropic' | 'openai' | 'ollama'
 
 /** What a stand-in accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
  * `api_key` and `api_secret` (and the keys of the `services` it has installed and running),
- * Wazuh a `username` and `password` (one stand-in answers as both its manager and its indexer). */
+ * Wazuh a `username` and `password` (one stand-in answers as both its manager and its indexer).
+ * An AI provider's stand-in has the `models` it knows, and an Anthropic or OpenAI one an `api_key`
+ * (so does Ollama's cloud); `provider` makes AresGate ask it instead of the provider it stands
+ * in for. */
 export interface StandInRequest {
   kind: StandInKind
   token?: string
@@ -120,6 +124,8 @@ export interface StandInRequest {
   services?: string[]
   username?: string
   password?: string
+  models?: string[]
+  provider?: 'anthropic' | 'openai' | 'ollama_cloud'
 }
 
 /** A server on the test machine that answers like an integration. */

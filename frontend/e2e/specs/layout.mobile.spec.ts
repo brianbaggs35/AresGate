@@ -321,6 +321,7 @@ test.describe('layout on a phone', () => {
     signIns,
     activity,
     verdicts,
+    aiSettings,
     harness,
     data,
   }) => {
@@ -332,6 +333,7 @@ test.describe('layout on a phone', () => {
       ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
       ['activity', () => activity.goto(), activity.entries.first()],
       ['verdicts', () => verdicts.goto(), verdicts.rows.first()],
+      ['ai', () => aiSettings.goto(), aiSettings.card('anthropic')],
       ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()
