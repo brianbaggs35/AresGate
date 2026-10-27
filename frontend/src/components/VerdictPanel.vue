@@ -151,21 +151,24 @@ async function takeBack(verdict: Verdict) {
         hide-details
         data-test="verdict-note"
       />
-      <div class="verdict-panel__choices" role="group" aria-label="Say it is">
-        <v-btn
-          v-for="kind in VERDICTS"
-          :key="kind"
-          variant="tonal"
-          :color="VERDICT[kind].color"
-          :prepend-icon="VERDICT[kind].icon"
-          :loading="giving === kind"
-          :disabled="busy && giving !== kind"
-          :data-test="`give-${kind}`"
-          @click="give(kind)"
-        >
-          {{ VERDICT[kind].label }}
-        </v-btn>
-      </div>
+      <fieldset class="verdict-panel__say">
+        <legend class="text-body-medium text-medium-emphasis">Say it is</legend>
+        <div class="verdict-panel__choices">
+          <v-btn
+            v-for="kind in VERDICTS"
+            :key="kind"
+            variant="tonal"
+            :color="VERDICT[kind].color"
+            :prepend-icon="VERDICT[kind].icon"
+            :loading="giving === kind"
+            :disabled="busy && giving !== kind"
+            :data-test="`give-${kind}`"
+            @click="give(kind)"
+          >
+            {{ VERDICT[kind].label }}
+          </v-btn>
+        </div>
+      </fieldset>
     </div>
     <p v-else class="text-body-medium text-medium-emphasis" data-test="verdict-unmatchable">
       Nothing in it can be matched later: it names no address, and its signals have no signature.
@@ -227,6 +230,18 @@ async function takeBack(verdict: Verdict) {
 
 .verdict-panel__form p {
   margin: -0.25rem 0 0;
+}
+
+.verdict-panel__say {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.verdict-panel__say legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
 }
 
 .verdict-panel__choices {
