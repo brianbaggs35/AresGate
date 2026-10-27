@@ -632,6 +632,17 @@ class TestAiProviders:
             == 400
         )
 
+    def test_openai_refuses_no_reasoning_from_the_models_that_always_think(self) -> None:
+        good = {"authorization": "Bearer right-key"}
+        always = stand_ins.openai("right-key", {"gpt-6-luna", "gpt-6-astra", "gpt-6.1-sol"})
+        none = {"reasoning": {"effort": "none"}, "max_output_tokens": 16}
+
+        assert always(post("/v1/responses", {"model": "gpt-6-luna", **none}, **good)).status == 200
+        for model in ("gpt-6-astra", "gpt-6.1-sol"):
+            assert always(post("/v1/responses", {"model": model, **none}, **good)).status == 400
+            low = {"model": model, "reasoning": {"effort": "low"}, "max_output_tokens": 16}
+            assert always(post("/v1/responses", low, **good)).status == 200
+
     def test_ollama_lists_its_models_answers_for_them_and_wants_its_key_if_it_has_one(self) -> None:
         good = {"authorization": "Bearer right-key"}
 

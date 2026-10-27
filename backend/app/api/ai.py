@@ -2,6 +2,7 @@
 and whether AresGate uses AI at all. API keys only go in: no route here returns one, and a
 failed request doesn't quote what was sent."""
 
+from decimal import Decimal
 from typing import Annotated, Literal, cast
 
 import anyio.from_thread
@@ -48,11 +49,16 @@ class PriceOut(BaseModel):
 
     input: float
     output: float
+    # What input costs that the provider already has cached, and what it costs to have it cached
+    # for the time in ``ModelOut.cache_minutes``. None where the provider has no such price.
     cached_input: float | None
+    cache_write: float | None
     # Some models cost more for a prompt longer than this many tokens, and what that costs.
     long_over: int | None
     long_input: float | None
     long_output: float | None
+    long_cached_input: float | None
+    long_cache_write: float | None
 
 
 class ModelOut(BaseModel):
@@ -60,6 +66,12 @@ class ModelOut(BaseModel):
     label: str
     note: str
     price: PriceOut
+    # How the start of a prompt is cached: "marked" is where AresGate says it ends and the
+    # provider keeps it for ``cache_minutes``, "automatic" is the provider's own doing.
+    caching: Literal["none", "automatic", "marked"]
+    cache_minutes: int | None
+    # The provider has said it will retire the model.
+    deprecated: bool
 
 
 class FoundModelOut(BaseModel):
@@ -142,16 +154,23 @@ def _invalid(*location: str, message: str) -> dict[str, object]:
     return {"type": "value_error", "loc": ["body", *location], "msg": message}
 
 
+def _optional(price: Decimal | None) -> float | None:
+    return float(price) if price is not None else None
+
+
 def _price_out(model: catalog.ModelDef) -> PriceOut:
     price = model.price
     long = price.long
     return PriceOut(
         input=float(price.input),
         output=float(price.output),
-        cached_input=float(price.cached_input) if price.cached_input is not None else None,
+        cached_input=_optional(price.cached_input),
+        cache_write=_optional(price.cache_write),
         long_over=price.long_over if long is not None else None,
         long_input=float(long.input) if long is not None else None,
         long_output=float(long.output) if long is not None else None,
+        long_cached_input=_optional(long.cached_input) if long is not None else None,
+        long_cache_write=_optional(long.cache_write) if long is not None else None,
     )
 
 
@@ -167,7 +186,15 @@ def _provider_out(db: Session, definition: ProviderDef, row: AiProvider | None) 
         pricing_url=definition.pricing_url,
         models_url=definition.models_url,
         models=[
-            ModelOut(id=model.id, label=model.label, note=model.note, price=_price_out(model))
+            ModelOut(
+                id=model.id,
+                label=model.label,
+                note=model.note,
+                price=_price_out(model),
+                caching=model.caching.value,
+                cache_minutes=model.cache_minutes or None,
+                deprecated=model.deprecated,
+            )
             for model in definition.models
         ],
         default_model=definition.default_model,

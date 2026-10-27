@@ -15,6 +15,8 @@ from e2e import stand_ins
 from tests.stubs import Answer, Seen, Serve
 
 SCHEMA = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+# About 1,250 tokens by the rule of thumb: long enough for either provider to cache.
+LONG_SYSTEM = "Be brief. " * 500
 
 
 def ok(body: object) -> Reply:
@@ -97,7 +99,7 @@ class TestAsking:
         }
         assert "sk-a-key" not in json.dumps([call.__dict__ for call in log.calls], default=str)
 
-    def test_openai_gets_a_bearer_key_a_schema_that_is_strict_and_at_least_16_tokens(
+    def test_openai_gets_a_bearer_key_a_schema_that_is_strict_and_room_to_think(
         self, serve: Serve
     ) -> None:
         stand_in = stand_ins.openai("sk-a-key", {"gpt-6-luna"})
@@ -131,7 +133,8 @@ class TestAsking:
             "model": "gpt-6-luna",
             "instructions": "Be brief.",
             "input": "Hello",
-            "max_output_tokens": 16,
+            "max_output_tokens": 1 + 4096,
+            "reasoning": {"effort": "low"},
             "store": False,
             "text": {
                 "format": {
@@ -141,6 +144,69 @@ class TestAsking:
                     "schema": SCHEMA,
                 }
             },
+        }
+
+    def test_openai_wont_take_fewer_than_16_output_tokens_from_a_model_that_does_not_think(
+        self, serve: Serve
+    ) -> None:
+        stand_in = stand_ins.openai("sk-a-key", {"gpt-5.4-mini"})
+        seen: list[Seen] = []
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OPENAI,
+            handler,
+            lambda client: wire.complete(
+                client,
+                catalog.OPENAI,
+                "gpt-5.4-mini",
+                "sk-a-key",
+                system="s",
+                prompt="p",
+                max_tokens=1,
+            ),
+        )
+
+        body = json.loads(seen[0].body)
+        assert body["max_output_tokens"] == 16
+        assert "reasoning" not in body
+
+    def test_openai_is_asked_for_the_least_it_takes_from_a_model_that_is_not_in_the_list(
+        self, serve: Serve
+    ) -> None:
+        stand_in = stand_ins.openai("sk-a-key", {"gpt-next"})
+        seen: list[Seen] = []
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OPENAI,
+            handler,
+            lambda client: wire.complete(
+                client,
+                catalog.OPENAI,
+                "gpt-next",
+                "sk-a-key",
+                system=LONG_SYSTEM,
+                prompt="p",
+                max_tokens=1,
+                cache_key="aresgate",
+            ),
+        )
+
+        assert json.loads(seen[0].body) == {
+            "model": "gpt-next",
+            "instructions": LONG_SYSTEM,
+            "input": "p",
+            "max_output_tokens": 16,
+            "store": False,
         }
 
     def test_openai_is_asked_without_a_schema_for_plain_text(self, serve: Serve) -> None:
@@ -168,7 +234,7 @@ class TestAsking:
 
         body = json.loads(seen[0].body)
         assert "text" not in body
-        assert body["max_output_tokens"] == 300
+        assert body["max_output_tokens"] == 300 + 4096
 
     def test_an_ollama_gets_the_schema_as_its_format_and_no_key_at_home(self, serve: Serve) -> None:
         seen: list[Seen] = []
@@ -259,11 +325,18 @@ class TestReadingAnswers:
                     {"type": "text", "text": ""},
                 ],
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 30, "output_tokens": 9, "cache_read_input_tokens": 20},
+                "usage": {
+                    "input_tokens": 30,
+                    "output_tokens": 9,
+                    "cache_read_input_tokens": 20,
+                    "cache_creation_input_tokens": 6,
+                },
             },
         )
 
-        assert answer == Completion('{"a":1}', 30, 9, 20, truncated=False)
+        # Anthropic's input_tokens leaves out what was read from the cache and what was written to
+        # it, so the whole is the three together.
+        assert answer == Completion('{"a":1}', 56, 9, 20, 6, truncated=False)
 
     def test_anthropic_that_declines_says_so(self) -> None:
         with pytest.raises(AiFailed, match="declined"):
@@ -469,3 +542,174 @@ class TestFindingModels:
     def test_a_refusal_is_explained(self, serve: Serve) -> None:
         with pytest.raises(AiFailed, match="didn't accept the API key"):
             self.list_from(serve, {}, 401)
+
+
+class TestCaching:
+    """What is sent so that the start of a prompt that is the same every time is cached, and what
+    is counted when it was."""
+
+    def body(
+        self,
+        serve: Serve,
+        definition: ProviderDef,
+        model: str,
+        system: str,
+        *,
+        cache_key: str | None = None,
+    ) -> dict[str, Any]:
+        handler = (
+            stand_ins.anthropic("sk-a-key", {model})
+            if definition is catalog.ANTHROPIC
+            else stand_ins.openai("sk-a-key", {model})
+        )
+        seen: list[Seen] = []
+
+        def record(request: Seen) -> Answer:
+            seen.append(request)
+            return handler(request)
+
+        ask(
+            serve,
+            definition,
+            record,
+            lambda client: wire.complete(
+                client,
+                definition,
+                model,
+                "sk-a-key",
+                system=system,
+                prompt="The incident",
+                cache_key=cache_key,
+            ),
+        )
+        return json.loads(seen[0].body)
+
+    @pytest.mark.parametrize("model", [model.id for model in catalog.ANTHROPIC.models])
+    def test_a_claude_is_told_where_the_fixed_start_of_the_prompt_ends(
+        self, serve: Serve, model: str
+    ) -> None:
+        body = self.body(serve, catalog.ANTHROPIC, model, LONG_SYSTEM)
+
+        assert body["system"] == [
+            {"type": "text", "text": LONG_SYSTEM, "cache_control": {"type": "ephemeral"}}
+        ]
+        assert body["messages"] == [{"role": "user", "content": "The incident"}]
+
+    def test_a_start_too_short_to_be_cached_is_not_marked(self, serve: Serve) -> None:
+        # 2,043 characters is 510 tokens by the rule of thumb, two short of the 512 Claude needs.
+        body = self.body(serve, catalog.ANTHROPIC, "claude-haiku-5-5", "x" * 2043)
+
+        assert body["system"] == "x" * 2043
+
+    def test_a_claude_not_in_the_list_is_not_marked(self, serve: Serve) -> None:
+        body = self.body(serve, catalog.ANTHROPIC, "claude-next", LONG_SYSTEM)
+
+        assert body["system"] == LONG_SYSTEM
+
+    @pytest.mark.parametrize(
+        "model", [model.id for model in catalog.OPENAI.models if model.id.startswith("gpt-6")]
+    )
+    def test_a_gpt_6_gets_an_explicit_breakpoint_after_the_fixed_start_in_a_developer_message(
+        self, serve: Serve, model: str
+    ) -> None:
+        body = self.body(serve, catalog.OPENAI, model, LONG_SYSTEM)
+
+        assert body["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
+        assert "instructions" not in body
+        assert body["input"] == [
+            {
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": LONG_SYSTEM,
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    }
+                ],
+            },
+            {"role": "user", "content": "The incident"},
+        ]
+        assert body["reasoning"] == {"effort": "low"}
+
+    def test_a_gpt_6_with_a_short_start_is_sent_the_plain_way(self, serve: Serve) -> None:
+        body = self.body(serve, catalog.OPENAI, "gpt-6-luna", "Be brief.")
+
+        assert "prompt_cache_options" not in body
+        assert (body["instructions"], body["input"]) == ("Be brief.", "The incident")
+
+    @pytest.mark.parametrize("model", ["gpt-5.4-mini", "gpt-5.4-nano"])
+    def test_an_older_gpt_caches_by_itself_and_is_helped_to_find_the_last_request(
+        self, serve: Serve, model: str
+    ) -> None:
+        body = self.body(serve, catalog.OPENAI, model, LONG_SYSTEM, cache_key="aresgate-triage")
+
+        assert body["prompt_cache_key"] == "aresgate-triage"
+        assert "prompt_cache_options" not in body
+        assert (body["instructions"], body["input"]) == (LONG_SYSTEM, "The incident")
+
+    def test_an_older_gpt_without_a_key_is_left_to_find_it_itself(self, serve: Serve) -> None:
+        body = self.body(serve, catalog.OPENAI, "gpt-5.4-mini", LONG_SYSTEM)
+
+        assert "prompt_cache_key" not in body
+
+    def test_a_gpt_6_has_no_use_for_a_key(self, serve: Serve) -> None:
+        body = self.body(serve, catalog.OPENAI, "gpt-6-luna", LONG_SYSTEM, cache_key="aresgate")
+
+        assert "prompt_cache_key" not in body
+
+    def test_anthropic_counts_what_it_read_and_what_it_wrote_on_top_of_what_it_was_sent(
+        self,
+    ) -> None:
+        reply = Reply(
+            200,
+            json.dumps(
+                {
+                    "content": [{"type": "text", "text": "x"}],
+                    "usage": {
+                        "input_tokens": 50,
+                        "cache_read_input_tokens": 1800,
+                        "cache_creation_input_tokens": 248,
+                        "output_tokens": 503,
+                    },
+                }
+            ),
+        )
+
+        answer = wire.read_completion(catalog.ANTHROPIC, reply)
+
+        assert (answer.input_tokens, answer.cached_tokens, answer.cache_write_tokens) == (
+            2098,
+            1800,
+            248,
+        )
+
+    def test_openai_counts_the_cache_reads_and_writes_and_the_thinking(self) -> None:
+        reply = Reply(
+            200,
+            json.dumps(
+                {
+                    "output": [
+                        {"type": "message", "content": [{"type": "output_text", "text": "x"}]}
+                    ],
+                    "usage": {
+                        "input_tokens": 6000,
+                        "input_tokens_details": {
+                            "cached_tokens": 2048,
+                            "cache_write_tokens": 1500,
+                            "cache_write_tokens_details": {
+                                "ttl_30m_tokens": 1500,
+                                "ttl_12h_tokens": 0,
+                            },
+                        },
+                        "output_tokens": 1186,
+                        "output_tokens_details": {"reasoning_tokens": 1024},
+                    },
+                }
+            ),
+        )
+
+        answer = wire.read_completion(catalog.OPENAI, reply)
+
+        assert answer.input_tokens == 6000
+        assert (answer.cached_tokens, answer.cache_write_tokens) == (2048, 1500)
+        assert (answer.output_tokens, answer.reasoning_tokens) == (1186, 1024)

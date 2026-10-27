@@ -148,6 +148,12 @@ for (const theme of ['light', 'dark'] as const) {
       await aiSettings.model('anthropic').locator('.v-field').click()
       await expect(page.getByRole('option', { name: /Sonnet 5\.5/ })).toBeVisible()
       await expectAccessible(page)
+      await page.keyboard.press('Escape')
+
+      // A model that is being retired says so, beside its price and how it is cached.
+      await aiSettings.chooseModel('openai', /GPT-5\.4 nano/)
+      await expect(aiSettings.price('openai')).toContainText('lists this model as deprecated')
+      await expectAccessible(page)
     })
 
     test('the not-found page has no WCAG 2.2 AA problems', async ({ page, shell }) => {

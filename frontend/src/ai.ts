@@ -1,11 +1,13 @@
 import type { Problem } from '@/api/client'
 import type { AiProvider, FoundModel, ModelChoice, Price, ProviderSettings } from '@/api/ai'
-import { formatBytes } from '@/format'
+import { formatBytes, formatCount } from '@/format'
 
 /** What reading one incident is assumed to take, in tokens: the incident and what surrounds it
- * go in, and a class, a confidence, a story and what to check come out. It is a round guess to
- * make prices comparable, not a measurement; the usage page shows what was really used. */
-export const ASSUMED_TOKENS = { input: 3000, output: 600 } as const
+ * go in, and a class, a confidence, a story and what to check come out. `fixed` is the part of
+ * what goes in that is the same every time (the analyst's instructions), which a provider can
+ * keep cached. It is a round guess to make prices comparable, not a measurement; the usage page
+ * shows what was really used. */
+export const ASSUMED_TOKENS = { input: 3000, fixed: 1500, output: 600 } as const
 
 /** US dollars, with as many decimals as the price needs: $2.00, $0.10, $0.075, $0.0006. */
 export function formatUsd(value: number, locale?: string): string {
@@ -23,9 +25,43 @@ export function describePrice(price: Price, locale?: string): string {
   return `${formatUsd(price.input, locale)} in, ${formatUsd(price.output, locale)} out per million tokens`
 }
 
-/** What reading one incident costs at a price, by the assumed tokens. */
-export function incidentCost(price: Price): number {
-  return (ASSUMED_TOKENS.input * price.input + ASSUMED_TOKENS.output * price.output) / 1_000_000
+/** What reading one incident costs at a price, by the assumed tokens. With `cached`, the fixed
+ * part of what goes in is read from the provider's cache. */
+export function incidentCost(price: Price, cached = false): number {
+  const { input, fixed, output } = ASSUMED_TOKENS
+  const fromCache = cached ? fixed : 0
+  const cachedRate = price.cached_input ?? price.input
+  return (
+    ((input - fromCache) * price.input + fromCache * cachedRate + output * price.output) / 1_000_000
+  )
+}
+
+/** What reading one incident costs once the provider has the fixed part cached, or null for a
+ * model that doesn't cache or has no price for reading from the cache. */
+export function cachedIncidentCost(model: ModelChoice): number | null {
+  if (model.caching === 'none' || model.price.cached_input === null) return null
+  return incidentCost(model.price, true)
+}
+
+/** What reading one incident costs with a model, by the assumed tokens, and what it costs once
+ * the cache is warm if the model caches. */
+export function estimateNote(model: ModelChoice, locale?: string): string {
+  const { input, fixed, output } = ASSUMED_TOKENS
+  const plain = `Reading one incident is about ${formatUsd(incidentCost(model.price), locale)}, taking ${formatCount(input, locale)} tokens in and ${formatCount(output, locale)} out as a guess.`
+  const warm = cachedIncidentCost(model)
+  if (warm === null) return plain
+  return `${plain} With the cache warm, so that the ${formatCount(fixed, locale)} tokens of instructions are read from it, about ${formatUsd(warm, locale)}.`
+}
+
+/** How a model is cached and what that costs, or null if it isn't. */
+export function cachingNote(model: ModelChoice, locale?: string): string | null {
+  const { cached_input: read, cache_write: write } = model.price
+  if (model.caching === 'none' || read === null) return null
+  if (model.caching === 'automatic')
+    return `Caches the start of a long prompt by itself at no extra charge: input it already had cached costs ${formatUsd(read, locale)} per million tokens.`
+  const kept = model.cache_minutes === null ? '' : ` for ${model.cache_minutes} minutes`
+  const writing = write === null ? '' : ` and ${formatUsd(write, locale)} to write it`
+  return `Caches the fixed start of each prompt${kept}: ${formatUsd(read, locale)} to read it back${writing}, per million tokens.`
 }
 
 /** The line under a model that says what it costs, to choose by. */
@@ -37,7 +73,11 @@ export function priceNote(model: ModelChoice, locale?: string): string {
 export function longPromptNote(price: Price, locale?: string): string | null {
   if (price.long_over === null || price.long_input === null || price.long_output === null)
     return null
-  return `A prompt over ${price.long_over.toLocaleString(locale)} tokens costs ${formatUsd(price.long_input, locale)} in and ${formatUsd(price.long_output, locale)} out.`
+  const cached =
+    price.long_cached_input === null
+      ? ''
+      : `, and ${formatUsd(price.long_cached_input, locale)} for input already cached`
+  return `A prompt over ${price.long_over.toLocaleString(locale)} tokens costs ${formatUsd(price.long_input, locale)} in and ${formatUsd(price.long_output, locale)} out${cached}.`
 }
 
 /** What is being filled in for a provider, as the form holds it. */

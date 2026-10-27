@@ -3,7 +3,7 @@ import { VCombobox, VSelect } from 'vuetify/components'
 import * as aiApi from '@/api/ai'
 import { ApiError } from '@/api/client'
 import AiProviderCard from '@/components/AiProviderCard.vue'
-import { anthropic, ollama, ollamaCloud, openai } from '@/test/ai'
+import { UNCACHED, anthropic, ollama, ollamaCloud, openai } from '@/test/ai'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -94,13 +94,16 @@ describe('AiProviderCard', () => {
       const { find, text } = await open()
 
       expect(find('provider-price').text()).toContain('$0.10 in, $0.50 out per million tokens.')
-      expect(find('provider-price').text()).toContain('Input it already had cached costs $0.01.')
+      expect(text('provider-caching')).toBe(
+        'Caches the fixed start of each prompt for 5 minutes: $0.01 to read it back and $0.125 to write it, per million tokens.',
+      )
       expect(find('provider-price').text()).toContain(
-        'A prompt over 100,000 tokens costs $0.50 in and $2.50 out.',
+        'A prompt over 100,000 tokens costs $0.50 in and $2.50 out, and $0.05 for input already cached.',
       )
       expect(text('provider-estimate')).toBe(
-        'Reading one incident is about $0.0006, taking 3,000 tokens in and 600 out as a guess.',
+        'Reading one incident is about $0.0006, taking 3,000 tokens in and 600 out as a guess. With the cache warm, so that the 1,500 tokens of instructions are read from it, about $0.0005.',
       )
+      expect(find('provider-deprecated').exists()).toBe(false)
       const link = find('provider-price').find('a')
       expect(link.attributes('href')).toBe(
         'https://platform.claude.com/docs/en/about-claude/pricing',
@@ -116,6 +119,18 @@ describe('AiProviderCard', () => {
       expect(find('provider-price').text()).toContain('$2.00 in, $10.00 out per million tokens.')
       expect(find('provider-price').text()).not.toContain('over 100,000')
       expect(text('provider-estimate')).toContain('about $0.012')
+    })
+
+    it('says a model OpenAI is retiring is, and that it caches by itself', async () => {
+      const { pickModel, find, text } = await open(openai())
+
+      await pickModel('gpt-5.4-nano')
+
+      expect(text('provider-deprecated')).toBe(
+        'OpenAI lists this model as deprecated, so it will be retired. Choose another when you can.',
+      )
+      expect(text('provider-caching')).toContain('by itself at no extra charge')
+      expect(find('provider-estimate').text()).toContain('With the cache warm')
     })
 
     it('has no price for a model that is not in the list', async () => {
@@ -140,21 +155,18 @@ describe('AiProviderCard', () => {
             id: 'claude-haiku-5-5',
             label: 'Claude Haiku 5.5',
             note: 'n',
-            price: {
-              input: 1,
-              output: 2,
-              cached_input: null,
-              long_over: null,
-              long_input: null,
-              long_output: null,
-            },
+            price: UNCACHED.price,
+            caching: 'none',
+            cache_minutes: null,
+            deprecated: false,
           },
         ],
       })
-      const { find } = await open(bare)
+      const { find, text } = await open(bare)
 
       expect(find('provider-key-help').exists()).toBe(false)
-      expect(find('provider-price').text()).not.toContain('already had cached')
+      expect(find('provider-caching').exists()).toBe(false)
+      expect(text('provider-estimate')).not.toContain('cache')
     })
 
     it('cannot be tested until it has a key', async () => {

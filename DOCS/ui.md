@@ -67,8 +67,10 @@ each provider. A card shows the same things for all four, in the same order, so 
 compared: the key as a `SecretField` (written, never shown), the model, what it costs, and
 *Save*, *Test connection*, *Fetch models* (only for the ones whose models are whatever they have)
 and *Remove*. A price is always words and numbers ("$0.10 in, $0.50 out per million tokens") with
-the rough price of reading one incident and where the price was read; a model is chosen from a
-list that shows both under its name. Testing or asking for the models saves what was filled in
+how the model is cached and what that costs, what a long prompt costs, the rough price of reading
+one incident (also once the cache is warm) and where the price was read; a model the provider
+has deprecated says so with a warning icon and words, never colour alone. A model is chosen from
+a list that shows the price and the estimate under its name. Testing or asking for the models saves what was filled in
 first, so a person never has to remember to press *Save*; what the save refused is under the field
 and moves the keyboard to the first one. How a test went is a status chip and, when it failed, the
 reason in an alert that stays until the next try. Looks and wording for prices are in `src/ai.ts`.

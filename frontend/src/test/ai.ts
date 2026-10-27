@@ -10,10 +10,16 @@ export const HAIKU: ModelChoice = {
     input: 0.1,
     output: 0.5,
     cached_input: 0.01,
+    cache_write: 0.125,
     long_over: 100_000,
     long_input: 0.5,
     long_output: 2.5,
+    long_cached_input: 0.05,
+    long_cache_write: 0.625,
   },
+  caching: 'marked',
+  cache_minutes: 5,
+  deprecated: false,
 }
 
 export const SONNET: ModelChoice = {
@@ -24,10 +30,16 @@ export const SONNET: ModelChoice = {
     input: 2,
     output: 10,
     cached_input: 0.1,
+    cache_write: 2.5,
     long_over: null,
     long_input: null,
     long_output: null,
+    long_cached_input: null,
+    long_cache_write: null,
   },
+  caching: 'marked',
+  cache_minutes: 5,
+  deprecated: false,
 }
 
 export const LUNA: ModelChoice = {
@@ -38,10 +50,58 @@ export const LUNA: ModelChoice = {
     input: 0.1,
     output: 0.5,
     cached_input: 0.01,
+    cache_write: 0.125,
+    long_over: 272_000,
+    long_input: 0.2,
+    long_output: 0.75,
+    long_cached_input: 0.02,
+    long_cache_write: 0.25,
+  },
+  caching: 'marked',
+  cache_minutes: 30,
+  deprecated: false,
+}
+
+/** An older model: cached by the provider by itself, and being retired. */
+export const NANO: ModelChoice = {
+  id: 'gpt-5.4-nano',
+  label: 'GPT-5.4 nano',
+  note: 'Small and cheap, from the previous generation. OpenAI lists it as deprecated',
+  price: {
+    input: 0.2,
+    output: 1.25,
+    cached_input: 0.02,
+    cache_write: null,
     long_over: null,
     long_input: null,
     long_output: null,
+    long_cached_input: null,
+    long_cache_write: null,
   },
+  caching: 'automatic',
+  cache_minutes: null,
+  deprecated: true,
+}
+
+/** A model that isn't cached. */
+export const UNCACHED: ModelChoice = {
+  id: 'plain-model',
+  label: 'A plain model',
+  note: 'No cache',
+  price: {
+    input: 1,
+    output: 2,
+    cached_input: null,
+    cache_write: null,
+    long_over: null,
+    long_input: null,
+    long_output: null,
+    long_cached_input: null,
+    long_cache_write: null,
+  },
+  caching: 'none',
+  cache_minutes: null,
+  deprecated: false,
 }
 
 const NOT_SET_UP: Pick<
@@ -95,7 +155,7 @@ export const openai = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   key_url: 'https://platform.openai.com/api-keys',
   pricing_url: 'https://developers.openai.com/api/docs/pricing',
   models_url: 'https://developers.openai.com/api/docs/models',
-  models: [LUNA],
+  models: [LUNA, NANO],
   default_model: LUNA.id,
   ...NOT_SET_UP,
   ...overrides,
