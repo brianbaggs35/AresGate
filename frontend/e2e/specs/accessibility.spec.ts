@@ -604,6 +604,31 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the command palette, listing everything, narrowed and finding nothing, has no WCAG 2.2 AA problems', async ({
+      page,
+      dashboard,
+      shell,
+    }) => {
+      await dashboard.goto()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await shell.openPaletteWithKeys()
+      await expect(shell.paletteRows.first()).toBeVisible()
+      await expectAccessible(page)
+
+      await page.keyboard.press('ArrowDown')
+      await expect(shell.paletteRows.first()).toBeFocused()
+      await expectAccessible(page)
+
+      await shell.paletteSearch.fill('93.184.216.34')
+      await expect(shell.paletteRows).toHaveCount(1)
+      await expectAccessible(page)
+
+      await shell.paletteSearch.fill('zzzz')
+      await expect(shell.paletteEmpty).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the integrations list has no WCAG 2.2 AA problems', async ({
       page,
       integrations,

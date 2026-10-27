@@ -14,6 +14,33 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('the command palette fits the screen, with rows big enough to tap', async ({
+    page,
+    dashboard,
+    shell,
+  }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
+
+    await shell.searchButton.click()
+    await expect(shell.palette).toBeVisible()
+    await expect(shell.paletteRows.first()).toBeVisible()
+
+    // The box grows into place as it opens, so what it measures is read once it has.
+    await expect
+      .poll(async () => (await shell.paletteRows.first().boundingBox())?.height)
+      .toBeGreaterThanOrEqual(44)
+    const card = await shell.palette.boundingBox()
+    const viewport = page.viewportSize()
+    expect(card?.x).toBeGreaterThanOrEqual(0)
+    expect((card?.x ?? 0) + (card?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0)
+  })
+
   test('the incidents, and an incident, fit the screen without scrolling sideways', async ({
     page,
     harness,

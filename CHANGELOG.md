@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A command palette**: Ctrl or ⌘ and K, or the *Search* button in the app bar, searches for a page
+  or an action from anywhere: every page in the menu and in Settings, each group of incidents,
+  the light, dark and system themes, and, for a whole IP address, the incidents about it. It is
+  driven from the keyboard (Enter takes the first result, the arrow keys walk the list, Escape
+  closes it) and announces how many it found. New pages that join the menu or Settings appear in
+  it by themselves.
 - **A hero on an incident's page**: under its title, a ring drawn to how sure AresGate is (with the
   figure in it), a sentence that says what happened from what the incident holds (*3 programs
   agree*; who reported how many signals about which address over how long, whether it was banned,

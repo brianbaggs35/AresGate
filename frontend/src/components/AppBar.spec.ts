@@ -1,4 +1,5 @@
 import AppBar from '@/components/AppBar.vue'
+import { usePaletteStore } from '@/stores/palette'
 import { mountWithPlugins } from '@/test/mount'
 
 const open = (width: number, route: string) =>
@@ -22,6 +23,30 @@ describe('AppBar', () => {
     const { wrapper } = await open(400, '/no/such/page')
     expect(wrapper.find('[data-test="page-title"]').exists()).toBe(false)
     expect(wrapper.find('a[aria-label="AresGate"]').attributes('href')).toBe('/')
+  })
+
+  it('has a search button that opens the palette, and tells the keys that do too', async () => {
+    const { wrapper } = await open(1280, '/')
+    const button = wrapper.find('[data-test="palette-open"]')
+    expect(button.text()).toContain('Search')
+    expect(button.find('kbd').text()).toBe('Ctrl K')
+    expect(button.attributes('aria-keyshortcuts')).toBe('Control+K Meta+K')
+
+    await button.trigger('click')
+    expect(usePaletteStore().open).toBe(true)
+    await button.trigger('click')
+    expect(usePaletteStore().open).toBe(false)
+  })
+
+  it('has just an icon for it on a phone, which has no such keys', async () => {
+    const { wrapper } = await open(400, '/')
+    const button = wrapper.find('[data-test="palette-open"]')
+    expect(button.attributes('aria-label')).toBe('Search')
+    expect(button.text()).toBe('')
+    expect(button.find('kbd').exists()).toBe(false)
+
+    await button.trigger('click')
+    expect(usePaletteStore().open).toBe(true)
   })
 
   it('has the theme switcher', async () => {

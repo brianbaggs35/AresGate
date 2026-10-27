@@ -178,6 +178,23 @@ What every chart does, and a new one must:
 - **Not yet.** A texture for each series (diagonal hatching) for print and forced-colors, which
   the legend and table stand in for until it lands.
 
+## The command palette
+
+Ctrl or ⌘ and K, or the *Search* button in the app bar (an icon alone on a phone, which has no such
+keys), opens `CommandPalette` from any page: a field and a list of what it can do. It is for going
+somewhere without finding the link: every page in the menu, every page of Settings, each group of
+incidents, the theme, and, for a whole IP address typed in, *Find incidents about* it. The list
+comes from `commands.ts`, which reads `navItems` and `settingsSections`, so **a page that adds
+itself to the menu or to Settings is in the palette without anyone touching it**; add a command
+there only for something that is not a page.
+
+It is a dialog with a text field and plain links and buttons, not a custom widget: Enter takes the
+first result, ArrowDown and ArrowUp walk the rows (up from the first goes back to the field), and
+Escape closes it and gives the keyboard back to where it was. How many it found is read out as it
+changes. It opens empty each time, keeps one height so the box does not jump while someone types,
+and is put away when the sign-in ends. Chord shortcuts (such as `g` then `i`) and verdicts from
+the keyboard are not in it yet.
+
 ## Rules for any page
 
 - **Words.** Plain language for the person running a home network: say what happened and what to
