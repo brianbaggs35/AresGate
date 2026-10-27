@@ -43,6 +43,8 @@ class Submission:
     model: str
     base_url: str | None = None
     api_key: str | None = None
+    # ``free`` or ``paid``, for a provider with plans. Left out, the one that is kept stays.
+    plan: str | None = None
 
 
 class Incomplete(Exception):
@@ -109,6 +111,20 @@ def _address(
     return origin.url
 
 
+PLANS = ("free", "paid")
+
+
+def _plan(definition: ProviderDef, text: str | None, problems: dict[str, str]) -> str | None:
+    """The plan to keep, or none to keep the one that is kept."""
+    if text is None:
+        return None
+    if not definition.has_plans:
+        problems["plan"] = f"{definition.label} has no plans."
+    elif text not in PLANS:
+        problems["plan"] = "Choose free or paid."
+    return text
+
+
 def _key(
     db: Session, definition: ProviderDef, text: str | None, problems: dict[str, str]
 ) -> str | None:
@@ -144,6 +160,7 @@ def save(
     )
     base_url = _address(definition, submission.base_url, policy, problems)
     new_key = _key(db, definition, submission.api_key, problems)
+    plan = _plan(definition, submission.plan, problems)
     if problems:
         raise SettingsError(problems)
     row = row_for(db, definition)
@@ -152,6 +169,9 @@ def save(
         db.add(row)
     row.base_url = base_url
     row.model = model
+    # Free until the owner says otherwise: that is what an account starts as.
+    if definition.has_plans:
+        row.plan = plan or row.plan or "free"
     # What the last attempt found was about the old settings.
     row.last_attempt_at = None
     row.last_error = None
@@ -241,12 +261,33 @@ def load_target(
     )
 
 
+def _plan_note(
+    definition: ProviderDef, model: str, plan: str | None, failure: CallFailed | wire.AiFailed
+) -> str:
+    """Why a model was not answered: for a 402 from a provider with plans, what the plan the
+    owner said they have means for the model, and else what the failure says."""
+    if definition.has_plans and getattr(failure, "status", None) == 402:
+        if plan == "paid":
+            return (
+                "Ollama Cloud says payment is required (HTTP 402) for it, though the plan is "
+                "set to paid. Check the plan and the credits at ollama.com/settings/usage."
+            )
+        if model not in definition.free_models:
+            return (
+                f"{model} isn't one of the models free usage credits cover (HTTP 402), so it "
+                f"needs a paid plan. Choose one of {', '.join(definition.free_models)}, or set "
+                "the plan to paid if it is."
+            )
+    return str(failure)
+
+
 async def check(
     target: Target,
     recorder: Recorder,
     policy: AddressPolicy,
     definition: ProviderDef,
     model: str,
+    plan: str | None = None,
 ) -> Verdict:
     """Tests a provider with the least that proves it works: an Ollama is asked what it has and
     then for one token, the others for one token."""
@@ -258,15 +299,23 @@ async def check(
                 count = f"{len(found)} model{'' if len(found) == 1 else 's'}"
                 if not model:
                     return Verdict(True, f"Reached it. It has {count}: choose one to use.")
-                await wire.complete(
-                    client,
-                    definition,
-                    model,
-                    key,
-                    system=TEST_SYSTEM,
-                    prompt=TEST_PROMPT,
-                    max_tokens=1,
-                )
+                try:
+                    await wire.complete(
+                        client,
+                        definition,
+                        model,
+                        key,
+                        system=TEST_SYSTEM,
+                        prompt=TEST_PROMPT,
+                        max_tokens=1,
+                    )
+                except (CallFailed, wire.AiFailed) as failure:
+                    # Listing the models worked, so it is this model that was not answered.
+                    return Verdict(
+                        False,
+                        f"Reached it ({count}), but {model} didn't answer. "
+                        f"{_plan_note(definition, model, plan, failure)}",
+                    )
                 return Verdict(True, f"Reached it ({count}), and {model} answered.")
             answer = await wire.complete(
                 client,

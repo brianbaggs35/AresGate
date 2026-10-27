@@ -116,6 +116,8 @@ const NOT_SET_UP: Pick<
   | 'last_error'
   | 'found'
   | 'found_at'
+  | 'free_models'
+  | 'plan'
 > = {
   configured: false,
   base_url: null,
@@ -127,12 +129,14 @@ const NOT_SET_UP: Pick<
   last_error: null,
   found: [],
   found_at: null,
+  free_models: [],
+  plan: null,
 }
 
 export const anthropic = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   key: 'anthropic',
   label: 'Anthropic',
-  summary: 'Claude models, asked over the internet with an API key.',
+  summary: 'Claude, with an API key from the Claude Console.',
   kind: 'hosted',
   needs_key: true,
   takes_url: false,
@@ -148,7 +152,7 @@ export const anthropic = (overrides: Partial<AiProvider> = {}): AiProvider => ({
 export const openai = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   key: 'openai',
   label: 'OpenAI',
-  summary: 'GPT models, asked over the internet with an API key.',
+  summary: 'GPT, with an API key from the OpenAI platform.',
   kind: 'hosted',
   needs_key: true,
   takes_url: false,
@@ -163,8 +167,9 @@ export const openai = (overrides: Partial<AiProvider> = {}): AiProvider => ({
 
 export const ollama = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   key: 'ollama',
-  label: 'Ollama (your computer)',
-  summary: 'Models that run on a computer of your own.',
+  label: 'Ollama (on your computer)',
+  summary:
+    'Runs models on your own hardware, so nothing leaves your network and nothing is billed.',
   kind: 'local',
   needs_key: false,
   takes_url: true,
@@ -177,10 +182,13 @@ export const ollama = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   ...overrides,
 })
 
+/** The cloud models free usage covers. */
+export const FREE_MODELS = ['gemma4:31b', 'gpt-oss:120b', 'gpt-oss:20b']
+
 export const ollamaCloud = (overrides: Partial<AiProvider> = {}): AiProvider => ({
   key: 'ollama_cloud',
   label: 'Ollama Cloud',
-  summary: 'Models that Ollama runs for you.',
+  summary: "Ollama's hosted models (ollama.com), with a key from your Ollama account.",
   kind: 'cloud',
   needs_key: true,
   takes_url: false,
@@ -190,6 +198,7 @@ export const ollamaCloud = (overrides: Partial<AiProvider> = {}): AiProvider => 
   models: [],
   default_model: null,
   ...NOT_SET_UP,
+  free_models: FREE_MODELS,
   ...overrides,
 })
 
@@ -197,6 +206,7 @@ export const ai = (overrides: Partial<Ai> = {}): Ai => ({
   enabled: false,
   provider: null,
   priced_as_of: '2026-10-27',
-  providers: [anthropic(), openai(), ollama(), ollamaCloud()],
+  free_models_as_of: '2026-10-27',
+  providers: [ollama(), ollamaCloud(), anthropic(), openai()],
   ...overrides,
 })

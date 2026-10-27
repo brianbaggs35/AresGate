@@ -21,8 +21,12 @@ Every release's notes are here, newest first. The format follows
   their prices, including long prompts, cached input and writing to the cache, read from the
   providers' pages. Instructions are marked for the providers to cache, the GPT-6 models are asked
   to think a little and given room for it, and cached and written tokens are counted separately.
-  Ollama has *Fetch models* and *Test connection*,
-  and so has Ollama Cloud once it has a key. API keys are sealed in the credential store and never
+  You choose one of the four as a card and see only its settings. Ollama has *Fetch models*, which
+  fills the model list, and *Test connection*, and so has Ollama Cloud once it has a key; Ollama
+  Cloud also asks whether the account is free or paid, because free accounts can use only some
+  models and Ollama answers 402 Payment Required for the rest, which AresGate now explains. An
+  Ollama on the same computer can be reached at `localhost` outside Docker, and in Docker at
+  `host.docker.internal`, which the message says. API keys are sealed in the credential store and never
   shown again, hosted providers are reached only at their own addresses, and AI is off until you
   turn it on ([DOCS/operations.md](DOCS/operations.md#ai-providers)). It is `GET /api/ai`,
   `PUT` and `DELETE /api/ai/providers/{key}`, `POST` `.../test` and `.../models`, and

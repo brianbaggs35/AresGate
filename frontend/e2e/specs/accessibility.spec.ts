@@ -128,29 +128,59 @@ for (const theme of ['light', 'dark'] as const) {
       })
       await harness.standIn({ kind: 'openai', api_key: 'another-key', provider: 'openai' })
       const ollama = await harness.standIn({ kind: 'ollama', models: ['qwen3:8b', 'llama3.2:3b'] })
+      await harness.standIn({
+        kind: 'ollama',
+        api_key: 'a-cloud-key',
+        models: ['gemma4:31b', 'glm-5.2'],
+        paid: ['glm-5.2'],
+        provider: 'ollama_cloud',
+      })
       await aiSettings.goto()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
+      await expect(aiSettings.choosePrompt).toBeVisible()
       await expectAccessible(page)
 
+      await aiSettings.choose('anthropic')
       await aiSettings.apiKey('anthropic').fill('sk-a-key-for-the-stand-in')
       await aiSettings.test('anthropic').click()
       await expect(aiSettings.status('anthropic')).toHaveText('Connected')
       await aiSettings.enabled.check()
+      await expectAccessible(page)
+
+      await aiSettings.choose('openai')
       await aiSettings.apiKey('openai').fill('the-wrong-key')
       await aiSettings.test('openai').click()
       await expect(aiSettings.lastError('openai')).toBeVisible()
+      await expectAccessible(page)
+
+      await aiSettings.choose('ollama')
       await aiSettings.address('ollama').fill(ollama.url)
       await aiSettings.fetchModels('ollama').click()
       await expect(aiSettings.notice('ollama')).toHaveText('It has 2 models.')
       await expectAccessible(page)
 
-      await aiSettings.model('anthropic').locator('.v-field').click()
+      // The account to choose for Ollama's cloud, and what a free one is offered.
+      await aiSettings.choose('ollama_cloud')
+      await aiSettings.apiKey('ollama_cloud').fill('a-cloud-key')
+      await aiSettings.fetchModels('ollama_cloud').click()
+      await expect(aiSettings.notice('ollama_cloud')).toHaveText('It has 2 models.')
+      await expect(aiSettings.freeModels('ollama_cloud')).toBeVisible()
+      await expectAccessible(page)
+
+      await aiSettings.openModels('ollama_cloud')
+      await expect(aiSettings.modelOptions).toHaveText([/gemma4:31b/])
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+
+      await aiSettings.choose('anthropic')
+      await aiSettings.openModels('anthropic')
       await expect(page.getByRole('option', { name: /Sonnet 5\.5/ })).toBeVisible()
       await expectAccessible(page)
       await page.keyboard.press('Escape')
 
       // A model that is being retired says so, beside its price and how it is cached.
+      await aiSettings.choose('openai')
       await aiSettings.chooseModel('openai', /GPT-5\.4 nano/)
       await expect(aiSettings.price('openai')).toContainText('lists this model as deprecated')
       await expectAccessible(page)

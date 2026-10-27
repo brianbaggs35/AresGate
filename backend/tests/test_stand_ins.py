@@ -655,6 +655,13 @@ class TestAiProviders:
         assert self.ollama(seen("/api/other", **good)).status == 404
         assert stand_ins.ollama("", {"a:1b"})(seen("/api/tags")).status == 200
 
+    def test_an_ollama_model_that_needs_a_plan_is_listed_but_answers_402(self) -> None:
+        handler = stand_ins.ollama("", {"free:1b", "big:675b"}, {"big:675b"})
+
+        assert handler(post("/api/chat", {"model": "big:675b"})).status == 402
+        assert handler(post("/api/chat", {"model": "free:1b"})).status == 200
+        assert handler(seen("/api/tags")).status == 200
+
 
 class TestStandIns:
     def test_ntopng_and_crowdsec_answer_over_plain_http(self, running: StandIns) -> None:

@@ -61,7 +61,12 @@ MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
 
 class AiFailed(Exception):
     """A provider that couldn't be used. The message says why, for whoever is setting it up, and
-    holds nothing the provider said and no secret."""
+    holds nothing the provider said and no secret. ``status`` is the HTTP status it answered
+    with, if it answered."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass(frozen=True)
@@ -126,6 +131,17 @@ def explain(status: int, provider: ProviderDef) -> str:
         if provider.wire is Wire.OLLAMA:
             return "It doesn't have that model. Fetch the models and choose one it has."
         return f"{name} doesn't know that model, or this address. Choose another model."
+    if status == 402:
+        if provider.wire is Wire.OLLAMA:
+            # Ollama's API reference lists no 402. By the meaning of the code, and since the key
+            # was good enough to list the models, it is the plan or the usage that says no.
+            return (
+                f"{name} says payment is required (HTTP 402) for this model. Its API reference "
+                "doesn't list that answer; it most likely means the plan of the account doesn't "
+                "include the model, or the plan's usage is used up. Choose another model, or "
+                "look at the plan on ollama.com."
+            )
+        return f"{name} says payment is required (HTTP 402). Check the account's billing."
     if status == 429:
         return f"{name} is limiting requests, or the account is out of credit (HTTP 429)."
     if status in (400, 413, 422):
@@ -298,7 +314,7 @@ _READERS = {Wire.ANTHROPIC: _anthropic, Wire.OPENAI: _openai, Wire.OLLAMA: _olla
 def read_completion(provider: ProviderDef, reply: Reply) -> Completion:
     """What came back, or ``AiFailed`` saying why there is no answer."""
     if not reply.ok:
-        raise AiFailed(explain(reply.status, provider))
+        raise AiFailed(explain(reply.status, provider), reply.status)
     data = reply.json()
     if not _is_object(data):
         raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
@@ -353,7 +369,7 @@ async def list_models(
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     reply = await client.request("GET", "/api/tags", headers=headers)
     if not reply.ok:
-        raise AiFailed(explain(reply.status, provider))
+        raise AiFailed(explain(reply.status, provider), reply.status)
     data = reply.json()
     if not _is_object(data):
         raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
