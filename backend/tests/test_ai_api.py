@@ -99,11 +99,55 @@ def test_every_provider_is_listed_with_its_models_and_prices(
         "input": 0.1,
         "output": 0.5,
         "cached_input": 0.01,
+        "cache_write": 0.125,
         "long_over": 100000,
         "long_input": 0.5,
         "long_output": 2.5,
+        "long_cached_input": 0.05,
+        "long_cache_write": 0.625,
     }
-    assert openai["models"][0]["price"]["long_over"] is None
+    luna, nano, mini, terra, sol, astra = openai["models"]
+    assert [model["id"] for model in openai["models"]] == [
+        "gpt-6-luna",
+        "gpt-5.4-nano",
+        "gpt-5.4-mini",
+        "gpt-6.1-terra",
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+    ]
+    assert luna["price"]["long_over"] == 272000
+    assert astra["price"] == {
+        "input": 10.0,
+        "output": 50.0,
+        "cached_input": 1.0,
+        "cache_write": 12.5,
+        "long_over": 272000,
+        "long_input": 20.0,
+        "long_output": 75.0,
+        "long_cached_input": 2.0,
+        "long_cache_write": 25.0,
+    }
+    assert mini["price"] == {
+        "input": 0.75,
+        "output": 4.5,
+        "cached_input": 0.075,
+        "cache_write": None,
+        "long_over": None,
+        "long_input": None,
+        "long_output": None,
+        "long_cached_input": None,
+        "long_cache_write": None,
+    }
+    assert [(model["caching"], model["cache_minutes"]) for model in (luna, sol, terra)] == [
+        ("marked", 30)
+    ] * 3
+    assert (anthropic["models"][1]["caching"], anthropic["models"][1]["cache_minutes"]) == (
+        "marked",
+        5,
+    )
+    assert (nano["caching"], nano["cache_minutes"]) == ("automatic", None)
+    assert [model["id"] for model in openai["models"] if model["deprecated"]] == ["gpt-5.4-nano"]
+    assert not any(model["deprecated"] for model in anthropic["models"])
     assert (ollama["kind"], ollama["takes_url"], ollama["needs_key"], ollama["models"]) == (
         "local",
         True,

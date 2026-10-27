@@ -16,8 +16,12 @@ Every release's notes are here, newest first. The format follows
   needs leaves the list. `POST /api/verdicts` now also says what a verdict replaced (`replaced`).
 - **AI providers**: **Settings > AI** sets up Anthropic, OpenAI, Ollama on your own computer and
   Ollama Cloud, tests each with a single token, and turns AI on for one of them. Anthropic starts
-  on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, and the other models they offer are listed with
-  their prices, read from the providers' pages. Ollama has *Fetch models* and *Test connection*,
+  on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, and the other models they offer (Sonnet 5.5, Opus
+  5.5 and Fable 5.1; GPT-5.4 nano and mini, GPT-6.1 Terra and Sol, GPT-6 Astra) are listed with
+  their prices, including long prompts, cached input and writing to the cache, read from the
+  providers' pages. Instructions are marked for the providers to cache, the GPT-6 models are asked
+  to think a little and given room for it, and cached and written tokens are counted separately.
+  Ollama has *Fetch models* and *Test connection*,
   and so has Ollama Cloud once it has a key. API keys are sealed in the credential store and never
   shown again, hosted providers are reached only at their own addresses, and AI is off until you
   turn it on ([DOCS/operations.md](DOCS/operations.md#ai-providers)). It is `GET /api/ai`,

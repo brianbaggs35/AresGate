@@ -29,8 +29,12 @@ test.describe('Settings > AI', () => {
       '$0.10 in, $0.50 out per million tokens',
     )
     await expect(aiSettings.price('anthropic')).toContainText('over 100,000 tokens')
+    await expect(aiSettings.price('anthropic')).toContainText(
+      'Caches the fixed start of each prompt for 5 minutes: $0.01 to read it back and $0.125 to write it',
+    )
     await expect(aiSettings.model('openai')).toContainText('GPT-6 Luna')
     await expect(aiSettings.price('openai')).toContainText('$0.10 in, $0.50 out per million tokens')
+    await expect(aiSettings.price('openai')).toContainText('for 30 minutes')
     await expect(aiSettings.price('anthropic').getByRole('link')).toHaveAttribute(
       'href',
       /^https:\/\/platform\.claude\.com\//,
@@ -49,6 +53,25 @@ test.describe('Settings > AI', () => {
       '$2.00 in, $10.00 out per million tokens',
     )
     await expect(aiSettings.price('anthropic')).not.toContainText('over 100,000 tokens')
+
+    await aiSettings.chooseModel('openai', /GPT-6 Astra/)
+
+    await expect(aiSettings.price('openai')).toContainText(
+      '$10.00 in, $50.00 out per million tokens',
+    )
+    await expect(aiSettings.price('openai')).toContainText('over 272,000 tokens')
+    await expect(aiSettings.price('openai')).not.toContainText('deprecated')
+  })
+
+  test('says that an older model is being retired and caches by itself', async ({ aiSettings }) => {
+    await aiSettings.goto()
+
+    await aiSettings.chooseModel('openai', /GPT-5\.4 nano/)
+
+    await expect(aiSettings.price('openai')).toContainText(
+      'OpenAI lists this model as deprecated, so it will be retired',
+    )
+    await expect(aiSettings.price('openai')).toContainText('by itself at no extra charge')
   })
 
   test('tests a provider with a key, keeps the key out of sight and turns AI on', async ({

@@ -933,8 +933,9 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
 
 
 def openai(api_key: str, models: Collection[str] = ()) -> Handler:
-    """OpenAI's Responses API: a bearer key, at least 16 output tokens asked for, and an answer
-    that says how it ended with the tokens counted in ``usage``."""
+    """OpenAI's Responses API: a bearer key, at least 16 output tokens asked for, no reasoning
+    effort "none" for the models that can't do without, and an answer that says how it ended with
+    the tokens counted in ``usage``."""
 
     def handle(seen: Seen) -> Answer:
         if seen.path != "/v1/responses" or seen.method != "POST":
@@ -946,6 +947,10 @@ def openai(api_key: str, models: Collection[str] = ()) -> Handler:
         asked = json.loads(seen.body)
         limit = asked.get("max_output_tokens")
         if asked.get("model") not in models or not isinstance(limit, int) or limit < 16:
+            return _json({"error": {"type": "invalid_request_error"}}, 400)
+        # Astra and Sol always think, and are refused when asked not to.
+        reasoning = cast("dict[str, object]", asked.get("reasoning") or {})
+        if reasoning.get("effort") == "none" and asked["model"] in {"gpt-6-astra", "gpt-6.1-sol"}:
             return _json({"error": {"type": "invalid_request_error"}}, 400)
         return _json(
             {

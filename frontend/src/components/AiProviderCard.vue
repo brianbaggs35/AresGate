@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { CircleCheck, ExternalLink, FlaskConical, ListRestart, Save, Trash2 } from '@lucide/vue'
+import {
+  CircleCheck,
+  ExternalLink,
+  FlaskConical,
+  ListRestart,
+  Save,
+  Trash2,
+  TriangleAlert,
+} from '@lucide/vue'
 import { computed, reactive, ref } from 'vue'
 
 import {
@@ -12,14 +20,13 @@ import {
 } from '@/api/ai'
 import { ApiError, errorMessage } from '@/api/client'
 import {
-  ASSUMED_TOKENS,
   FIELD_ORDER,
+  cachingNote,
   canTest,
   describePrice,
   draftFrom,
-  formatUsd,
+  estimateNote,
   foundItems,
-  incidentCost,
   isChanged,
   longPromptNote,
   modelItems,
@@ -243,16 +250,27 @@ async function forget() {
 
       <div v-if="chosen" class="provider__price" data-test="provider-price">
         <p class="text-body-large">{{ describePrice(chosen.price) }}.</p>
-        <p v-if="chosen.price.cached_input !== null" class="text-body-medium text-medium-emphasis">
-          Input it already had cached costs {{ formatUsd(chosen.price.cached_input) }}.
+        <p
+          v-if="cachingNote(chosen)"
+          class="text-body-medium text-medium-emphasis"
+          data-test="provider-caching"
+        >
+          {{ cachingNote(chosen) }}
         </p>
         <p v-if="longPromptNote(chosen.price)" class="text-body-medium text-medium-emphasis">
           {{ longPromptNote(chosen.price) }}
         </p>
         <p class="text-body-medium text-medium-emphasis" data-test="provider-estimate">
-          Reading one incident is about {{ formatUsd(incidentCost(chosen.price)) }}, taking
-          {{ formatCount(ASSUMED_TOKENS.input) }} tokens in and
-          {{ formatCount(ASSUMED_TOKENS.output) }} out as a guess.
+          {{ estimateNote(chosen) }}
+        </p>
+        <p
+          v-if="chosen.deprecated"
+          class="provider__deprecated text-body-medium"
+          data-test="provider-deprecated"
+        >
+          <TriangleAlert :size="16" aria-hidden="true" />
+          {{ provider.label }} lists this model as deprecated, so it will be retired. Choose another
+          when you can.
         </p>
         <p v-if="provider.pricing_url" class="text-body-medium text-medium-emphasis">
           Prices from
@@ -388,6 +406,18 @@ async function forget() {
 
 .provider__price p {
   margin: 0;
+}
+
+.provider__deprecated {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.provider__deprecated svg {
+  flex: none;
+  margin-top: 0.15rem;
+  color: rgb(var(--v-theme-warning));
 }
 
 .provider__notice {

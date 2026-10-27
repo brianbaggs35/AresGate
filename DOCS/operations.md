@@ -496,13 +496,37 @@ AresGate works without it. A test sends only the words "Say OK."
   leaves your network and it costs nothing to ask; Ollama Cloud is the same API run by Ollama,
   with a key from ollama.com.
 - **Models and prices.** Anthropic starts on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, the
-  cheap, fast models that fit reading every incident, and each offers its larger models, with what
-  they cost per million tokens (and for Haiku, what a prompt over 100,000 tokens costs), what
-  cached input costs, and a rough price for reading one incident. The prices were read from the
-  providers' own pages (Anthropic's pricing page and OpenAI's pricing page) on the date the page
-  shows, and are in `backend/app/ai/catalog.py`: check them there when a provider changes its
-  prices. The estimate assumes about 3,000 tokens in and 600 out for one incident; the usage page
-  shows what was really used.
+  cheap, fast models that fit reading every incident. Anthropic also offers Sonnet 5.5, Opus 5.5
+  and Fable 5.1, and OpenAI GPT-5.4 nano, GPT-5.4 mini, GPT-6.1 Terra, GPT-6.1 Sol and GPT-6
+  Astra (nano is marked deprecated by OpenAI, and the page says so). Each is listed with what it
+  costs per million tokens in and out, what a long prompt costs for the models that charge more
+  for one (Haiku over 100,000 tokens, the GPT-6 models over 272,000), what input costs that the
+  provider already has cached and what it costs to have it cached, and a rough price for reading
+  one incident, also with the cache warm. The prices were read from the providers' own pages
+  (Anthropic's pricing and prompt caching pages, OpenAI's pricing and prompt caching pages) on
+  the date the page shows, and are in `backend/app/ai/catalog.py`: check them there when a
+  provider changes its prices. The estimate assumes about 3,000 tokens in, 1,500 of them the
+  same every time, and 600 out for one incident; the usage page shows what was really used.
+- **Caching.** The instructions that start every request are the same each time, so a provider
+  can keep them and charge much less to read them again. AresGate ends them with a marker the
+  provider understands, from the lengths each provider documents (512 tokens for Claude, 1,024
+  for the GPT-6 models): Anthropic's `cache_control` on the last block of `system`, kept for five
+  minutes, and OpenAI's explicit `prompt_cache_breakpoint` with `prompt_cache_options` kept for 30
+  minutes, which puts the instructions in a developer message because top-level `instructions`
+  can't carry one. What follows the marker, the incident, is never written to the cache and costs
+  the plain rate. GPT-5.4 mini and nano only cache by themselves, for nothing extra, and are
+  helped by a `prompt_cache_key`. Writing to a cache costs 1.25 times the plain input price for
+  those lifetimes, so the first request of a burst costs a little more and the rest cost much
+  less; every answer's cached and written tokens are counted, and a cost is worked out from them.
+  Anthropic's page says a marker on a start shorter than the minimum is ignored without an
+  error; OpenAI's pages don't say, so a start that looks too short for either (by a rule of
+  thumb of 4 characters to the token) isn't marked. The minimum for the GPT-5.4 models varies with
+  the request, according to OpenAI's page, so they aren't given one.
+- **Thinking.** The GPT-6 models think before they answer, and the thinking counts against the
+  tokens the answer may have (an answer that runs out first has status `incomplete`) and is
+  billed as output. AresGate asks them to think a little (`reasoning.effort` `low`, which every
+  one takes: Astra and Sol refuse `none`) and adds room for it to the limit. GPT-5.4 mini and
+  nano don't think unless asked. Claude models are asked as before.
 - **Ollama.** Give the address it listens on, such as `http://192.168.1.50:11434`: not
   `localhost`, which for AresGate's container is the container itself, and an address on your own
   network (the ranges 10.x, 172.16-31.x and 192.168.x), since AresGate refuses to reach anywhere

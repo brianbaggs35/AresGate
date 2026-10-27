@@ -2,7 +2,10 @@ import {
   ASSUMED_TOKENS,
   canTest,
   describeFound,
+  cachedIncidentCost,
+  cachingNote,
   describePrice,
+  estimateNote,
   draftFrom,
   foundItems,
   formatUsd,
@@ -16,7 +19,17 @@ import {
   providerFieldId,
   settingsFrom,
 } from '@/ai'
-import { HAIKU, LUNA, SONNET, anthropic, ollama, ollamaCloud, openai } from '@/test/ai'
+import {
+  HAIKU,
+  LUNA,
+  NANO,
+  SONNET,
+  UNCACHED,
+  anthropic,
+  ollama,
+  ollamaCloud,
+  openai,
+} from '@/test/ai'
 
 describe('prices', () => {
   it('writes dollars with the decimals a price needs', () => {
@@ -37,9 +50,56 @@ describe('prices', () => {
   })
 
   it('works out a reading of one incident from the tokens it is assumed to take', () => {
-    expect(ASSUMED_TOKENS).toEqual({ input: 3000, output: 600 })
+    expect(ASSUMED_TOKENS).toEqual({ input: 3000, fixed: 1500, output: 600 })
     expect(incidentCost(HAIKU.price)).toBeCloseTo(0.0006)
     expect(incidentCost(SONNET.price)).toBeCloseTo(0.012)
+  })
+
+  it('works out a reading with the fixed part of what goes in already cached', () => {
+    expect(incidentCost(HAIKU.price, true)).toBeCloseTo(0.000465)
+    expect(incidentCost(SONNET.price, true)).toBeCloseTo(0.00915)
+    // A price without a cached rate reads the fixed part at the full rate.
+    expect(incidentCost(UNCACHED.price, true)).toBeCloseTo(incidentCost(UNCACHED.price))
+  })
+
+  it('has a cached reading only for a model that caches and has a price for reading the cache', () => {
+    expect(cachedIncidentCost(HAIKU)).toBeCloseTo(0.000465)
+    expect(cachedIncidentCost(NANO)).toBeCloseTo(0.00108)
+    expect(cachedIncidentCost(UNCACHED)).toBeNull()
+    expect(
+      cachedIncidentCost({ ...HAIKU, price: { ...HAIKU.price, cached_input: null } }),
+    ).toBeNull()
+  })
+
+  it('says what reading an incident costs, and what it costs with the cache warm', () => {
+    expect(estimateNote(HAIKU, 'en-US')).toBe(
+      'Reading one incident is about $0.0006, taking 3,000 tokens in and 600 out as a guess. With the cache warm, so that the 1,500 tokens of instructions are read from it, about $0.0005.',
+    )
+    expect(estimateNote(UNCACHED, 'en-US')).toBe(
+      'Reading one incident is about $0.0042, taking 3,000 tokens in and 600 out as a guess.',
+    )
+  })
+
+  it('says how a model is cached and what that costs', () => {
+    expect(cachingNote(HAIKU, 'en-US')).toBe(
+      'Caches the fixed start of each prompt for 5 minutes: $0.01 to read it back and $0.125 to write it, per million tokens.',
+    )
+    expect(cachingNote(LUNA, 'en-US')).toContain('for 30 minutes')
+    expect(cachingNote(NANO, 'en-US')).toBe(
+      'Caches the start of a long prompt by itself at no extra charge: input it already had cached costs $0.02 per million tokens.',
+    )
+  })
+
+  it('leaves out what a cached model has no price or time for, and says nothing for one that is not cached', () => {
+    const bare = { ...HAIKU, cache_minutes: null, price: { ...HAIKU.price, cache_write: null } }
+
+    expect(cachingNote(bare, 'en-US')).toBe(
+      'Caches the fixed start of each prompt: $0.01 to read it back, per million tokens.',
+    )
+    expect(cachingNote(UNCACHED, 'en-US')).toBeNull()
+    expect(
+      cachingNote({ ...HAIKU, price: { ...HAIKU.price, cached_input: null } }, 'en-US'),
+    ).toBeNull()
   })
 
   it('puts the price and the estimate under a model', () => {
@@ -50,6 +110,9 @@ describe('prices', () => {
 
   it('says what a long prompt costs, if it costs more', () => {
     expect(longPromptNote(HAIKU.price, 'en-US')).toBe(
+      'A prompt over 100,000 tokens costs $0.50 in and $2.50 out, and $0.05 for input already cached.',
+    )
+    expect(longPromptNote({ ...HAIKU.price, long_cached_input: null }, 'en-US')).toBe(
       'A prompt over 100,000 tokens costs $0.50 in and $2.50 out.',
     )
     expect(longPromptNote(SONNET.price, 'en-US')).toBeNull()

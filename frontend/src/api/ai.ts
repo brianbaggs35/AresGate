@@ -11,11 +11,19 @@ export interface Price {
   output: number
   /** What input costs when the provider already had it cached, if it says. */
   cached_input: number | null
+  /** What input costs to have the provider cache it, for the model's `cache_minutes`. */
+  cache_write: number | null
   /** Some models cost more for a prompt longer than this many tokens, and what that costs. */
   long_over: number | null
   long_input: number | null
   long_output: number | null
+  long_cached_input: number | null
+  long_cache_write: number | null
 }
+
+/** How the start of a prompt is cached: AresGate marks where it ends and the provider keeps it
+ * for a while (`marked`), the provider does it by itself (`automatic`), or it isn't cached. */
+export type Caching = 'none' | 'automatic' | 'marked'
 
 /** A model that can be chosen, by the name the provider's API knows it by. */
 export interface ModelChoice {
@@ -24,6 +32,11 @@ export interface ModelChoice {
   /** What it is for, in a few words. */
   note: string
   price: Price
+  caching: Caching
+  /** How long the provider keeps what it was asked to cache, for a model that is marked. */
+  cache_minutes: number | null
+  /** The provider has said it will retire the model. */
+  deprecated: boolean
 }
 
 /** A model an Ollama said it has. */
