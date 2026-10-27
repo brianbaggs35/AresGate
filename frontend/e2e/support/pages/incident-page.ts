@@ -31,6 +31,12 @@ export class IncidentPage {
   readonly why: Locator
   readonly verdictNotice: Locator
   readonly verdictError: Locator
+  /** Why its signals are one incident: the lines, the kind of activity, the waves and ports. */
+  readonly groupingCard: Locator
+  readonly grouping: Locator
+  readonly waves: Locator
+  readonly ports: Locator
+  readonly showMorePorts: Locator
   /** The chart of signals over time, and the timeline. */
   readonly spreadCard: Locator
   readonly timelineCard: Locator
@@ -66,6 +72,11 @@ export class IncidentPage {
     this.why = page.getByTestId('verdict-note').locator('input')
     this.verdictNotice = page.getByTestId('verdict-notice')
     this.verdictError = page.getByTestId('verdict-error')
+    this.groupingCard = page.getByTestId('grouping-card')
+    this.grouping = page.getByTestId('grouping-line')
+    this.waves = page.getByTestId('waves')
+    this.ports = page.getByTestId('port')
+    this.showMorePorts = page.getByTestId('ports-show-more')
     this.spreadCard = page.getByTestId('spread-card')
     this.timelineCard = page.getByTestId('timeline-card')
     this.signals = page.getByTestId('signal')

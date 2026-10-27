@@ -33,6 +33,11 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     status_changed_at: null,
     verdict: null,
     verdict_counts: {},
+    activities: [],
+    waves: 1,
+    port_count: 0,
+    ports_capped: false,
+    neighbours: 0,
     ...changes,
   }
 }
@@ -112,6 +117,11 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
         protocol: null,
       }),
     ],
+    grouping: [
+      'Everything in it is about 93.184.216.34, whichever program saw it.',
+      'Each brute force signal came less than 6 hours after the one before it. A longer quiet, or more than 24 hours in all, starts another incident.',
+    ],
+    ports: [22],
     devices: [device()],
     blocked: 12,
     ...changes,

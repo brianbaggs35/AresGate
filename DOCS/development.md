@@ -181,6 +181,16 @@ overlapping.
 - **What it is about** is `subject.subject_of`: the address of interest, or `rule:<source>:<rule>`
   for a signal that names none. Changing it changes which incidents later signals join, not
   the ones filed.
+- **Episodes** are `episode.py`: what makes signals one incident. `activity_of` reads a signal's
+  signature and summary as a scan or a brute force, `gap_of` is how long the quiet may be for
+  it, `block_of` is the /24 or /64 that its neighbours share (none for a private address),
+  `MAX_SPAN` ends an incident after a day, and `waves_of`, `with_ports` and `explain` build what
+  an incident says about its own grouping. `engine._current` looks for the incident of the same
+  subject, then of the same block for the activities in `episode.GROUPED`, and
+  `engine._consolidate` merges incidents that turn out to be one episode. To group another kind
+  of activity, add its patterns and gap there, add it to `GROUPED` and cover it in
+  `tests/test_incidents_episode.py`. The e2e factory takes `scan`, `neighbours`, `waves` and
+  `ports` to make a sweep.
 - **How sure** is `rules.assess`: a list of `Reason(rule, points, text)` that is stored on the
   incident (`incidents.reasons`) next to the confidence it adds up to. To add a rule, add its
   reason there, give `Facts` what it needs (an incident keeps the totals it needs, so scoring

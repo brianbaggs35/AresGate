@@ -21,12 +21,13 @@ def correlate_once(new_session: Callable[[], Session]) -> engine.Result:
     with new_session() as db:
         result = engine.correlate(db, utcnow())
         db.commit()
-    if result.events:
+    if result.events or result.merged:
         logger.info(
-            "Filed %d signals: %d new incidents, %d updated",
+            "Filed %d signals: %d new incidents, %d updated, %d merged",
             result.events,
             result.created,
             result.updated,
+            result.merged,
         )
     return result
 

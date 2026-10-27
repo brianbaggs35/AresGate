@@ -226,6 +226,56 @@ describe('IncidentView', () => {
     })
   })
 
+  describe('why the signals are one incident', () => {
+    it('says it in a line to a fact', async () => {
+      const { wrapper, text } = await open()
+
+      expect(text('grouping-card')).toContain('Why these signals are one incident')
+      const lines = wrapper.findAll('[data-test="grouping-line"]')
+      expect(lines).toHaveLength(2)
+      expect(lines[0]?.text()).toBe(
+        'Everything in it is about 93.184.216.34, whichever program saw it.',
+      )
+    })
+
+    it('says what the activity was and how many waves it came in', async () => {
+      const { find, text } = await open({
+        found: detail({ activities: ['scan'], waves: 3, ports: [22, 80, 443] }),
+      })
+
+      expect(text('grouping-activity-scan')).toBe('Scanning')
+      expect(text('waves')).toBe('3 waves')
+      expect(find('ports-title').text()).toBe('The 3 ports it touched')
+    })
+
+    it('says nothing of waves for one that came in a single burst', async () => {
+      const { find, text } = await open({ found: detail({ activities: ['brute_force'] }) })
+
+      expect(text('grouping-activity-brute_force')).toBe('Brute force')
+      expect(find('waves').exists()).toBe(false)
+    })
+
+    it('says the waves of an incident whose signals say nothing of what it was', async () => {
+      const { find, text } = await open({ found: detail({ waves: 2 }) })
+
+      expect(text('waves')).toBe('2 waves')
+      expect(find('grouping-activity-scan').exists()).toBe(false)
+    })
+
+    it('has no chips for an incident of no particular activity in one wave', async () => {
+      const { find } = await open()
+
+      expect(find('waves').exists()).toBe(false)
+      expect(find('grouping-activity-scan').exists()).toBe(false)
+    })
+
+    it('has no list of ports when it touched only the one', async () => {
+      const { find } = await open()
+
+      expect(find('ports').exists()).toBe(false)
+    })
+  })
+
   describe('the chart of signals over time', () => {
     it('counts them by program, and says how wide a bar is', async () => {
       const { wrapper, text } = await open()

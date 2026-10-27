@@ -84,6 +84,13 @@ export interface IncidentRequest {
   device?: string
   device_name?: string
   status?: 'open' | 'investigating' | 'resolved' | 'dismissed'
+  /** Makes every signal a port scan (the first is a brute force otherwise), as a bot sweeping the
+   * network would send, from the address and this many of its neighbours of the same /24 in
+   * turn, in this many bursts, over these ports in turn. */
+  scan?: boolean
+  neighbours?: number
+  waves?: number
+  ports?: number[]
 }
 
 /** How much `createIncidents()` stored. */

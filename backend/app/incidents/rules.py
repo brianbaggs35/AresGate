@@ -70,6 +70,8 @@ class Facts:
     muted: int = 0
     # How many signals the owner said are a real threat.
     threats: int = 0
+    # The block of addresses the incident is about, where it names more than one address of it.
+    block: str | None = None
 
 
 @dataclass(frozen=True)
@@ -186,8 +188,6 @@ def title_of(facts: Facts) -> str:
     """What the incident is called in a list: what its strongest signal said, and who it is
     about unless that is already in it."""
     said = facts.top_summary
-    if facts.subject.startswith("rule:") or facts.subject in said:
-        title = said
-    else:
-        title = f"{said} ({facts.subject})"
+    about = facts.block or facts.subject
+    title = said if about.startswith("rule:") or about in said else f"{said} ({about})"
     return title if len(title) <= MAX_TITLE else f"{title[: MAX_TITLE - 1]}…"
