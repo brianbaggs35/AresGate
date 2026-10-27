@@ -188,7 +188,7 @@ async function forget() {
         v-model="draft.baseUrl"
         label="Address"
         placeholder="http://192.168.1.50:11434"
-        hint="Where Ollama listens, with http:// and the port, such as http://192.168.1.50:11434. If Ollama is on the computer that runs AresGate in Docker, use http://host.docker.internal:11434: inside the container, localhost is the container itself. Ollama listens only on its own computer until it is told otherwise (OLLAMA_HOST)."
+        hint="Where Ollama listens, with http:// and the port."
         persistent-hint
         inputmode="url"
         autocomplete="off"
@@ -197,6 +197,15 @@ async function forget() {
         :error-messages="problems.base_url"
         data-test="provider-url"
       />
+      <p
+        v-if="provider.takes_url"
+        class="text-body-medium text-medium-emphasis provider__make-key"
+        data-test="provider-url-help"
+      >
+        On the computer that runs AresGate, outside Docker, use http://localhost:11434. In Docker,
+        localhost is the container itself, so use http://host.docker.internal:11434. Ollama listens
+        only on its own computer until it is told otherwise (OLLAMA_HOST).
+      </p>
 
       <template v-if="provider.needs_key">
         <SecretField
