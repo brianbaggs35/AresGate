@@ -713,6 +713,37 @@ test.describe('integrations', () => {
       expect((await harness.rowCounts()).events).toBe(5)
     })
 
+    test('reads the bans and alerts of the CrowdSec plugin as well when it is installed', async ({
+      harness,
+      integration,
+    }) => {
+      await connectFirewall(harness, integration, ['crowdsec'])
+
+      await harness.setWorker('running')
+      await harness.runCollectors()
+      await integration.collectionRefresh.click()
+
+      await expect(integration.collectors).toHaveCount(9)
+      await expect(integration.collectors).toContainText([
+        'Connection check',
+        'Devices (ARP table)',
+        'Processor use',
+        'CrowdSec alerts (plugin)',
+        'CrowdSec bans (plugin)',
+        'Firewall log',
+        'Gateways',
+        'Interface traffic',
+        'System health',
+      ])
+      await expect(integration.collectorStates).toHaveText(new Array(9).fill('Working'))
+      await expect(integration.collectorErrors).toHaveCount(0)
+      // Three lines of the firewall's log, two bans (not the one from the community blocklist or
+      // the one that has run out) and two alerts, kept once however often they are read.
+      expect((await harness.rowCounts()).events).toBe(7)
+      await harness.runCollectors()
+      expect((await harness.rowCounts()).events).toBe(7)
+    })
+
     test('lists the devices that hold leases from its DHCP servers as well when they are installed', async ({
       harness,
       integration,

@@ -34,7 +34,8 @@ PRODUCT = "CrowdSec"
 SOURCE = "crowdsec"
 CONNECTION = "lapi"
 # The origins of the decisions that are about this network.
-ORIGINS = "crowdsec,cscli,cscli-import,console"
+LOCAL_ORIGINS = ("crowdsec", "cscli", "cscli-import", "console")
+ORIGINS = ",".join(LOCAL_ORIGINS)
 # The most decisions one run keeps. A home network gets a handful.
 LIMIT = 1000
 ACTIVE = "decisions.active"
@@ -102,22 +103,48 @@ def _event(decision: Mapping[str, object], seen_at: datetime) -> NewEvent | None
     number, value = _text(decision, "id"), _text(decision, "value")
     if not number or not value:
         return None
-    scope, scenario = _text(decision, "scope"), _text(decision, "scenario")
-    kind = _text(decision, "type").lower() or "ban"
-    simulated = decision.get("simulated") is True
+    return decision_event(
+        number=number,
+        scope=_text(decision, "scope"),
+        value=value,
+        kind=_text(decision, "type").lower() or "ban",
+        scenario=_text(decision, "scenario"),
+        duration=_text(decision, "duration"),
+        simulated=decision.get("simulated") is True,
+        seen_at=seen_at,
+        connection=CONNECTION,
+        raw=dict(decision),
+    )
+
+
+def decision_event(
+    *,
+    number: str,
+    scope: str,
+    value: str,
+    kind: str,
+    scenario: str,
+    duration: str,
+    simulated: bool,
+    seen_at: datetime,
+    connection: str,
+    raw: Mapping[str, object],
+) -> NewEvent:
+    """One decision as an event, however it was read: the same decision is the same event, so
+    reading it through the local API and through OPNsense's plugin keeps it once."""
     return NewEvent(
         source=SOURCE,
-        connection=CONNECTION,
+        connection=connection,
         kind="decision",
         severity=_severity(kind, simulated),
         occurred_at=seen_at,
         # A number CrowdSec starts again from if its database is lost isn't enough on its own.
         identity=(number, scope.lower(), value, scenario),
-        summary=_summary(kind, value, _text(decision, "duration"), scenario, simulated),
+        summary=_summary(kind, value, duration, scenario, simulated),
         signature=scenario or None,
         # What was banned is the source of the attack, when it is an address.
         src_address=value if scope.lower() == "ip" else None,
-        raw=dict(decision),
+        raw=raw,
     )
 
 

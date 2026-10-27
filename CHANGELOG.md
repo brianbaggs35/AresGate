@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The CrowdSec plugin on OPNsense is read**: if the plugin is installed, AresGate reads its bans
+  and its alerts every minute through the OPNsense connection that exists, with no second key. A
+  ban is the same event as the one the standalone CrowdSec integration stores, so an attacker
+  read both ways is one, and the number banned now is kept as a metric. An alert is dated by its
+  own time and says the scenario, the address and where it is. The user needs OPNsense's
+  **CrowdSec** privilege, which also allows changing the plugin, and what the Collection card
+  shows without it is in [DOCS/integrations.md](DOCS/integrations.md#crowdsec-on-opnsense).
 - **Incidents flagged on the traffic chart**: the dashboard's traffic chart has a flag above it
   for each incident that began in the day or week and was medium or worse, with a dashed line down
   to the time, so a spike can be read against what was going on. A flag links to its incident
@@ -216,6 +223,10 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- Two collectors storing events at the moment a new week begins could wait for each other and one
+  of them fail that run: a collector that stores events it has not seen before (the CrowdSec
+  bans) read what was stored before taking the lock that making the week takes, which makes the
+  week wait for every reader to finish. It takes the lock first now.
 - Creating the account with the setup code failed with "The request didn't come from AresGate"
   when AresGate was opened at `https://localhost` and `ARESGATE_SERVER_NAME` was a name of your
   own, because only the server name was accepted. `https://localhost` now works whatever the

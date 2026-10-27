@@ -10,6 +10,7 @@ from app.collectors.ntopng.hosts import Hosts
 from app.collectors.ntopng.interface import InterfaceTraffic as NtopngInterfaceTraffic
 from app.collectors.opnsense.arp_table import ArpTable
 from app.collectors.opnsense.cpu_usage import CpuUsage
+from app.collectors.opnsense.crowdsec import PluginAlerts, PluginDecisions
 from app.collectors.opnsense.dnsmasq_leases import DnsmasqLeases
 from app.collectors.opnsense.firewall_log import FirewallLog
 from app.collectors.opnsense.gateway_status import GatewayStatus
@@ -24,6 +25,8 @@ COLLECTORS: Sequence[Collector] = (
     ConnectionCheck(),
     FirewallLog(),
     SuricataAlerts(),
+    PluginDecisions(),
+    PluginAlerts(),
     SystemHealth(),
     CpuUsage(),
     InterfaceTraffic(),

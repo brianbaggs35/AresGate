@@ -54,6 +54,10 @@ def record_unseen(
     again. The caller commits."""
     if not events:
         return 0
+    # Under the lock before reading anything of events, not after: making the week of a new event
+    # waits for everything that has read events to finish, so a reader waiting for the lock
+    # behind it would wait for each other.
+    EVENTS.lock(db)
     kept = retention.load(db, settings)
     wanted: dict[str, set[str]] = {}
     for event in events:

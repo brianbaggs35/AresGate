@@ -636,7 +636,7 @@ def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_
             "kind": "opnsense",
             "api_key": "k",
             "api_secret": "s",
-            "services": ["suricata", "dnsmasq", "kea"],
+            "services": ["suricata", "dnsmasq", "kea", "crowdsec"],
         },
     ).json()
     service.save(
@@ -667,6 +667,8 @@ def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_
         "connection-check",
         "opnsense-arp-table",
         "opnsense-cpu-usage",
+        "opnsense-crowdsec-alerts",
+        "opnsense-crowdsec-decisions",
         "opnsense-dnsmasq-leases",
         "opnsense-firewall-log",
         "opnsense-gateway-status",
@@ -679,12 +681,16 @@ def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_
     # The second run read the same lines and alerts and found them stored already.
     assert records["opnsense-firewall-log"].last_items == 0
     assert records["opnsense-suricata-alerts"].last_items == 0
+    assert records["opnsense-crowdsec-alerts"].last_items == 0
+    assert records["opnsense-crowdsec-decisions"].last_items == 0
     # Each run measures again, so what it read is new, and lists the devices again.
     assert {
         key: item.last_items for key, item in records.items() if key.startswith("opnsense-")
     } == {
         "opnsense-arp-table": 3,
         "opnsense-cpu-usage": 1,
+        "opnsense-crowdsec-alerts": 0,
+        "opnsense-crowdsec-decisions": 0,
         "opnsense-dnsmasq-leases": 2,
         "opnsense-firewall-log": 0,
         "opnsense-kea-leases": 1,
@@ -694,10 +700,11 @@ def test_the_collectors_read_the_log_alerts_metrics_and_devices_of_the_opnsense_
         "opnsense-system-health": 9,
     }
     counts = e2e.get("/api/__test__/database/counts").json()
-    # Three lines of the firewall's log and two alerts.
-    assert counts["events"] == 5
-    # 28 things measured, twice.
-    assert (counts["metric_series"], counts["metric_samples"]) == (28, 56)
+    # Three lines of the firewall's log, two alerts of Suricata, two bans of CrowdSec (not the one
+    # from the community blocklist or the one that ran out) and two alerts of CrowdSec.
+    assert counts["events"] == 9
+    # 29 things measured, twice: the bans in force are one of them.
+    assert (counts["metric_series"], counts["metric_samples"]) == (29, 58)
     # Three devices in the ARP table, two with leases from Dnsmasq (one of them the laptop that is
     # in the table too) and one from Kea, each with one address.
     assert (counts["devices"], counts["device_addresses"]) == (5, 5)

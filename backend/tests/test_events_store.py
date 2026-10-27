@@ -1,8 +1,9 @@
 import dataclasses
+import re
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -206,6 +207,27 @@ class TestRecordingWhatWasntSeen:
         session.commit()
 
         assert len(stored(session)) == 4
+
+    def test_it_takes_the_lock_before_it_reads_what_is_stored(
+        self, session: Session, settings: Settings
+    ) -> None:
+        # Making the week of a new event waits for every reader of events to finish, so a reader
+        # that then waits for the lock, which that holds, is a deadlock.
+        statements: list[str] = []
+
+        def watch(*arguments: object) -> None:
+            statements.append(str(arguments[2]))
+
+        bind = session.get_bind()
+        event.listen(bind, "before_cursor_execute", watch)
+        try:
+            record_unseen(session, settings, [new_event(occurred_at=NOW)], NOW)
+        finally:
+            event.remove(bind, "before_cursor_execute", watch)
+
+        lock = next(at for at, text in enumerate(statements) if "pg_advisory_xact_lock" in text)
+        read = next(at for at, text in enumerate(statements) if re.search(r"FROM events\b", text))
+        assert lock < read
 
     def test_nothing_to_store_stores_nothing(self, session: Session, settings: Settings) -> None:
         assert record_unseen(session, settings, [], NOW) == 0

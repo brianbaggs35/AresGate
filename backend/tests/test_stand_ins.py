@@ -478,6 +478,71 @@ class TestOpnsenseSuricataAlerts:
         assert self.handler()(asked).status == 401
 
 
+class TestOpnsenseCrowdsecPlugin:
+    credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
+    decisions: ClassVar[list[dict[str, object]]] = [{"id": "1"}, {"id": "2"}]
+    alerts: ClassVar[list[dict[str, object]]] = [{"id": "9"}]
+
+    def handler(self, services: tuple[str, ...] = ("crowdsec",)) -> Handler:
+        return stand_ins.opnsense(
+            "a-key",
+            "a-secret",
+            services,
+            crowdsec_decisions=self.decisions,
+            crowdsec_alerts=self.alerts,
+        )
+
+    @staticmethod
+    def search(table: str, rows: object | None = None, method: str = "POST") -> Seen:
+        body = b"" if rows is None else json.dumps({"rowCount": rows}).encode()
+        return Seen(
+            method, f"/api/crowdsec/{table}/search", TestOpnsenseCrowdsecPlugin.credentials, body
+        )
+
+    def test_each_table_answers_with_its_rows_up_to_the_rows_asked_for(self) -> None:
+        decisions = self.handler()(self.search("decisions", 10))
+        one = self.handler()(self.search("decisions", 1))
+        alerts = self.handler()(self.search("alerts", 10))
+
+        assert (decisions.status, body(decisions)["rows"]) == (200, self.decisions)
+        assert (body(decisions)["total"], body(decisions)["rowCount"]) == (2, 2)
+        assert (body(one)["rows"], body(one)["total"]) == (self.decisions[:1], 2)
+        assert body(alerts)["rows"] == self.alerts
+
+    def test_a_search_that_doesnt_say_how_many_rows_gets_all_of_them(self) -> None:
+        assert body(self.handler()(self.search("decisions")))["rows"] == self.decisions
+
+    def test_asked_any_other_way_it_answers_with_an_empty_table(self) -> None:
+        answer = self.handler()(self.search("decisions", 10, method="GET"))
+
+        assert (answer.status, body(answer)["rows"]) == (200, [])
+
+    def test_without_the_plugin_it_is_not_there(self) -> None:
+        for table in ("decisions", "alerts"):
+            assert self.handler(())(self.search(table, 10)).status == 404
+
+    def test_the_plugin_is_running_when_it_is_installed(self) -> None:
+        answer = self.handler()(seen("/api/crowdsec/service/status", **self.credentials))
+
+        assert (answer.status, body(answer)) == (200, {"status": "running"})
+
+    def test_it_needs_the_key_too(self) -> None:
+        asked = Seen("POST", "/api/crowdsec/alerts/search", {}, b"")
+
+        assert self.handler()(asked).status == 401
+
+    def test_its_samples_are_the_plugins_rows(self) -> None:
+        decisions = stand_ins.sample_crowdsec_plugin_decisions()
+        alerts = stand_ins.sample_crowdsec_plugin_alerts()
+
+        # The same attacker as the standalone sample bans, so it is one when both are read.
+        assert decisions[0]["id"] == str(stand_ins.sample_crowdsec_decisions()[0]["id"])
+        assert [row["source"] for row in decisions] == ["crowdsec", "cscli", "CAPI", "crowdsec"]
+        assert str(decisions[3]["expiration"]).startswith("-")
+        assert len(alerts) == 2
+        assert alerts[0]["id"] == decisions[0]["alert_id"]
+
+
 class TestOpnsenseDevices:
     credentials: ClassVar[dict[str, str]] = {"authorization": basic("a-key", "a-secret")}
     table: ClassVar[list[dict[str, object]]] = [{"mac": "aa:bb:cc:00:11:22", "ip": "192.168.1.9"}]
