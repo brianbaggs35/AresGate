@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+import { waitForMotion } from '../accessibility'
+
 export type ThemeChoice = 'light' | 'dark' | 'system'
 
 /** The places in the menu, by the names of their routes. */
@@ -89,22 +91,22 @@ export class AppShell {
   }
 
   /**
-   * Opens the command palette with the keys, and waits until the field has the keyboard and the
-   * dialog has finished opening: Vuetify asks the field for the keyboard a second time as it
-   * does, which would take it back from a key pressed in between.
+   * Opens the command palette with the keys, and waits until it has settled.
    */
   async openPaletteWithKeys(): Promise<void> {
     await this.page.keyboard.press('Control+K')
+    await this.waitForPaletteToSettle()
+  }
+
+  /**
+   * Waits until the open palette's field has the keyboard and the dialog has finished opening.
+   * Vuetify asks the field for the keyboard a second time as it does, which would take it back
+   * from a key pressed in between, and it closes the dialog on Escape only once its own timer has
+   * marked it the top overlay, which a slow runner can leave until after a key that came first.
+   */
+  async waitForPaletteToSettle(): Promise<void> {
     await expect(this.paletteSearch).toBeFocused()
-    await this.page.waitForFunction(() =>
-      document
-        .getAnimations()
-        .every(
-          (animation) =>
-            animation.playState !== 'running' ||
-            animation.effect?.getComputedTiming().iterations === Infinity,
-        ),
-    )
+    await waitForMotion(this.page)
   }
 
   /** Takes a command from the palette by typing what it is called and pressing Enter. */
