@@ -375,6 +375,37 @@ and why, and lists the signals in the order they happened. The worker files them
 - **Pausing it.** Turning collecting off (`ARESGATE_COLLECTORS_ENABLED=false`) pauses filing too:
   nothing new is stored, so there is nothing to file.
 
+### What was done about an incident
+
+Every incident says what became of its address, from events AresGate already has, so it asks
+nothing of any program and works the same whether or not you can reach them. It says *seen* and
+not *done*: a ban made where AresGate cannot see it is not counted.
+
+- **A ban** is a decision CrowdSec reported (the *Bans* collector reads them every minute) about
+  one of the incident's addresses while it was going on. Only a ban that was meant counts: a
+  simulated one (CrowdSec's simulation mode) or another remedy, such as a captcha, is listed but
+  is no response. CrowdSec says how long is left of a ban when it is read, as a Go duration such
+  as `3h59m12s`; AresGate adds it to the minute it first read the ban to say when it runs out,
+  so a ban is dated by when AresGate first saw it, which may be a little after CrowdSec made it.
+  A ban whose time is not understood is taken to hold, and says so.
+- **Blocked** means the firewall turned the address away (a blocked packet in the firewall log)
+  or Suricata stopped an alert from it (`alert_action` of `blocked`) in the hour either side of
+  the incident, or for as long as a ban ran if that is later, since the firewall's blocks are no
+  part of an incident and so do not lengthen it. *Still trying* counts the blocks after the
+  first ban.
+- **The state** is *Banned* while a ban holds on every address the incident came from (a block
+  of neighbouring addresses doing the same thing is one incident, so a ban of only some is
+  *Partly banned*), *Ban ended* once they ran out, *Blocked* when only the firewall or Suricata
+  turned it away, and *No response yet* otherwise. A ban whose decision has since passed out of
+  the event retention still shows as banned, with a note that its details are gone.
+- **What cannot be told** is listed with the incident: CrowdSec or OPNsense not being connected
+  (no connection saved on their pages), and that a ban is dated by when AresGate read it.
+- **Where to read it.** `response` on every incident of `GET /api/incidents` and
+  `GET /api/incidents/{id}`: `state`, `label`, the `bans` (address, kind, scenario, origin,
+  `seen_at`, `ends_at`, `simulated`, `in_force`), `blocked`, `blocked_since_ban`,
+  `last_blocked_at`, `dropped` and `unknown`. `blocked` on the incident is the same count.
+  Wazuh's active responses are not read yet, nor does AresGate ban or block anything itself.
+
 ### Verdicts
 
 You decide what is worth your attention, and AresGate remembers. A **verdict** says that the

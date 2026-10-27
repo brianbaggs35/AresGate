@@ -54,6 +54,9 @@ test.describe('layout on a phone', () => {
         programs: ['wazuh', 'opnsense', 'crowdsec'],
         signals: 8,
         ban: true,
+        blocks: 2,
+        blocks_after_ban: 3,
+        dropped: 1,
         device_name: 'a-device-with-quite-a-long-name-on-the-network',
       },
     ])

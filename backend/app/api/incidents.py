@@ -20,7 +20,7 @@ from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
 from app.audit import Action, Outcome
 from app.events.event import Severity
-from app.incidents import bulk, engine, episode, queries, rules, search
+from app.incidents import bulk, engine, episode, queries, response, rules, search
 from app.incidents.queries import Order
 from app.models import Incident, IncidentSignal, utcnow
 
@@ -42,6 +42,44 @@ class ProgramOut(BaseModel):
     name: str
 
 
+class BanOut(BaseModel):
+    """A decision CrowdSec made about one of the incident's addresses."""
+
+    address: str
+    # What kind of remedy it was: a ban, nearly always.
+    kind: str
+    # What made it, and where it came from, in words.
+    scenario: str | None
+    origin: str | None
+    # When AresGate first read it, which is when it knows of it, and when it runs out, where the
+    # time CrowdSec said was left is understood.
+    seen_at: AwareDatetime
+    ends_at: AwareDatetime | None
+    simulated: bool
+    # Whether it still holds, as far as is known: only a ban that was meant counts.
+    in_force: bool
+
+
+class ResponseOut(BaseModel):
+    """What was done about an incident, from what AresGate has read of the programs that act: the
+    bans CrowdSec made, how often the firewall turned the address away and how many alerts
+    Suricata stopped."""
+
+    state: response.State
+    # The state in words, for a chip.
+    label: str
+    bans: list[BanOut]
+    # How often the firewall turned the subject away around the time of the incident, and from the
+    # time of the first ban to the end of it, and when it last did.
+    blocked: int
+    blocked_since_ban: int | None
+    last_blocked_at: AwareDatetime | None
+    # How many alerts Suricata stopped, in the same time.
+    dropped: int
+    # What can't be told, and why, in words.
+    unknown: list[str]
+
+
 class IncidentOut(BaseModel):
     id: int
     title: str
@@ -60,6 +98,8 @@ class IncidentOut(BaseModel):
     addresses: list[str]
     # Whether an integration banned the address.
     banned: bool
+    # What was done about it: banned, blocked, or nothing yet.
+    response: ResponseOut
     status_changed_at: AwareDatetime | None
     # What the owner's verdicts say of it as a whole: a real threat, not suspicious or low
     # priority, or nothing. The signals they gave a verdict to are listed and counted in
@@ -126,8 +166,8 @@ class IncidentDetail(IncidentOut):
     # Oldest first. Only the first so many are kept; ``signal_count`` has them all.
     signals: list[SignalOut]
     devices: list[DeviceOut]
-    # How many times the firewall turned the subject away around then, or None for an incident
-    # about a rule.
+    # How many times the firewall turned the subject away around then (``response`` says more), or
+    # None for an incident about a rule.
     blocked: int | None
 
 
@@ -268,7 +308,33 @@ def _program(key: str) -> ProgramOut:
     return ProgramOut(key=key, name=rules.name_of(key))
 
 
-def _incident(incident: Incident) -> IncidentOut:
+def _response(done: response.Response) -> ResponseOut:
+    now = utcnow()
+    return ResponseOut(
+        state=done.state,
+        label=done.label,
+        bans=[
+            BanOut(
+                address=ban.address,
+                kind=ban.kind,
+                scenario=ban.scenario,
+                origin=ban.origin,
+                seen_at=ban.seen_at,
+                ends_at=ban.ends_at,
+                simulated=ban.simulated,
+                in_force=ban.in_force(now),
+            )
+            for ban in done.bans
+        ],
+        blocked=done.tally.blocked,
+        blocked_since_ban=done.tally.after_ban if any(ban.real for ban in done.bans) else None,
+        last_blocked_at=done.tally.last_blocked_at,
+        dropped=done.tally.dropped,
+        unknown=list(done.unknown),
+    )
+
+
+def _incident(incident: Incident, done: response.Response) -> IncidentOut:
     return IncidentOut(
         id=incident.id,
         title=incident.title,
@@ -283,6 +349,7 @@ def _incident(incident: Incident) -> IncidentOut:
         sources=[_program(key) for key in incident.sources],
         addresses=[str(address) for address in incident.addresses],
         banned=incident.banned,
+        response=_response(done),
         status_changed_at=incident.status_changed_at,
         verdict=cast(Verdict | None, incident.verdict),
         verdict_counts=cast(dict[Verdict, int], incident.verdict_counts),
@@ -314,8 +381,9 @@ def _signal(signal: IncidentSignal) -> SignalOut:
 
 
 def _detail(db: Db, incident: Incident) -> IncidentDetail:
+    done = response.of(db, [incident])[incident.id]
     return IncidentDetail(
-        **_incident(incident).model_dump(),
+        **_incident(incident, done).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
             subject=incident.subject,
@@ -338,7 +406,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             )
             for address, device in queries.devices(db, incident)
         ],
-        blocked=queries.blocks(db, incident),
+        blocked=None if done.state == "no_address" else done.tally.blocked,
     )
 
 
@@ -422,9 +490,10 @@ def list_incidents(
             order=order,
         )
         counts = queries.counts(db, list(verdict or []))
+    done = response.of(db, page.incidents)
     return IncidentPage(
         total=page.total,
-        items=[_incident(incident) for incident in page.incidents],
+        items=[_incident(incident, done[incident.id]) for incident in page.incidents],
         terms=[
             TermOut(
                 field=term.field,

@@ -2,7 +2,7 @@ import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import IncidentCard from '@/components/IncidentCard.vue'
-import { detail, incident, signal } from '@/test/incidents'
+import { detail, incident, response, signal } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
 
@@ -154,12 +154,16 @@ describe('IncidentCard', () => {
     expect(threat.text('verdict')).toBe('Real threat')
   })
 
-  it('says when an address was banned', async () => {
-    const plain = await show()
-    const banned = await show({ banned: true })
+  it('says what was done about it, except for one that names no address', async () => {
+    const nothing = await show()
+    const banned = await show({ response: response({ state: 'banned', label: 'Banned' }) })
+    const rule = await show({
+      response: response({ state: 'no_address', label: 'Nothing to block' }),
+    })
 
-    expect(plain.wrapper.find('[data-test="incident-banned"]').exists()).toBe(false)
-    expect(banned.text('incident-banned')).toBe('Banned')
+    expect(nothing.text('incident-response')).toBe('No response yet')
+    expect(banned.text('incident-response')).toBe('Banned')
+    expect(rule.wrapper.find('[data-test="incident-response"]').exists()).toBe(false)
   })
 
   it('takes its color from how serious it is', async () => {

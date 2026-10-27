@@ -89,7 +89,7 @@ test.describe('incidents', () => {
 
     const worst = incidents.cards.first()
     await expect(worst.getByTestId('severity')).toHaveText('Critical')
-    await expect(worst.getByTestId('incident-banned')).toBeVisible()
+    await expect(worst.getByTestId('incident-response')).toHaveText('Banned')
     await expect(worst.getByTestId('confidence-level')).toHaveText('High confidence')
     await expect(worst.getByTestId('incident-signals')).toContainText('7 signals')
     await expect(worst.getByTestId('incident-programs')).toHaveText(
@@ -99,6 +99,24 @@ test.describe('incidents', () => {
     const other = incidents.cards.nth(2)
     await expect(other.getByTestId('incident-status')).toHaveText('Investigating')
     await expect(other.getByTestId('confidence-level')).toHaveText('Low confidence')
+  })
+
+  test('say what was done about each, in a word', async ({ harness, incidents }) => {
+    await harness.createIncidents([
+      { address: ATTACKER, ban: true, minutes_ago: 4 },
+      { address: '8.8.8.8', blocks: 3, minutes_ago: 20 },
+      { address: '1.1.1.1', minutes_ago: 40 },
+      { address: '9.9.9.9', ban: true, ban_left: '5m', minutes_ago: 300 },
+    ])
+
+    await incidents.goto()
+
+    await expect(incidents.cards.getByTestId('incident-response')).toHaveText([
+      'Banned',
+      'Blocked',
+      'No response yet',
+      'Ban ended',
+    ])
   })
 
   test('show a bot that swept from a block in waves as one incident, and say how', async ({

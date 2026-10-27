@@ -19,6 +19,18 @@ export class IncidentPage {
   readonly programsTile: Locator
   readonly addressesTile: Locator
   readonly blockedTile: Locator
+  /** What was done about it: the state, a sentence, the bans, what else turned it away, the
+   * steps in order and what AresGate can't tell. */
+  readonly responseCard: Locator
+  readonly responseState: Locator
+  readonly responseHeadline: Locator
+  readonly bans: Locator
+  readonly banStatus: Locator
+  readonly banReason: Locator
+  readonly banEnds: Locator
+  readonly turnedAway: Locator
+  readonly steps: Locator
+  readonly notes: Locator
   /** Why AresGate is as sure as it is. */
   readonly reasonsCard: Locator
   readonly confidence: Locator
@@ -68,6 +80,16 @@ export class IncidentPage {
     this.programsTile = page.getByTestId('tile-programs')
     this.addressesTile = page.getByTestId('tile-addresses')
     this.blockedTile = page.getByTestId('tile-blocked')
+    this.responseCard = page.getByTestId('response-card')
+    this.responseState = page.getByTestId('response-state')
+    this.responseHeadline = page.getByTestId('response-headline')
+    this.bans = page.getByTestId('response-ban')
+    this.banStatus = page.getByTestId('response-ban-status')
+    this.banReason = page.getByTestId('response-ban-reason')
+    this.banEnds = page.getByTestId('response-ban-ends')
+    this.turnedAway = page.getByTestId('response-facts').getByTestId('fact-value')
+    this.steps = page.getByTestId('response-step-title')
+    this.notes = page.getByTestId('response-note')
     this.reasonsCard = page.getByTestId('reasons-card')
     this.confidence = page.getByTestId('confidence-level').first()
     this.reasons = page.getByTestId('reason')

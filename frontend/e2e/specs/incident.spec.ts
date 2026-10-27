@@ -144,7 +144,96 @@ test.describe('an incident', () => {
     )
     await expect(incident.signals.last()).toContainText('CrowdSec')
     await expect(incident.signals.last()).toContainText('Ban')
-    await expect(incident.signals.last()).toContainText(`Ban ${ATTACKER} for ssh-bruteforce`)
+    await expect(incident.signals.last()).toContainText(
+      `Ban ${ATTACKER} for 3h59m12s: crowdsecurity/ssh-bf`,
+    )
+  })
+
+  test.describe('says what was done about it', () => {
+    test('a ban that holds, who made it, what else turned it away and what happened in order', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: ATTACKER,
+          programs: ['wazuh'],
+          signals: 3,
+          ban: true,
+          blocks: 2,
+          blocks_after_ban: 3,
+          dropped: 1,
+          minutes_ago: 12,
+        },
+      ])
+
+      await openIncident(page, ATTACKER)
+
+      await expect(incident.responseCard).toContainText('What was done about it')
+      await expect(incident.responseState).toHaveText('Banned')
+      await expect(incident.responseHeadline).toHaveText(
+        /^CrowdSec banned 93\.184\.216\.34\. The ban has 3h \d+m left\.$/,
+      )
+      await expect(incident.bans).toHaveCount(1)
+      await expect(incident.banStatus).toHaveText('In force')
+      await expect(incident.banReason).toHaveText("crowdsecurity/ssh-bf · CrowdSec's own detection")
+      await expect(incident.turnedAway).toHaveText([
+        /^Turned it away 5 times\. 3 of them after the ban\. The last was \d+ minutes ago\.$/,
+        'Stopped 1 alert.',
+      ])
+      await expect(incident.steps).toHaveText(['First seen', 'Banned', 'Still trying', 'Ban ends'])
+      await expect(incident.blockedTile).toContainText('5')
+    })
+
+    test('a ban that has run out', async ({ harness, incident, page }) => {
+      await harness.createIncidents([
+        { address: ATTACKER, ban: true, ban_left: '5m', minutes_ago: 300 },
+      ])
+
+      await openIncident(page, ATTACKER)
+
+      await expect(incident.responseState).toHaveText('Ban ended')
+      await expect(incident.responseHeadline).toContainText('and the ban ended')
+      await expect(incident.banStatus).toHaveText('Ended')
+      await expect(incident.banEnds).toContainText('Ran out')
+      await expect(incident.steps).toHaveText(['First seen', 'Banned', 'Ban ended'])
+    })
+
+    test('an address the firewall turned away that nothing banned', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([{ address: ATTACKER, blocks: 4 }])
+
+      await openIncident(page, ATTACKER)
+
+      await expect(incident.responseState).toHaveText('Blocked')
+      await expect(incident.responseHeadline).toHaveText(
+        'The firewall turned it away 4 times. It was not banned.',
+      )
+      await expect(incident.bans).toHaveCount(0)
+      // The firewall turned it away just before any program reported it, so that comes first.
+      await expect(incident.steps).toHaveText(['Turned away', 'First seen'])
+    })
+
+    test('nothing yet, and which programs AresGate cannot see', async ({
+      harness,
+      incident,
+      page,
+    }) => {
+      await harness.createIncidents([{ address: ATTACKER }])
+
+      await openIncident(page, ATTACKER)
+
+      await expect(incident.responseState).toHaveText('No response yet')
+      await expect(incident.responseHeadline).toContainText('Nothing has been done about it yet')
+      await expect(incident.notes).toHaveText([
+        "CrowdSec isn't connected, so AresGate can't see whether it banned it.",
+        "OPNsense isn't connected, so AresGate can't see whether its firewall or Suricata turned it away.",
+      ])
+    })
   })
 
   test('charts them by program', async ({ harness, incident, page }) => {

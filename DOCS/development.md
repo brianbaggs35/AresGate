@@ -209,6 +209,12 @@ overlapping.
   the rules.
 - **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
   the AI analyst can call them too. They only read, apart from the status.
+- **The response** is `incidents/response.py`: `of(db, incidents)` answers for a whole page of
+  incidents with one query for the CrowdSec decisions in their time, one for the firewall's
+  blocks and Suricata's drops (a `VALUES` list of each incident's address and time window joined
+  to `events`) and one for which integrations are connected. A ban is read from the event's own
+  record (`duration`, `origin`, `type`, `simulated`), not from the incident's signals, which are
+  capped. The e2e factory takes `ban_left`, `blocks`, `blocks_after_ban` and `dropped`.
 - **Changes to many** are `incidents/bulk.py`: `set_status` and `give_verdict` work out a change
   the same way whether `apply` is set or it is only asked about, so a preview is what it then
   does, and `take_back` undoes one from the `undo` a change returned. The API commits one

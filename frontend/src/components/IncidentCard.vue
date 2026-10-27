@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, Layers, Network, Repeat, Users } from '@lucide/vue'
+import { Layers, Network, Repeat, Users } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -9,6 +9,7 @@ import { fetchIncident, type Incident } from '@/api/incidents'
 import { VERDICTS, giveVerdict, type VerdictKind } from '@/api/verdicts'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
+import ResponseChip from '@/components/ResponseChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
@@ -128,14 +129,7 @@ async function give(kind: VerdictKind) {
         >
           {{ ACTIVITY[activity].label }}
         </v-chip>
-        <v-chip
-          v-if="incident.banned"
-          :prepend-icon="Ban"
-          variant="tonal"
-          data-test="incident-banned"
-        >
-          Banned
-        </v-chip>
+        <ResponseChip :response="incident.response" />
         <span class="incident-card__when text-body-medium text-medium-emphasis">
           Last signal
           <time

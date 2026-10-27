@@ -30,6 +30,7 @@ import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import IncidentTimeline from '@/components/IncidentTimeline.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ResponseDetails from '@/components/ResponseDetails.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import StatTile from '@/components/StatTile.vue'
@@ -293,6 +294,14 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-blocked"
         />
       </HeroSurface>
+
+      <SectionCard
+        title="What was done about it"
+        description="Bans, blocks and what stopped it, from what CrowdSec, the firewall and Suricata reported."
+        data-test="response-card"
+      >
+        <ResponseDetails :incident="shown" />
+      </SectionCard>
 
       <div class="incident__top">
         <SectionCard

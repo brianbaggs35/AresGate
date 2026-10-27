@@ -810,6 +810,43 @@ def test_incidents_can_be_made_to_order(e2e: TestClient) -> None:
     assert len(detail["signals"]) == 5
 
 
+def test_incidents_can_be_made_with_what_was_done_about_them(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {
+                    "address": "8.8.4.4",
+                    "ban": True,
+                    "ban_left": "3h59m12s",
+                    "blocks": 2,
+                    "blocks_after_ban": 3,
+                    "dropped": 1,
+                    "minutes_ago": 30,
+                },
+                {"address": "1.1.1.1", "ban": True, "ban_left": "", "minutes_ago": 30},
+                {"address": "9.9.9.9", "ban": True, "ban_left": "5m", "minutes_ago": 300},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    sign_in(e2e)
+    by_subject = {
+        item["subject"]: item["response"] for item in e2e.get("/api/incidents").json()["items"]
+    }
+    banned = by_subject["8.8.4.4"]
+    assert banned["state"] == "banned"
+    assert (banned["blocked"], banned["blocked_since_ban"], banned["dropped"]) == (5, 3, 1)
+    assert banned["bans"][0]["scenario"] == "crowdsecurity/ssh-bf"
+    assert banned["bans"][0]["origin"] == "CrowdSec's own detection"
+    # Without the time left, the ban is taken to hold; a short one has run out long ago.
+    assert by_subject["1.1.1.1"]["state"] == "banned"
+    assert by_subject["1.1.1.1"]["bans"][0]["ends_at"] is None
+    assert by_subject["9.9.9.9"]["state"] == "ban_ended"
+
+
 def test_a_bot_sweeping_from_a_block_in_waves_is_one_incident(e2e: TestClient) -> None:
     e2e.post("/api/__test__/database/clean")
     made = e2e.post(
