@@ -54,6 +54,9 @@ class Action(StrEnum):
     EVENT_RETENTION_CHANGED = "events.retention_changed"
     METRIC_RETENTION_CHANGED = "metrics.retention_changed"
     INCIDENT_STATUS_CHANGED = "incident.status_changed"
+    VERDICT_GIVEN = "verdict.given"
+    VERDICT_CHANGED = "verdict.changed"
+    VERDICT_REMOVED = "verdict.removed"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

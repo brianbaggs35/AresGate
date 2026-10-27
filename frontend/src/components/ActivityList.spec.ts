@@ -68,6 +68,9 @@ describe('ActivityList', () => {
       'events.retention_changed',
       'metrics.retention_changed',
       'incident.status_changed',
+      'verdict.given',
+      'verdict.changed',
+      'verdict.removed',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -96,6 +99,9 @@ describe('ActivityList', () => {
       'How long events are kept was changed',
       'How long metrics are kept was changed',
       "An incident's status was changed",
+      'A verdict was given',
+      'A verdict was changed',
+      'A verdict was taken back',
     ])
   })
 

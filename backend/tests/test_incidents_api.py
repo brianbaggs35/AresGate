@@ -13,7 +13,16 @@ from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.models import AuditEvent, Device, DeviceAddress, Incident, User
 from tests.helpers import OTHER_ORIGIN, new_event
-from tests.test_incidents_engine import ATTACKER, DEVICE, NOW, OTHER_ATTACKER, alert, run, store
+from tests.test_incidents_engine import (
+    ATTACKER,
+    DEVICE,
+    NOW,
+    OTHER_ATTACKER,
+    alert,
+    run,
+    say,
+    store,
+)
 
 BASE = "/api/incidents"
 MINUTE = timedelta(minutes=1)
@@ -206,6 +215,72 @@ class TestListing:
         self, client: TestClient, csrf_token: str, params: dict[str, Any]
     ) -> None:
         assert client.get(BASE, params=params).status_code == 422
+
+
+class TestVerdicts:
+    def calm(self, session: Session, settings: Settings) -> int:
+        """The quiet scan is called fine. Returns the id of the rule."""
+        make(session, settings)
+        rule = say(session, "not_suspicious", address=OTHER_ATTACKER)
+        correlation.reapply(session)
+        session.commit()
+        return rule.id
+
+    def test_an_incident_says_what_the_owner_said_of_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.calm(session, settings)
+
+        quiet, attack = listed(client)
+
+        assert (quiet["verdict"], quiet["verdict_counts"]) == (
+            "not_suspicious",
+            {"not_suspicious": 1},
+        )
+        assert (quiet["confidence"], quiet["signal_count"]) == (0, 1)
+        assert (attack["verdict"], attack["verdict_counts"]) == (None, {})
+
+    def test_a_signal_says_which_rule_said_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule_id = self.calm(session, settings)
+        quiet = session.scalars(select(Incident).where(Incident.subject == OTHER_ATTACKER)).one()
+
+        detail = client.get(f"{BASE}/{quiet.id}").json()
+
+        assert [(s["verdict"], s["verdict_rule_id"]) for s in detail["signals"]] == [
+            ("not_suspicious", rule_id)
+        ]
+        assert [reason["rule"] for reason in detail["reasons"]] == ["muted"]
+
+    @pytest.mark.parametrize(
+        ("verdicts", "subjects"),
+        [
+            (["none"], [ATTACKER]),
+            (["not_suspicious"], [OTHER_ATTACKER]),
+            (["not_suspicious", "none"], [OTHER_ATTACKER, ATTACKER]),
+            (["threat"], []),
+            (["threat", "low_priority"], []),
+        ],
+        ids=["without one", "called fine", "either", "a threat", "other verdicts"],
+    )
+    def test_they_can_be_narrowed_by_what_was_said(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        verdicts: list[str],
+        subjects: list[str],
+    ) -> None:
+        self.calm(session, settings)
+
+        found = listed(client, verdict=verdicts)
+
+        assert [incident["subject"] for incident in found] == subjects
+
+    def test_nonsense_is_refused(self, client: TestClient, csrf_token: str) -> None:
+        assert client.get(BASE, params={"verdict": "maybe"}).status_code == 422
 
 
 class TestOne:

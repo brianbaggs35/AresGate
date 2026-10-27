@@ -2,12 +2,15 @@
 
 from ipaddress import IPv4Address, IPv6Address
 
-from app.models import Event
+from app.models import Event, IncidentSignal
 
 Address = IPv4Address | IPv6Address
 
 BROADCAST = IPv4Address("255.255.255.255")
 MAX_SUBJECT = 300
+# What an event and a signal in an incident's timeline are, which have in common all that deciding
+# what it is about, and what the owner has said of it, needs.
+Signal = Event | IncidentSignal
 
 
 def usable(address: Address) -> bool:
@@ -23,13 +26,13 @@ def usable(address: Address) -> bool:
     )
 
 
-def addresses_of(event: Event) -> list[Address]:
+def addresses_of(event: Signal) -> list[Address]:
     """The addresses a signal names that say anything, the source before the destination."""
     named = (event.src_address, event.dst_address)
     return [address for address in named if address is not None and usable(address)]
 
 
-def subject_of(event: Event) -> str:
+def subject_of(event: Signal) -> str:
     """The address a signal is about. Where one end is outside the network and the other isn't,
     the outside one: it is the one that links what the firewall, the intrusion detection and the
     host logs each saw of the same thing, whichever way the traffic went. Otherwise the

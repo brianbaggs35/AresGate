@@ -10,8 +10,14 @@ program that agrees makes it more certain (see ``rules.py``).
 What is a signal is deliberately narrow. Alerts and bans of at least low severity are; the
 firewall's blocks are not, because the internet knocks all day and a block says the firewall
 worked. Nothing here needs the analyst, which reads and extends incidents later.
+
+The owner's verdicts (see ``verdicts.py``) are applied as each signal joins. One they have called
+not suspicious or low priority is kept in the timeline and counted, but leaves everything the
+incident says about itself to the signals that are not. ``reapply`` does it again for the
+incidents that are not over after a verdict is given, changed or taken back.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
@@ -20,9 +26,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
-from app.incidents import rules
-from app.incidents.subject import Address, addresses_of, subject_of
-from app.models import Event, Incident, IncidentSignal, SystemInfo
+from app.incidents import rules, verdicts
+from app.incidents.subject import Address, Signal, addresses_of, subject_of
+from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
 
 # The kinds of event that can be part of an incident, and how serious one has to be.
 KINDS: Final = ("alert", "decision")
@@ -91,29 +97,43 @@ def _current(db: Session, subject: str, when: datetime) -> Incident | None:
     ).first()
 
 
+def _describe(incident: Incident, first: Signal) -> None:
+    """Starts what an incident says about itself over, from the signal that opens it."""
+    incident.severity = first.severity
+    incident.top_source = first.source
+    incident.top_summary = first.signature or first.summary
+    incident.sources = []
+    incident.addresses = []
+    incident.banned = False
+
+
 def _start(db: Session, event: Event, subject: str) -> Incident:
     incident = Incident(
         subject=subject,
         title=subject,
-        severity=event.severity,
         confidence=0,
         first_seen_at=event.occurred_at,
         last_seen_at=event.occurred_at,
-        top_source=event.source,
-        top_summary=event.signature or event.summary,
         signal_count=0,
-        sources=[],
-        addresses=[],
-        banned=False,
+        verdict_counts={},
     )
+    _describe(incident, event)
     db.add(incident)
     # Its id is needed for its signals.
     db.flush()
     return incident
 
 
-def _join(db: Session, incident: Incident, event: Event, subject: str) -> None:
+def _join(
+    db: Session,
+    incident: Incident,
+    event: Event,
+    subject: str,
+    verdict_rules: Sequence[VerdictRule],
+) -> None:
     """Adds a signal to an incident, and what it changes in the summary."""
+    rule = verdicts.judge(event, verdict_rules)
+    verdict = rule.verdict if rule else None
     if incident.signal_count < MAX_SIGNALS:
         db.add(
             IncidentSignal(
@@ -130,19 +150,40 @@ def _join(db: Session, incident: Incident, event: Event, subject: str) -> None:
                 dst_address=event.dst_address,
                 dst_port=event.dst_port,
                 protocol=event.protocol,
+                verdict=verdict,
+                verdict_rule_id=rule.id if rule else None,
             )
         )
+    _absorb(incident, event, subject, verdict)
+
+
+def _absorb(incident: Incident, signal: Signal, subject: str, verdict: str | None) -> None:
+    """What a signal changes in an incident's summary. Every signal is counted and moves the
+    times, but one the owner called not suspicious or low priority changes nothing else, unless
+    every signal so far was such a one: then the incident is described by them, as it has to be
+    by something, until a signal that counts turns up and takes over."""
+    counting = incident.signal_count - verdicts.muted(incident.verdict_counts)
+    muted = verdict in verdicts.MUTING
     incident.signal_count += 1
-    incident.first_seen_at = min(incident.first_seen_at, event.occurred_at)
-    incident.last_seen_at = max(incident.last_seen_at, event.occurred_at)
-    if event.severity > incident.severity:
-        incident.severity = event.severity
-        incident.top_source = event.source
-        incident.top_summary = event.signature or event.summary
-    if event.source not in incident.sources:
-        incident.sources = sorted({*incident.sources, event.source})
-    incident.addresses = _with(incident.addresses, addresses_of(event), subject)
-    incident.banned = incident.banned or event.kind == "decision"
+    incident.first_seen_at = min(incident.first_seen_at, signal.occurred_at)
+    incident.last_seen_at = max(incident.last_seen_at, signal.occurred_at)
+    if verdict is not None:
+        incident.verdict_counts = {
+            **incident.verdict_counts,
+            verdict: incident.verdict_counts.get(verdict, 0) + 1,
+        }
+    if muted and counting:
+        return
+    if not muted and not counting and incident.signal_count > 1:
+        _describe(incident, signal)
+    if signal.severity > incident.severity:
+        incident.severity = signal.severity
+        incident.top_source = signal.source
+        incident.top_summary = signal.signature or signal.summary
+    if signal.source not in incident.sources:
+        incident.sources = sorted({*incident.sources, signal.source})
+    incident.addresses = _with(incident.addresses, addresses_of(signal), subject)
+    incident.banned = incident.banned or signal.kind == "decision"
 
 
 def _with(known: list[Address], new: list[Address], subject: str) -> list[Address]:
@@ -155,15 +196,19 @@ def _with(known: list[Address], new: list[Address], subject: str) -> list[Addres
 
 def _score(incident: Incident) -> None:
     others = [address for address in incident.addresses if str(address) != incident.subject]
+    muted = verdicts.muted(incident.verdict_counts)
+    incident.verdict = verdicts.rollup(incident.verdict_counts, incident.signal_count)
     facts = rules.Facts(
         subject=incident.subject,
         severity=Severity(incident.severity),
         top_source=incident.top_source,
         top_summary=incident.top_summary,
         sources=incident.sources,
-        signal_count=incident.signal_count,
+        signal_count=incident.signal_count - muted,
         banned=incident.banned,
         others=len(others),
+        muted=muted,
+        threats=incident.verdict_counts.get(verdicts.THREAT, 0),
     )
     assessment = rules.assess(facts)
     incident.confidence = assessment.confidence
@@ -191,6 +236,7 @@ def correlate(db: Session, now: datetime) -> Result:
     if not events:
         return Result()
     last = events[-1].id
+    verdict_rules = verdicts.load(db)
     touched: dict[int, Incident] = {}
     created = 0
     # In the order they happened, so a signal that was stored late still lands in place.
@@ -200,7 +246,7 @@ def correlate(db: Session, now: datetime) -> Result:
         if incident is None:
             incident = _start(db, event, subject)
             created += 1
-        _join(db, incident, event, subject)
+        _join(db, incident, event, subject, verdict_rules)
         touched[incident.id] = incident
     for incident in touched.values():
         _score(incident)
@@ -211,3 +257,45 @@ def correlate(db: Session, now: datetime) -> Result:
         updated=len(touched) - created,
         behind=len(events) == BATCH,
     )
+
+
+def _rebuild(db: Session, incident: Incident, verdict_rules: Sequence[VerdictRule]) -> None:
+    """Works an incident's summary out again from its signals, judged by the rules as they are."""
+    signals = db.scalars(
+        select(IncidentSignal)
+        .where(IncidentSignal.incident_id == incident.id)
+        .order_by(IncidentSignal.occurred_at, IncidentSignal.id)
+    ).all()
+    first, last = incident.first_seen_at, incident.last_seen_at
+    _describe(incident, signals[0])
+    incident.signal_count = 0
+    incident.verdict_counts = {}
+    for signal in signals:
+        rule = verdicts.judge(signal, verdict_rules)
+        signal.verdict = rule.verdict if rule else None
+        signal.verdict_rule_id = rule.id if rule else None
+        _absorb(incident, signal, incident.subject, signal.verdict)
+    # What an incident that outgrew its timeline saw after it is not there to be read again, but
+    # it was seen, and the incident still ends when it did.
+    incident.first_seen_at = min(first, incident.first_seen_at)
+    incident.last_seen_at = max(last, incident.last_seen_at)
+    _score(incident)
+
+
+def hold(db: Session) -> None:
+    """Waits for a run that is under way, and keeps the next from starting, until the caller
+    commits. What a verdict is, and what the incidents say because of it, then change together."""
+    db.execute(select(func.pg_advisory_xact_lock(LOCK)))
+
+
+def reapply(db: Session) -> None:
+    """Judges the signals of the incidents that are not over again, after the owner gave, changed
+    or took back a verdict. One that is over is history and keeps what was said at the time. The
+    caller commits, with the verdict.
+
+    An incident with more signals than it lists (``MAX_SIGNALS``) is judged by the ones it lists,
+    and counts those."""
+    hold(db)
+    verdict_rules = verdicts.load(db)
+    for incident in db.scalars(select(Incident).where(Incident.status != "resolved")).all():
+        _rebuild(db, incident, verdict_rules)

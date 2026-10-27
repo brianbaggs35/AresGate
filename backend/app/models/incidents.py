@@ -40,6 +40,10 @@ class Incident(Base):
         CheckConstraint(
             "status IN ('open', 'investigating', 'resolved', 'dismissed')", name="status"
         ),
+        CheckConstraint(
+            "verdict IS NULL OR verdict IN ('not_suspicious', 'low_priority', 'threat')",
+            name="verdict",
+        ),
         Index("ix_incidents_last_seen_at", "last_seen_at"),
         Index("ix_incidents_subject_last_seen_at", "subject", "last_seen_at"),
     )
@@ -67,6 +71,13 @@ class Incident(Base):
     top_source: Mapped[str] = mapped_column(String(32))
     top_summary: Mapped[str] = mapped_column(String(500))
     banned: Mapped[bool] = mapped_column(default=False)
+    # How many of the signals the owner has a verdict on, by verdict. A signal that is not
+    # suspicious or low priority is listed and counted in ``signal_count``, but everything above
+    # (the severity, the programs, the addresses) is about the ones that are not.
+    verdict_counts: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    # What the verdicts say of the incident as a whole: a real threat if any signal is, not
+    # suspicious or low priority if every signal is, and none otherwise.
+    verdict: Mapped[str | None] = mapped_column(String(16), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     # When someone last changed the status, and nothing before that.
@@ -81,7 +92,12 @@ class IncidentSignal(Base):
     __table_args__ = (
         # An event belongs to one incident.
         UniqueConstraint("event_id", name="uq_incident_signals_event_id"),
+        CheckConstraint(
+            "verdict IS NULL OR verdict IN ('not_suspicious', 'low_priority', 'threat')",
+            name="verdict",
+        ),
         Index("ix_incident_signals_incident_id_occurred_at", "incident_id", "occurred_at"),
+        Index("ix_incident_signals_verdict_rule_id", "verdict_rule_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -101,3 +117,9 @@ class IncidentSignal(Base):
     dst_address: Mapped[IPv4Address | IPv6Address | None] = mapped_column(INET, default=None)
     dst_port: Mapped[int | None] = mapped_column(Integer, default=None)
     protocol: Mapped[str | None] = mapped_column(String(16), default=None)
+    # What the owner's rules said of it when it joined, and which rule that was while it exists.
+    # A verdict stays on a resolved incident as it was, whatever becomes of the rule.
+    verdict: Mapped[str | None] = mapped_column(String(16), default=None)
+    verdict_rule_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("verdict_rules.id", ondelete="SET NULL"), default=None
+    )

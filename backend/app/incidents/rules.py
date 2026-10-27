@@ -6,6 +6,10 @@ person can read, so the incident can say why it is as sure as it is, and nothing
 one can account for. It is capped at 100. The points are a judgement, written down here so that
 they can be argued with in one place: a signal worth acting on is a serious one that more than
 one program agrees on, that keeps happening or that has been acted on.
+
+The owner has the last word (see ``verdicts.py``). Signals they have called not suspicious or low
+priority are left out of all of it, and an incident with nothing else is not sure of anything.
+One they have called a real threat makes the incident as sure as can be.
 """
 
 from collections.abc import Sequence
@@ -36,6 +40,8 @@ BAN_POINTS: Final = 20
 SPREAD_MINIMUM: Final = 3
 SPREAD_POINTS: Final = 10
 MAX_CONFIDENCE: Final = 100
+# The owner said it is a real threat: that is as sure as anything.
+THREAT_POINTS: Final = MAX_CONFIDENCE
 
 # Where the words low, medium and high are drawn, for the list and for alarms.
 MEDIUM_FROM: Final = 35
@@ -55,11 +61,15 @@ class Facts:
     top_summary: str
     # The programs that reported any of the signals.
     sources: Sequence[str]
+    # How many signals there are that count, and how many the owner's verdicts leave out.
     signal_count: int
     # Whether any signal was a ban.
     banned: bool
     # How many addresses besides the subject the signals name.
     others: int
+    muted: int = 0
+    # How many signals the owner said are a real threat.
+    threats: int = 0
 
 
 @dataclass(frozen=True)
@@ -100,8 +110,20 @@ def _list(names: Sequence[str]) -> str:
 
 def assess(facts: Facts) -> Assessment:
     """The reasons for an incident's confidence, and the confidence they add up to."""
-    reasons: list[Reason] = []
+    if facts.signal_count == 0:
+        return Assessment(
+            0,
+            [
+                Reason(
+                    "muted",
+                    0,
+                    "Every signal in it matches a verdict you gave, so none of them counts: "
+                    "you said they are not suspicious or low priority.",
+                )
+            ],
+        )
 
+    reasons: list[Reason] = []
     reasons.append(
         Reason(
             "strongest",
@@ -135,6 +157,25 @@ def assess(facts: Facts) -> Assessment:
     if facts.others >= SPREAD_MINIMUM:
         reasons.append(
             Reason("spread", SPREAD_POINTS, f"{facts.others} other addresses are involved.")
+        )
+
+    if facts.muted:
+        reasons.append(
+            Reason(
+                "muted",
+                0,
+                f"Left out: {facts.muted} of its {facts.signal_count + facts.muted} signals "
+                "match a verdict you gave (not suspicious or low priority).",
+            )
+        )
+
+    if facts.threats:
+        reasons.append(
+            Reason(
+                "threat",
+                THREAT_POINTS,
+                "You said at least one of its signals is a real threat.",
+            )
         )
 
     confidence = min(MAX_CONFIDENCE, sum(reason.points for reason in reasons))

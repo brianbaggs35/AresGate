@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Final
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
@@ -14,6 +14,8 @@ from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Event, Incident
 # How far either side of an incident the firewall's blocks of its address still count as part of
 # the picture: it often turns the address away before anything else notices it.
 CONTEXT: Final = timedelta(hours=1)
+# What to search for to find the incidents no verdict has been given to.
+NO_VERDICT: Final = "none"
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ def search(
     db: Session,
     *,
     statuses: list[str],
+    verdicts: list[str],
     min_severity: Severity | None,
     min_confidence: int,
     address: IPv4Address | IPv6Address | None,
@@ -36,10 +39,17 @@ def search(
     offset: int,
 ) -> Page:
     """Incidents that match, the ones that were going most recently first. Nothing given
-    matches everything."""
+    matches everything. A verdict of none is the incidents the owner has said nothing of."""
     conditions: list[ColumnElement[bool]] = []
     if statuses:
         conditions.append(Incident.status.in_(statuses))
+    if verdicts:
+        conditions.append(
+            or_(
+                Incident.verdict.in_([verdict for verdict in verdicts if verdict != NO_VERDICT]),
+                Incident.verdict.is_(None) if NO_VERDICT in verdicts else false(),
+            )
+        )
     if min_severity is not None:
         conditions.append(Incident.severity >= min_severity)
     if min_confidence:

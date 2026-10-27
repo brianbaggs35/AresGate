@@ -19,6 +19,7 @@ from app.api import (
     status,
     system,
     two_factor,
+    verdicts,
 )
 from app.api.deps import require_same_origin
 
@@ -35,6 +36,7 @@ api_router.include_router(collectors.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(events.router)
 api_router.include_router(incidents.router)
+api_router.include_router(verdicts.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audit.router)
 api_router.include_router(status.router)
