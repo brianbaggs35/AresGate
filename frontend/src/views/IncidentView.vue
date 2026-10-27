@@ -10,6 +10,7 @@ import {
   type IncidentDetail,
   type IncidentStatus,
 } from '@/api/incidents'
+import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
 import AppPage from '@/components/AppPage.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
@@ -21,6 +22,8 @@ import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import StatTile from '@/components/StatTile.vue'
+import VerdictChip from '@/components/VerdictChip.vue'
+import VerdictPanel from '@/components/VerdictPanel.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import {
   CONFIDENCE,
@@ -33,6 +36,7 @@ import {
 } from '@/incidents'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
+import { mutedIn } from '@/verdicts'
 
 /** How often the page asks again while it is on screen. */
 const REFRESH_SECONDS = 30
@@ -42,6 +46,9 @@ const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
 const incident = ref<IncidentDetail | null>(null)
+/** Every verdict there is. The page doesn't depend on them: without them it can't say which
+ * apply here, and goes on without. */
+const verdicts = ref<Verdict[]>([])
 const loadError = ref<string | null>(null)
 /** The incident isn't there, which asking again won't change. */
 const missing = ref(false)
@@ -76,6 +83,19 @@ async function load(quiet = false) {
   }
 }
 
+async function loadVerdicts() {
+  try {
+    verdicts.value = await session.call(fetchVerdicts)
+  } catch {
+    // What the incident says of its signals is still there, and so is the means to say more.
+  }
+}
+
+/** Asks for the incident and the verdicts again, after one was given or taken back. */
+async function refresh() {
+  await Promise.all([load(true), loadVerdicts()])
+}
+
 async function change(status: IncidentStatus) {
   changing.value = status
   notice.value = null
@@ -107,6 +127,13 @@ const meaning = computed(() => {
   const set = changed ? ` Set ${formatAgo(changed)}.` : ''
   return `${STATUS[status].label}: ${STATUS[status].meaning}${set}`
 })
+/** How long its signals came in over, and how many of them your verdicts keep from counting. */
+const signalsHint = computed(() => {
+  const muted = mutedIn(shown.value)
+  return muted > 0
+    ? `${spanOf(shown.value)}, ${formatCount(muted)} not counted`
+    : spanOf(shown.value)
+})
 
 const blocked = computed(() => {
   const count = shown.value.blocked
@@ -130,7 +157,7 @@ const updated = computed(() =>
   new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(updatedAt.value as Date),
 )
 
-onMounted(load)
+onMounted(() => Promise.all([load(), loadVerdicts()]))
 usePolling(() => load(true), REFRESH_SECONDS * 1000)
 </script>
 
@@ -141,6 +168,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         <div class="incident__chips">
           <SeverityChip :severity="shown.severity" />
           <IncidentStatusChip :status="shown.status" />
+          <VerdictChip v-if="shown.verdict" :verdict="shown.verdict" />
           <v-chip variant="outlined" :prepend-icon="Gauge" data-test="confidence-chip">
             {{ CONFIDENCE[shown.confidence_level] }} confidence
           </v-chip>
@@ -188,7 +216,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         <StatTile
           label="Signals"
           :value="formatCount(shown.signal_count)"
-          :hint="spanOf(shown)"
+          :hint="signalsHint"
           :icon="Layers"
           data-test="tile-signals"
         />
@@ -240,6 +268,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           />
         </SectionCard>
       </div>
+
+      <VerdictPanel :incident="shown" :verdicts="verdicts" @changed="refresh" />
 
       <v-card v-if="shown.signals.length > 1" class="pa-5 pa-sm-6" data-test="spread-card">
         <BarChart

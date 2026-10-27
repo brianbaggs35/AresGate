@@ -7,6 +7,7 @@ export class SettingsPage {
   readonly accountLink: Locator
   readonly signInsLink: Locator
   readonly activityLink: Locator
+  readonly verdictsLink: Locator
   readonly dataLink: Locator
 
   constructor(private readonly page: Page) {
@@ -15,6 +16,7 @@ export class SettingsPage {
     this.accountLink = page.getByTestId('settings-nav-account')
     this.signInsLink = page.getByTestId('settings-nav-sign-ins')
     this.activityLink = page.getByTestId('settings-nav-activity')
+    this.verdictsLink = page.getByTestId('settings-nav-verdicts')
     this.dataLink = page.getByTestId('settings-nav-data')
   }
 

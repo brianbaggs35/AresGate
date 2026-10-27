@@ -46,7 +46,13 @@ function filtersOf(query: LocationQuery): Filters {
   const view = VIEWS.find(({ key }) => key === one('view'))?.key ?? DEFAULT_VIEW
   const severity = SEVERITIES.find((level) => level === one('severity')) ?? null
   const confidence = CONFIDENCE_FILTERS.find(({ value }) => value.toString() === one('confidence'))
-  return { view, severity, confidence: confidence?.value ?? 0, address: one('address') }
+  return {
+    view,
+    severity,
+    confidence: confidence?.value ?? 0,
+    address: one('address'),
+    quieted: one('quieted') === '1',
+  }
 }
 
 const filters = computed(() => filtersOf(route.query))
@@ -62,6 +68,7 @@ function show(next: Partial<Filters>) {
   if (merged.severity) query.severity = merged.severity
   if (merged.confidence) query.confidence = merged.confidence.toString()
   if (merged.address) query.address = merged.address
+  if (merged.quieted) query.quieted = '1'
   void router.replace({ query })
 }
 
@@ -73,7 +80,7 @@ function typeAddress(text: string | null) {
 
 function clearFilters() {
   typed.value = ''
-  show({ severity: null, confidence: 0, address: '' })
+  show({ severity: null, confidence: 0, address: '', quieted: false })
 }
 
 const data = ref<IncidentPage | null>(null)
@@ -136,9 +143,18 @@ const counts = computed(() => (data.value as IncidentPage).counts)
 const everything = computed(() => countIn('all', counts.value))
 const narrowed = computed(() => activeFilters(filters.value))
 const remaining = computed(() => (data.value as IncidentPage).total - items.value.length)
+/** How many incidents the owner quieted that the list would include if asked. */
+const quieted = computed(() => (data.value as IncidentPage).quieted)
 
 /** What the list says when it has nothing to show. */
 const empty = computed(() => {
+  if (everything.value === 0 && quieted.value > 0 && !filters.value.quieted) {
+    return {
+      title: 'Nothing needs you',
+      description: `Every incident is one you called not suspicious or low priority. ${formatCount(quieted.value)} ${quieted.value === 1 ? 'is' : 'are'} hidden.`,
+      action: 'quieted',
+    }
+  }
   if (everything.value === 0) {
     return {
       title: 'No incidents yet',
@@ -179,6 +195,10 @@ function pickSeverity(severity: Severity | null) {
 
 function pickConfidence(confidence: number) {
   show({ confidence })
+}
+
+function pickQuieted(include: boolean | null) {
+  show({ quieted: include === true })
 }
 
 onMounted(load)
@@ -280,10 +300,21 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           @update:model-value="typeAddress"
         />
       </div>
-      <div v-if="narrowed > 0" class="incidents__clear">
-        <v-btn variant="text" data-test="clear-filters" @click="clearFilters">
+      <div v-if="narrowed > 0 || quieted > 0" class="incidents__options">
+        <v-btn v-if="narrowed > 0" variant="text" data-test="clear-filters" @click="clearFilters">
           Clear filters
         </v-btn>
+        <v-switch
+          v-if="quieted > 0"
+          :model-value="filters.quieted"
+          :label="`Show ${formatCount(quieted)} quieted by your verdicts`"
+          color="primary"
+          density="comfortable"
+          hide-details
+          class="incidents__quieted"
+          data-test="filter-quieted"
+          @update:model-value="pickQuieted"
+        />
       </div>
 
       <ul v-if="items.length" class="incidents__list" data-test="incident-list">
@@ -301,6 +332,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
             data-test="empty-integrations"
           >
             See your integrations
+          </v-btn>
+          <v-btn
+            v-else-if="empty.action === 'quieted'"
+            variant="tonal"
+            color="primary"
+            data-test="empty-quieted"
+            @click="pickQuieted(true)"
+          >
+            Show them
           </v-btn>
           <v-btn
             v-else-if="empty.action === 'clear'"
@@ -363,8 +403,17 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   grid-column: 1 / -1;
 }
 
-.incidents__clear {
+.incidents__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 1rem;
   margin-top: -0.75rem;
+}
+
+.incidents__quieted {
+  margin-inline-start: auto;
 }
 
 .incidents__list {

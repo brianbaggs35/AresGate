@@ -746,6 +746,38 @@ def test_incidents_can_be_made_to_order(e2e: TestClient) -> None:
     assert len(detail["signals"]) == 5
 
 
+def test_verdicts_can_be_given_and_judge_the_incidents_there_are(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={"incidents": [{"address": "8.8.8.8"}, {"address": "1.1.1.1"}]},
+    )
+
+    made = e2e.post(
+        "/api/__test__/factories/verdicts",
+        json={
+            "verdicts": [
+                {"verdict": "not_suspicious", "address": "8.8.8.8", "note": "my scanner"},
+                {"verdict": "threat", "source": "wazuh", "signature": "Brute force on ssh"},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"verdicts": 2}
+    sign_in(e2e)
+    listed = e2e.get("/api/incidents").json()["items"]
+    assert {item["subject"]: item["verdict"] for item in listed} == {
+        "8.8.8.8": "threat",
+        "1.1.1.1": "threat",
+    }
+    rules = e2e.get("/api/verdicts").json()["items"]
+    assert [(rule["verdict"], rule["note"], rule["hits"]) for rule in rules] == [
+        ("threat", None, 2),
+        ("not_suspicious", "my scanner", 0),
+    ]
+
+
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
     made = e2e.post("/api/__test__/factories/incidents", json={"incidents": []})
 
