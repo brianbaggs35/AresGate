@@ -1,4 +1,5 @@
 import { apiGet } from '@/api/client'
+import type { IncidentStatus } from '@/api/incidents'
 import type { Severity } from '@/severity'
 
 /** How far back the dashboard looks. */
@@ -65,6 +66,20 @@ export interface InterfaceTraffic {
   sent: (number | null)[]
 }
 
+/** An incident that was going on in the window, for a flag on the charts. */
+export interface IncidentMark {
+  id: number
+  title: string
+  /** The address it is about, or `rule:<integration>:<rule>` where there is none. */
+  subject: string
+  severity: Severity
+  confidence: number
+  status: IncidentStatus
+  first_seen_at: string
+  last_seen_at: string
+  banned: boolean
+}
+
 export interface Dashboard {
   window: WindowInfo
   alerts: AlertCounts
@@ -72,6 +87,8 @@ export interface Dashboard {
   blocked: BlockedCounts
   traffic: InterfaceTraffic[]
   devices: { total: number; new: number }
+  /** The incidents to flag on the charts, in the order they began. */
+  marks: IncidentMark[]
 }
 
 export function fetchDashboard(window: DashboardWindow): Promise<Dashboard> {

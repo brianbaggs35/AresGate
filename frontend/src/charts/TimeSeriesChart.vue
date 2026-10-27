@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { IconProps } from 'vuetify'
 
 import ChartFrame from '@/charts/ChartFrame.vue'
 import ChartTooltip from '@/charts/ChartTooltip.vue'
 import { stepIndex, useElementWidth } from '@/charts/interaction'
+import { placeMarks, readingOf, type Flag } from '@/charts/marks'
 import { areaPath, linePath, type Point } from '@/charts/paths'
 import { seriesColor } from '@/charts/palette'
 import { formatTick, linear, nearest, timeTicks, valueAxis } from '@/charts/scales'
-import type { ChartTableData, LegendItem, TooltipRow } from '@/charts/types'
+import type { ChartMark, ChartTableData, LegendItem, TooltipRow } from '@/charts/types'
 import { formatCompact, formatCount, formatDateTime } from '@/format'
 
 export interface LineSeries {
@@ -39,6 +40,9 @@ const props = withDefaults(
     format?: (value: number) => string
     /** The height with the time axis. */
     height?: number
+    /** Things that happened at a moment, flagged above the chart with a link to each. Flags that
+     * would overlap are drawn as one that says how many it stands for. */
+    marks?: readonly ChartMark[]
     loading?: boolean
     emptyTitle?: string
     emptyDescription?: string
@@ -48,6 +52,7 @@ const props = withDefaults(
     area: false,
     format: undefined,
     height: 220,
+    marks: () => [],
     loading: false,
     emptyTitle: undefined,
     emptyDescription: undefined,
@@ -57,6 +62,11 @@ const props = withDefaults(
 const CHARACTER = 7
 const TOP = 12
 const BOTTOM = 28
+/** How tall a flag is, and the room above the plot for them when there are any. */
+const FLAG_HEIGHT = 28
+const FLAG_ROW = 30
+/** How many incidents a flag that stands for several names in its readout. */
+const NAMED = 4
 /** The first of these sizes of chart has room to write each line's last value at its end. */
 const LABELLED_FROM = 480
 const LABELLED_UP_TO = 4
@@ -68,6 +78,8 @@ const plot = ref<HTMLElement | null>(null)
 const width = useElementWidth(plot, 640)
 const hidden = ref<string[]>([])
 const active = ref<number | null>(null)
+/** The flag being pointed at or focused, as its place in `flags`. */
+const flagged = ref<number | null>(null)
 const svg = ref<SVGSVGElement | null>(null)
 
 const valueText = computed(() => props.format ?? formatCount)
@@ -87,14 +99,25 @@ const legend = computed<LegendItem[]>(() =>
   colored.value.map(({ id, label, color, icon }) => ({ id, label, color, shape: 'line', icon })),
 )
 const when = (time: number) => formatDateTime(new Date(time).toISOString())
+/** What happened at each reading, for the table: the marks that fall between it and the next. */
+const happenings = computed(() => {
+  const found = props.times.map(() => [] as string[])
+  for (const mark of props.marks) found[readingOf(props.times, mark.time)]?.push(mark.label)
+  return found.map((labels) => labels.join('; '))
+})
 const table = computed<ChartTableData>(() => ({
-  columns: ['Time', ...props.series.map(({ label }) => label)],
+  columns: [
+    'Time',
+    ...props.series.map(({ label }) => label),
+    ...(props.marks.length ? ['Incidents'] : []),
+  ],
   rows: props.times.map((time, index) => [
     when(time),
     ...props.series.map(({ values }) => {
       const value = values[index] ?? null
       return value === null ? 'No data' : valueText.value(value)
     }),
+    ...(props.marks.length ? [happenings.value[index] || 'None'] : []),
   ]),
 }))
 
@@ -127,7 +150,10 @@ const right = computed(() =>
     : 32,
 )
 const length = computed(() => Math.max(40, width.value - left.value - right.value))
-const rise = computed(() => props.height - TOP - BOTTOM)
+/** Where the plot starts: lower when the flags need room above it. Every mark has a flag, so this
+ * does not wait for their places, which depend on the plot's width. */
+const top = computed(() => TOP + (empty.value || !props.marks.length ? 0 : FLAG_ROW))
+const rise = computed(() => props.height - top.value - BOTTOM)
 
 const first = computed(() => props.times[0] as number)
 const last = computed(() => props.times[props.times.length - 1] as number)
@@ -140,6 +166,37 @@ const xTicks = computed(() =>
     text: formatTick(time, last.value - first.value),
   })),
 )
+
+const flags = computed<Flag[]>(() =>
+  empty.value ? [] : placeMarks(props.marks, [first.value, last.value], x.value),
+)
+const flagWords = (flag: Flag) => {
+  const [chief] = flag.marks
+  return flag.marks.length === 1
+    ? chief.label
+    : `${flag.marks.length} incidents close together, the most serious first: ${chief.label}`
+}
+/** The readout of the flag being pointed at: its own, or a list of those it stands for. */
+const flagReadout = computed(() => {
+  const flag = flags.value[flagged.value as number] as Flag
+  const [chief] = flag.marks
+  if (flag.marks.length === 1) return { heading: chief.heading, rows: chief.rows }
+  const named = flag.marks.slice(0, NAMED).map(({ rows: [row], color }) => ({
+    ...row,
+    color,
+    shape: 'square' as const,
+  }))
+  const more = flag.marks.length - NAMED
+  return {
+    heading: `${flag.marks.length} incidents around ${when(chief.time)}`,
+    rows: more > 0 ? [...named, { label: `and ${more} more`, value: '' }] : named,
+  }
+})
+
+// A flag that goes away, because the incidents changed, is not pointed at any more.
+watch(flags, () => {
+  flagged.value = null
+})
 
 const lines = computed(() =>
   shown.value.map(({ id, color, values }) => {
@@ -178,7 +235,9 @@ const anchor = computed(() => {
   const heights = dots.value.map((dot) => dot.y)
   return {
     x: left.value + x.value(props.times[active.value as number] as number),
-    y: TOP + (heights.length ? (Math.min(...heights) + Math.max(...heights)) / 2 : rise.value / 2),
+    y:
+      top.value +
+      (heights.length ? (Math.min(...heights) + Math.max(...heights)) / 2 : rise.value / 2),
   }
 })
 const readout = computed(() => {
@@ -239,13 +298,13 @@ function leave(event: PointerEvent) {
             :class="tick === 0 ? 'chart-axis' : 'chart-grid'"
             :x1="left"
             :x2="left + length"
-            :y1="TOP + y(tick)"
-            :y2="TOP + y(tick)"
+            :y1="top + y(tick)"
+            :y2="top + y(tick)"
           />
           <text
             class="chart-text"
             :x="left - 8"
-            :y="TOP + y(tick)"
+            :y="top + y(tick)"
             text-anchor="end"
             dominant-baseline="central"
           >
@@ -257,14 +316,25 @@ function leave(event: PointerEvent) {
           :key="tick.x"
           class="chart-text"
           :x="left + tick.x"
-          :y="TOP + rise + 18"
+          :y="top + rise + 18"
           text-anchor="middle"
           data-test="time-tick"
         >
           {{ tick.text }}
         </text>
 
-        <g :transform="`translate(${left},${TOP})`">
+        <g :transform="`translate(${left},${top})`">
+          <line
+            v-for="flag in flags"
+            :key="flag.marks[0].id"
+            class="time-series__flag-line"
+            :x1="flag.x"
+            :x2="flag.x"
+            :y1="FLAG_HEIGHT - top"
+            :y2="rise"
+            :stroke="flag.marks[0].color"
+            data-test="chart-flag-line"
+          />
           <line
             v-if="active !== null"
             class="chart-axis"
@@ -321,6 +391,47 @@ function leave(event: PointerEvent) {
           />
         </g>
       </svg>
+      <ul
+        v-if="flags.length"
+        class="time-series__flags"
+        :style="{ left: `${left}px`, width: `${length}px` }"
+        aria-label="Incidents in this time"
+        data-test="chart-flags"
+      >
+        <li
+          v-for="(flag, index) in flags"
+          :key="flag.marks[0].id"
+          class="time-series__flag"
+          :style="{ left: `${flag.x}px`, '--flag': flag.marks[0].color }"
+        >
+          <router-link
+            :to="flag.marks[0].to"
+            class="time-series__flag-link"
+            :aria-label="flagWords(flag)"
+            data-test="chart-flag"
+            @pointerenter="flagged = index"
+            @pointerleave="flagged = null"
+            @focus="flagged = index"
+            @blur="flagged = null"
+          >
+            <component :is="flag.marks[0].icon" :size="14" aria-hidden="true" />
+            <span
+              v-if="flag.marks.length > 1"
+              class="time-series__count"
+              data-test="chart-flag-count"
+              >{{ flag.marks.length }}</span
+            >
+          </router-link>
+        </li>
+      </ul>
+      <ChartTooltip
+        v-if="flagged !== null"
+        :x="left + (flags[flagged] as Flag).x"
+        :y="FLAG_HEIGHT / 2"
+        :flip="left + (flags[flagged] as Flag).x > width / 2"
+        :heading="flagReadout.heading"
+        :rows="flagReadout.rows"
+      />
       <ChartTooltip
         v-if="active !== null"
         :x="anchor.x"
@@ -337,6 +448,69 @@ function leave(event: PointerEvent) {
 <style scoped>
 .time-series {
   position: relative;
+}
+
+/* A flag per incident sits above the plot, on a dashed line down to the moment it began. It is
+   a link, so the keyboard and a screen reader reach it, and the area that answers a finger is
+   larger than the flag. */
+.time-series__flags {
+  position: absolute;
+  top: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+.time-series__flag {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.time-series__flag-link {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  gap: 2px;
+  grid-auto-flow: column;
+  border: 2px solid var(--flag);
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface));
+  color: var(--flag);
+  text-decoration: none;
+}
+
+.time-series__flag-link::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.time-series__flag-link:hover {
+  background: color-mix(in srgb, var(--flag) 14%, rgb(var(--v-theme-surface)));
+}
+
+.time-series__flag-link:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.time-series__count {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.time-series__flag-line {
+  stroke-dasharray: 3 4;
+  stroke-opacity: 0.6;
 }
 
 /* A dot is ringed in the card's own color, so it stands clear of whatever it sits on. */

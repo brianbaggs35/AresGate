@@ -5,7 +5,7 @@ import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
-import { alert, dashboard } from '@/test/dashboard'
+import { alert, dashboard, incidentMark } from '@/test/dashboard'
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
@@ -329,6 +329,22 @@ describe('DashboardView', () => {
       expect(card.props('traffic')[0]?.received).toHaveLength(times.length)
       expect(card.props('traffic')[0]?.sent).toHaveLength(times.length)
       expect(times.every((time) => time <= Date.now())).toBe(true)
+    })
+
+    it('flag the incidents that began in the window on the traffic', async () => {
+      const { wrapper } = await open({
+        dashboard: dashboard({
+          marks: [incidentMark(), incidentMark({ id: 2, severity: 'critical', confidence: 90 })],
+        }),
+      })
+      const marks = wrapper.findComponent(TrafficCard).props('marks')
+      expect(marks?.map(({ id }) => id)).toEqual(['incident-1', 'incident-2'])
+      expect(marks?.[1]?.label).toBe('Critical incident: Brute force on ssh (93.184.216.34)')
+    })
+
+    it('flag nothing when no incident began in the window', async () => {
+      const { wrapper } = await open()
+      expect(wrapper.findComponent(TrafficCard).props('marks')).toEqual([])
     })
 
     it('say so when there is no traffic yet', async () => {

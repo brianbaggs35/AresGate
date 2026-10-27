@@ -17,6 +17,10 @@ export class DashboardPage {
   readonly trafficCard: Locator
   readonly trafficChart: Locator
   readonly trafficInterface: Locator
+  /** The flags above the traffic, one for each incident (or group of them) that began in the
+   * window, each a link to the incident, and the count some of them carry. */
+  readonly trafficFlags: Locator
+  readonly trafficFlagCounts: Locator
   readonly alertsCard: Locator
   readonly sourcesCard: Locator
   readonly latestAlerts: Locator
@@ -53,6 +57,8 @@ export class DashboardPage {
     this.trafficCard = page.getByTestId('traffic-card')
     this.trafficChart = page.getByTestId('traffic-chart')
     this.trafficInterface = page.getByTestId('traffic-interface')
+    this.trafficFlags = this.trafficChart.getByTestId('chart-flag')
+    this.trafficFlagCounts = this.trafficChart.getByTestId('chart-flag-count')
     this.alertsCard = page.getByTestId('alerts-card')
     this.sourcesCard = page.getByTestId('sources-card')
     this.latestAlerts = page.getByTestId('latest-alerts-card')

@@ -559,6 +559,38 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('keeps the flags of incidents within the traffic card, with a count where they cluster', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'], traffic: { igc0: 80 } })
+    await harness.createIncidents([
+      { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], minutes_ago: 30 },
+      { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], minutes_ago: 50 },
+      { address: '1.1.1.1', severity: 'medium', programs: ['wazuh'], minutes_ago: 70 },
+    ])
+
+    await dashboard.goto()
+
+    // Three incidents within hours of each other are too close to tell apart on a phone.
+    await expect(dashboard.trafficFlags).toHaveCount(1)
+    await expect(dashboard.trafficFlagCounts).toHaveText(['3'])
+    const [card, flag] = await Promise.all([
+      dashboard.trafficCard.boundingBox(),
+      dashboard.trafficFlags.first().boundingBox(),
+    ])
+    expect(flag?.x ?? -1).toBeGreaterThanOrEqual(card?.x ?? 0)
+    expect((flag?.x ?? 0) + (flag?.width ?? 0)).toBeLessThanOrEqual(
+      (card?.x ?? 0) + (card?.width ?? 0),
+    )
+
+    // Tapping a flag with several goes to the most serious of them.
+    await dashboard.trafficFlags.first().tap()
+    await expect(page).toHaveURL(/\/incidents\/\d+$/)
+    await expect(page.getByTestId('page-heading')).toContainText('93.184.216.34')
+  })
+
   test('swipes through the incidents that need a decision, with the next one showing', async ({
     page,
     harness,

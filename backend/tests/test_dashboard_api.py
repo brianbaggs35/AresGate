@@ -10,7 +10,7 @@ from app.events.event import Severity
 from app.events.store import record as record_events
 from app.models import User, utcnow
 from tests.helpers import new_event
-from tests.test_dashboard import NOW, alert, blocked_event
+from tests.test_dashboard import NOW, alert, blocked_event, incident
 
 BASE = "/api/dashboard"
 
@@ -36,6 +36,7 @@ def test_an_install_with_nothing_stored_still_has_a_dashboard(
     assert body["blocked"] == {"total": 0, "previous": 0, "per_bucket": [0] * 24, "top_sources": []}
     assert body["traffic"] == []
     assert body["devices"] == {"total": 0, "new": 0}
+    assert body["marks"] == []
 
 
 def test_the_last_week_is_cut_into_longer_buckets(client: TestClient, csrf_token: str) -> None:
@@ -128,3 +129,26 @@ class TestBuild:
         assert found.window.end == dashboard.window("24h", NOW).end
         assert found.window.buckets[-1] == found.window.end - timedelta(hours=1)
         assert found.alerts.by_severity["medium"][-1] == 1
+
+    def test_an_incident_is_marked_with_what_the_flag_says(self, session: Session) -> None:
+        began = NOW - timedelta(hours=3)
+        session.add(
+            incident(
+                "93.184.216.34",
+                began,
+                NOW - timedelta(hours=2),
+                severity=int(Severity.CRITICAL),
+                confidence=85,
+                status="investigating",
+                banned=True,
+            )
+        )
+        session.commit()
+
+        found = build(session, "24h", NOW)
+
+        [mark] = found.marks
+        assert (mark.title, mark.subject) == ("About 93.184.216.34", "93.184.216.34")
+        assert (mark.severity, mark.confidence, mark.status) == ("critical", 85, "investigating")
+        assert (mark.first_seen_at, mark.last_seen_at) == (began, NOW - timedelta(hours=2))
+        assert mark.banned is True

@@ -1,4 +1,4 @@
-import type { Dashboard, DashboardAlert, DashboardWindow } from '@/api/dashboard'
+import type { Dashboard, DashboardAlert, DashboardWindow, IncidentMark } from '@/api/dashboard'
 
 const HOUR = 3_600_000
 const END = Date.parse('2026-10-26T19:00:00Z')
@@ -45,6 +45,7 @@ export function dashboard(
     blocked: { total: 0, previous: 0, per_bucket: none(buckets), top_sources: [] },
     traffic: [],
     devices: { total: 0, new: 0 },
+    marks: [],
     ...changes,
   }
 }
@@ -60,6 +61,23 @@ export function alert(changes: Partial<DashboardAlert> = {}): DashboardAlert {
     signature: '5710',
     src_address: '198.51.100.20',
     dst_address: '192.168.1.20',
+    ...changes,
+  }
+}
+
+/** An incident of the dashboard's window, from a quarter past two in the afternoon of the day
+ * before it ends, unless it says otherwise. */
+export function incidentMark(changes: Partial<IncidentMark> = {}): IncidentMark {
+  return {
+    id: 1,
+    title: 'Brute force on ssh (93.184.216.34)',
+    subject: '93.184.216.34',
+    severity: 'high',
+    confidence: 70,
+    status: 'open',
+    first_seen_at: '2026-10-26T14:15:00Z',
+    last_seen_at: '2026-10-26T14:40:00Z',
+    banned: false,
     ...changes,
   }
 }

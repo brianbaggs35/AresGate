@@ -510,7 +510,11 @@ right), each compared with the same length of time before it. From the top:
 - **Network traffic** of one OPNsense interface (the busiest first, the others in a menu), in
   bits a second received and sent. It is worked out from the bytes the firewall counts, over
   15 minutes (or an hour for the week). Where the firewall wasn't read, or restarted and began
-  counting again, the line has a gap rather than a made-up speed.
+  counting again, the line has a gap rather than a made-up speed. Above it are flags for the
+  incidents that began in that time and were medium or worse (up to twelve, the most serious and
+  surest first; not dismissed, and not ones your verdicts make unworthy of a look), each linking
+  to the incident, so a spike can be read against what was going on. Flags too close together
+  become one with a count. They are `marks` in the dashboard's answer.
 - **Alerts by severity** for each hour (or six hours), the **addresses refused most**, and the
   **latest alerts** with who reported each. Every chart can be shown as a table.
 

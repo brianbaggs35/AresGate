@@ -1,7 +1,9 @@
-import type { AlertCounts, DashboardWindow } from '@/api/dashboard'
+import type { AlertCounts, DashboardWindow, IncidentMark } from '@/api/dashboard'
 import type { CollectorsReport } from '@/api/collectors'
-import { formatCount } from '@/format'
-import { SEVERITIES, type Severity } from '@/severity'
+import { severityColor } from '@/charts/palette'
+import type { ChartMark } from '@/charts/types'
+import { formatCount, formatDateTime } from '@/format'
+import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
 
 /** How a number has changed, as the stat tile shows it. */
 export interface Change {
@@ -154,4 +156,30 @@ export function bucketLabel(iso: string, window: DashboardWindow, locale?: strin
   const options: Intl.DateTimeFormatOptions =
     window === '24h' ? { hour: 'numeric' } : { weekday: 'short', hour: 'numeric' }
   return new Intl.DateTimeFormat(locale, options).format(new Date(iso))
+}
+
+/**
+ * The incidents as flags for a chart's time axis, each with what it says to someone who points at
+ * it and where it leads. The more serious one matters more, and of two as serious the surer, which
+ * is the one a flag that stands for several shows.
+ */
+export function marksOf(marks: readonly IncidentMark[], locale?: string): ChartMark[] {
+  return marks.map((mark): ChartMark => {
+    const severity = SEVERITY[mark.severity]
+    return {
+      id: `incident-${mark.id}`,
+      time: Date.parse(mark.first_seen_at),
+      weight: SEVERITIES.indexOf(mark.severity) * 1000 + mark.confidence,
+      label: `${severity.label} incident: ${mark.title}`,
+      heading: `Began ${formatDateTime(mark.first_seen_at, locale)}`,
+      rows: [
+        { value: severity.label, label: mark.title, color: severityColor(mark.severity) },
+        { value: `${mark.confidence} of 100`, label: 'sure it is an attack' },
+        ...(mark.banned ? [{ value: 'Banned', label: 'by an integration' }] : []),
+      ],
+      color: severityColor(mark.severity),
+      icon: severity.icon,
+      to: { name: 'incident', params: { id: mark.id } },
+    }
+  })
 }

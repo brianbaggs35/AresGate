@@ -8,7 +8,7 @@ from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.metrics.store import record as record_samples
-from app.models import Device
+from app.models import Device, Incident
 from tests.helpers import new_event, new_sample
 
 # A little after six in the evening, UTC.
@@ -426,3 +426,100 @@ class TestDevices:
         found = dashboard.devices(session, dashboard.window("24h", NOW))
 
         assert (found.total, found.new) == (0, 0)
+
+
+def incident(
+    subject: str, first: datetime, last: datetime | None = None, **changes: object
+) -> Incident:
+    """An incident that began at a time, and is still going unless it is said when it ended."""
+    return Incident(
+        **{
+            "subject": subject,
+            "title": f"About {subject}",
+            "severity": int(Severity.HIGH),
+            "confidence": 60,
+            "first_seen_at": first,
+            "last_seen_at": last or first,
+            "top_source": "wazuh",
+            "top_summary": "x",
+            "signal_count": 1,
+            "sources": ["wazuh"],
+            "addresses": [],
+            **changes,
+        }
+    )
+
+
+class TestMarkedIncidents:
+    def mark(self, session: Session, *incidents: Incident) -> list[str]:
+        session.add_all(incidents)
+        session.commit()
+        win = dashboard.window("24h", NOW)
+        return [found.subject for found in dashboard.marked_incidents(session, win)]
+
+    def test_they_are_in_the_order_they_began(self, session: Session) -> None:
+        found = self.mark(
+            session,
+            incident("later", NOW - HOUR),
+            incident("earlier", NOW - timedelta(hours=9)),
+        )
+
+        assert found == ["earlier", "later"]
+
+    def test_one_that_began_before_the_window_and_still_goes_on_is_marked(
+        self, session: Session
+    ) -> None:
+        win = dashboard.window("24h", NOW)
+
+        found = self.mark(
+            session,
+            incident("running", win.start - HOUR, win.start + HOUR),
+            incident("over", win.start - 2 * HOUR, win.start - HOUR),
+            incident("not yet", win.end),
+        )
+
+        assert found == ["running"]
+
+    def test_the_ones_that_are_not_serious_enough_are_left_out(self, session: Session) -> None:
+        found = self.mark(
+            session,
+            incident("low", NOW - HOUR, severity=int(Severity.LOW)),
+            incident("medium", NOW - HOUR, severity=int(Severity.MEDIUM)),
+            incident("critical", NOW - HOUR, severity=int(Severity.CRITICAL)),
+        )
+
+        assert sorted(found) == ["critical", "medium"]
+
+    def test_the_ones_the_owner_dismissed_or_quieted_are_left_out(self, session: Session) -> None:
+        found = self.mark(
+            session,
+            incident("dismissed", NOW - HOUR, status="dismissed"),
+            incident("not suspicious", NOW - HOUR, verdict="not_suspicious"),
+            incident("low priority", NOW - HOUR, verdict="low_priority"),
+            incident("threat", NOW - HOUR, verdict="threat"),
+            incident("resolved", NOW - HOUR, status="resolved"),
+            incident("open", NOW - HOUR),
+        )
+
+        assert sorted(found) == ["open", "resolved", "threat"]
+
+    def test_when_there_are_too_many_the_most_serious_and_surest_are_kept(
+        self, session: Session
+    ) -> None:
+        session.add_all(
+            [
+                incident("critical", NOW - HOUR, severity=int(Severity.CRITICAL), confidence=10),
+                incident("sure", NOW - 2 * HOUR, confidence=90),
+                incident("unsure", NOW - 3 * HOUR, confidence=20),
+                incident("medium", NOW - 4 * HOUR, severity=int(Severity.MEDIUM), confidence=99),
+            ]
+        )
+        session.commit()
+        win = dashboard.window("24h", NOW)
+
+        found = dashboard.marked_incidents(session, win, limit=3)
+
+        assert [one.subject for one in found] == ["unsure", "sure", "critical"]
+
+    def test_with_none_there_are_none(self, session: Session) -> None:
+        assert self.mark(session) == []

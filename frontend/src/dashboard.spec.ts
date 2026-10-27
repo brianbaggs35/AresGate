@@ -1,6 +1,7 @@
 import type { Collector, CollectorsReport } from '@/api/collectors'
 import type { AlertCounts } from '@/api/dashboard'
-import { bucketLabel, changeOf, collectionOf, postureOf, sumBuckets } from '@/dashboard'
+import { bucketLabel, changeOf, collectionOf, marksOf, postureOf, sumBuckets } from '@/dashboard'
+import { incidentMark } from '@/test/dashboard'
 
 const BEFORE = 'the day before'
 
@@ -210,5 +211,50 @@ describe('bucketLabel', () => {
     expect(bucketLabel('2026-10-26T14:00:00Z', '7d', 'en-US')).toMatch(
       /^[A-Z][a-z]{2},? \d{1,2}\s?[AP]M$/,
     )
+  })
+})
+
+describe('marksOf', () => {
+  it('flags an incident at the time it began, saying what it is and where it leads', () => {
+    const [mark] = marksOf([incidentMark({ id: 7, severity: 'critical' })], 'en-US')
+
+    expect(mark).toMatchObject({
+      id: 'incident-7',
+      time: Date.parse('2026-10-26T14:15:00Z'),
+      label: 'Critical incident: Brute force on ssh (93.184.216.34)',
+      color: 'var(--chart-severity-critical)',
+      to: { name: 'incident', params: { id: 7 } },
+    })
+    expect(mark?.heading).toMatch(/^Began Oct 26, 2026/)
+    expect(mark?.rows).toEqual([
+      {
+        value: 'Critical',
+        label: 'Brute force on ssh (93.184.216.34)',
+        color: 'var(--chart-severity-critical)',
+      },
+      { value: '70 of 100', label: 'sure it is an attack' },
+    ])
+  })
+
+  it('says when an integration banned the address', () => {
+    const [mark] = marksOf([incidentMark({ banned: true })])
+
+    expect(mark?.rows.at(-1)).toEqual({ value: 'Banned', label: 'by an integration' })
+  })
+
+  it('weighs the more serious first, and of two as serious the surer', () => {
+    const [low, sure, unsure, critical] = marksOf([
+      incidentMark({ severity: 'medium', confidence: 99 }),
+      incidentMark({ severity: 'high', confidence: 80 }),
+      incidentMark({ severity: 'high', confidence: 40 }),
+      incidentMark({ severity: 'critical', confidence: 10 }),
+    ])
+
+    const weights = [low, unsure, sure, critical].map((mark) => mark?.weight as number)
+    expect(weights).toEqual([...weights].sort((a, b) => a - b))
+  })
+
+  it('has no flags for no incidents', () => {
+    expect(marksOf([])).toEqual([])
   })
 })

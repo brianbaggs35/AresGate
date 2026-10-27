@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Incidents flagged on the traffic chart**: the dashboard's traffic chart has a flag above it
+  for each incident that began in the day or week and was medium or worse, with a dashed line down
+  to the time, so a spike can be read against what was going on. A flag links to its incident
+  and says what it is when you point at it or tab to it; flags too close to tell apart become one
+  with a count, and the chart's table view has a column for them. `GET /api/dashboard` now also
+  answers `marks`: the incidents of the window, up to twelve, that are worth a flag.
 - **What was done about an incident**: every card in the incident list now has a chip that says
   *Banned*, *Partly banned*, *Ban ended*, *Blocked* or *No response yet* (an incident about a
   rule, with no address to act on, has none), and the incident's page has a *What was done about

@@ -10,7 +10,7 @@ from app import dashboard
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
 from app.integrations import registry
-from app.models import Event, utcnow
+from app.models import Event, Incident, utcnow
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(signed_in)])
 
@@ -89,6 +89,21 @@ class DevicesOut(BaseModel):
     new: int
 
 
+class IncidentMarkOut(BaseModel):
+    """An incident that was going on in the window, for a flag on the charts."""
+
+    id: int
+    title: str
+    # What it is about: an address, or a rule when it names none.
+    subject: str
+    severity: SeverityName
+    confidence: int
+    status: str
+    first_seen_at: AwareDatetime
+    last_seen_at: AwareDatetime
+    banned: bool
+
+
 class DashboardOut(BaseModel):
     window: WindowOut
     alerts: AlertsOut
@@ -96,6 +111,22 @@ class DashboardOut(BaseModel):
     blocked: BlockedOut
     traffic: list[InterfaceOut]
     devices: DevicesOut
+    # The incidents to flag on the charts, in the order they began.
+    marks: list[IncidentMarkOut]
+
+
+def _mark(incident: Incident) -> IncidentMarkOut:
+    return IncidentMarkOut(
+        id=incident.id,
+        title=incident.title,
+        subject=incident.subject,
+        severity=SEVERITY_NAMES[Severity(incident.severity)],
+        confidence=incident.confidence,
+        status=incident.status,
+        first_seen_at=incident.first_seen_at,
+        last_seen_at=incident.last_seen_at,
+        banned=incident.banned,
+    )
 
 
 def _alert(event: Event) -> AlertOut:
@@ -149,6 +180,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             for item in dashboard.traffic(db, win)
         ],
         devices=DevicesOut(total=people.total, new=people.new),
+        marks=[_mark(incident) for incident in dashboard.marked_incidents(db, win)],
     )
 
 
