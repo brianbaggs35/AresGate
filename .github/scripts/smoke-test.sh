@@ -29,6 +29,12 @@ grep --quiet '<div id="app">' <<<"$index" || fail "the web app's index page did 
 curl --silent --show-error --fail --insecure --output /dev/null "$base/integrations" ||
     fail "a page of the web app did not fall back to the index"
 
+echo "The AI API is passed on without a redirect"
+# A path that is also the start of a proxied location with a slash (/api/ai/) is redirected to it by
+# nginx, and the API redirects it back. Nobody is signed in, so the API itself answers 401.
+code="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' "$base/api/ai")"
+[[ "$code" = 401 ]] || fail "/api/ai answered $code, but should have been passed to the API (401)"
+
 echo "The end-to-end test harness is not in this image"
 # It can erase the database, so only the e2e image has it (the Dockerfile's e2e target).
 code="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' --request POST \

@@ -183,14 +183,16 @@ def test_the_test_server_policy_for_providers_adds_only_loopback() -> None:
 
 
 def test_a_refusal_says_where_the_thing_it_is_for_should_be() -> None:
+    public = [ipaddress.ip_address("8.8.8.8")]
+    private = [ipaddress.ip_address("192.168.1.1")]
+    metadata_address = [ipaddress.ip_address("169.254.169.254")]
+
     with pytest.raises(Refused) as home:
-        allowed_addresses(HOME_NETWORK, "8.8.8.8", [ipaddress.ip_address("8.8.8.8")])
+        allowed_addresses(HOME_NETWORK, "8.8.8.8", public)
     with pytest.raises(Refused) as internet:
-        allowed_addresses(PUBLIC_INTERNET, "api.example.com", [ipaddress.ip_address("192.168.1.1")])
+        allowed_addresses(PUBLIC_INTERNET, "api.example.com", private)
     with pytest.raises(Refused) as metadata:
-        allowed_addresses(
-            PUBLIC_INTERNET, "169.254.169.254", [ipaddress.ip_address("169.254.169.254")]
-        )
+        allowed_addresses(PUBLIC_INTERNET, "169.254.169.254", metadata_address)
 
     assert str(home.value) == (
         "8.8.8.8 isn't a private network address, so AresGate won't connect to it. "

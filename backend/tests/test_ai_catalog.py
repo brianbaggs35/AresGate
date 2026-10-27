@@ -56,12 +56,10 @@ def test_prices_are_those_the_providers_publish() -> None:
     haiku = catalog.ANTHROPIC.model("claude-haiku-5-5")
     luna = catalog.OPENAI.model("gpt-6-luna")
 
-    assert haiku and haiku.price == catalog.ANTHROPIC.models[0].price
-    assert haiku.price and (haiku.price.input, haiku.price.output) == (
-        Decimal("0.10"),
-        Decimal("0.50"),
-    )
-    assert luna and luna.price
+    assert haiku is not None
+    assert haiku.price == catalog.ANTHROPIC.models[0].price
+    assert (haiku.price.input, haiku.price.output) == (Decimal("0.10"), Decimal("0.50"))
+    assert luna is not None
     assert (luna.price.input, luna.price.cached_input, luna.price.output) == (
         Decimal("0.10"),
         Decimal("0.01"),

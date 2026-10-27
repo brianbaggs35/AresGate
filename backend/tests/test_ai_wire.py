@@ -355,8 +355,10 @@ class TestReadingAnswers:
         self, definition: ProviderDef
     ) -> None:
         for text in ("[]", "nonsense", '"hi"'):
+            reply = Reply(200, text)
+
             with pytest.raises(AiFailed, match="not in a form AresGate understands"):
-                wire.read_completion(definition, Reply(200, text))
+                wire.read_completion(definition, reply)
 
     @pytest.mark.parametrize("definition", catalog.PROVIDERS)
     def test_nonsense_in_the_numbers_counts_as_none(self, definition: ProviderDef) -> None:
