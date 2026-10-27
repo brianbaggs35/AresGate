@@ -381,12 +381,18 @@ class TestOne:
         assert listing["activities"] == ["scan"]
         assert body["ports"] == [22, 80]
         assert body["grouping"] == [
-            "Signals from 2 addresses of 93.184.216.0/24 doing the same thing are grouped: "
-            "a bot spread over a block is one actor.",
-            "Each scanning signal came less than 4 hours after the one before it. "
-            "A longer quiet, or more than 24 hours in all, starts another incident.",
-            "It came in 2 waves: 3 signals in bursts with at least 15 minutes of quiet "
-            "between them.",
+            (
+                "Signals from 2 addresses of 93.184.216.0/24 doing the same thing are grouped: "
+                "a bot spread over a block is one actor."
+            ),
+            (
+                "Each scanning signal came less than 4 hours after the one before it. "
+                "A longer quiet, or more than 24 hours in all, starts another incident."
+            ),
+            (
+                "It came in 2 waves: 3 signals in bursts with at least 15 minutes of quiet "
+                "between them."
+            ),
             "It touched 2 ports.",
         ]
 
