@@ -5,6 +5,11 @@ import type { Status } from '@/api/integrations'
  * internet as Ollama's own cloud. */
 export type ProviderKind = 'hosted' | 'local' | 'cloud'
 
+/** What an account may use, for a provider whose plans differ in the models they allow: only the
+ * models its free usage covers, or every model. Only the owner can say which: nothing the
+ * provider answers does. */
+export type Plan = 'free' | 'paid'
+
 /** What a model costs, in US dollars per million tokens. */
 export interface Price {
   input: number
@@ -73,14 +78,19 @@ export interface AiProvider {
   last_error: string | null
   found: FoundModel[]
   found_at: string | null
+  /** The models a free plan may use, for a provider that has plans: none for the others. */
+  free_models: string[]
+  /** The plan the owner said the account has. */
+  plan: Plan | null
 }
 
 export interface Ai {
   enabled: boolean
   /** The provider that is asked. */
   provider: string | null
-  /** When the prices were read from the providers' pages. */
+  /** When the prices were read from the providers' pages, and the free models were. */
   priced_as_of: string
+  free_models_as_of: string
   providers: AiProvider[]
 }
 
@@ -89,6 +99,8 @@ export interface ProviderSettings {
   model: string
   base_url?: string | null
   api_key?: string
+  /** Left out, the plan that is kept stays. */
+  plan?: Plan
 }
 
 /** How a test or a look for models went, and the provider as it is now. */

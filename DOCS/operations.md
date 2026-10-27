@@ -528,13 +528,45 @@ AresGate works without it. A test sends only the words "Say OK."
   billed as output. AresGate asks them to think a little (`reasoning.effort` `low`, which every
   one takes: Astra and Sol refuse `none`) and adds room for it to the limit. GPT-5.4 mini and
   nano don't think unless asked. Claude models are asked as before.
-- **Ollama.** Give the address it listens on, such as `http://192.168.1.50:11434`: not
-  `localhost`, which for AresGate's container is the container itself, and an address on your own
-  network (the ranges 10.x, 172.16-31.x and 192.168.x), since AresGate refuses to reach anywhere
-  else for it. Ollama listens only on its own computer until it is told otherwise (the
-  `OLLAMA_HOST` setting). **Fetch models** asks it which models it has (`GET /api/tags`) and
-  offers them, with their size; **Test connection** asks it for them and then for one token from
-  the model you chose. Ollama Cloud has the same two buttons once a key is entered.
+- **Choosing a provider.** The page shows the four as cards (Ollama on your computer, Ollama
+  Cloud, Anthropic, OpenAI) and, under them, only the settings of the one you chose. What you
+  typed for one stays while you look at another. The page opens on the provider AresGate asks, or
+  on one that is set up.
+- **Ollama on your computer.** Give the address it listens on and press **Fetch models**, which
+  asks it which models it has (`GET /api/tags`) and turns the Model box into a list to choose
+  from, with each model's family, parameters, quantization and size. **Test connection** asks it
+  for them and then for one token from the model you chose. The model that is saved is always in
+  the list, so one can be chosen before the models are fetched or when asking failed. Where the
+  address may point depends on where AresGate runs:
+  - Run straight on a computer (not in a container), `http://localhost:11434` works for an Ollama
+    on that same computer, as does any address on your own network (10.x, 172.16-31.x,
+    192.168.x). Nothing else on the machine is reachable this way, and nowhere outside your
+    network is.
+  - Run in Docker, `localhost` is the container itself, so AresGate says so and refuses it. Use
+    `http://host.docker.internal:11434` for an Ollama on the computer that runs Docker:
+    Docker Desktop has that name already, and the compose file and the
+    [quick start](quick-start.md) add it for Docker on Linux (`extra_hosts` or
+    `--add-host host.docker.internal:host-gateway`). Ollama listens only on its own computer
+    until it is told otherwise (the `OLLAMA_HOST` setting), so if the test can't connect, set
+    `OLLAMA_HOST=0.0.0.0` and restart it (docs.ollama.com/faq). This was not checked against
+    every Docker setup.
+  AresGate decides this from `ARESGATE_IN_CONTAINER`, which the image sets.
+- **Ollama Cloud.** Make a key at ollama.com and press **Fetch models**. The list shows only the
+  names, because the cloud's `/api/tags` leaves out the details (and gives a size of 0 for some),
+  and there is no size to show for a model that doesn't run on your computer.
+- **Free and paid accounts on Ollama Cloud.** A free account can use only some of the cloud
+  models: any other answers `402 Payment Required`. Nothing in Ollama's API or documentation
+  says which plan a key belongs to (the documented errors are 400, 404, 429, 500 and 502 and
+  there is no account endpoint; docs.ollama.com/cloud only points to ollama.com/pricing and
+  ollama.com/settings/usage), so the page asks: **Your Ollama account**, *Free* or *Paid*, free
+  until you say otherwise. For a free account the list offers only the free models and says how
+  many more need a paid plan. The free models are in `OLLAMA_CLOUD_FREE_MODELS` in
+  `backend/app/ai/catalog.py` with the date they were read (`FREE_MODELS_AS_OF`), from the
+  account page of an Ollama user on 2026-10-27, so they can go out of date: update that one list
+  when Ollama changes them. A test that gets 402 says why: for a model that isn't on the free
+  list it says the model needs a paid plan and which free models there are; for a paid account it
+  says payment is still required and to check ollama.com/settings/usage; and it never lets one
+  paid-only model decide whether the connection works, because the test asks the model you chose.
 - **Test connection and Fetch models save first.** What you filled in is kept, then tested, so
   what is tested is what is used. A test asks for one token: the least that proves the key, the
   model and the address work.

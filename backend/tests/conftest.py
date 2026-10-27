@@ -99,6 +99,7 @@ def app(settings: Settings, session: Session, engine: Engine) -> FastAPI:
     )
     # Stand-ins for integrations run on this machine.
     app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
+    app.state.local_ai_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.ai_policy = netguard.PUBLIC_INTERNET_AND_LOOPBACK
     return app
 

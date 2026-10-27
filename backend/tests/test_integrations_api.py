@@ -526,3 +526,16 @@ def test_the_policy_and_recorder_come_from_the_app() -> None:
 
     assert app.state.address_policy is netguard.HOME_NETWORK
     assert isinstance(integrations.api_log_recorder(), ApiLogRecorder)
+
+
+def test_an_ollama_may_be_on_the_computer_unless_that_is_the_container() -> None:
+    from app.config import Settings
+    from app.main import create_app
+
+    bare = create_app(Settings(in_container=False))
+    boxed = create_app(Settings(in_container=True))
+
+    assert bare.state.local_ai_policy is netguard.OLLAMA_ON_THIS_COMPUTER
+    assert boxed.state.local_ai_policy is netguard.OLLAMA_IN_CONTAINER
+    # Integrations never are allowed to be on the machine itself.
+    assert bare.state.address_policy is boxed.state.address_policy is netguard.HOME_NETWORK

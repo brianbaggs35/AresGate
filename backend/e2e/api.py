@@ -275,6 +275,8 @@ class StandInRequest(BaseModel):
     # it is Ollama's cloud): the models it has, and, for a hosted provider, which one it stands
     # in for, so AresGate asks it instead of the real one.
     models: list[str] = []
+    # An Ollama's models that need a paid plan: they are listed, and answer 402 Payment Required.
+    paid: list[str] = []
     provider: Literal["anthropic", "openai", "ollama_cloud"] | None = None
 
 
@@ -299,6 +301,7 @@ def start_stand_in(body: StandInRequest, request: Request) -> StandInRecord:
         username=body.username,
         password=body.password,
         models=body.models,
+        paid=body.paid,
     )
     if body.provider is not None:
         request.app.state.ai_origins[body.provider] = running.url

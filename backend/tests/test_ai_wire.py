@@ -458,6 +458,17 @@ class TestExplaining:
         assert "Choose another model" in wire.explain(404, catalog.ANTHROPIC)
         assert "Fetch the models" in wire.explain(404, catalog.OLLAMA)
 
+    def test_payment_required_says_whose_plan_and_that_the_provider_did_not_say_so(self) -> None:
+        ollama = wire.explain(402, catalog.OLLAMA_CLOUD)
+        other = wire.explain(402, catalog.ANTHROPIC)
+
+        assert ollama.startswith("Ollama Cloud says payment is required (HTTP 402) for this model.")
+        assert "doesn't list that answer" in ollama
+        assert "plan" in ollama
+        assert (
+            other == "Anthropic says payment is required (HTTP 402). Check the account's billing."
+        )
+
     def test_too_many_requests_or_no_credit(self) -> None:
         assert "out of credit" in wire.explain(429, catalog.OPENAI)
 

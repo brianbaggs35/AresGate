@@ -65,6 +65,9 @@ class AddressPolicy:
     # What a refusal says: what is wrong with the address, and where it should be instead.
     problem: str = "isn't a private network address"
     advice: str = "Integrations have to be on your own network."
+    # What a refusal says of an address that leads back to the machine itself, if that is not
+    # the same thing as any other: in a container it is the container, not the computer.
+    loopback_problem: str | None = None
 
     def allows(self, address: IPAddress) -> bool:
         address = _unmapped(address)
@@ -85,6 +88,26 @@ CLOUD_METADATA = _networks("169.254.0.0/16", "fd00:ec2::/32", "100.100.100.200/3
 HOME_NETWORK = AddressPolicy(
     allowed=_networks("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"),
     refused=CLOUD_METADATA,
+)
+THIS_COMPUTER = _networks("127.0.0.0/8", "::1/128")
+# Where an Ollama on the owner's own computer may be, the one place an integration may be that is
+# not on the home network. Where AresGate runs on that computer itself, so is the Ollama: the same
+# computer is allowed. In AresGate's container, "localhost" is the container, where there is no
+# Ollama and where the API and its neighbours listen, so it stays refused, with the way to reach
+# the computer the container is on.
+OLLAMA_ON_THIS_COMPUTER = AddressPolicy(
+    allowed=(*HOME_NETWORK.allowed, *THIS_COMPUTER),
+    refused=CLOUD_METADATA,
+    advice="Ollama has to be on this computer or on your own network.",
+)
+OLLAMA_IN_CONTAINER = AddressPolicy(
+    allowed=HOME_NETWORK.allowed,
+    refused=CLOUD_METADATA,
+    advice=(
+        "Ollama has to be on your own network. For one on the computer that runs AresGate, use "
+        "host.docker.internal instead of localhost, such as http://host.docker.internal:11434."
+    ),
+    loopback_problem="is AresGate's container, not your computer",
 )
 # Everything that is not the inside of a network: what a hosted AI provider's address has to lead
 # to, so that a name which has been made to point at the home network, the machine itself or a
@@ -227,11 +250,11 @@ def allowed_addresses(
         if not policy.allows(address):
             # An address that was typed in is not "at" itself.
             subject = f"{address}" if host == str(address) else f"{host} is at {address}, which"
-            reason = (
-                "is in a range cloud providers use for their metadata services"
-                if any(_unmapped(address) in network for network in CLOUD_METADATA)
-                else policy.problem
-            )
+            reason = policy.problem
+            if any(_unmapped(address) in network for network in CLOUD_METADATA):
+                reason = "is in a range cloud providers use for their metadata services"
+            elif policy.loopback_problem and _unmapped(address).is_loopback:
+                reason = policy.loopback_problem
             raise Refused(f"{subject} {reason}, so AresGate won't connect to it. {policy.advice}")
     return addresses
 

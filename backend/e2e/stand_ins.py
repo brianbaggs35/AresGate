@@ -972,9 +972,10 @@ def openai(api_key: str, models: Collection[str] = ()) -> Handler:
     return handle
 
 
-def ollama(api_key: str = "", models: Collection[str] = ()) -> Handler:
+def ollama(api_key: str = "", models: Collection[str] = (), paid: Collection[str] = ()) -> Handler:
     """Ollama's API: the models it has at ``/api/tags`` and an answer from ``/api/chat``. With a
-    key (Ollama's cloud) a bearer key is needed, and without one (an Ollama at home) none is."""
+    key (Ollama's cloud) a bearer key is needed, and without one (an Ollama at home) none is.
+    The ``paid`` models are listed but answer 402, as a cloud model does for a plan without it."""
 
     def handle(seen: Seen) -> Answer:
         if api_key and seen.headers.get("authorization") != f"Bearer {api_key}":
@@ -1003,6 +1004,8 @@ def ollama(api_key: str = "", models: Collection[str] = ()) -> Handler:
             asked = json.loads(seen.body)
             if asked.get("model") not in models:
                 return _json({"error": f"model '{asked.get('model')}' not found"}, 404)
+            if asked["model"] in paid:
+                return _json({"error": "this model requires a subscription"}, 402)
             return _json(
                 {
                     "model": asked["model"],
@@ -1286,6 +1289,7 @@ class StandIns:
         username: str = "",
         password: str = "",
         models: Collection[str] = (),
+        paid: Collection[str] = (),
     ) -> Running:
         now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
@@ -1311,7 +1315,7 @@ class StandIns:
             "wazuh": wazuh(username, password, sample_wazuh_alerts(now), sample_wazuh_agents(now)),
             "anthropic": anthropic(api_key, models),
             "openai": openai(api_key, models),
-            "ollama": ollama(api_key, models),
+            "ollama": ollama(api_key, models, paid),
         }
         names: dict[Kind, str] = {
             "opnsense": "fw.home.arpa",
