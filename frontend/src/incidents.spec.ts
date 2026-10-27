@@ -22,9 +22,10 @@ import {
   reasonLabel,
   spanOf,
   spreadOf,
+  storyOf,
 } from '@/incidents'
 import { INCIDENT_STATUSES } from '@/api/incidents'
-import { incident, signal } from '@/test/incidents'
+import { detail, device, incident, signal } from '@/test/incidents'
 
 const AT = Date.parse('2026-10-26T14:00:00Z')
 const MINUTE = 60_000
@@ -334,5 +335,91 @@ describe('what an incident was doing', () => {
     expect(portsTouched({ port_count: 1, ports_capped: false })).toBe('1 port')
     expect(portsTouched({ port_count: 14, ports_capped: false })).toBe('14 ports')
     expect(portsTouched({ port_count: 1000, ports_capped: true })).toBe('at least 1,000 ports')
+  })
+})
+
+describe('storyOf', () => {
+  const story = (changes: Parameters<typeof detail>[0] = {}) => storyOf(detail(changes), 'en-US')
+
+  it('says that programs agree, and who reported what about whom over how long', () => {
+    const { title, detail: text } = story({
+      sources: [
+        { key: 'crowdsec', name: 'CrowdSec' },
+        { key: 'opnsense', name: 'OPNsense' },
+        { key: 'wazuh', name: 'Wazuh' },
+      ],
+      signal_count: 9,
+      first_seen_at: at(0),
+      last_seen_at: at(28),
+      devices: [],
+      blocked: 0,
+    })
+
+    expect(title).toBe('3 programs agree')
+    expect(text).toBe(
+      'CrowdSec, OPNsense, and Wazuh reported 9 signals about 93.184.216.34 over 28m.',
+    )
+  })
+
+  it('says when only one program saw it, and that one signal took no time', () => {
+    const { title, detail: text } = story({
+      sources: [{ key: 'ntopng', name: 'ntopng' }],
+      signal_count: 1,
+      devices: [],
+      blocked: null,
+    })
+
+    expect(title).toBe('One program saw it')
+    expect(text).toBe('ntopng reported 1 signal about 93.184.216.34.')
+  })
+
+  it('says what a rule with no address is', () => {
+    const { detail: text } = story({
+      subject: 'rule:wazuh:5710',
+      signal_count: 4,
+      first_seen_at: at(0),
+      last_seen_at: at(0),
+      devices: [],
+      blocked: null,
+    })
+
+    expect(text).toContain('about a rule that names no address within a minute.')
+  })
+
+  it('says that it was banned', () => {
+    expect(story({ banned: true, devices: [], blocked: null }).detail).toContain(
+      ' An integration banned the address.',
+    )
+    expect(story({ banned: false, devices: [], blocked: null }).detail).not.toContain('banned')
+  })
+
+  it('names the devices on the network that it involves, a few of them and then how many more', () => {
+    const named = (hostname: string | null, id: number) =>
+      device({ id, hostname, address: `192.168.1.${id}` })
+
+    expect(story({ devices: [named('nas', 20)], blocked: null }).detail).toContain(
+      ' It involves nas on your network.',
+    )
+    expect(story({ devices: [named(null, 21)], blocked: null }).detail).toContain(
+      'It involves 192.168.1.21 on your network.',
+    )
+    expect(story({ devices: [named('nas', 20), named('tv', 21)], blocked: null }).detail).toContain(
+      'It involves nas and tv on your network.',
+    )
+    expect(
+      story({
+        devices: [named('a', 1), named('b', 2), named('c', 3), named('d', 4), named('e', 5)],
+        blocked: null,
+      }).detail,
+    ).toContain('It involves a, b, c and 2 more on your network.')
+  })
+
+  it('says how often the firewall turned the address away, if it did', () => {
+    expect(story({ devices: [], blocked: 12 }).detail).toContain(
+      ' The firewall turned the address away 12 times around then.',
+    )
+    expect(story({ devices: [], blocked: 1 }).detail).toContain('away once around then.')
+    expect(story({ devices: [], blocked: 0 }).detail).not.toContain('firewall')
+    expect(story({ devices: [], blocked: null }).detail).not.toContain('firewall')
   })
 })

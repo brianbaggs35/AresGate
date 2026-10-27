@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { connectFirewall, expect, test } from '../support'
+import { connectFirewall, expect, test, waitForMotion } from '../support'
 
 test.describe('layout on a phone', () => {
   test('the dashboard fits the screen without scrolling sideways', async ({ page, dashboard }) => {
@@ -110,6 +110,7 @@ test.describe('layout on a phone', () => {
   })
 
   test('puts the four numbers of an incident two to a row', async ({
+    page,
     harness,
     incidents,
     incident,
@@ -118,6 +119,8 @@ test.describe('layout on a phone', () => {
     await incidents.goto()
     await incidents.cards.first().click()
     await expect(incident.signalsTile).toBeVisible()
+    // The page rises into place, and the boxes are only the same height once it has.
+    await waitForMotion(page)
 
     const [first, second, third] = await Promise.all([
       incident.signalsTile.boundingBox(),

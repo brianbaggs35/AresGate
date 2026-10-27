@@ -51,7 +51,7 @@ describe('IncidentView', () => {
     })
 
     expect(wrapper.find('[data-test="incident-loading"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="tiles"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="incident-hero"]').exists()).toBe(false)
   })
 
   describe('the top of the page', () => {
@@ -149,6 +149,52 @@ describe('IncidentView', () => {
       expect(wrapper.findComponent(VerdictPanel).props('verdicts')).toHaveLength(1)
       expect(wrapper.find('.incident__chips [data-test="verdict"]').text()).toBe('Not suspicious')
       expect(text('verdict-standing')).toContain('will not raise an alarm')
+    })
+  })
+
+  describe('the hero', () => {
+    it('says what happened: that the programs agree, and who reported what', async () => {
+      const { text } = await open()
+
+      expect(text('incident-hero-eyebrow')).toBe('What happened')
+      expect(text('incident-hero-title')).toBe('2 programs agree')
+      expect(text('incident-hero-detail')).toContain(
+        'OPNsense and Wazuh reported 3 signals about 93.184.216.34',
+      )
+    })
+
+    it('draws the confidence as a ring and says it in figures', async () => {
+      const { find, text } = await open({ found: detail({ confidence: 70 }) })
+
+      expect(text('confidence-score')).toContain('70')
+      expect(text('confidence-score')).toContain('of 100')
+      expect(find('incident-hero').find('.hero__arc').attributes('style')).toContain(
+        'stroke-dashoffset: 30',
+      )
+    })
+
+    it('is the color of how serious it is, and urgent while a serious one is not over', async () => {
+      const { find } = await open({ found: detail({ severity: 'critical', status: 'open' }) })
+
+      expect(find('incident-hero').attributes('style')).toContain('--v-theme-error')
+      expect(find('incident-hero').attributes('data-mood')).toBe('urgent')
+    })
+
+    it('is calm for one that is not serious', async () => {
+      const { find } = await open({ found: detail({ severity: 'medium' }) })
+
+      expect(find('incident-hero').attributes('style')).toContain('--v-theme-warning')
+      expect(find('incident-hero').attributes('data-mood')).toBe('calm')
+    })
+
+    it.each([
+      ['resolved', 'success'],
+      ['dismissed', 'secondary'],
+    ] as const)('is the color of its status once it is %s, and calm', async (status, color) => {
+      const { find } = await open({ found: detail({ severity: 'critical', status }) })
+
+      expect(find('incident-hero').attributes('style')).toContain(`--v-theme-${color}`)
+      expect(find('incident-hero').attributes('data-mood')).toBe('calm')
     })
   })
 
@@ -411,14 +457,14 @@ describe('IncidentView', () => {
       const { find, text, fetchIncident } = await open({ found: offline() })
 
       expect(text('incident-error')).toContain("Can't reach AresGate.")
-      expect(find('tiles').exists()).toBe(false)
+      expect(find('incident-hero').exists()).toBe(false)
 
       fetchIncident.mockResolvedValue(detail())
       await find('retry').trigger('click')
       await flushPromises()
 
       expect(find('incident-error').exists()).toBe(false)
-      expect(find('tiles').exists()).toBe(true)
+      expect(find('incident-hero').exists()).toBe(true)
     })
 
     it('says an incident that is not there may have been removed, and does not offer to try again', async () => {
@@ -447,7 +493,7 @@ describe('IncidentView', () => {
 
         expect(text('incident-stale')).toContain("Can't reach AresGate.")
         expect(text('incident-stale')).toMatch(/is from \d/)
-        expect(find('tiles').exists()).toBe(true)
+        expect(find('incident-hero').exists()).toBe(true)
 
         fetchIncident.mockResolvedValue(detail())
         vi.advanceTimersByTime(30_000)
@@ -468,7 +514,7 @@ describe('IncidentView', () => {
         await flushPromises()
 
         expect(text('incident-stale')).toContain('No such incident.')
-        expect(find('tiles').exists()).toBe(true)
+        expect(find('incident-hero').exists()).toBe(true)
       } finally {
         vi.useRealTimers()
       }

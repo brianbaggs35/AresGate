@@ -1,5 +1,5 @@
 // Everything a spec needs: `import { test, expect } from '../support'`.
-export { expectAccessible } from './accessibility'
+export { expectAccessible, waitForMotion } from './accessibility'
 export { connectFirewall, FIREWALL_KEY, FIREWALL_SECRET } from './flows'
 export {
   Harness,

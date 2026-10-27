@@ -98,6 +98,11 @@ export function formatDays(days: number): string {
   return `${days.toString()} ${days === 1 ? 'day' : 'days'}`
 }
 
+/** Names in a sentence, the way people say them: "A", "A and B" or "A, B and C". */
+export function formatList(items: readonly string[], locale?: string): string {
+  return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(items)
+}
+
 /** A count the way people read it, with the separators of their language: "12,408". */
 export function formatCount(count: number, locale?: string): string {
   return new Intl.NumberFormat(locale).format(count)

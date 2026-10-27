@@ -47,6 +47,23 @@ test.describe('an incident', () => {
     )
   })
 
+  test('tells what happened in a sentence, with how sure AresGate is in a ring', async ({
+    harness,
+    incident,
+    page,
+  }) => {
+    await harness.createIncidents([BAD])
+
+    await openIncident(page, ATTACKER)
+
+    await expect(incident.heroTitle).toHaveText('3 programs agree')
+    await expect(incident.heroDetail).toContainText(`reported 7 signals about ${ATTACKER}`)
+    await expect(incident.heroDetail).toContainText('An integration banned the address.')
+    await expect(incident.heroDetail).toContainText('It involves nas on your network.')
+    await expect(incident.score).toContainText('of 100')
+    await expect(incident.hero.locator('.hero__arc')).toBeAttached()
+  })
+
   test('counts its signals, programs, addresses and the firewall’s blocks', async ({
     harness,
     incident,
