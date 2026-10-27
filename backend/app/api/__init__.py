@@ -17,6 +17,7 @@ from app.api import (
     logs,
     metrics,
     passkeys,
+    searches,
     setup,
     status,
     system,
@@ -40,6 +41,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(events.router)
 api_router.include_router(incidents.router)
 api_router.include_router(logs.router)
+api_router.include_router(searches.router)
 api_router.include_router(verdicts.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audit.router)

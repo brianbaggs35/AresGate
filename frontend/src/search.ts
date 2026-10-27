@@ -6,6 +6,7 @@
  * rules are repeated here.
  */
 import type { SearchTerm, SourceCount } from '@/api/incidents'
+import type { SearchScope } from '@/api/searches'
 import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
 
 /** One way to search, as help. `text` is what it types into the box. */
@@ -17,6 +18,8 @@ export interface SearchExample {
 /** What a search box is for: how it is named, what it hints at, how to search it and where the
  * searches made in it are remembered. */
 export interface SearchKind {
+  /** The page it is for, which the searches that are saved are kept under. */
+  scope: SearchScope
   label: string
   placeholder: string
   examples: readonly SearchExample[]
@@ -79,6 +82,7 @@ export const LOG_EXAMPLES: readonly SearchExample[] = [
 ]
 
 export const INCIDENT_SEARCH: SearchKind = {
+  scope: 'incidents',
   label: 'Search incidents',
   placeholder: 'severity>=high source:wazuh -port:22 ssh',
   examples: SEARCH_EXAMPLES,
@@ -86,6 +90,7 @@ export const INCIDENT_SEARCH: SearchKind = {
 }
 
 export const LOG_SEARCH: SearchKind = {
+  scope: 'logs',
   label: 'Search logs',
   placeholder: 'severity>=high source:opnsense -port:22 since:1h',
   examples: LOG_EXAMPLES,

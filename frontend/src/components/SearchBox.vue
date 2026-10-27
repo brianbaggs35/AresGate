@@ -3,6 +3,7 @@ import { CircleHelp, Search, X } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 import type { SearchTerm } from '@/api/incidents'
+import SavedSearches from '@/components/SavedSearches.vue'
 import { type SearchKind, forget, readRecent, remember, without } from '@/search'
 
 /** How long after the last key the search is applied, so typing a term is not searching for it
@@ -12,9 +13,9 @@ const PAUSE = 400
 /**
  * The search box for a list that is searched in words (the incidents, the logs): a text field,
  * the terms of what was typed shown back as chips that each come off with one tap, and a panel of
- * ways to search and the searches made before. The text is the applied search (it lives in the
- * address of the page); what is typed is applied after a pause, or at once with Enter, and the
- * chips are the API's reading of it.
+ * the searches kept under a name, ways to search and the searches made before. The text is the
+ * applied search (it lives in the address of the page); what is typed is applied after a pause,
+ * or at once with Enter, and the chips are the API's reading of it.
  */
 const props = defineProps<{
   /** What is searched: its name, the hint, the ways to search it and where its searches are kept. */
@@ -137,7 +138,7 @@ defineExpose({ focus: () => field.value?.focus() })
           density="comfortable"
           :aria-expanded="help"
           :aria-controls="helpId"
-          aria-label="How to search, and recent searches"
+          aria-label="How to search, and saved and recent searches"
           data-test="search-help"
           @click="help = !help"
         >
@@ -147,6 +148,12 @@ defineExpose({ focus: () => field.value?.focus() })
     </v-text-field>
 
     <section v-if="help" :id="helpId" class="search__help" data-test="search-panel">
+      <SavedSearches
+        :scope="kind.scope"
+        :current="typed.trim()"
+        :savable="typed.trim() !== '' && !error"
+        @use="use"
+      />
       <div v-if="recent.length" class="search__recent">
         <div class="search__heading">
           <h2 class="text-title-small">Recent searches</h2>

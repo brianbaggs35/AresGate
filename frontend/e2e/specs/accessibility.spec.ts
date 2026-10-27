@@ -61,6 +61,12 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(incidents.searchPanel).toBeVisible()
       await expect(incidents.recent).toHaveCount(1)
       await expectAccessible(page)
+
+      // A search kept under a name, and the one just kept in the list.
+      await incidents.saved.keep('Serious ones')
+      await expect(incidents.saved.notice).toHaveText('Saved as Serious ones.')
+      await expect(incidents.saved.rows).toHaveCount(1)
+      await expectAccessible(page)
       await incidents.searchHelp.click()
 
       // A search that can not be understood.
@@ -208,6 +214,12 @@ for (const theme of ['light', 'dark'] as const) {
       await logs.searchHelp.click()
       await expect(logs.searchPanel).toBeVisible()
       await expect(logs.recent).toHaveCount(1)
+      await expectAccessible(page)
+
+      // A search kept under a name, and the one just kept in the list.
+      await logs.saved.keep('Not the web')
+      await expect(logs.saved.notice).toHaveText('Saved as Not the web.')
+      await expect(logs.saved.rows).toHaveCount(1)
       await expectAccessible(page)
       await logs.searchHelp.click()
 

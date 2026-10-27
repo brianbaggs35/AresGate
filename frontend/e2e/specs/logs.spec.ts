@@ -270,6 +270,56 @@ test.describe('logs', () => {
     await expect(logs.events).toHaveCount(2)
   })
 
+  test('keep a search under a name, use it after a reload, and forget it', async ({
+    harness,
+    logs,
+    page,
+  }) => {
+    await harness.createEvents(SOME)
+    await logs.goto()
+    await expect(logs.events).toHaveCount(4)
+
+    await logs.searchHelp.click()
+    await expect(logs.saved.none).toBeVisible()
+    // There is nothing to keep while the box is empty.
+    await expect(logs.saved.form).toBeHidden()
+    await logs.searchHelp.click()
+
+    await logs.search('source:wazuh')
+    await logs.searchHelp.click()
+    await expect(logs.saved.save).toBeDisabled()
+    await logs.saved.keep('Wazuh only')
+    await expect(logs.saved.notice).toHaveText('Saved as Wazuh only.')
+    await expect(logs.saved.rows).toHaveCount(1)
+    await expect(logs.saved.rows).toContainText(['Wazuh only'])
+
+    // Saving under the name again changes the search.
+    await logs.saved.name.fill('Wazuh only')
+    await expect(logs.saved.save).toHaveText('Replace')
+    await logs.saved.name.clear()
+
+    // It is there after a reload, and the other page has none of its own.
+    await logs.goto()
+    await expect(logs.events).toHaveCount(4)
+    await logs.searchHelp.click()
+    await expect(logs.saved.rows).toContainText(['Wazuh only'])
+    await logs.saved.rows.first().click()
+
+    await expect(logs.searchPanel).toBeHidden()
+    await expect(logs.searchBox).toHaveValue('source:wazuh')
+    await expect(logs.events).toHaveCount(1)
+
+    await page.goto('/incidents')
+    await page.getByTestId('search-help').click()
+    await expect(logs.saved.none).toBeVisible()
+
+    await logs.goto()
+    await logs.searchHelp.click()
+    await logs.saved.forget.click()
+    await expect(logs.saved.notice).toHaveText('Forgot Wazuh only.')
+    await expect(logs.saved.none).toBeVisible()
+  })
+
   test.describe('and the sheet for one', () => {
     test('opens with what is known of it, and the record the integration sent', async ({
       harness,

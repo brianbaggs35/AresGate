@@ -506,9 +506,10 @@ and each incident has a page of its own.
   chip for each term (tap one to take it off). A search that can't be understood says why under
   the box (and suggests the field you probably meant) and leaves the list as it was. Under the
   filters, buttons count the severities and the programs among what was found; tap one to add
-  it to the search, or tap it again to take it off. The button beside the box lists the ways to
-  search and the searches made before in this browser (the last eight, kept only in the browser).
-  A search is in the address of the page (`?q=`), so it can be sent as a link.
+  it to the search, or tap it again to take it off. The button beside the box lists the searches
+  you saved, the ways to search and the searches made before in this browser (the last eight,
+  kept only in the browser). A search is in the address of the page (`?q=`), so it can be sent
+  as a link, and [a search can be saved under a name](#saved-searches).
 
   | You type | It finds |
   | --- | --- |
@@ -571,9 +572,10 @@ it. Not to be confused with [the container's own logs](#reading-the-logs).
   put in. Turn *Live* off to pause the page. Only the newest 1000 events are held on the page.
 - **Searching.** The box takes the same [words and terms as the incidents](#searching-incidents),
   with the fields of an event, and every one of them has to be true. `/` goes to the box, the
-  button beside it lists the ways to search and the searches made before, and the search is in
-  the address of the page (`?q=`). Buttons under the box count the severities, integrations and
-  kinds among what was found, and add themselves to the search with a tap.
+  button beside it lists [the searches you saved](#saved-searches), the ways to search and the
+  searches made before, and the search is in the address of the page (`?q=`). Buttons under the
+  box count the severities, integrations and kinds among what was found, and add themselves to
+  the search with a tap.
 
   | You type | It finds |
   | --- | --- |
@@ -611,6 +613,23 @@ it. Not to be confused with [the container's own logs](#reading-the-logs).
   spread of what was found. `GET /api/logs/{cursor}` is one event whole. The record an
   integration sent holds what it held, so it can have addresses, host names and user names from
   your network, and is only ever shown to someone signed in.
+
+## Saved searches
+
+A search you use often can be kept under a name, for the page it was made on: the incidents and
+the logs each have their own, because the words mean different things in each. Open the button
+beside the search box, type a name under **Saved searches** and press **Save** (the search in the
+box is what is kept, as you typed it, so `since:1h` is the last hour whenever you use it).
+Pressing a saved search puts it in the box and applies it; the bin beside it forgets it. Saving
+under a name that is already there says **Replace** and changes that search. A page keeps up to 50.
+
+- **The API.** `GET /api/searches?scope=incidents|logs` lists them by name, `POST /api/searches`
+  with `scope`, `name` (up to 60 characters) and `query` (up to 500) keeps one (201, or 200 when
+  it changed one that was there) and `DELETE /api/searches/{id}` forgets one. A search that can't
+  be read in the words of its page is refused with the same message the search itself gives
+  (422), and a 51st is refused (409). They are for whoever is signed in, kept in the database
+  (the `saved_searches` table), and are not in the [activity log](security.md): they change
+  nothing but what the box offers.
 
 ## AI providers
 

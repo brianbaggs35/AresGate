@@ -8,6 +8,11 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Saved searches**: the button beside the search box on the incidents and the logs pages now
+  lists the searches you saved. Type a name under *Saved searches* and press *Save* to keep what
+  is in the box (it says *Replace* when the name is taken); press one to use it, or the bin to
+  forget it. Each page keeps its own, up to 50. `GET`, `POST` and `DELETE /api/searches`
+  ([DOCS/operations.md](DOCS/operations.md#saved-searches)).
 - **A Logs page**: every event the collectors stored, with the record each integration sent next
   to what AresGate made of it. On a computer, a table with a sticky heading, a heading for each
   day, columns you choose (and whether the time is exact or *how long ago*) and the arrow keys

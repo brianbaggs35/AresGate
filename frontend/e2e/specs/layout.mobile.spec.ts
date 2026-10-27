@@ -107,8 +107,18 @@ test.describe('layout on a phone', () => {
     expect(box?.x).toBeGreaterThanOrEqual(0)
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(screen?.width ?? 0)
 
+    // A search that is kept is in the list, and what is there to tap fits the screen.
+    await incidents.saved.keep('A kept search')
+    await expect(incidents.saved.rows).toHaveCount(1)
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
     // Every row to tap, and every term to take off, is as big as a thumb.
-    for (const row of await page.getByTestId('search-example').all()) {
+    for (const row of [
+      ...(await incidents.saved.rows.all()),
+      ...(await incidents.saved.forget.all()),
+      ...(await incidents.saved.save.all()),
+      ...(await page.getByTestId('search-example').all()),
+    ]) {
       expect((await row.boundingBox())?.height).toBeGreaterThanOrEqual(44)
     }
     for (const chip of await incidents.terms.all()) {

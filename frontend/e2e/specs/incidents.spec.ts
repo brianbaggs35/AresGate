@@ -345,6 +345,29 @@ test.describe('incidents', () => {
     await expect(incidents.searchBox).toHaveValue(/^port:22 \S/)
   })
 
+  test('keep a search under a name, and use it again from the panel', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+    await expect(incidents.titles()).toHaveCount(3)
+
+    await incidents.search('source:wazuh')
+    await incidents.searchHelp.click()
+    await incidents.saved.keep('From Wazuh')
+    await expect(incidents.saved.notice).toHaveText('Saved as From Wazuh.')
+
+    await incidents.goto()
+    await expect(incidents.titles()).toHaveCount(3)
+    await incidents.searchHelp.click()
+    await incidents.saved.rows.first().click()
+
+    await expect(incidents.searchBox).toHaveValue('source:wazuh')
+    await expect(incidents.terms).toHaveCount(1)
+    await expect(incidents.titles()).toHaveCount(2)
+  })
+
   test('say nothing matches when the choices leave none, and drop them when asked', async ({
     harness,
     incidents,
