@@ -319,9 +319,8 @@ const matched = computed(() => {
   const found = summary.value
   if (!found) return null
   const count = formatCount(found.matched)
-  return found.capped
-    ? `The newest ${count} events`
-    : `${count} ${found.matched === 1 ? 'event' : 'events'}`
+  if (found.capped) return `The newest ${count} events`
+  return `${count} ${found.matched === 1 ? 'event' : 'events'}`
 })
 
 const updated = computed(() =>

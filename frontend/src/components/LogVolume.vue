@@ -24,8 +24,10 @@ const bars = computed(() =>
   props.volume ? volumeBars(props.volume) : { categories: [], series: [], ranges: [] },
 )
 const caption = computed(() => {
-  const events = `${formatCount(props.matched)} ${props.matched === 1 ? 'event' : 'events'}`
-  return `${props.capped ? `The newest ${events}` : events} found. Pick a bar to look at just that time.`
+  const count = formatCount(props.matched)
+  const events = props.matched === 1 ? `${count} event` : `${count} events`
+  const found = props.capped ? `The newest ${events}` : events
+  return `${found} found. Pick a bar to look at just that time.`
 })
 
 function pick(index: number) {
