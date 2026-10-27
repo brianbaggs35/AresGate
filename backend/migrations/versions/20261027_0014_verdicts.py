@@ -67,6 +67,9 @@ def upgrade() -> None:
         sa.Column("verdict", sa.String(length=16), nullable=True),
         if_not_exists=True,
     )
+    # Postgres can't add a constraint only if it is missing, so it is dropped first: the newest
+    # migration has to be able to run again on a database that has it.
+    op.drop_constraint(op.f("ck_incidents_verdict"), "incidents", if_exists=True)
     op.create_check_constraint(op.f("ck_incidents_verdict"), "incidents", VERDICT_CHECK)
     op.add_column(
         "incident_signals",
@@ -78,8 +81,14 @@ def upgrade() -> None:
         sa.Column("verdict_rule_id", sa.BigInteger(), nullable=True),
         if_not_exists=True,
     )
+    op.drop_constraint(op.f("ck_incident_signals_verdict"), "incident_signals", if_exists=True)
     op.create_check_constraint(
         op.f("ck_incident_signals_verdict"), "incident_signals", VERDICT_CHECK
+    )
+    op.drop_constraint(
+        op.f("fk_incident_signals_verdict_rule_id_verdict_rules"),
+        "incident_signals",
+        if_exists=True,
     )
     op.create_foreign_key(
         op.f("fk_incident_signals_verdict_rule_id_verdict_rules"),
