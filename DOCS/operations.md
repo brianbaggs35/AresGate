@@ -354,6 +354,14 @@ and why, and lists the signals in the order they happened. The worker files them
   lines and `ports`, the timeline, the devices on your network behind its addresses and the
   firewall's blocks. [The Incidents pages](#the-incidents-pages)
   show them.
+- **Changing many.** `POST /api/incidents/bulk` takes the incidents as `ids` (up to 1000) or as
+  `matching`, the same choices the list takes (`status`, `verdict`, `min_severity`,
+  `min_confidence`, `address`, `since`, `q`, `tz`), and one change: a `status`, or a `verdict` with
+  an optional `note`. With `"preview": true` it changes nothing and says what it would. It makes
+  the change to all or to none, files one entry in the [activity log](security.md) with the ids,
+  and answers with `incidents` and `signals` (what it was asked of), `changed`, `skipped` and
+  `verdicts`, and `undo`: send that to `POST /api/incidents/bulk/undo` to put the statuses back
+  and take the verdicts it made back, or change them to what they said before.
 - **When they appear.** A run every 30 seconds files the signals that were stored at least 30
   seconds ago, so a new attack is an incident within about a minute of its first alert. The first
   run looks back 24 hours. Signals the collectors stored out of order are filed in the order
@@ -396,6 +404,17 @@ when you give it, so what you said once holds from then on.
   **Settings > Verdicts** lists every verdict with what it is about, why, how many signals it has
   been applied to and when you gave it, and lets you change the verdict and the reason or take it
   back (it asks first, and says how many signals will be judged again).
+- **Several at once.** Every card in the incident list has a box, and the row above the list
+  picks the whole page. Shift and a second box pick the range between them. With some picked, the
+  row holds *Status* (start investigating, resolve, dismiss or reopen) and the three verdicts.
+  Fewer than 10 incidents given a new status are changed at once, with *Undo* for 15 seconds. Any
+  larger change, any change to everything that matches the list's search and filters (*Select all
+  143 that match*), and any verdict, is first looked over: the API says how many incidents and
+  signals it touches and how many it would change, and a verdict, which holds for everything
+  about an address or alert and so can change incidents you did not pick, says so and can say
+  why. A verdict is one for each address (or alert, where an incident names no address), however
+  many incidents are about it; an incident that names neither is left out and counted. Escape lets
+  go of the picked ones.
 - **When rules disagree**, the one that names more wins, so a verdict on one signature from one
   program beats a verdict on the address it came from; and of the same weight, the stronger
   verdict (threat, then low priority, then not suspicious), since you said so about at least

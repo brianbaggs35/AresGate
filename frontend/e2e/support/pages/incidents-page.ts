@@ -38,6 +38,25 @@ export class IncidentsPage {
   /** What the page says after a verdict was given from a card, and the button to take it back. */
   readonly judged: Locator
   readonly undo: Locator
+  /** The box on each card, and the row above the list that changes the incidents picked. */
+  readonly picks: Locator
+  readonly bulk: Locator
+  readonly pickPage: Locator
+  readonly picked: Locator
+  readonly pickEverything: Locator
+  readonly pickedEverything: Locator
+  readonly letGo: Locator
+  readonly bulkStatus: Locator
+  /** What the page says after many were changed, and the button to take the change back. */
+  readonly changed: Locator
+  readonly takeBack: Locator
+  /** The dialog that looks a change over, and what is in it. */
+  readonly dialog: Locator
+  readonly dialogTitle: Locator
+  readonly dialogLines: Locator
+  readonly dialogNote: Locator
+  readonly dialogAccept: Locator
+  readonly dialogCancel: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -66,6 +85,40 @@ export class IncidentsPage {
     this.stale = page.getByTestId('incidents-stale')
     this.judged = page.getByTestId('judged-text')
     this.undo = page.getByTestId('undo')
+    this.picks = page.getByTestId('incident-select')
+    this.bulk = page.getByTestId('bulk')
+    this.pickPage = page.getByTestId('bulk-page')
+    this.picked = page.getByTestId('bulk-count')
+    this.pickEverything = page.getByTestId('bulk-everything')
+    this.pickedEverything = page.getByTestId('bulk-all')
+    this.letGo = page.getByTestId('bulk-clear')
+    this.bulkStatus = page.getByTestId('bulk-status')
+    this.changed = page.getByTestId('bulk-notice-text')
+    this.takeBack = page.getByTestId('bulk-undo')
+    this.dialog = page.getByTestId('confirm-dialog')
+    this.dialogTitle = page.getByTestId('confirm-title')
+    this.dialogLines = page.getByTestId('bulk-would')
+    this.dialogNote = page.getByTestId('bulk-note').locator('textarea')
+    this.dialogAccept = page.getByTestId('confirm-accept')
+    this.dialogCancel = page.getByTestId('confirm-cancel')
+  }
+
+  /** The box of the incident whose card says this, such as an address. */
+  pickOf(text: string): Locator {
+    return this.page
+      .getByTestId('incident-card')
+      .filter({ hasText: text })
+      .getByTestId('incident-select')
+  }
+
+  /** One of the three verdict buttons of the row that changes many, such as `not_suspicious`. */
+  bulkVerdict(verdict: string): Locator {
+    return this.page.getByTestId(`bulk-${verdict}`)
+  }
+
+  /** A choice in the menu of statuses that many can be changed to, such as `resolved`. */
+  bulkTo(status: string): Locator {
+    return this.page.getByTestId(`bulk-status-${status}`)
   }
 
   /** One of the three verdict buttons on a card of the list, by the verdict, such as

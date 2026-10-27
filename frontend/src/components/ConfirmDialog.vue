@@ -17,8 +17,10 @@ withDefaults(
     busy?: boolean
     /** The action removes something, so the button is red. */
     destructive?: boolean
+    /** There is nothing to go ahead with yet (or at all), so the button can't be pressed. */
+    disabled?: boolean
   }>(),
-  { busy: false, destructive: false },
+  { busy: false, destructive: false, disabled: false },
 )
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ confirm: [] }>()
@@ -45,6 +47,7 @@ const giveBackTheKeyboard = useKeyboardReturn(open)
         <v-btn
           :color="destructive ? 'error' : 'primary'"
           :loading="busy"
+          :disabled="disabled"
           data-test="confirm-accept"
           @click="emit('confirm')"
         >

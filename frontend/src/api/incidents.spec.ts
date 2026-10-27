@@ -1,5 +1,11 @@
 import * as client from '@/api/client'
-import { fetchIncident, fetchIncidents, setIncidentStatus } from '@/api/incidents'
+import {
+  changeIncidents,
+  fetchIncident,
+  fetchIncidents,
+  setIncidentStatus,
+  undoChange,
+} from '@/api/incidents'
 
 describe('incidents', () => {
   it('lists them all when asked for nothing in particular', async () => {
@@ -77,5 +83,99 @@ describe('incidents', () => {
       status: 'resolved',
     })
     expect(patch).toHaveBeenCalledWith('/incidents/7', { status: 'resolved' }, 'a-token')
+  })
+
+  describe('changing many at once', () => {
+    const result = { preview: false, incidents: 2, signals: 5, changed: 2, undo: null }
+
+    it('changes the ones that were picked in one request', async () => {
+      const post = vi.spyOn(client, 'apiPost').mockResolvedValue(result)
+
+      await expect(
+        changeIncidents({ ids: [4, 7] }, { status: 'resolved' }, 'a-token'),
+      ).resolves.toEqual(result)
+
+      expect(post).toHaveBeenCalledWith(
+        '/incidents/bulk',
+        { ids: [4, 7], status: 'resolved' },
+        'a-token',
+      )
+    })
+
+    it('gives a verdict, with a note, and can only ask what it would do', async () => {
+      const post = vi.spyOn(client, 'apiPost').mockResolvedValue(result)
+
+      await changeIncidents(
+        { ids: [4] },
+        { verdict: 'threat', note: 'Seen it before' },
+        'a-token',
+        true,
+      )
+
+      expect(post).toHaveBeenCalledWith(
+        '/incidents/bulk',
+        { ids: [4], verdict: 'threat', note: 'Seen it before', preview: true },
+        'a-token',
+      )
+    })
+
+    it('changes all that a list would show, said as the list was asked', async () => {
+      const post = vi.spyOn(client, 'apiPost').mockResolvedValue(result)
+
+      await changeIncidents(
+        {
+          matching: {
+            statuses: ['open'],
+            verdicts: ['none', 'threat'],
+            minSeverity: 'high',
+            minConfidence: 65,
+            address: '93.184.216.34',
+            q: 'ssh',
+            tz: 'America/Halifax',
+            limit: 25,
+          },
+        },
+        { status: 'dismissed' },
+        'a-token',
+      )
+
+      expect(post).toHaveBeenCalledWith(
+        '/incidents/bulk',
+        {
+          matching: {
+            status: ['open'],
+            verdict: ['none', 'threat'],
+            min_severity: 'high',
+            min_confidence: 65,
+            address: '93.184.216.34',
+            q: 'ssh',
+            tz: 'America/Halifax',
+          },
+          status: 'dismissed',
+        },
+        'a-token',
+      )
+    })
+
+    it('says only what a list was narrowed to', async () => {
+      const post = vi.spyOn(client, 'apiPost').mockResolvedValue(result)
+
+      await changeIncidents({ matching: {} }, { status: 'open' }, 'a-token')
+
+      expect(post).toHaveBeenCalledWith(
+        '/incidents/bulk',
+        { matching: { status: [], verdict: [], min_confidence: 0 }, status: 'open' },
+        'a-token',
+      )
+    })
+
+    it('takes a change back as it said how', async () => {
+      const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ incidents: 2, verdicts: 0 })
+      const undo = { statuses: { open: [4, 7] }, rules: [] }
+
+      await expect(undoChange(undo, 'a-token')).resolves.toEqual({ incidents: 2, verdicts: 0 })
+
+      expect(post).toHaveBeenCalledWith('/incidents/bulk/undo', undo, 'a-token')
+    })
   })
 })

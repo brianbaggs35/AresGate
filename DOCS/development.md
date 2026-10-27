@@ -209,6 +209,13 @@ overlapping.
   the rules.
 - **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
   the AI analyst can call them too. They only read, apart from the status.
+- **Changes to many** are `incidents/bulk.py`: `set_status` and `give_verdict` work out a change
+  the same way whether `apply` is set or it is only asked about, so a preview is what it then
+  does, and `take_back` undoes one from the `undo` a change returned. The API commits one
+  transaction for a change, with one audit entry, and holds the engine's advisory lock for a
+  verdict. The scope of a verdict (`scope_of`) is the same as the web app's: the subject address,
+  else the first alert of an incident that has a signature. `queries.conditions` is what the list
+  and a change to `matching` share, so they can never disagree about which incidents they mean.
 - **Search** is `incidents/search.py`: `parse(text, context)` turns the words of the search box
   into terms, each with a condition, a label for the chip and its place in the text, or raises
   `SearchError` with a message for the person who typed it (the API answers 422 with it).

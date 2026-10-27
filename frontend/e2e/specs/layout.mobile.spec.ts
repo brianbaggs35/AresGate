@@ -116,6 +116,57 @@ test.describe('layout on a phone', () => {
     }
   })
 
+  test('the row that changes many incidents fits the screen, with every button to tap as big as a thumb', async ({
+    page,
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([
+      { address: '93.184.216.34', severity: 'critical', signals: 8 },
+      { address: '8.8.8.8', severity: 'high', signals: 3 },
+      { address: '1.1.1.1', severity: 'medium', signals: 1 },
+    ])
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(3)
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    await incidents.picks.nth(0).click()
+    await incidents.picks.nth(1).click()
+    await expect(incidents.picked).toHaveText('2 selected')
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    const screen = page.viewportSize()
+    const bar = await incidents.bulk.boundingBox()
+    expect(bar?.x).toBeGreaterThanOrEqual(0)
+    expect((bar?.x ?? 0) + (bar?.width ?? 0)).toBeLessThanOrEqual(screen?.width ?? 0)
+    for (const button of [
+      incidents.bulkStatus,
+      incidents.bulkVerdict('not_suspicious'),
+      incidents.bulkVerdict('low_priority'),
+      incidents.bulkVerdict('threat'),
+      incidents.letGo,
+      // The boxes are small, and the label around each is what a thumb hits.
+      incidents.pickPage.locator('xpath=..'),
+      page.getByTestId('incident-pick').first(),
+    ]) {
+      const box = await button.boundingBox()
+      expect(box?.height).toBeGreaterThanOrEqual(44)
+      expect(box?.width).toBeGreaterThanOrEqual(44)
+    }
+
+    // It stays in view as the list is scrolled, under the top bar.
+    await page.mouse.wheel(0, 400)
+    await expect(incidents.bulk).toBeInViewport()
+
+    await incidents.bulkVerdict('threat').click()
+    await expect(incidents.dialogLines.first()).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+  })
+
   test('an incident with verdicts fits the screen, and its three buttons stack', async ({
     page,
     harness,

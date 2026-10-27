@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Change many incidents at once**: every card in the incident list has a box, a row above the
+  list picks the page (shift picks a range, Escape lets go), and once some are picked the row
+  holds *Status* and the three verdicts. A status change to a few is made at once with *Undo* for
+  15 seconds; a larger one, one to *all 143 that match* the search and filters, and any verdict
+  are first looked over: the dialog says how many incidents and signals it touches and how many
+  it would change, that a verdict holds for everything about an address (so incidents you did not
+  pick can change), and lets you say why. `POST /api/incidents/bulk` takes `ids` (up to 1000) or
+  `matching` (the list's own filters) and a `status` or a `verdict`, with `preview`; it is all or
+  nothing, has one entry in the activity log, and answers with how to take it back
+  (`POST /api/incidents/bulk/undo`)
+  ([DOCS/operations.md](DOCS/operations.md#incidents)).
 - **Search for incidents**: a box above the list takes words and a few terms, such as
   `severity>=high source:wazuh -port:22 since:6h ssh`: text in the title or subject, an address or
   a range (`address:203.0.113.0/24`), the program that reported it, severity and confidence

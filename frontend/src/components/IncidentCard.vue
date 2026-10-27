@@ -21,10 +21,20 @@ import { VERDICT, scopesOf, type Judged, type Scope } from '@/verdicts'
  * An incident in a list: how serious it is, what it is, how sure AresGate is and which programs
  * saw it. Its details lead to the incident, and under them are the three verdicts, so the owner
  * can judge it without opening it: they are about what it is about (its address, or the alert
- * where it names no address), and whoever shows the list says what was done.
+ * where it names no address), and whoever shows the list says what was done. A box beside it
+ * picks it, for a change to many at once.
  */
-const props = defineProps<{ incident: Incident }>()
-const emit = defineEmits<{ judged: [Judged] }>()
+const props = defineProps<{
+  incident: Incident
+  /** Whether it can be picked, with others, for a change to be made to all of them. */
+  selectable?: boolean
+  selected?: boolean
+}>()
+const emit = defineEmits<{
+  judged: [Judged]
+  /** It was ticked or taken off: `range` when the shift key was held, for all the others between. */
+  select: [range: boolean]
+}>()
 
 const session = useSessionStore()
 const { xs: phone } = useDisplay()
@@ -86,9 +96,20 @@ async function give(kind: VerdictKind) {
   <v-card
     hover
     class="incident-card"
+    :class="{ 'incident-card--selectable': selectable, 'incident-card--selected': selected }"
     :style="{ '--incident-accent': accent }"
     data-test="incident-card"
   >
+    <label v-if="selectable" class="incident-card__pick" data-test="incident-pick">
+      <input
+        type="checkbox"
+        class="incident-card__box"
+        :checked="selected"
+        :aria-label="`Select: ${incident.title}`"
+        data-test="incident-select"
+        @click="emit('select', ($event as MouseEvent).shiftKey)"
+      />
+    </label>
     <RouterLink
       :to="{ name: 'incident', params: { id: incident.id } }"
       class="incident-card__link pa-4 pa-sm-5"
@@ -227,6 +248,43 @@ async function give(kind: VerdictKind) {
 .incident-card__link:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: -2px;
+}
+
+/* A box in the corner picks it. It is as big as a thumb needs, and the card makes room for it. */
+.incident-card__pick {
+  position: absolute;
+  inset-block-start: 0.25rem;
+  inset-inline-start: 0.25rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+
+.incident-card__box {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+}
+
+.incident-card__box:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 3px;
+}
+
+/* The padding of the link comes from a utility class, which only `!important` can go past. */
+.incident-card--selectable .incident-card__link {
+  padding-inline-start: 3.25rem !important;
+}
+
+.incident-card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+  background: rgba(var(--v-theme-primary), 0.06);
 }
 
 /* The bar on the left says how serious it is at a glance, and the chip says it in words. */

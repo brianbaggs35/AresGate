@@ -5,9 +5,10 @@ import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import { useSessionStore } from '@/stores/session'
-import { incident, page } from '@/test/incidents'
+import { bulkResult, incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
+import BulkDialog from '@/components/BulkDialog.vue'
 import IncidentsView from '@/views/IncidentsView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -881,6 +882,332 @@ describe('IncidentsView', () => {
       expect(notice('judged-text')?.textContent).toBe('Taken back.')
       expect(notice('undo')).toBeNull()
       expect(fetchIncidents).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('changing many at once', () => {
+    const bulkNotice = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+    const inDialog = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+
+    /** Four incidents, or as many as asked for, with ids from 1. */
+    function many(count = 4, total = count) {
+      const items = Array.from({ length: count }, (_, index) =>
+        incident({ id: index + 1, title: `Incident ${(index + 1).toString()}` }),
+      )
+      return page(items, { total })
+    }
+
+    async function change(count = 4, total = count) {
+      const changeIncidents = vi
+        .spyOn(incidentsApi, 'changeIncidents')
+        .mockResolvedValue(bulkResult({ changed: 2 }))
+      const undoChange = vi
+        .spyOn(incidentsApi, 'undoChange')
+        .mockResolvedValue({ incidents: 2, verdicts: 0 })
+      const opened = await open({ answer: many(count, total) })
+      const boxes = () => opened.wrapper.findAll('[data-test="incident-select"]')
+      const tick = async (index: number, shiftKey = false) => {
+        await boxes()[index]?.trigger('click', { shiftKey })
+        await flushPromises()
+      }
+      const act = async (selector: string) => {
+        await opened.find(selector).trigger('click')
+        await flushPromises()
+        await flushPromises()
+      }
+      const accept = async () => {
+        inDialog('confirm-accept')?.click()
+        await flushPromises()
+        await flushPromises()
+      }
+      const picked = () => opened.wrapper.findAll('.incident-card--selected').length
+      return { ...opened, changeIncidents, undoChange, boxes, tick, act, accept, picked }
+    }
+
+    it('gives each incident a box, and says what the row above is for', async () => {
+      const { boxes, text } = await change()
+
+      expect(boxes()).toHaveLength(4)
+      expect(text('bulk-hint')).toBe('Select incidents to change them together')
+    })
+
+    it('picks an incident with its box, and says how many are picked', async () => {
+      const { tick, text, picked } = await change()
+
+      await tick(1)
+      await tick(2)
+
+      expect(text('bulk-count')).toBe('2 selected')
+      expect(picked()).toBe(2)
+    })
+
+    it('picks all between two with the shift key', async () => {
+      const { tick, text } = await change()
+
+      await tick(0)
+      await tick(3, true)
+
+      expect(text('bulk-count')).toBe('4 selected')
+    })
+
+    it('picks every incident on the page with the box above, and lets go with it', async () => {
+      const { find, text, picked } = await change()
+
+      await find('bulk-page').trigger('change')
+      expect(text('bulk-count')).toBe('4 selected')
+      expect(picked()).toBe(4)
+
+      await find('bulk-page').trigger('change')
+      expect(find('bulk-count').exists()).toBe(false)
+    })
+
+    it('lets go of them all with Clear, and with Escape', async () => {
+      const { tick, act, find, picked } = await change()
+      await tick(0)
+
+      await act('bulk-clear')
+      expect(picked()).toBe(0)
+
+      await tick(0)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await flushPromises()
+      expect(picked()).toBe(0)
+      expect(find('bulk-count').exists()).toBe(false)
+    })
+
+    it('lets go of what was picked when the list is narrowed', async () => {
+      const { tick, choose, find, picked } = await change()
+      await tick(0)
+
+      await choose(() => find('view-all').trigger('click'))
+
+      expect(picked()).toBe(0)
+    })
+
+    it('changes a few at once, and says so, with a way to take it back', async () => {
+      const { tick, act, changeIncidents, fetchIncidents, picked } = await change()
+      changeIncidents.mockResolvedValue(
+        bulkResult({ incidents: 2, changed: 2, undo: { statuses: { open: [1, 2] }, rules: [] } }),
+      )
+      await tick(0)
+      await tick(1)
+
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-resolved"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(changeIncidents).toHaveBeenCalledWith(
+        { ids: [1, 2] },
+        { status: 'resolved' },
+        'a-security-token',
+      )
+      expect(bulkNotice('bulk-notice-text')?.textContent).toBe('Marked 2 incidents as resolved.')
+      expect(picked()).toBe(0)
+      expect(fetchIncidents).toHaveBeenCalledTimes(2)
+    })
+
+    it('takes it back, and asks for the list again', async () => {
+      const { tick, act, changeIncidents, undoChange, fetchIncidents } = await change()
+      const way = { statuses: { open: [1] }, rules: [] }
+      changeIncidents.mockResolvedValue(bulkResult({ incidents: 1, changed: 1, undo: way }))
+      await tick(0)
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-dismissed"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      bulkNotice('bulk-undo')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(undoChange).toHaveBeenCalledWith(way, 'a-security-token')
+      expect(bulkNotice('bulk-notice-text')?.textContent).toBe('Taken back.')
+      expect(fetchIncidents).toHaveBeenCalledTimes(3)
+    })
+
+    it('says so when a change to a few could not be made, and keeps them picked', async () => {
+      const { tick, act, changeIncidents, picked } = await change()
+      changeIncidents.mockRejectedValue(offline())
+      await tick(0)
+
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-resolved"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(bulkNotice('bulk-notice-text')?.textContent).toBe("Can't reach AresGate.")
+      expect(bulkNotice('bulk-undo')).toBeNull()
+      expect(picked()).toBe(1)
+    })
+
+    it('looks a change to many over before it is made', async () => {
+      const { wrapper, find, act, accept, changeIncidents, picked } = await change(12)
+      changeIncidents.mockImplementation((_which, _what, _token, preview) =>
+        Promise.resolve(
+          preview
+            ? bulkResult({ preview: true, incidents: 12, signals: 31, changed: 9 })
+            : bulkResult({ incidents: 12, changed: 9 }),
+        ),
+      )
+      await find('bulk-page').trigger('change')
+
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-resolved"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(inDialog('confirm-title')?.textContent).toBe('Resolve 12 incidents?')
+      expect(inDialog('bulk-would')?.textContent.trim()).toBe('12 incidents, with 31 signals.')
+      expect(changeIncidents).toHaveBeenCalledTimes(1)
+      expect(changeIncidents.mock.calls[0]?.[3]).toBe(true)
+
+      await accept()
+
+      expect(changeIncidents).toHaveBeenCalledTimes(2)
+      expect(changeIncidents.mock.calls[1]).toEqual([
+        { ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+        { status: 'resolved' },
+        'a-security-token',
+      ])
+      expect(bulkNotice('bulk-notice-text')?.textContent).toBe(
+        'Marked 9 incidents as resolved. 3 already were.',
+      )
+      expect(wrapper.findComponent(BulkDialog).props('modelValue')).toBe(false)
+      expect(picked()).toBe(0)
+    })
+
+    it('leaves what was picked as it was when the look over is cancelled', async () => {
+      const { wrapper, tick, act, changeIncidents, picked } = await change()
+      changeIncidents.mockResolvedValue(bulkResult({ preview: true, verdicts: 1, changed: 1 }))
+      await tick(0)
+      await act('bulk-threat')
+
+      inDialog('confirm-cancel')?.click()
+      await flushPromises()
+
+      expect(wrapper.findComponent(BulkDialog).props('modelValue')).toBe(false)
+      expect(changeIncidents).toHaveBeenCalledTimes(1)
+      expect(picked()).toBe(1)
+    })
+
+    it('looks a verdict over, whatever the number, and keeps why it was given', async () => {
+      const { tick, act, accept, changeIncidents } = await change()
+      changeIncidents.mockImplementation((_which, _what, _token, preview) =>
+        Promise.resolve(
+          bulkResult({
+            preview: preview ?? false,
+            incidents: 1,
+            changed: 1,
+            verdicts: 1,
+            ...(preview ? {} : { undo: { statuses: {}, rules: [{ id: 5, replaced: null }] } }),
+          }),
+        ),
+      )
+      await tick(2)
+
+      await act('bulk-not_suspicious')
+      const note = inDialog('bulk-note')?.querySelector('textarea') as HTMLTextAreaElement
+      note.value = '  The scanner I run  '
+      note.dispatchEvent(new Event('input'))
+      await flushPromises()
+      await accept()
+
+      expect(changeIncidents).toHaveBeenLastCalledWith(
+        { ids: [3] },
+        { verdict: 'not_suspicious', note: 'The scanner I run' },
+        'a-security-token',
+      )
+      expect(bulkNotice('bulk-notice-text')?.textContent).toBe(
+        'Remembered one verdict as not suspicious, for 1 incident.',
+      )
+    })
+
+    it('gives a verdict without a note when none was written', async () => {
+      const { tick, act, accept, changeIncidents } = await change()
+      changeIncidents.mockResolvedValue(bulkResult({ preview: true, verdicts: 1, changed: 1 }))
+      await tick(0)
+
+      await act('bulk-threat')
+      await accept()
+
+      expect(changeIncidents).toHaveBeenLastCalledWith(
+        { ids: [1] },
+        { verdict: 'threat' },
+        'a-security-token',
+      )
+    })
+
+    it('says so in the dialog when the change could not be made, and stays open', async () => {
+      const { find, act, accept, changeIncidents } = await change(12)
+      changeIncidents
+        .mockResolvedValueOnce(bulkResult({ preview: true, incidents: 12, changed: 12 }))
+        .mockRejectedValueOnce(offline())
+      await find('bulk-page').trigger('change')
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-dismissed"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      await accept()
+
+      expect(inDialog('bulk-problem')?.textContent).toContain("Can't reach AresGate.")
+      expect(inDialog('confirm-dialog')).not.toBeNull()
+    })
+
+    it('offers all that match, and changes them by what the list was asked', async () => {
+      const { find, act, accept, changeIncidents, text } = await change(4, 143)
+      changeIncidents.mockResolvedValue(
+        bulkResult({ preview: true, incidents: 143, signals: 400, changed: 143 }),
+      )
+      await find('bulk-page').trigger('change')
+
+      await act('bulk-everything')
+      expect(text('bulk-all')).toBe('All 143 incidents that match are selected.')
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-resolved"]')?.click()
+      await flushPromises()
+      await flushPromises()
+      expect(changeIncidents.mock.calls[0]?.[0]).toEqual({
+        matching: {
+          statuses: ['open', 'investigating'],
+          verdicts: ['none', 'threat'],
+          minConfidence: 0,
+          limit: 25,
+        },
+      })
+      expect(inDialog('confirm-title')?.textContent).toBe('Resolve 143 incidents?')
+      await accept()
+
+      expect(changeIncidents).toHaveBeenCalledTimes(2)
+    })
+
+    it('looks a change to all that match over, however few they are', async () => {
+      const { find, act, changeIncidents } = await change(4, 6)
+      changeIncidents.mockResolvedValue(bulkResult({ preview: true, incidents: 6, changed: 6 }))
+      await find('bulk-page').trigger('change')
+      await act('bulk-everything')
+
+      await act('bulk-status')
+      document.querySelector<HTMLElement>('[data-test="bulk-status-dismissed"]')?.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(inDialog('confirm-title')?.textContent).toBe('Dismiss 6 incidents?')
+    })
+
+    it('lets go of an incident that is no longer on the list', async () => {
+      const { tick, fetchIncidents, find, text } = await change()
+      await tick(0)
+      await tick(1)
+      fetchIncidents.mockResolvedValue(page(many().items.slice(1)))
+
+      await find('refresh').trigger('click')
+      await flushPromises()
+
+      expect(text('bulk-count')).toBe('1 selected')
     })
   })
 })

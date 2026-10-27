@@ -59,6 +59,8 @@ class Action(StrEnum):
     EVENT_RETENTION_CHANGED = "events.retention_changed"
     METRIC_RETENTION_CHANGED = "metrics.retention_changed"
     INCIDENT_STATUS_CHANGED = "incident.status_changed"
+    INCIDENTS_CHANGED = "incidents.changed"
+    INCIDENTS_CHANGE_UNDONE = "incidents.change_undone"
     VERDICT_GIVEN = "verdict.given"
     VERDICT_CHANGED = "verdict.changed"
     VERDICT_REMOVED = "verdict.removed"

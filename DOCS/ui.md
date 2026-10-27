@@ -87,6 +87,20 @@ the incident can say, so the card asks for it then. The card says nothing itself
 back and changes one that replaced another back to what it was. On a phone the buttons stack
 their icon over the name so that all three fit in a row.
 
+Changing many at once is `BulkBar`, the selection in `src/selection.ts`, and a look over in
+`BulkDialog`. Each card has a native checkbox (a `<label>` around it makes the corner a target of
+44 px; `IncidentCard` emits `select` with whether shift was held), and the bar above the list is
+always there, so the way to change many is never found by accident: with none picked it is the
+box that picks the page and a line that says so, and with some picked it holds *Status* (a menu)
+and the three verdicts, with their icons over their names on a phone. It sticks under the top bar
+(`--v-layout-top`) as the list is scrolled. `useSelection` keeps the ids picked, drops the ones
+that leave the list, and treats *all that match* as a flag, never as a list, since it is more than
+the page shows; the API is then given the list's own filters (`matching`), not ids. A change to
+fewer than 10 incidents given a status is made at once, with `BulkNotice` and *Undo*; every other
+change goes through `BulkDialog`, which asks the API for a `preview` and says what the answer
+means in words (`wouldDo` in `src/bulk.ts`; none of the counting is in the web app). The button
+that goes ahead is off while there is nothing to change.
+
 Settings > AI (`AiSettingsView`) is one card, "AI provider". At the top is an `AiProviderPicker`:
 the four providers as cards that are really a group of radio buttons (the arrow keys move
 between them, one is heard as chosen, and the one AresGate asks says *In use*). Under it is an

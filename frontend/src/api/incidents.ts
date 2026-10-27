@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from '@/api/client'
+import { apiGet, apiPatch, apiPost } from '@/api/client'
 import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
@@ -192,4 +192,73 @@ export function setIncidentStatus(
   csrfToken: string,
 ): Promise<IncidentDetail> {
   return apiPatch<IncidentDetail>(`/incidents/${id.toString()}`, { status }, csrfToken)
+}
+
+/** Which incidents a change is for: the ones that were picked, or all that a list of incidents
+ * asked this way would show. */
+export type BulkSelection = { ids: readonly number[] } | { matching: IncidentQuery }
+
+/** What to change in all of them: what is being done about them, or what is thought of what they
+ * are about (with a note, to say why). */
+export type BulkChange =
+  { status: IncidentStatus } | { verdict: VerdictKind; note?: string | undefined }
+
+/** How to take a change back, as the change said it. */
+export interface BulkUndo {
+  /** The incidents it changed, by the status they had. */
+  statuses: Partial<Record<IncidentStatus, number[]>>
+  /** The verdicts it made, and what each said before (null if it is new). */
+  rules: { id: number; replaced: VerdictKind | null }[]
+}
+
+/** What a change did, or with `preview` what it would do. */
+export interface BulkResult {
+  preview: boolean
+  /** How many incidents it was about, and how many signals are in them. */
+  incidents: number
+  signals: number
+  /** In how many of them it changes anything: the others already are so. */
+  changed: number
+  /** For a verdict, the incidents it could not be given on (no address and no alert), and how
+   * many verdicts it makes or changes: one covers every incident about an address or alert. */
+  skipped: number
+  verdicts: number
+  /** Null where nothing was changed, or where it was only asked about. */
+  undo: BulkUndo | null
+}
+
+function matchingOf(query: IncidentQuery) {
+  return {
+    status: query.statuses ?? [],
+    verdict: query.verdicts ?? [],
+    ...(query.minSeverity ? { min_severity: query.minSeverity } : {}),
+    min_confidence: query.minConfidence ?? 0,
+    ...(query.address ? { address: query.address } : {}),
+    ...(query.q ? { q: query.q } : {}),
+    ...(query.tz ? { tz: query.tz } : {}),
+  }
+}
+
+/** Changes many incidents in one go, all or none. With `preview` it only says what it would do. */
+export function changeIncidents(
+  selection: BulkSelection,
+  change: BulkChange,
+  csrfToken: string,
+  preview = false,
+): Promise<BulkResult> {
+  const which =
+    'ids' in selection ? { ids: selection.ids } : { matching: matchingOf(selection.matching) }
+  return apiPost<BulkResult>(
+    '/incidents/bulk',
+    { ...which, ...change, ...(preview ? { preview } : {}) },
+    csrfToken,
+  )
+}
+
+/** Takes a change back, as it said how: how many incidents and verdicts that put right. */
+export function undoChange(
+  undo: BulkUndo,
+  csrfToken: string,
+): Promise<{ incidents: number; verdicts: number }> {
+  return apiPost('/incidents/bulk/undo', undo, csrfToken)
 }
