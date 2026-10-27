@@ -6,12 +6,12 @@ test.describe('status page', () => {
   test('opens from the menu', async ({ page, shell, status }) => {
     await page.goto('/')
 
-    await shell.statusLink.click()
+    await shell.goTo('status')
 
     await expect(page).toHaveURL('/status')
     await expect(page).toHaveTitle('Status · AresGate')
     await expect(status.heading).toHaveText('Status')
-    await expect(shell.statusLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('status')
     await expect(status.aresgate).toBeVisible()
   })
 

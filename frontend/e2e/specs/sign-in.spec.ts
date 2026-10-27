@@ -167,7 +167,7 @@ test.describe('staying signed in', () => {
     // Cleaning the database ends every sign-in, as the idle limit would.
     await harness.clean()
 
-    await shell.settingsLink.click()
+    await shell.goTo('settings')
 
     await expect(page).toHaveURL('/sign-in?next=/settings/account')
     await expect(signIn.endedNotice).toContainText('Your sign-in ended')

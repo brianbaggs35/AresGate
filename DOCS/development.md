@@ -216,17 +216,27 @@ overlapping.
   verdict. The scope of a verdict (`scope_of`) is the same as the web app's: the subject address,
   else the first alert of an incident that has a signature. `queries.conditions` is what the list
   and a change to `matching` share, so they can never disagree about which incidents they mean.
-- **Search** is `incidents/search.py`: `parse(text, context)` turns the words of the search box
+- **Search** is a shared language, `app/querylang.py`, with a set of fields for each place that
+  searches: `incidents/search.py` for the incidents and `events/search.py` for the logs.
+  `parse(text, context)` turns the words of the search box
   into terms, each with a condition, a label for the chip and its place in the text, or raises
   `SearchError` with a message for the person who typed it (the API answers 422 with it).
   Nothing a person types is put into SQL as anything but a bound value, the text is limited
   (500 characters, 12 terms, 8 choices, 100 characters a word) and the API sets a 5 second
   `statement_timeout` for the request, so a search can't hold the database up. To add a field,
-  write a compiler `(Clause, Context) -> (condition, label)`, add it to `_fields()` (and
-  `ALIASES`, if it has a short name), and add a case to `tests/test_incidents_search.py` that
-  runs it against rows, and a line to the list of ways to search in `frontend/src/search.ts`.
+  write a compiler `(Clause, Context) -> (condition, label)`, add it to `FIELDS` (and
+  `ALIASES`, if it has a short name), and add a case to `tests/test_incidents_search.py` (or
+  `tests/test_events_search.py`) that runs it against rows, and a line to the list of ways to
+  search in `frontend/src/search.ts`.
   `queries.search` takes the conditions as `extra`, and answers with `facets` (the counts per
   severity and integration of everything found, not of the page).
+- **The logs** are `api/logs.py`, with the queries in `events/queries.py` (so the AI analyst can
+  call them too). A page is found again by a cursor, `"<microseconds>.<id>"`, of the last event on
+  it: the events table is partitioned by week and its key is `(occurred_at, id)`, so paging by
+  that never reads more than one page. The summary (the counts and the chart) is of the newest
+  50,000 matches; an export is capped at the same and is streamed, with a longer
+  `statement_timeout`. The Playwright harness makes events with `POST /api/__test__/factories/events`
+  (`harness.createEvents()`), which are not filed into incidents.
 - **Tests** build events with `tests.helpers.new_event`, store them with `record_events` and
   run the engine at a time of their choosing. Use a public address for an attacker
   (`93.184.216.34`): the documentation ranges are not global addresses.

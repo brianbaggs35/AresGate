@@ -99,6 +99,36 @@ export interface IncidentsRecord {
   incidents: number
 }
 
+/** An event, or a run of them, as a program would have reported it, as `createEvents()` stores
+ * it. All of it is optional. */
+export interface EventRequest {
+  source?: string
+  /** Which connection of the integration brought it. */
+  connection?: string
+  kind?: string
+  severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
+  summary?: string
+  /** The rule that fired, for an alert. */
+  signature?: string
+  src_address?: string
+  src_port?: number
+  dst_address?: string
+  dst_port?: number
+  protocol?: string
+  /** How long ago the first was; a run goes back from there in time. */
+  seconds_ago?: number
+  /** The integration's own record of it, which the detail shows. */
+  raw?: Record<string, unknown>
+  /** How many there are, in a run, this many seconds apart. */
+  repeat?: number
+  every_seconds?: number
+}
+
+/** How many events `createEvents()` stored. */
+export interface EventsRecord {
+  events: number
+}
+
 /** A verdict as the owner would give it: what it says and at least one thing it is about. */
 export interface VerdictRequest {
   verdict: 'not_suspicious' | 'low_priority' | 'threat'
@@ -266,6 +296,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/incidents', { data: { incidents } })
       .then((response) => readJson<IncidentsRecord>(response, 'Making incidents'))
+  }
+
+  /** Stores events, as of now, for the Logs page to show. They are not filed into incidents. */
+  createEvents(events: EventRequest[]): Promise<EventsRecord> {
+    return this.api
+      .post('/api/__test__/factories/events', { data: { events } })
+      .then((response) => readJson<EventsRecord>(response, 'Making events'))
   }
 
   /** Gives some verdicts and judges the incidents there are by them, as the page for them does. */

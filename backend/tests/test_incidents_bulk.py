@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.api import incidents
+from app.api import asking
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
@@ -258,7 +258,7 @@ class TestChangingStatuses:
             return search.Search((search.Term(None, False, "Slow", 0, 1, slow),))
 
         monkeypatch.setattr(search, "parse", parse)
-        monkeypatch.setattr(incidents, "SEARCH_TIMEOUT_MS", 50)
+        monkeypatch.setattr(asking, "SEARCH_TIMEOUT_MS", 50)
 
         response = change(client, csrf_token, matching={"q": "x"}, status="resolved")
 

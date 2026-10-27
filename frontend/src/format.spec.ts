@@ -3,9 +3,11 @@ import {
   formatAgo,
   formatBitrate,
   formatBytes,
+  formatClock,
   formatCompact,
   formatCount,
   formatDateTime,
+  formatDay,
   formatDays,
   formatDue,
   formatDuration,
@@ -71,6 +73,38 @@ describe('formatDateTime', () => {
 describe('formatTimestamp', () => {
   it('includes the seconds', () => {
     expect(formatTimestamp('2026-03-04T15:30:45Z', 'en-US')).toMatch(/Mar 4, 2026.*:30:45/)
+  })
+})
+
+describe('formatClock', () => {
+  it('is the time of day down to the second', () => {
+    const noon = new Date(2026, 2, 4, 15, 30, 45).toISOString()
+
+    expect(formatClock(noon, 'en-US')).toBe('3:30:45 PM')
+    expect(formatClock(noon, 'de-DE')).toBe('15:30:45')
+  })
+})
+
+describe('formatDay', () => {
+  // Local times, so the day they are on does not depend on where the tests are run.
+  const at = (month: number, day: number, hour = 12, year = 2026) =>
+    new Date(year, month, day, hour).toISOString()
+  const now = new Date(2026, 2, 4, 9).getTime()
+
+  it('says today and yesterday in words, whatever the time of day', () => {
+    expect(formatDay(at(2, 4, 0), now, 'en-US')).toBe('Today')
+    expect(formatDay(at(2, 4, 23), now, 'en-US')).toBe('Today')
+    expect(formatDay(at(2, 3, 23), now, 'en-US')).toBe('Yesterday')
+    expect(formatDay(at(2, 3, 0), now, 'en-US')).toBe('Yesterday')
+  })
+
+  it('names any other day, with the year only when it is not this one', () => {
+    expect(formatDay(at(2, 1), now, 'en-US')).toBe('Sun, Mar 1')
+    expect(formatDay(at(11, 30, 12, 2025), now, 'en-US')).toBe('Tue, Dec 30, 2025')
+  })
+
+  it('counts from now unless told when now is', () => {
+    expect(formatDay(new Date().toISOString(), undefined, 'en-US')).toBe('Today')
   })
 })
 

@@ -3,19 +3,22 @@ import { CircleHelp, Search, X } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 import type { SearchTerm } from '@/api/incidents'
-import { SEARCH_EXAMPLES, forget, readRecent, remember, without } from '@/search'
+import { type SearchKind, forget, readRecent, remember, without } from '@/search'
 
 /** How long after the last key the search is applied, so typing a term is not searching for it
  * letter by letter. */
 const PAUSE = 400
 
 /**
- * The search box for the incidents: a text field, the terms of what was typed shown back as
- * chips that each come off with one tap, and a panel of ways to search and the searches made
- * before. The text is the applied search (it lives in the address of the page); what is typed is
- * applied after a pause, or at once with Enter, and the chips are the API's reading of it.
+ * The search box for a list that is searched in words (the incidents, the logs): a text field,
+ * the terms of what was typed shown back as chips that each come off with one tap, and a panel of
+ * ways to search and the searches made before. The text is the applied search (it lives in the
+ * address of the page); what is typed is applied after a pause, or at once with Enter, and the
+ * chips are the API's reading of it.
  */
 const props = defineProps<{
+  /** What is searched: its name, the hint, the ways to search it and where its searches are kept. */
+  kind: SearchKind
   /** The search that is applied. */
   modelValue: string
   /** How the API understood it. */
@@ -26,7 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [text: string] }>()
 
 const typed = ref(props.modelValue)
-const recent = ref(readRecent())
+const recent = ref(readRecent(props.kind.recentKey))
 const help = ref(false)
 const helpId = useId()
 const field = ref<{ focus: () => void } | null>(null)
@@ -57,7 +60,7 @@ function type(text: string | null) {
 /** The search is done with: apply it, and keep it for next time. */
 function commit() {
   apply(typed.value)
-  if (typed.value.trim()) recent.value = remember(typed.value)
+  if (typed.value.trim()) recent.value = remember(typed.value, props.kind.recentKey)
 }
 
 function clear() {
@@ -85,7 +88,7 @@ function drop(term: SearchTerm) {
 }
 
 function forgetAll() {
-  forget()
+  forget(props.kind.recentKey)
   recent.value = []
 }
 
@@ -105,12 +108,12 @@ defineExpose({ focus: () => field.value?.focus() })
 </script>
 
 <template>
-  <div class="search" role="search" aria-label="Search incidents" @keydown.esc="onEscape">
+  <div class="search" role="search" :aria-label="kind.label" @keydown.esc="onEscape">
     <v-text-field
       ref="field"
       :model-value="typed"
-      label="Search incidents"
-      placeholder="severity>=high source:wazuh -port:22 ssh"
+      :label="kind.label"
+      :placeholder="kind.placeholder"
       :prepend-inner-icon="Search"
       clearable
       :error-messages="error ?? undefined"
@@ -165,7 +168,7 @@ defineExpose({ focus: () => field.value?.focus() })
           Everything you type has to be true. Tap one to add it.
         </p>
         <ul class="search__list search__list--examples">
-          <li v-for="example in SEARCH_EXAMPLES" :key="example.text">
+          <li v-for="example in kind.examples" :key="example.text">
             <button
               type="button"
               class="search__row search__row--example"

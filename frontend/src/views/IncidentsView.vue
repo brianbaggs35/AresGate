@@ -20,10 +20,10 @@ import BulkDialog from '@/components/BulkDialog.vue'
 import BulkNotice from '@/components/BulkNotice.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
-import IncidentSearch from '@/components/IncidentSearch.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import SearchBox from '@/components/SearchBox.vue'
 import SearchFacets from '@/components/SearchFacets.vue'
 import { LOOK_OVER_FROM, didDo, type Change } from '@/bulk'
 import { formatCount } from '@/format'
@@ -39,7 +39,14 @@ import {
   type ViewKey,
 } from '@/incidents'
 import { usePolling } from '@/polling'
-import { impliedBy, toggled } from '@/search'
+import {
+  INCIDENT_SEARCH,
+  groupsOf,
+  impliedBy,
+  severityChoices,
+  sourceChoices,
+  toggled,
+} from '@/search'
 import { useSelection } from '@/selection'
 import { SEVERITIES, type Severity } from '@/severity'
 import { useSessionStore } from '@/stores/session'
@@ -203,6 +210,15 @@ const quieted = computed(() => (data.value as IncidentPage).quieted)
 const terms = computed(() =>
   answered.value === filters.value.q ? (data.value as IncidentPage).terms : [],
 )
+
+/** What the incidents found are made of, as choices that narrow the search. */
+const facetGroups = computed(() => {
+  const { facets } = data.value as IncidentPage
+  return groupsOf(
+    { name: 'Severity', choices: severityChoices(facets.severity, filters.value.q) },
+    { name: 'Reported by', choices: sourceChoices(facets.sources, filters.value.q) },
+  )
+})
 
 /** What the list says when it has nothing to show. */
 const empty = computed(() => {
@@ -391,8 +407,9 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         {{ loadError }} What is shown is from {{ updated }}.
       </v-alert>
 
-      <IncidentSearch
+      <SearchBox
         ref="searchBox"
+        :kind="INCIDENT_SEARCH"
         :model-value="filters.q"
         :terms="terms"
         :error="searchError"
@@ -466,7 +483,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         />
       </div>
 
-      <SearchFacets :facets="data.facets" :search="filters.q" @toggle="toggleFacet" />
+      <SearchFacets :groups="facetGroups" @toggle="toggleFacet" />
 
       <p
         v-if="searchError && items.length"

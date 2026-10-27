@@ -233,7 +233,7 @@ with the integrations.
 - **What's in them.** An event keeps the program's own record, up to 64 KiB (a larger one is
   replaced by its size), so it may hold addresses, host names and user names from your network.
   It stays in the database and in its backups ([Backups](#backups)), and goes with the
-  integration's retention period.
+  integration's retention period. [The Logs page](#the-logs-page) shows it.
 - **If the clock is wrong.** An event dated more than five minutes ahead of AresGate's clock is
   stored as of now, so a wrong clock on another machine can't make a table for next year.
 
@@ -551,6 +551,66 @@ and each incident has a page of its own.
   an answer that was already on its way doesn't undo it.
 - **What it doesn't do yet.** It does not block, isolate or notify anything. Response actions
   come later, and the analyst will read incidents the way you do.
+
+## The logs page
+
+**Logs** in the menu lists every [event](#stored-events) the collectors stored, newest first,
+next to the record each integration sent, so you can see what it said and what AresGate made of
+it. Not to be confused with [the container's own logs](#reading-the-logs).
+
+- **The list.** On a computer, a table with a heading for each day and a column for the time,
+  severity, the integration, the kind, where it came from and went, and a one-line summary. The
+  **View** menu chooses more columns (the protocol, the rule, the connection and when AresGate
+  heard of it), whether the time is exact or *how long ago*, and puts them back as they were;
+  what you choose is kept in the browser. The heading stays in view as the page scrolls, and the
+  arrow keys, `Home` and `End` move between the summaries, `Enter` opens one. On a phone it is a
+  card for each event instead. It shows 100 at a time, with a button for the older ones.
+- **Following along.** *Live* is on by default: every 5 seconds the page asks for what is new and
+  puts it at the top. While you have scrolled down, new events wait behind a button (*3 new
+  events*) rather than moving what you are reading; scroll up or tap the button and they are
+  put in. Turn *Live* off to pause the page. Only the newest 1000 events are held on the page.
+- **Searching.** The box takes the same [words and terms as the incidents](#searching-incidents),
+  with the fields of an event, and every one of them has to be true. `/` goes to the box, the
+  button beside it lists the ways to search and the searches made before, and the search is in
+  the address of the page (`?q=`). Buttons under the box count the severities, integrations and
+  kinds among what was found, and add themselves to the search with a tap.
+
+  | You type | It finds |
+  | --- | --- |
+  | `failed`, `"failed password"` | words in what the event says or the rule that fired |
+  | `203.0.113.7`, `address:203.0.113.0/24` | an address, from or to, or any in a range |
+  | `from:203.0.113.7`, `to:192.168.1.0/24` | only where it came from (`src:`) or went (`dst:`) |
+  | `port:22,443`, `sport:51234` | the destination port, or the source port |
+  | `source:opnsense`, `connection:home` | the integration (key or name), and which connection of it |
+  | `kind:alert`, `protocol:udp` | the kind of event, such as `alert`, `firewall` or `decision`, and the protocol |
+  | `severity>=high`, `severity:info` | this serious, or compared (`>`, `>=`, `<`, `<=`) |
+  | `signature:"ET SCAN"` | part of the rule that fired |
+  | `incident:yes` | only events AresGate filed into an incident (`no` for the others) |
+  | `raw:sshd` | the integration's own record (see below) |
+  | `since:1h`, `before:2026-10-27T08:00:00Z` | in the last hour, or before a moment (a date or a date and time works too) |
+  | `-port:22` | a minus turns any term around |
+
+  The chart over the list counts events by severity over the time the search found; tap a bar
+  (on a phone, tap it twice: the first reads it) to look at just that time, which puts a `since`
+  and a `before` in the search. Searching inside the records (`raw:`) reads far more than the
+  other terms, so it is slower; add a time (`since:1h`) to keep it quick. The database stops any
+  search after 5 seconds, as it does for incidents. The counts and the chart are of the newest
+  50,000 events that match, and say so when there were more.
+- **One event.** Open an event for a sheet at the side (the whole screen on a phone) with its
+  severity, where it was reported, every field it has with buttons to copy it or to *show
+  events with* it, a link to all the events with each address it names, the incident AresGate
+  filed it into (and a link to it), and the record the integration sent, pretty-printed and
+  copyable. `j` and `k` go to the older and the newer event without closing the sheet.
+- **Downloading.** **Export** saves what the search finds as a CSV file (for a spreadsheet; a
+  cell that starts like a formula is quoted) or a JSON file (with each event's own record), up to
+  the newest 50,000. Each download is one entry in the [activity log](security.md) with the
+  search, never the events. The same is `GET /api/logs/export?format=csv&q=…`.
+- **The API.** `GET /api/logs` takes `q` and `tz` (the time zone, for `today`), `limit` (up to
+  200) and `before` or `after` (the `cursor` of an event: older than it, or newer than it, the
+  oldest first), and answers with `items`, `more`, `terms` and, unless `summary=false`, the
+  spread of what was found. `GET /api/logs/{cursor}` is one event whole. The record an
+  integration sent holds what it held, so it can have addresses, host names and user names from
+  your network, and is only ever shown to someone signed in.
 
 ## AI providers
 
