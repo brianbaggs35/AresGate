@@ -41,10 +41,14 @@ def attack(session: Session, settings: Settings) -> Incident:
 
 
 def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> None:
-    assert client.get(BASE).status_code == 401
-    assert client.post(BASE, json={"verdict": "threat", "address": ATTACKER}).status_code == 401
-    assert client.patch(f"{BASE}/1", json={"note": "x"}).status_code == 401
-    assert client.delete(f"{BASE}/1").status_code == 401
+    answers = [
+        client.get(BASE),
+        client.post(BASE, json={"verdict": "threat", "address": ATTACKER}),
+        client.patch(f"{BASE}/1", json={"note": "x"}),
+        client.delete(f"{BASE}/1"),
+    ]
+
+    assert [answer.status_code for answer in answers] == [401, 401, 401, 401]
 
 
 class TestGivingAVerdict:
