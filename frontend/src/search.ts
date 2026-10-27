@@ -55,7 +55,8 @@ export function without(text: string, { start, end }: Pick<SearchTerm, 'start' |
 }
 
 function pattern(term: string): RegExp {
-  return new RegExp(`(^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'gi')
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+  return new RegExp(String.raw`(^|\s)${escaped}(?=\s|$)`, 'gi')
 }
 
 /** Whether the text has this term, such as `severity:high`, written just so. */
@@ -73,7 +74,7 @@ export function toggled(text: string, term: string): string {
  * is about those, whatever the list was showing: it looks across every status, and among the
  * incidents your verdicts quiet. */
 export function impliedBy(text: string): { allStatuses: boolean; quieted: boolean } {
-  const names = (field: string) => new RegExp(`(^|\\s)-?${field}[:=]`, 'i').test(text)
+  const names = (field: string) => new RegExp(String.raw`(^|\s)-?${field}[:=]`, 'i').test(text)
   return { allStatuses: names('status'), quieted: names('verdict') }
 }
 

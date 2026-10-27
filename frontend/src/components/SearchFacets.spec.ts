@@ -20,7 +20,9 @@ async function open(props: { facets?: Facets; search?: string } = {}) {
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const choices = (group: string) =>
     mounted.wrapper
-      .findAll(`[role="group"][aria-label="${group}"] button`)
+      .findAll('fieldset')
+      .filter((fieldset) => fieldset.find('legend').text() === group)
+      .flatMap((fieldset) => fieldset.findAll('button'))
       .map((button) => button.text())
   return { ...mounted, find, choices }
 }

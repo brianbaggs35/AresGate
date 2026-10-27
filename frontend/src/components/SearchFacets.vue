@@ -64,13 +64,8 @@ const groups = computed(() =>
 
 <template>
   <div v-if="groups.length" class="facets" data-test="facets">
-    <div
-      v-for="group in groups"
-      :key="group.name"
-      class="facets__group"
-      role="group"
-      :aria-label="group.name"
-    >
+    <fieldset v-for="group in groups" :key="group.name" class="facets__group">
+      <legend class="facets__legend">{{ group.name }}</legend>
       <span class="facets__name text-label-large text-medium-emphasis" aria-hidden="true">{{
         group.name
       }}</span>
@@ -95,7 +90,7 @@ const groups = computed(() =>
         <span>{{ choice.label }}</span>
         <span class="facet__count tabular-nums">{{ formatCount(choice.count) }}</span>
       </button>
-    </div>
+    </fieldset>
   </div>
 </template>
 
@@ -111,6 +106,19 @@ const groups = computed(() =>
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* The group's name for a screen reader; the name beside the choices is for the eye. */
+.facets__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .facets__name {
