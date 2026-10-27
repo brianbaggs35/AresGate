@@ -1,10 +1,14 @@
 import { ApiError } from '@/api/client'
 import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
+import * as incidentsApi from '@/api/incidents'
+import * as verdictsApi from '@/api/verdicts'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
 import { alert, dashboard } from '@/test/dashboard'
+import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { given } from '@/test/verdicts'
 import TrafficCard from '@/components/TrafficCard.vue'
 import DashboardView from '@/views/DashboardView.vue'
 
@@ -55,16 +59,25 @@ function busy() {
 interface Mocks {
   dashboard?: dashboardApi.Dashboard | Error
   collectors?: collectorsApi.CollectorsReport | Error
+  /** The incidents that need a decision. None, unless given. */
+  incidents?: incidentsApi.IncidentPage | Error
 }
 
-function mocks({ dashboard: shown = busy(), collectors = report([collector()]) }: Mocks = {}) {
+function mocks({
+  dashboard: shown = busy(),
+  collectors = report([collector()]),
+  incidents = page([]),
+}: Mocks = {}) {
   const fetchDashboard = vi.spyOn(dashboardApi, 'fetchDashboard')
   if (shown instanceof Error) fetchDashboard.mockRejectedValue(shown)
   else fetchDashboard.mockResolvedValue(shown)
   const fetchCollectors = vi.spyOn(collectorsApi, 'fetchCollectors')
   if (collectors instanceof Error) fetchCollectors.mockRejectedValue(collectors)
   else fetchCollectors.mockResolvedValue(collectors)
-  return { fetchDashboard, fetchCollectors }
+  const fetchIncidents = vi.spyOn(incidentsApi, 'fetchIncidents')
+  if (incidents instanceof Error) fetchIncidents.mockRejectedValue(incidents)
+  else fetchIncidents.mockResolvedValue(incidents)
+  return { fetchDashboard, fetchCollectors, fetchIncidents }
 }
 
 async function open(options: Mocks = {}) {
@@ -178,6 +191,121 @@ describe('DashboardView', () => {
     ])('color the alerts by the worst there were: %s', async (_name, shown, color) => {
       const { find } = await open({ dashboard: shown })
       expect(find('tile-alerts').find('.v-icon').classes()).toContain(color)
+    })
+  })
+
+  describe('the lane of what needs you', () => {
+    const waiting = () =>
+      page(
+        [
+          incident({ id: 3, title: 'Port scan (198.51.100.7)', severity: 'critical' }),
+          incident({ id: 2, title: 'Brute force on ssh (203.0.113.9)' }),
+        ],
+        { total: 5 },
+      )
+
+    it('asks for the three open incidents that are most serious and surest', async () => {
+      const { fetchIncidents } = await open()
+
+      expect(fetchIncidents).toHaveBeenCalledWith({
+        statuses: ['open', 'investigating'],
+        minConfidence: 0,
+        verdicts: ['none', 'threat'],
+        limit: 3,
+        order: 'priority',
+      })
+    })
+
+    it('shows a card for each, under the banner, and says how many there are in all', async () => {
+      const { find, text, wrapper } = await open({ incidents: waiting() })
+
+      expect(wrapper.findAll('[data-test="incident-title"]').map((title) => title.text())).toEqual([
+        'Port scan (198.51.100.7)',
+        'Brute force on ssh (203.0.113.9)',
+      ])
+      expect(text('needs-you-description')).toContain('5 open incidents')
+      expect(text('needs-you-all')).toBe('See all 5')
+      expect(find('posture').element.compareDocumentPosition(find('needs-you').element)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    })
+
+    it('is left out when nothing needs a decision', async () => {
+      const { find } = await open()
+
+      expect(find('needs-you').exists()).toBe(false)
+    })
+
+    it('is left out, and the rest of the page is not, when the incidents cannot be read', async () => {
+      const { find } = await open({ incidents: offline() })
+
+      expect(find('needs-you').exists()).toBe(false)
+      expect(find('dashboard-error').exists()).toBe(false)
+      expect(find('posture').exists()).toBe(true)
+    })
+
+    it('keeps what it has when a refresh cannot read the incidents', async () => {
+      const { find, fetchIncidents } = await open({ incidents: waiting() })
+      fetchIncidents.mockRejectedValue(offline())
+
+      await find('refresh').trigger('click')
+      await flushPromises()
+
+      expect(find('needs-you').exists()).toBe(true)
+      expect(find('dashboard-stale').exists()).toBe(false)
+    })
+
+    describe('saying what you think of one', () => {
+      /** What the page says in its notice at the bottom, which is outside the page itself. */
+      const notice = (selector: string) =>
+        document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+
+      async function judge() {
+        const give = vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue(given({ id: 7 }))
+        const remove = vi.spyOn(verdictsApi, 'removeVerdict').mockResolvedValue(undefined)
+        const opened = await open({ incidents: waiting() })
+        const press = async () => {
+          await opened.wrapper.find('[data-test="quick-not_suspicious"]').trigger('click')
+          await flushPromises()
+          await flushPromises()
+        }
+        return { ...opened, give, remove, press }
+      }
+
+      it('says what was remembered, and asks again, since the incident can leave the lane', async () => {
+        const { press, find, fetchDashboard, fetchIncidents } = await judge()
+        fetchIncidents.mockResolvedValue(page([incident({ id: 2 })], { total: 1 }))
+
+        await press()
+
+        expect(notice('judged-text')?.textContent).toBe(
+          'Remembered: 93.184.216.34 is not suspicious.',
+        )
+        expect(fetchDashboard).toHaveBeenCalledTimes(2)
+        expect(fetchIncidents).toHaveBeenCalledTimes(2)
+        expect(find('needs-you-description').text()).toContain('1 open incident,')
+      })
+
+      it('goes when the last one has been judged', async () => {
+        const { press, find, fetchIncidents } = await judge()
+        fetchIncidents.mockResolvedValue(page([]))
+
+        await press()
+
+        expect(find('needs-you').exists()).toBe(false)
+      })
+
+      it('asks again when the verdict is taken back, since the incident is back', async () => {
+        const { press, remove, fetchDashboard } = await judge()
+        await press()
+
+        notice('undo')?.click()
+        await flushPromises()
+        await flushPromises()
+
+        expect(remove).toHaveBeenCalledWith(7, 'a-security-token')
+        expect(fetchDashboard).toHaveBeenCalledTimes(3)
+      })
     })
   })
 

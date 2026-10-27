@@ -95,6 +95,20 @@ class TestListing:
         assert quiet["subject"] == OTHER_ATTACKER
         assert attack["subject"] == ATTACKER
 
+    def test_the_most_serious_can_come_first(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        assert [item["subject"] for item in listed(client, order="priority")] == [
+            ATTACKER,
+            OTHER_ATTACKER,
+        ]
+        assert [item["subject"] for item in listed(client, order="recent")] == [
+            OTHER_ATTACKER,
+            ATTACKER,
+        ]
+
     def test_each_says_what_it_is(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings
     ) -> None:
@@ -210,6 +224,7 @@ class TestListing:
             {"limit": 0},
             {"limit": 201},
             {"offset": -1},
+            {"order": "random"},
         ],
     )
     def test_nonsense_is_refused(

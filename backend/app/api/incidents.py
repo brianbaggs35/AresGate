@@ -11,6 +11,7 @@ from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.events.event import Severity
 from app.incidents import queries, rules
+from app.incidents.queries import Order
 from app.models import Incident, IncidentSignal, utcnow
 
 router = APIRouter(prefix="/incidents", tags=["incidents"], dependencies=[Depends(signed_in)])
@@ -208,8 +209,13 @@ def list_incidents(
     since: Annotated[AwareDatetime | None, Query(description="Going on from this time.")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[
+        Order,
+        Query(description="recent: going most recently first. priority: most serious first."),
+    ] = "recent",
 ) -> IncidentPage:
-    """Incidents, the ones that were going most recently first."""
+    """Incidents, the ones that were going most recently first unless asked for the most
+    serious and surest first."""
     minimum = None
     if min_severity is not None:
         minimum = next(level for level, name in SEVERITY_NAMES.items() if name == min_severity)
@@ -223,6 +229,7 @@ def list_incidents(
         since=since,
         limit=limit,
         offset=offset,
+        order=order,
     )
     return IncidentPage(
         total=page.total,

@@ -1,3 +1,4 @@
+import type { IncidentRequest } from '../support'
 import { expect, test } from '../support'
 
 /** What the dashboard is shown in most of these: two serious alerts among five, seven refused
@@ -9,6 +10,22 @@ const BUSY = {
   traffic: { igc0: 80, igc1: 5 },
   devices: 2,
 }
+
+const ATTACKER = '93.184.216.34'
+
+/** Two open incidents: a quiet scan that was heard from a moment ago, and a serious attack that
+ * two programs saw and CrowdSec banned, half an hour ago. */
+const WAITING: IncidentRequest[] = [
+  { address: '8.8.8.8', severity: 'low', programs: ['opnsense'], signals: 1, minutes_ago: 3 },
+  {
+    address: ATTACKER,
+    severity: 'critical',
+    programs: ['wazuh', 'opnsense'],
+    signals: 4,
+    ban: true,
+    minutes_ago: 30,
+  },
+]
 
 test.describe('dashboard', () => {
   test('is the first page, and asks for something to be connected on a new install', async ({
@@ -60,6 +77,51 @@ test.describe('dashboard', () => {
     await expect(dashboard.bannerAction).toBeHidden()
     await expect(dashboard.collectionTile).toContainText('Working')
     await expect(dashboard.collectionTile).toContainText('1 collector')
+    await expect(dashboard.needsYou).toBeHidden()
+  })
+
+  test('puts the incidents that need a decision under the banner, the most serious first', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents(WAITING)
+
+    await dashboard.goto()
+
+    await expect(dashboard.needsYou.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+    await expect(dashboard.needsYouCards.getByTestId('incident-title')).toHaveText([
+      `Brute force on ssh (${ATTACKER})`,
+      'Brute force on ssh (8.8.8.8)',
+    ])
+    await expect(dashboard.needsYouAll).toHaveText('Open Incidents')
+
+    await dashboard.needsYouAll.click()
+
+    await expect(page).toHaveURL('/incidents')
+  })
+
+  test('says what was remembered when a verdict is given from the lane, and takes it back', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents(WAITING)
+    await dashboard.goto()
+
+    await dashboard.quick('not_suspicious').click()
+
+    await expect(dashboard.judged).toHaveText(`Remembered: ${ATTACKER} is not suspicious.`)
+    await expect(dashboard.needsYouCards).toHaveCount(1)
+    await expect(dashboard.needsYouCards.getByTestId('incident-title')).toHaveText(
+      'Brute force on ssh (8.8.8.8)',
+    )
+
+    await dashboard.undo.click()
+
+    await expect(dashboard.judged).toHaveText('Taken back.')
+    await expect(dashboard.needsYouCards).toHaveCount(2)
   })
 
   test('says the collectors are starting until one has run', async ({ harness, dashboard }) => {

@@ -21,6 +21,13 @@ export class DashboardPage {
   readonly sourcesCard: Locator
   readonly latestAlerts: Locator
   readonly alertRows: Locator
+  /** The lane of incidents that need a decision, its cards and the link to all of them. */
+  readonly needsYou: Locator
+  readonly needsYouCards: Locator
+  readonly needsYouAll: Locator
+  /** What the page says after a verdict was given from a card, and the button to take it back. */
+  readonly judged: Locator
+  readonly undo: Locator
   /** The choice of 24 hours or 7 days, and the button that asks again. */
   readonly range: Locator
   readonly day: Locator
@@ -50,6 +57,11 @@ export class DashboardPage {
     this.sourcesCard = page.getByTestId('sources-card')
     this.latestAlerts = page.getByTestId('latest-alerts-card')
     this.alertRows = page.getByTestId('recent-alert')
+    this.needsYou = page.getByTestId('needs-you')
+    this.needsYouCards = this.needsYou.getByTestId('incident-card')
+    this.needsYouAll = page.getByTestId('needs-you-all')
+    this.judged = page.getByTestId('judged-text')
+    this.undo = page.getByTestId('undo')
     this.range = page.getByTestId('range')
     this.day = page.getByTestId('range-24h')
     this.week = page.getByTestId('range-7d')
@@ -58,6 +70,12 @@ export class DashboardPage {
     this.error = page.getByTestId('dashboard-error')
     this.retry = page.getByTestId('retry')
     this.stale = page.getByTestId('dashboard-stale')
+  }
+
+  /** One of the three verdict buttons on a card of the lane, by the verdict, such as
+   * `not_suspicious`, and the card's place in the lane. */
+  quick(verdict: string, index = 0): Locator {
+    return this.needsYouCards.nth(index).getByTestId(`quick-${verdict}`)
   }
 
   async goto(): Promise<void> {
