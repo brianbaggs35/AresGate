@@ -39,11 +39,25 @@ for (const theme of ['light', 'dark'] as const) {
       await shell.expectTheme(theme)
       await expectAccessible(page)
 
-      await incidents.search('8.8')
-      await expect(incidents.address).toContainText('Type a whole IP address')
+      // A search, the terms it was understood as, and what the results are made of.
+      await incidents.search('severity>=high -address:8.8.8.8')
+      await expect(incidents.terms).toHaveCount(2)
+      await expect(incidents.facets).toBeVisible()
       await expectAccessible(page)
 
-      await incidents.goto('?view=all&address=203.0.113.77')
+      // The ways to search, and the searches made before.
+      await incidents.searchHelp.click()
+      await expect(incidents.searchPanel).toBeVisible()
+      await expect(incidents.recent).toHaveCount(1)
+      await expectAccessible(page)
+      await incidents.searchHelp.click()
+
+      // A search that can not be understood.
+      await incidents.search('sevrity:high')
+      await expect(incidents.searchField).toContainText('Did you mean')
+      await expectAccessible(page)
+
+      await incidents.goto('?view=all&q=address%3A203.0.113.77')
       await expect(incidents.empty).toContainText('Nothing matches')
       await expectAccessible(page)
 

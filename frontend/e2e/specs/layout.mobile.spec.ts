@@ -72,6 +72,50 @@ test.describe('layout on a phone', () => {
     expect(await overflow()).toBeLessThanOrEqual(0)
   })
 
+  test('the search, what it found and the ways to search fit the screen', async ({
+    page,
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([
+      {
+        address: '93.184.216.34',
+        severity: 'critical',
+        programs: ['wazuh', 'opnsense', 'crowdsec', 'ntopng'],
+        signals: 8,
+      },
+      { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], signals: 3 },
+    ])
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(2)
+    await expect(incidents.facets).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    await incidents.search('severity>=medium -source:ntopng address:93.184.216.0/24 "a phrase"')
+    await expect(incidents.terms).toHaveCount(4)
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    await incidents.searchHelp.click()
+    await expect(incidents.searchPanel).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+    const box = await incidents.searchPanel.boundingBox()
+    const screen = page.viewportSize()
+    expect(box?.x).toBeGreaterThanOrEqual(0)
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(screen?.width ?? 0)
+
+    // Every row to tap, and every term to take off, is as big as a thumb.
+    for (const row of await page.getByTestId('search-example').all()) {
+      expect((await row.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    }
+    for (const chip of await incidents.terms.all()) {
+      expect((await chip.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    }
+  })
+
   test('an incident with verdicts fits the screen, and its three buttons stack', async ({
     page,
     harness,

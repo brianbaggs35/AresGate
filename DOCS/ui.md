@@ -40,9 +40,9 @@ says after a verdict is `JudgedNotice`, which the Incidents page uses too.
 The Incidents pages are built from the same parts. The list is `IncidentCard`s in one column
 (each a single link to its incident, with an accent bar in the color of its severity, and a
 confidence meter that says *High confidence*, not only 100%); what it is narrowed to lives in the
-route's query (`view`, `severity`, `confidence`, `address`), never in component state, so a link
-reproduces it. An incident's page reads in the order a person asks: what is it and what can I
-do (the header and its buttons), what happened (a `HeroSurface`, the same surface as the
+route's query (`view`, `severity`, `confidence`, `q`), never in component state, so a link
+reproduces it (an older link's `address=` is read as `q=address:…`). An incident's page reads in
+the order a person asks: what is it and what can I do (the header and its buttons), what happened (a `HeroSurface`, the same surface as the
 dashboard's hero: a ring drawn to the confidence, a sentence made from what the incident holds
 by `storyOf`, and the numbers inside it), why is AresGate sure (`IncidentReasons`: the bar
 and the list use the chart palette, in the same order, so a color is always the same reason),
@@ -54,6 +54,19 @@ apply, facts for its waves, ports and neighbouring addresses. The status is alwa
 (`IncidentStatusChip`), and the changes are named by what they do (*Resolve*, not *Done*). The
 primary action is the one to reach for next, and the page confirms a change in an `output`.
 Status looks, wording and the filters' choices are in `src/incidents.ts`.
+
+The search is `IncidentSearch`: a labelled text field in a `role="search"` landmark, a panel
+behind its help button (a disclosure, not a menu, so it is plain buttons that work with a screen
+reader and a thumb) with the ways to search and the searches made before, and one button for each
+term the API understood (`terms` in the answer, which is also where the wording of each comes
+from, so none of the language is repeated in the web app). What is typed is applied after a
+pause, or with Enter or on leaving the box; an error from the API is the field's message, and the
+list stays, with a note that it is from the last search that worked (never dimmed: faded text
+fails contrast), until the search is fixed. `SearchFacets` is the summary of the results: real
+buttons with `aria-pressed`, a row that scrolls sideways on a phone (`contain: inline-size`, or
+the width of the choices would widen the page). The slash key is handled by the list page, and
+not while a field has the keyboard. A search that names a status or a verdict moves the view to
+*All* or switches on the quieted ones, so what the buttons say is true.
 
 Verdicts follow the same rule as severity: each is an icon and a name, never only a color
 (`VerdictChip`, looks and wording in `src/verdicts.ts`). `VerdictPanel` sits between the reasons

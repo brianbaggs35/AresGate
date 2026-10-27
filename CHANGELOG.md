@@ -8,6 +8,21 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Search for incidents**: a box above the list takes words and a few terms, such as
+  `severity>=high source:wazuh -port:22 since:6h ssh`: text in the title or subject, an address or
+  a range (`address:203.0.113.0/24`), the program that reported it, severity and confidence
+  (with `>=` and the like), status, your verdict, scanning or brute force, a signature, a
+  destination port, a device on your network, whether it was banned, and when it was going on,
+  with a minus to turn any term around and a comma for choices. The box shows how it understood
+  what you typed as chips that each come off with a tap, says why when it can't (and which
+  field you probably meant), and keeps what was listed meanwhile, with a note. Under the
+  filters, buttons count the severities and programs among what was found and add themselves to
+  the search with a tap. `/` goes to the box, a help button lists the ways to search and the last eight searches,
+  and the search is in the address of the page, so it can be sent as a link. `GET /api/incidents`
+  takes `q` and `tz` (the time zone, for `today`) and answers with `terms` and `facets`; a search
+  is limited in length and terms, and the database stops one after 5 seconds. The address field
+  it replaces still works from older links. Saved searches and the same search for the logs are
+  to come ([DOCS/operations.md](DOCS/operations.md#the-incidents-pages)).
 - **A phone pass over the app**: on a phone the incidents that need a decision are a row to swipe
   through, the next one showing at the edge, where three tall cards used to push the charts a
   screen down; every button is at least 44 px tall on a touch screen, the small ones next to a

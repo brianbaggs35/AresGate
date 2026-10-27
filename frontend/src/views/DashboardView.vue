@@ -41,7 +41,7 @@ const LANE_SIZE = 3
 /** What needs a decision: the incidents the Incidents page opens on, the most serious first. */
 const NEEDS_YOU = {
   ...queryOf(
-    { view: DEFAULT_VIEW, severity: null, confidence: 0, address: '', quieted: false },
+    { view: DEFAULT_VIEW, severity: null, confidence: 0, q: '', quieted: false },
     LANE_SIZE,
   ),
   order: 'priority',

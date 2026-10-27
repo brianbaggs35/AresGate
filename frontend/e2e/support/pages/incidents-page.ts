@@ -8,8 +8,16 @@ export class IncidentsPage {
   /** The ways to narrow the list. */
   readonly severity: Locator
   readonly confidence: Locator
-  readonly address: Locator
   readonly clear: Locator
+  /** The search box, the terms of it that were understood, the panel of ways to search and the
+   * summary of what was found, with a button for each severity and integration in it. */
+  readonly searchBox: Locator
+  readonly searchField: Locator
+  readonly terms: Locator
+  readonly searchHelp: Locator
+  readonly searchPanel: Locator
+  readonly recent: Locator
+  readonly facets: Locator
   /** The switch that includes the incidents the owner's verdicts quiet, and the button in the
    * empty list that turns it on. */
   readonly quieted: Locator
@@ -36,7 +44,13 @@ export class IncidentsPage {
     this.views = page.getByTestId('views')
     this.severity = page.getByTestId('filter-severity')
     this.confidence = page.getByTestId('filter-confidence')
-    this.address = page.getByTestId('filter-address')
+    this.searchField = page.getByTestId('search')
+    this.searchBox = page.getByRole('textbox', { name: 'Search incidents' })
+    this.terms = page.getByTestId('search-term')
+    this.searchHelp = page.getByTestId('search-help')
+    this.searchPanel = page.getByTestId('search-panel')
+    this.recent = page.getByTestId('search-recent')
+    this.facets = page.getByTestId('facets')
     this.clear = page.getByTestId('clear-filters')
     this.quieted = page.getByTestId('filter-quieted')
     this.showQuieted = page.getByTestId('empty-quieted')
@@ -81,9 +95,15 @@ export class IncidentsPage {
     await this.page.getByRole('option', { name: label }).click()
   }
 
-  /** Types into the address field, which looks for it once it is a whole address. */
-  async search(address: string): Promise<void> {
-    await this.address.getByRole('textbox').fill(address)
+  /** Searches for something: types it into the box and presses Enter, which does it at once. */
+  async search(text: string): Promise<void> {
+    await this.searchBox.fill(text)
+    await this.searchBox.press('Enter')
+  }
+
+  /** The button of the summary for a severity or an integration, such as `severity:high`. */
+  facet(term: string): Locator {
+    return this.page.getByTestId(`facet-${term}`)
   }
 
   async goto(query = ''): Promise<void> {

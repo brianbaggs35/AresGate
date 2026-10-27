@@ -4,14 +4,16 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.api import incidents
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
-from app.incidents import episode
+from app.incidents import episode, queries, search
 from app.models import AuditEvent, Device, DeviceAddress, Incident, User
 from tests.helpers import OTHER_ORIGIN, new_event
 from tests.test_incidents_engine import (
@@ -80,6 +82,11 @@ class TestListing:
         assert response.json() == {
             "total": 0,
             "items": [],
+            "terms": [],
+            "facets": {
+                "severity": {"info": 0, "low": 0, "medium": 0, "high": 0, "critical": 0},
+                "sources": [],
+            },
             "counts": {"open": 0, "investigating": 0, "resolved": 0, "dismissed": 0},
             "quieted": 0,
         }
@@ -237,6 +244,176 @@ class TestListing:
         self, client: TestClient, csrf_token: str, params: dict[str, Any]
     ) -> None:
         assert client.get(BASE, params=params).status_code == 422
+
+
+class TestSearching:
+    def found(self, client: TestClient, q: str, **params: Any) -> list[str]:
+        return [item["subject"] for item in listed(client, q=q, **params)]
+
+    def test_a_search_in_words_narrows_the_list(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        assert self.found(client, "severity>=high") == [ATTACKER]
+        assert self.found(client, "source:crowdsec") == [ATTACKER]
+        assert self.found(client, f"-address:{ATTACKER}") == [OTHER_ATTACKER]
+        assert self.found(client, "") == [OTHER_ATTACKER, ATTACKER]
+
+    def test_it_is_as_well_as_the_rest_of_what_was_asked_for(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        assert self.found(client, "source:wazuh", status="resolved") == []
+        assert self.found(client, "source:wazuh", min_severity="high") == [ATTACKER]
+        body = client.get(BASE, params={"q": "source:wazuh", "limit": 1}).json()
+        assert (body["total"], len(body["items"])) == (2, 1)
+
+    def test_it_says_how_each_term_was_understood_and_where_it_was(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        body = client.get(BASE, params={"q": "ssh  -source:wazuh"}).json()
+
+        assert body["terms"] == [
+            {"field": None, "label": "Contains: ssh", "negated": False, "start": 0, "end": 3},
+            {
+                "field": "source",
+                "label": "Not source: Wazuh",
+                "negated": True,
+                "start": 5,
+                "end": 18,
+            },
+        ]
+        assert client.get(BASE).json()["terms"] == []
+
+    def test_it_says_how_the_incidents_found_are_spread(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        everything = client.get(BASE).json()["facets"]
+        assert everything["severity"] == {
+            "info": 0,
+            "low": 1,
+            "medium": 0,
+            "high": 1,
+            "critical": 0,
+        }
+        assert everything["sources"] == [
+            {"key": "wazuh", "name": "Wazuh", "count": 2},
+            {"key": "crowdsec", "name": "CrowdSec", "count": 1},
+            {"key": "opnsense", "name": "OPNsense", "count": 1},
+        ]
+        narrowed = client.get(BASE, params={"q": "severity>=high"}).json()["facets"]
+        assert narrowed["severity"]["low"] == 0
+        assert [source["key"] for source in narrowed["sources"]] == [
+            "crowdsec",
+            "opnsense",
+            "wazuh",
+        ]
+        nothing = client.get(BASE, params={"q": "zzz"}).json()["facets"]
+        assert nothing["sources"] == []
+
+    def test_the_facets_are_of_all_that_were_found_not_of_the_page(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        body = client.get(BASE, params={"limit": 1}).json()
+
+        assert sum(body["facets"]["severity"].values()) == 2
+
+    def test_a_search_that_cannot_be_understood_says_why(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        response = client.get(BASE, params={"q": "sevrity:high"})
+
+        assert response.status_code == 422
+        assert 'Did you mean "severity"?' in response.json()["detail"]
+
+    def test_times_are_where_the_person_is(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        # The first incident began at 06:00 UTC. 06:05 in Halifax is 09:05 UTC, so it began before
+        # that, and 06:05 where it is 14 hours ahead was the evening before.
+        halifax = {"tz": "America/Halifax"}
+        labels = [
+            term["label"]
+            for term in client.get(BASE, params={"q": "before:2026-10-26T06:05", **halifax}).json()[
+                "terms"
+            ]
+        ]
+        assert labels == ["Began before: 2026-10-26 06:05"]
+        assert self.found(client, "before:2026-10-26T06:05", **halifax) == [
+            OTHER_ATTACKER,
+            ATTACKER,
+        ]
+        assert self.found(client, "before:2026-10-26T06:05", tz="Etc/GMT-14") == []
+
+    def test_a_time_zone_that_is_not_one_is_refused(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        for zone in ("Nowhere/Atlantis", "../etc/passwd", "Europe", "/etc/localtime"):
+            response = client.get(BASE, params={"q": "since:today", "tz": zone})
+            assert response.status_code == 422
+            assert response.json()["detail"] == "That isn't a time zone."
+
+    def test_the_database_is_told_to_stop_a_search_that_takes_too_long(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        make(session, settings)
+        # A search the language can't say: it holds the database up for a second.
+        slow = func.pg_sleep(1).is_not(None)
+
+        def parse(text: str, context: search.Context) -> search.Search:
+            return search.Search((search.Term(None, False, "Slow", 0, 1, slow),))
+
+        monkeypatch.setattr(search, "parse", parse)
+        monkeypatch.setattr(incidents, "SEARCH_TIMEOUT_MS", 50)
+
+        response = client.get(BASE, params={"q": "x"})
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "That search took too long. Narrow it, for example with since:7d."
+        )
+
+    def test_a_search_with_nothing_in_it_is_not_timed(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        make(session, settings)
+        monkeypatch.setattr(incidents, "SEARCH_TIMEOUT_MS", 1)
+
+        assert len(listed(client)) == 2
+
+    def test_a_failure_of_the_database_that_is_not_a_timeout_is_not_hidden(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail(*args: Any, **kwargs: Any) -> Any:
+            raise OperationalError("select", {}, Exception("the database is gone"))
+
+        monkeypatch.setattr(queries, "search", fail)
+
+        with pytest.raises(OperationalError):
+            client.get(BASE)
 
 
 class TestVerdicts:

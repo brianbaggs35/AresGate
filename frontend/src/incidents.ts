@@ -13,6 +13,7 @@ import type {
   Signal,
 } from '@/api/incidents'
 import { formatCount, formatDuration, formatList } from '@/format'
+import { zone } from '@/search'
 import type { Severity } from '@/severity'
 
 interface StatusLook {
@@ -209,8 +210,8 @@ export interface Filters {
   view: ViewKey
   severity: Severity | null
   confidence: number
-  /** What was typed: an address only counts once it is whole. */
-  address: string
+  /** The search in words, as it is applied (see `search.ts`). */
+  q: string
   /** Whether to include the incidents the owner called not suspicious or low priority, which
    * the list leaves out unless asked. */
   quieted: boolean
@@ -220,27 +221,19 @@ export const NO_FILTERS: Readonly<Filters> = {
   view: DEFAULT_VIEW,
   severity: null,
   confidence: 0,
-  address: '',
+  q: '',
   quieted: false,
-}
-
-const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/
-const IPV6 = /^(?=(?:[^:]*:){2})[0-9a-f:.]{2,45}$/i
-
-/** Whether text is a whole IP address, which is what the API takes to look for. */
-export function isAddress(text: string): boolean {
-  return IPV4.test(text) || IPV6.test(text)
 }
 
 /** The search for a list that is narrowed this way. */
 export function queryOf(filters: Filters, limit: number): IncidentQuery {
   const { statuses } = VIEWS.find(({ key }) => key === filters.view) as (typeof VIEWS)[number]
-  const address = filters.address.trim()
+  const q = filters.q.trim()
   return {
     statuses,
     ...(filters.severity ? { minSeverity: filters.severity } : {}),
     minConfidence: filters.confidence,
-    ...(isAddress(address) ? { address } : {}),
+    ...(q ? { q, tz: zone() } : {}),
     ...(filters.quieted ? {} : { verdicts: ['none', 'threat'] as const }),
     limit,
   }
@@ -251,7 +244,7 @@ export function activeFilters(filters: Filters): number {
   return (
     Number(filters.severity !== null) +
     Number(filters.confidence !== 0) +
-    Number(isAddress(filters.address.trim())) +
+    Number(filters.q.trim() !== '') +
     Number(filters.quieted)
   )
 }

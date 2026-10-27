@@ -1,16 +1,22 @@
 """Incidents: the alerts, bans and other signals from every integration that belong together,
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
+from datetime import UTC
+from functools import lru_cache
 from typing import Annotated, Literal, cast
+from zoneinfo import ZoneInfo, available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from psycopg.errors import QueryCanceled
 from pydantic import AwareDatetime, BaseModel, ConfigDict, IPvAnyAddress
+from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.events.event import Severity
-from app.incidents import episode, queries, rules
+from app.incidents import episode, queries, rules, search
 from app.incidents.queries import Order
 from app.models import Incident, IncidentSignal, utcnow
 
@@ -22,6 +28,9 @@ Activity = Literal["scan", "brute_force"]
 # What to ask for to get the incidents nobody has given a verdict to.
 VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
+# How long a search may take before the database gives up on it, so that nothing a person types
+# can keep it busy.
+SEARCH_TIMEOUT_MS = 5000
 IncidentId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
 
@@ -121,9 +130,38 @@ class IncidentDetail(IncidentOut):
     blocked: int | None
 
 
+class TermOut(BaseModel):
+    """One term of the search, as it was understood."""
+
+    # The field it is about (``source``, ``severity``), or none for plain text.
+    field: str | None
+    # What it was understood as, to show: ``Source: Wazuh``, ``Not address: 10.0.0.0/8``.
+    label: str
+    negated: bool
+    # Where it was in the search, as the characters from ``start`` up to ``end``.
+    start: int
+    end: int
+
+
+class SourceCount(BaseModel):
+    key: str
+    name: str
+    count: int
+
+
+class FacetsOut(BaseModel):
+    """How the incidents found are spread, whatever page of them it is."""
+
+    severity: dict[SeverityName, int]
+    # The integrations that reported part of any of them, the most first.
+    sources: list[SourceCount]
+
+
 class IncidentPage(BaseModel):
     total: int
     items: list[IncidentOut]
+    terms: list[TermOut]
+    facets: FacetsOut
     # How many incidents there are in each status, whatever the search was for except which
     # verdicts it asked about.
     counts: dict[Status, int]
@@ -223,6 +261,28 @@ def _found(db: Db, incident_id: int) -> Incident:
     return incident
 
 
+@lru_cache
+def _zones() -> frozenset[str]:
+    return frozenset(available_timezones())
+
+
+def _context(zone: str | None) -> search.Context:
+    """Where the person is and when, for the words in a search that depend on it."""
+    if zone is not None and zone not in _zones():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That isn't a time zone.")
+    return search.Context(zone=ZoneInfo(zone) if zone else UTC, now=utcnow())
+
+
+def _facets(found: queries.Facets) -> FacetsOut:
+    return FacetsOut(
+        severity={name: found.severity.get(level, 0) for level, name in SEVERITY_NAMES.items()},
+        sources=[
+            SourceCount(key=key, name=rules.name_of(key), count=count)
+            for key, count in sorted(found.source.items(), key=lambda item: (-item[1], item[0]))
+        ],
+    )
+
+
 @router.get("")
 def list_incidents(
     db: Db,
@@ -238,6 +298,17 @@ def list_incidents(
     min_confidence: Annotated[int, Query(ge=0, le=rules.MAX_CONFIDENCE)] = 0,
     address: Annotated[IPvAnyAddress | None, Query(description="Ones that name this.")] = None,
     since: Annotated[AwareDatetime | None, Query(description="Going on from this time.")] = None,
+    q: Annotated[
+        str,
+        Query(
+            description="A search in words, such as: severity>=high source:wazuh -port:22 ssh. "
+            "Everything it says has to be true, as well as the rest."
+        ),
+    ] = "",
+    tz: Annotated[
+        str | None,
+        Query(description="The time zone the person is in, such as America/Halifax."),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     order: Annotated[
@@ -250,22 +321,51 @@ def list_incidents(
     minimum = None
     if min_severity is not None:
         minimum = next(level for level, name in SEVERITY_NAMES.items() if name == min_severity)
-    page = queries.search(
-        db,
-        statuses=list(state or []),
-        verdicts=list(verdict or []),
-        min_severity=minimum,
-        min_confidence=min_confidence,
-        address=address,
-        since=since,
-        limit=limit,
-        offset=offset,
-        order=order,
-    )
+    try:
+        asked = search.parse(q, _context(tz))
+    except search.SearchError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    if asked.terms:
+        # Whatever it asks for, the database stops it before it holds anything up.
+        db.execute(select(func.set_config("statement_timeout", str(SEARCH_TIMEOUT_MS), True)))
+    try:
+        page = queries.search(
+            db,
+            statuses=list(state or []),
+            verdicts=list(verdict or []),
+            min_severity=minimum,
+            min_confidence=min_confidence,
+            address=address,
+            since=since,
+            limit=limit,
+            offset=offset,
+            order=order,
+            extra=asked.conditions(),
+        )
+        counts = queries.counts(db, list(verdict or []))
+    except OperationalError as error:
+        if not isinstance(error.orig, QueryCanceled):
+            raise
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "That search took too long. Narrow it, for example with since:7d.",
+        ) from None
     return IncidentPage(
         total=page.total,
         items=[_incident(incident) for incident in page.incidents],
-        counts=cast(dict[Status, int], queries.counts(db, list(verdict or []))),
+        terms=[
+            TermOut(
+                field=term.field,
+                label=term.label,
+                negated=term.negated,
+                start=term.start,
+                end=term.end,
+            )
+            for term in asked.terms
+        ],
+        facets=_facets(page.facets),
+        counts=cast(dict[Status, int], counts),
         quieted=page.quieted,
     )
 

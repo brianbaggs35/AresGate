@@ -478,9 +478,40 @@ and each incident has a page of its own.
   long, which programs saw it, the address it is about and how many others it reached, and
   whether a program banned it. The buttons at the top choose *Active* (open or being looked at,
   the one you start from), *Open*, *Investigating*, *Resolved*, *Dismissed* or *All*, each with
-  how many there are. Narrow them to a severity or a confidence, or search for one address (once
-  it is a whole address). What you chose is in the address of the page, so a link or the back
-  button brings it back. The list shows 25 at a time.
+  how many there are. Narrow them to a severity or a confidence, or [search](#searching-incidents).
+  What you chose is in the address of the page, so a link or the back button brings it back. The
+  list shows 25 at a time.
+- **Searching incidents.** The box above the list takes words and a few `field:value` terms,
+  and every one of them has to be true. Press `/` anywhere on the page to type in it. What you
+  type is applied after a pause or with Enter, and the box shows how it was understood as one
+  chip for each term (tap one to take it off). A search that can't be understood says why under
+  the box (and suggests the field you probably meant) and leaves the list as it was. Under the
+  filters, buttons count the severities and the programs among what was found; tap one to add
+  it to the search, or tap it again to take it off. The button beside the box lists the ways to
+  search and the searches made before in this browser (the last eight, kept only in the browser).
+  A search is in the address of the page (`?q=`), so it can be sent as a link.
+
+  | You type | It finds |
+  | --- | --- |
+  | `ssh`, `"port scan"` | words in the title, the subject or what the strongest signal said |
+  | `203.0.113.7`, `address:203.0.113.0/24` | an address that is in the incident, or any in a range |
+  | `source:wazuh`, `source:opnsense,crowdsec` | reported by these programs (key or name) |
+  | `severity:high`, `severity>=high`, `severity<medium` | this serious, or compared (`>`, `>=`, `<`, `<=`) |
+  | `confidence>=70`, `signals>=10` | how sure AresGate is (0 to 100), and how many signals |
+  | `status:open,investigating`, `verdict:threat` | what is being done, and what you said (`none` for no verdict). Naming one looks across every status, or among the incidents your verdicts quiet |
+  | `activity:scan`, `activity:brute-force` | what a bot was doing |
+  | `signature:"ET SCAN"` | a signal with this rule in its name |
+  | `port:22`, `port:22,2222` | it touched this destination port |
+  | `device:nas` | it involves a device with this name, maker or hardware address |
+  | `banned:yes` | a program banned the address |
+  | `since:6h`, `since:today`, `since:2026-10-01` | still going on after this time (`30m`, `6h`, `2d`, `1w`, `today`, `yesterday`, a date or a date and time) |
+  | `before:2d` | began before this time |
+  | `-source:wazuh` | a minus turns any term around |
+
+  Dates and `today` are in the time zone of your browser. A search is at most 500 characters and
+  12 terms, a comma gives at most 8 choices, and the database stops any search after 5 seconds
+  (it says so, and suggests `since:7d`). Text is only ever looked for, never run: `%` and `_`
+  match themselves.
 - **An incident.** Under its title: when it began and when it last did something, what its
   status means and the changes you can make (*Start investigating*, *Resolve*, *Dismiss*,
   *Reopen*), each of which is in the [activity log](security.md). Then four numbers (signals,

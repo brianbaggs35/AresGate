@@ -209,6 +209,17 @@ overlapping.
   the rules.
 - **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
   the AI analyst can call them too. They only read, apart from the status.
+- **Search** is `incidents/search.py`: `parse(text, context)` turns the words of the search box
+  into terms, each with a condition, a label for the chip and its place in the text, or raises
+  `SearchError` with a message for the person who typed it (the API answers 422 with it).
+  Nothing a person types is put into SQL as anything but a bound value, the text is limited
+  (500 characters, 12 terms, 8 choices, 100 characters a word) and the API sets a 5 second
+  `statement_timeout` for the request, so a search can't hold the database up. To add a field,
+  write a compiler `(Clause, Context) -> (condition, label)`, add it to `_fields()` (and
+  `ALIASES`, if it has a short name), and add a case to `tests/test_incidents_search.py` that
+  runs it against rows, and a line to the list of ways to search in `frontend/src/search.ts`.
+  `queries.search` takes the conditions as `extra`, and answers with `facets` (the counts per
+  severity and integration of everything found, not of the page).
 - **Tests** build events with `tests.helpers.new_event`, store them with `record_events` and
   run the engine at a time of their choosing. Use a public address for an attacker
   (`93.184.216.34`): the documentation ranges are not global addresses.

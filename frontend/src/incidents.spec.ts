@@ -13,7 +13,6 @@ import {
   countIn,
   flowOf,
   isAboutRule,
-  isAddress,
   lasted,
   otherAddresses,
   portLabel,
@@ -25,6 +24,7 @@ import {
   storyOf,
 } from '@/incidents'
 import { INCIDENT_STATUSES } from '@/api/incidents'
+import { zone } from '@/search'
 import { detail, device, incident, signal } from '@/test/incidents'
 
 const AT = Date.parse('2026-10-26T14:00:00Z')
@@ -96,22 +96,6 @@ describe('the views of the list', () => {
   })
 })
 
-describe('isAddress', () => {
-  it.each(['93.184.216.34', '192.168.1.20', '0.0.0.0', '2606:2800:220:1::1', '::1', 'fe80::1'])(
-    'takes %s',
-    (text) => {
-      expect(isAddress(text)).toBe(true)
-    },
-  )
-
-  it.each(['', '93.184', '93.184.216.256', 'nas', '1.2.3.4.5', '12:34', 'a::g', ' 1.2.3.4'])(
-    'waits for more than %j',
-    (text) => {
-      expect(isAddress(text)).toBe(false)
-    },
-  )
-})
-
 describe('queryOf', () => {
   it('asks for the statuses of the view and nothing else by default', () => {
     expect(queryOf(NO_FILTERS, 25)).toEqual({
@@ -132,7 +116,7 @@ describe('queryOf', () => {
       view: 'resolved' as const,
       severity: 'high' as const,
       confidence: HIGH_CONFIDENCE,
-      address: ' 93.184.216.34 ',
+      q: ' source:wazuh -port:22 ',
       quieted: true,
     }
 
@@ -140,13 +124,15 @@ describe('queryOf', () => {
       statuses: ['resolved'],
       minSeverity: 'high',
       minConfidence: 65,
-      address: '93.184.216.34',
+      q: 'source:wazuh -port:22',
+      tz: zone(),
       limit: 10,
     })
   })
 
-  it('does not look for half an address', () => {
-    expect(queryOf({ ...NO_FILTERS, address: '93.184' }, 10)).not.toHaveProperty('address')
+  it('does not search for a search with nothing in it', () => {
+    expect(queryOf({ ...NO_FILTERS, q: '   ' }, 10)).not.toHaveProperty('q')
+    expect(queryOf({ ...NO_FILTERS, q: '   ' }, 10)).not.toHaveProperty('tz')
   })
 
   it('asks for no status to see them all', () => {
@@ -160,15 +146,15 @@ describe('activeFilters', () => {
     expect(activeFilters({ ...NO_FILTERS, view: 'resolved' })).toBe(0)
     expect(activeFilters({ ...NO_FILTERS, severity: 'high' })).toBe(1)
     expect(activeFilters({ ...NO_FILTERS, confidence: MEDIUM_CONFIDENCE })).toBe(1)
-    expect(activeFilters({ ...NO_FILTERS, address: '10.0.0.1' })).toBe(1)
-    expect(activeFilters({ ...NO_FILTERS, address: '10.0' })).toBe(0)
+    expect(activeFilters({ ...NO_FILTERS, q: '10.0.0.1' })).toBe(1)
+    expect(activeFilters({ ...NO_FILTERS, q: '  ' })).toBe(0)
     expect(activeFilters({ ...NO_FILTERS, quieted: true })).toBe(1)
     expect(
       activeFilters({
         view: 'all',
         severity: 'high',
         confidence: 65,
-        address: '10.0.0.1',
+        q: '10.0.0.1',
         quieted: true,
       }),
     ).toBe(4)
