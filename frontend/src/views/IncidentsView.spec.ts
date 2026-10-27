@@ -57,6 +57,7 @@ describe('IncidentsView', () => {
     expect(fetchIncidents).toHaveBeenCalledTimes(1)
     expect(last(fetchIncidents)).toEqual({
       statuses: ['open', 'investigating'],
+      verdicts: ['none', 'threat'],
       minConfidence: 0,
       limit: 25,
     })
@@ -202,6 +203,7 @@ describe('IncidentsView', () => {
 
       expect(last(fetchIncidents)).toEqual({
         statuses: ['open', 'investigating'],
+        verdicts: ['none', 'threat'],
         minConfidence: 0,
         limit: 25,
       })
@@ -252,10 +254,74 @@ describe('IncidentsView', () => {
       await choose(() => find('clear-filters').trigger('click'))
 
       expect(router.currentRoute.value.query).toEqual({ view: 'resolved' })
-      expect(last(fetchIncidents)).toEqual({ statuses: ['resolved'], minConfidence: 0, limit: 25 })
+      expect(last(fetchIncidents)).toEqual({
+        statuses: ['resolved'],
+        verdicts: ['none', 'threat'],
+        minConfidence: 0,
+        limit: 25,
+      })
       expect(
         wrapper.find<HTMLInputElement>('[data-test="filter-address"] input').element.value,
       ).toBe('')
+      expect(find('clear-filters').exists()).toBe(false)
+    })
+  })
+
+  describe('the incidents your verdicts quiet', () => {
+    const withQuieted = (count: number) => ({ answer: page(some().items, { quieted: count }) })
+
+    it('are left out of the list, with no switch to show them when there are none', async () => {
+      const { find } = await open()
+
+      expect(find('filter-quieted').exists()).toBe(false)
+    })
+
+    it('are offered by a switch that says how many there are', async () => {
+      const { text } = await open(withQuieted(4))
+
+      expect(text('filter-quieted')).toBe('Show 4 quieted by your verdicts')
+    })
+
+    it('are listed once the switch is on, and say so in the address of the page', async () => {
+      const { find, router, fetchIncidents, choose } = await open(withQuieted(4))
+
+      await choose(() => find('filter-quieted').find('input').setValue(true))
+
+      expect(router.currentRoute.value.query).toEqual({ quieted: '1' })
+      expect(last(fetchIncidents)).toEqual({
+        statuses: ['open', 'investigating'],
+        minConfidence: 0,
+        limit: 25,
+      })
+    })
+
+    it('are left out again once it is switched off', async () => {
+      const { find, router, fetchIncidents, choose } = await open({
+        route: '/incidents?quieted=1',
+        ...withQuieted(4),
+      })
+      expect(find('filter-quieted').find<HTMLInputElement>('input').element.checked).toBe(true)
+
+      await choose(() => find('filter-quieted').find('input').setValue(false))
+
+      expect(router.currentRoute.value.query).toEqual({})
+      expect(last(fetchIncidents).verdicts).toEqual(['none', 'threat'])
+    })
+
+    it('count as a filter, which the button drops', async () => {
+      const { find, router, choose } = await open({
+        route: '/incidents?quieted=1',
+        ...withQuieted(4),
+      })
+
+      await choose(() => find('clear-filters').trigger('click'))
+
+      expect(router.currentRoute.value.query).toEqual({})
+    })
+
+    it('have no button to clear filters while nothing else is on', async () => {
+      const { find } = await open(withQuieted(4))
+
       expect(find('clear-filters').exists()).toBe(false)
     })
   })
@@ -282,6 +348,35 @@ describe('IncidentsView', () => {
       expect(text('incidents-empty')).toContain('3 in all')
       await choose(() => find('empty-all').trigger('click'))
       expect(router.currentRoute.value.query).toEqual({ view: 'all' })
+    })
+
+    it('says every incident is one you quieted, and offers them', async () => {
+      const { text, find, router, choose } = await open({
+        answer: page([], {
+          counts: { open: 0, investigating: 0, resolved: 0, dismissed: 0 },
+          total: 0,
+          quieted: 2,
+        }),
+      })
+
+      expect(text('incidents-empty')).toContain('Nothing needs you')
+      expect(text('incidents-empty')).toContain(
+        'Every incident is one you called not suspicious or low priority. 2 are hidden.',
+      )
+      await choose(() => find('empty-quieted').trigger('click'))
+      expect(router.currentRoute.value.query).toEqual({ quieted: '1' })
+    })
+
+    it('says so in the singular for the one', async () => {
+      const { text } = await open({
+        answer: page([], {
+          counts: { open: 0, investigating: 0, resolved: 0, dismissed: 0 },
+          total: 0,
+          quieted: 1,
+        }),
+      })
+
+      expect(text('incidents-empty')).toContain('1 is hidden.')
     })
 
     it('says no incident has the status asked for', async () => {

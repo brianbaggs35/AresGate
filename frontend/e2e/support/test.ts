@@ -16,6 +16,7 @@ import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
 import { SignInsPage } from './pages/sign-ins-page'
 import { StatusPage } from './pages/status-page'
+import { VerdictsPage } from './pages/verdicts-page'
 import { VirtualAuthenticator } from './virtual-authenticator'
 
 export interface AresGateFixtures {
@@ -37,6 +38,8 @@ export interface AresGateFixtures {
   /** The settings page for how long data is kept. */
   data: DataPage
   status: StatusPage
+  /** The settings page that lists the verdicts that were given. */
+  verdicts: VerdictsPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
@@ -140,6 +143,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   status: async ({ page }, use) => {
     await use(new StatusPage(page))
+  },
+
+  verdicts: async ({ page }, use) => {
+    await use(new VerdictsPage(page))
   },
 
   signInElsewhere: async ({ browser, baseURL, baseline }, use) => {

@@ -1,8 +1,11 @@
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
+import * as verdictsApi from '@/api/verdicts'
+import VerdictPanel from '@/components/VerdictPanel.vue'
 import { useSessionStore } from '@/stores/session'
 import { detail, incident, signal } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { verdict } from '@/test/verdicts'
 import IncidentView from '@/views/IncidentView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -10,12 +13,16 @@ const MINUTE = 60_000
 
 interface Options {
   found?: incidentsApi.IncidentDetail | Error
+  verdicts?: verdictsApi.Verdict[] | Error
 }
 
-async function open({ found = detail() }: Options = {}) {
+async function open({ found = detail(), verdicts = [] }: Options = {}) {
   const fetchIncident = vi.spyOn(incidentsApi, 'fetchIncident')
   if (found instanceof Error) fetchIncident.mockRejectedValue(found)
   else fetchIncident.mockResolvedValue(found)
+  const fetchVerdicts = vi.spyOn(verdictsApi, 'fetchVerdicts')
+  if (verdicts instanceof Error) fetchVerdicts.mockRejectedValue(verdicts)
+  else fetchVerdicts.mockResolvedValue(verdicts)
   const setStatus = vi.spyOn(incidentsApi, 'setIncidentStatus')
   const mounted = await mountWithPlugins(IncidentView, {
     signedIn: 'admin',
@@ -25,7 +32,7 @@ async function open({ found = detail() }: Options = {}) {
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const text = (selector: string) => find(selector).text()
-  return { ...mounted, fetchIncident, setStatus, find, text }
+  return { ...mounted, fetchIncident, fetchVerdicts, setStatus, find, text }
 }
 
 describe('IncidentView', () => {
@@ -85,6 +92,63 @@ describe('IncidentView', () => {
       expect(text('incident-meaning')).toBe(
         "Investigating: You're looking into it. Set 5 minutes ago.",
       )
+    })
+  })
+
+  describe('your verdicts', () => {
+    it('has a panel to give them in, told which apply to it', async () => {
+      const rules = [verdict({ id: 4, address: '93.184.216.34' })]
+      const { wrapper, fetchVerdicts } = await open({
+        found: detail({ verdict: 'not_suspicious' }),
+        verdicts: rules,
+      })
+
+      expect(fetchVerdicts).toHaveBeenCalledTimes(1)
+      const panel = wrapper.findComponent(VerdictPanel)
+      expect(panel.exists()).toBe(true)
+      expect(panel.props('verdicts')).toEqual(rules)
+    })
+
+    it('puts what you said of the incident at the top, next to how serious it is', async () => {
+      const { wrapper } = await open({ found: detail({ verdict: 'threat' }) })
+
+      expect(wrapper.find('.incident__chips [data-test="verdict"]').text()).toBe('Real threat')
+    })
+
+    it('says no such thing for an incident you have said nothing of', async () => {
+      const { wrapper } = await open()
+
+      expect(wrapper.find('.incident__chips [data-test="verdict"]').exists()).toBe(false)
+    })
+
+    it('says how many signals are left out of the count', async () => {
+      const { text } = await open({
+        found: detail({ verdict_counts: { not_suspicious: 2 } }),
+      })
+
+      expect(text('tile-signals')).toContain('over 18m, 2 not counted')
+    })
+
+    it('goes on without them when they cannot be loaded', async () => {
+      const { text, wrapper } = await open({ verdicts: offline() })
+
+      expect(text('tile-signals')).toContain('3')
+      expect(wrapper.findComponent(VerdictPanel).props('verdicts')).toEqual([])
+    })
+
+    it('asks for the incident and the verdicts again after one is given or taken back', async () => {
+      const { wrapper, fetchIncident, fetchVerdicts, text } = await open()
+      fetchIncident.mockResolvedValue(detail({ verdict: 'not_suspicious' }))
+      fetchVerdicts.mockResolvedValue([verdict()])
+
+      wrapper.findComponent(VerdictPanel).vm.$emit('changed')
+      await flushPromises()
+
+      expect(fetchIncident).toHaveBeenCalledTimes(2)
+      expect(fetchVerdicts).toHaveBeenCalledTimes(2)
+      expect(wrapper.findComponent(VerdictPanel).props('verdicts')).toHaveLength(1)
+      expect(wrapper.find('.incident__chips [data-test="verdict"]').text()).toBe('Not suspicious')
+      expect(text('verdict-standing')).toContain('will not raise an alarm')
     })
   })
 

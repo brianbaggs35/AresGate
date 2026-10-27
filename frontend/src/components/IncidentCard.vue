@@ -6,6 +6,7 @@ import type { Incident } from '@/api/incidents'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
+import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import { isAboutRule, otherAddresses, spanOf } from '@/incidents'
 import { SEVERITY } from '@/severity'
@@ -36,6 +37,7 @@ const signals = computed(() => {
     <div class="incident-card__top">
       <SeverityChip :severity="incident.severity" />
       <IncidentStatusChip v-if="incident.status !== 'open'" :status="incident.status" />
+      <VerdictChip v-if="incident.verdict" :verdict="incident.verdict" />
       <v-chip
         v-if="incident.banned"
         :prepend-icon="Ban"

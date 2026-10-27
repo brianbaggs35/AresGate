@@ -57,7 +57,7 @@ const capped = computed(() => total.value > MAXIMUM)
           </p>
         </div>
         <span class="reasons__points text-title-medium tabular-nums" data-test="reason-points">
-          +{{ part.points }}
+          {{ part.points > 0 ? `+${part.points.toString()}` : '0' }}
         </span>
       </li>
     </ol>

@@ -330,8 +330,10 @@ and why, and lists the signals in the order they happened. The worker files them
   subject starts a new one. An investigating or dismissed one keeps taking signals and keeps its
   status.
 - **Where to read them.** `GET /api/incidents` lists them, newest activity first, and can be
-  narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`
-  `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`.
+  narrowed by `status` (repeat it for several), `min_severity`, `min_confidence`, `address`,
+  `verdict` (repeat it; `none` is the ones you have said nothing of) and `since`. The answer's
+  `counts` follow the `verdict` filter, and `quieted` says how many more incidents (not
+  suspicious or low priority throughout) the other filters would have listed.
   `GET /api/incidents/{id}` has the reasons, the timeline, the devices on your
   network behind its addresses and the firewall's blocks. [The Incidents pages](#the-incidents-pages)
   show them.
@@ -368,6 +370,13 @@ when you give it, so what you said once holds from then on.
   but I don't care".
 - **A real threat** makes an incident as sure as can be, 100, with the reason, whatever else it
   holds and however low the signal was rated.
+- **Where you give one.** On an incident's page, *Your verdict* says what your verdicts make of
+  it, lists the ones that apply (each with *Take back*) and gives a new one: choose what it is
+  about (the incident's address, one of its alerts from any address, or one of its alerts from
+  that address), perhaps say why, and press *Not suspicious*, *Low priority* or *Real threat*.
+  **Settings > Verdicts** lists every verdict with what it is about, why, how many signals it has
+  been applied to and when you gave it, and lets you change the verdict and the reason or take it
+  back (it asks first, and says how many signals will be judged again).
 - **When rules disagree**, the one that names more wins, so a verdict on one signature from one
   program beats a verdict on the address it came from; and of the same weight, the stronger
   verdict (threat, then low priority, then not suspicious), since you said so about at least
@@ -460,6 +469,13 @@ and each incident has a page of its own.
   **the addresses and the devices on your network** behind them, a chart of **signals over time**
   by program, and the **timeline** of every signal, oldest first, with the traffic each one
   described. A long timeline shows 25 at a time.
+- **Your verdicts.** The list leaves out the incidents that your [verdicts](#verdicts) make
+  not suspicious or low priority, since nothing about them needs you, and offers them with a
+  switch that says how many there are (the view buttons count what is listed, so they add up).
+  Switched on, they are listed with what you said of them. An incident's page says what your
+  verdicts make of it in a chip beside its severity, *Your verdict* gives a new one or takes one
+  back, the signals it leaves out of the count say so in the timeline (a hollow dot and a chip),
+  and the Signals number says how many are not counted.
 - **Keeping up.** Both pages ask again every 30 seconds while they are open and in view. If that
   fails they keep what they have and say how old it is. A change you make is shown at once, and
   an answer that was already on its way doesn't undo it.

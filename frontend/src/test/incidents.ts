@@ -31,6 +31,8 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     addresses: ['93.184.216.34', '192.168.1.20'],
     banned: false,
     status_changed_at: null,
+    verdict: null,
+    verdict_counts: {},
     ...changes,
   }
 }
@@ -58,6 +60,8 @@ export function signal(changes: Partial<Signal> = {}): Signal {
     dst_address: '192.168.1.20',
     dst_port: 22,
     protocol: 'tcp',
+    verdict: null,
+    verdict_rule_id: null,
     ...changes,
   }
 }
@@ -118,5 +122,5 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
 export function page(items: Incident[] = [incident()], changes: Partial<IncidentPage> = {}) {
   const counts = { open: 0, investigating: 0, resolved: 0, dismissed: 0 }
   for (const { status } of items) counts[status] += 1
-  return { total: items.length, items, counts, ...changes } satisfies IncidentPage
+  return { total: items.length, items, counts, quieted: 0, ...changes } satisfies IncidentPage
 }

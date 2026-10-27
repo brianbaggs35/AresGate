@@ -107,8 +107,12 @@ class IncidentDetail(IncidentOut):
 class IncidentPage(BaseModel):
     total: int
     items: list[IncidentOut]
-    # How many incidents there are in each status, whatever the search was for.
+    # How many incidents there are in each status, whatever the search was for except which
+    # verdicts it asked about.
     counts: dict[Status, int]
+    # How many more it would have found if it hadn't left out the ones the owner called not
+    # suspicious or low priority, which asking for anything else does.
+    quieted: int
 
 
 class StatusIn(BaseModel):
@@ -223,7 +227,8 @@ def list_incidents(
     return IncidentPage(
         total=page.total,
         items=[_incident(incident) for incident in page.incidents],
-        counts=cast(dict[Status, int], queries.counts(db)),
+        counts=cast(dict[Status, int], queries.counts(db, list(verdict or []))),
+        quieted=page.quieted,
     )
 
 

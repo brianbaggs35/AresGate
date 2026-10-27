@@ -284,4 +284,74 @@ test.describe('incidents', () => {
     await incidents.retry.click()
     await expect(incidents.cards).toHaveCount(3)
   })
+
+  test.describe('and your verdicts', () => {
+    test('leave out the ones you called not suspicious, and offer them with a count', async ({
+      harness,
+      incidents,
+    }) => {
+      await harness.createIncidents(SOME)
+      await harness.createVerdicts([{ verdict: 'not_suspicious', address: '8.8.8.8' }])
+
+      await incidents.goto()
+
+      await expect(incidents.titles()).toHaveText([title(ATTACKER), title('1.1.1.1')])
+      await expect(incidents.quieted).toContainText('Show 1 quieted by your verdicts')
+      // The counts on the views are of what is listed, so they add up to the cards.
+      await expect(incidents.count('open')).toHaveText('1')
+    })
+
+    test('list them again once asked, saying what was said of them, and keep that in the address', async ({
+      harness,
+      incidents,
+      page,
+    }) => {
+      await harness.createIncidents(SOME)
+      await harness.createVerdicts([{ verdict: 'low_priority', address: '8.8.8.8' }])
+      await incidents.goto()
+
+      await incidents.quieted.getByRole('checkbox').check()
+
+      await expect(page).toHaveURL(/quieted=1/)
+      await expect(incidents.cards).toHaveCount(3)
+      await expect(
+        incidents.cards.filter({ hasText: '8.8.8.8' }).getByTestId('verdict'),
+      ).toHaveText('Low priority')
+
+      await page.reload()
+      await expect(incidents.cards).toHaveCount(3)
+      await incidents.clear.click()
+      await expect(incidents.cards).toHaveCount(2)
+    })
+
+    test('say a real threat is a real threat, however weak the signals were', async ({
+      harness,
+      incidents,
+    }) => {
+      await harness.createIncidents([{ address: '9.9.9.9', severity: 'low', signals: 1 }])
+      await harness.createVerdicts([{ verdict: 'threat', address: '9.9.9.9' }])
+
+      await incidents.goto()
+
+      await expect(incidents.cards).toHaveCount(1)
+      await expect(incidents.cards.getByTestId('verdict')).toHaveText('Real threat')
+      await expect(incidents.cards.getByTestId('confidence-level')).toHaveText('High confidence')
+    })
+
+    test('say nothing needs you when every incident is one you quieted, and offer them', async ({
+      harness,
+      incidents,
+    }) => {
+      await harness.createIncidents([{ address: ATTACKER }])
+      await harness.createVerdicts([{ verdict: 'not_suspicious', address: ATTACKER }])
+
+      await incidents.goto()
+
+      await expect(incidents.empty).toContainText('Nothing needs you')
+      await expect(incidents.empty).toContainText('1 is hidden.')
+      await incidents.showQuieted.click()
+      await expect(incidents.cards).toHaveCount(1)
+      await expect(incidents.cards.getByTestId('verdict')).toHaveText('Not suspicious')
+    })
+  })
 })

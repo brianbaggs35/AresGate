@@ -92,6 +92,20 @@ export interface IncidentsRecord {
   incidents: number
 }
 
+/** A verdict as the owner would give it: what it says and at least one thing it is about. */
+export interface VerdictRequest {
+  verdict: 'not_suspicious' | 'low_priority' | 'threat'
+  address?: string
+  source?: string
+  signature?: string
+  note?: string
+}
+
+/** How many verdicts `createVerdicts()` gave. */
+export interface VerdictsRecord {
+  verdicts: number
+}
+
 /** The kinds of integration a stand-in can answer like. */
 export type StandInKind = 'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh'
 
@@ -237,6 +251,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/incidents', { data: { incidents } })
       .then((response) => readJson<IncidentsRecord>(response, 'Making incidents'))
+  }
+
+  /** Gives some verdicts and judges the incidents there are by them, as the page for them does. */
+  createVerdicts(verdicts: VerdictRequest[]): Promise<VerdictsRecord> {
+    return this.api
+      .post('/api/__test__/factories/verdicts', { data: { verdicts } })
+      .then((response) => readJson<VerdictsRecord>(response, 'Giving verdicts'))
   }
 
   /** Starts a server that answers like an integration. It runs until the next test's clean. */

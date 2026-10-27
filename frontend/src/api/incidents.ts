@@ -1,4 +1,5 @@
 import { apiGet, apiPatch } from '@/api/client'
+import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
 /** What is being done about an incident. */
@@ -34,6 +35,13 @@ export interface Incident {
   /** Whether an integration banned the address. */
   banned: boolean
   status_changed_at: string | null
+  /** What the owner's verdicts say of it as a whole: a real threat, not suspicious or low
+   * priority (because every signal is), or nothing. */
+  verdict: VerdictKind | null
+  /** How many of its signals each verdict was given of. The ones called not suspicious or low
+   * priority are listed and counted in `signal_count`, but leave everything else about the
+   * incident to the signals that are not. */
+  verdict_counts: Partial<Record<VerdictKind, number>>
 }
 
 /** One thing that makes AresGate as sure as it is: the points add up to the confidence. */
@@ -56,6 +64,9 @@ export interface Signal {
   dst_address: string | null
   dst_port: number | null
   protocol: string | null
+  /** What the owner's verdicts said of it, and the verdict that said it while that exists. */
+  verdict: VerdictKind | null
+  verdict_rule_id: number | null
 }
 
 /** A device on the network that one of the incident's addresses belongs to. */
@@ -80,13 +91,19 @@ export interface IncidentDetail extends Incident {
 export interface IncidentPage {
   total: number
   items: Incident[]
-  /** How many incidents there are in each status, whatever the search was for. */
+  /** How many incidents there are in each status, whatever the search was for except which
+   * verdicts it asked about. */
   counts: Record<IncidentStatus, number>
+  /** How many more it would have found if it had not left out the ones the owner called not
+   * suspicious or low priority. */
+  quieted: number
 }
 
 /** What to look for. Nothing given matches everything. */
 export interface IncidentQuery {
   statuses?: readonly IncidentStatus[]
+  /** Only those the owner gave this verdict of, `none` being those they gave none of. */
+  verdicts?: readonly (VerdictKind | 'none')[]
   minSeverity?: Severity
   minConfidence?: number
   address?: string
@@ -98,6 +115,7 @@ export interface IncidentQuery {
 export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage> {
   const params = new URLSearchParams()
   for (const status of query.statuses ?? []) params.append('status', status)
+  for (const verdict of query.verdicts ?? []) params.append('verdict', verdict)
   if (query.minSeverity) params.set('min_severity', query.minSeverity)
   if (query.minConfidence) params.set('min_confidence', query.minConfidence.toString())
   if (query.address) params.set('address', query.address)
