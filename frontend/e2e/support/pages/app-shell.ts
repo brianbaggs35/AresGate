@@ -31,6 +31,15 @@ export class AppShell {
   readonly skipLink: Locator
   readonly main: Locator
   readonly themeToggle: Locator
+  /** The bar's button for the command palette, which a phone has as just an icon. */
+  readonly searchButton: Locator
+  readonly palette: Locator
+  readonly paletteSearch: Locator
+  /** The links and buttons the palette lists. */
+  readonly paletteRows: Locator
+  /** How many it found, which is read out and not shown. */
+  readonly paletteCount: Locator
+  readonly paletteEmpty: Locator
   private readonly app: Locator
 
   constructor(private readonly page: Page) {
@@ -57,7 +66,38 @@ export class AppShell {
     this.skipLink = page.getByTestId('skip-link')
     this.main = page.getByRole('main')
     this.themeToggle = page.getByTestId('theme-toggle')
+    this.searchButton = page.getByTestId('palette-open')
+    this.palette = page.getByTestId('palette')
+    this.paletteSearch = page.getByRole('textbox', { name: 'Search for a page or an action' })
+    this.paletteRows = this.palette.locator('.palette__row')
+    this.paletteCount = page.getByTestId('palette-count')
+    this.paletteEmpty = page.getByTestId('palette-empty')
     this.app = page.locator('.v-application')
+  }
+
+  /**
+   * Opens the command palette with the keys, and waits until the field has the keyboard and the
+   * dialog has finished opening: Vuetify asks the field for the keyboard a second time as it
+   * does, which would take it back from a key pressed in between.
+   */
+  async openPaletteWithKeys(): Promise<void> {
+    await this.page.keyboard.press('Control+K')
+    await expect(this.paletteSearch).toBeFocused()
+    await this.page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .every(
+          (animation) =>
+            animation.playState !== 'running' ||
+            animation.effect?.getComputedTiming().iterations === Infinity,
+        ),
+    )
+  }
+
+  /** Takes a command from the palette by typing what it is called and pressing Enter. */
+  async chooseCommand(search: string): Promise<void> {
+    await this.paletteSearch.fill(search)
+    await this.page.keyboard.press('Enter')
   }
 
   /** Signs out from the account's menu in the bar. */

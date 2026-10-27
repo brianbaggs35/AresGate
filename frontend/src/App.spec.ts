@@ -4,6 +4,7 @@ import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
 import App from '@/App.vue'
 import { guardRoutes } from '@/router/guard'
+import { usePaletteStore } from '@/stores/palette'
 import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
 import { report } from '@/test/collectors'
@@ -83,6 +84,94 @@ describe('App', () => {
     session.expired = false
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('sign-in')
+  })
+
+  describe('the shortcut for the command palette', () => {
+    const press = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', { key: 'k', cancelable: true, ...init })
+      window.dispatchEvent(event)
+      return event
+    }
+
+    it('opens with Ctrl and K, and closes with them again', async () => {
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const palette = usePaletteStore()
+
+      // The browser's own use of the keys, to search the web, is left out of it.
+      expect(press({ ctrlKey: true }).defaultPrevented).toBe(true)
+      expect(palette.open).toBe(true)
+      await flushPromises()
+      expect(document.querySelector('[data-test="palette"]')).not.toBeNull()
+
+      press({ ctrlKey: true })
+      expect(palette.open).toBe(false)
+    })
+
+    it('closes with Escape, as dialogs do, and the palette is told', async () => {
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const palette = usePaletteStore()
+      palette.open = true
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-test="palette"]')).not.toBeNull()
+      })
+
+      // The dialog answers Escape once it is the top one, which it is a moment after it opens.
+      await vi.waitFor(() => {
+        document
+          .querySelector('[data-test="palette"]')!
+          .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        expect(palette.open).toBe(false)
+      })
+    })
+
+    it('opens with ⌘ and K, in either case', async () => {
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+
+      press({ metaKey: true, key: 'K' })
+
+      expect(usePaletteStore().open).toBe(true)
+    })
+
+    it('leaves K on its own, and the other keys with Ctrl, alone', async () => {
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+
+      expect(press({}).defaultPrevented).toBe(false)
+      expect(press({ ctrlKey: true, key: 'j' }).defaultPrevented).toBe(false)
+      expect(usePaletteStore().open).toBe(false)
+    })
+
+    it('is for someone who is signed in', async () => {
+      await mountWithPlugins(App, { route: '/sign-in', width: 1280 })
+      await flushPromises()
+
+      expect(press({ ctrlKey: true }).defaultPrevented).toBe(false)
+      expect(usePaletteStore().open).toBe(false)
+    })
+
+    it('is put away when the person signs out', async () => {
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const palette = usePaletteStore()
+      palette.open = true
+      await flushPromises()
+
+      useSessionStore().username = null
+      await flushPromises()
+
+      expect(palette.open).toBe(false)
+    })
+
+    it('stops listening when the app is taken away', async () => {
+      const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      wrapper.unmount()
+
+      expect(press({ ctrlKey: true }).defaultPrevented).toBe(false)
+    })
   })
 
   describe('when the API can’t say who is signed in', () => {
