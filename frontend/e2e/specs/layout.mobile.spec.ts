@@ -418,6 +418,63 @@ test.describe('layout on a phone', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('swipes through the incidents that need a decision, with the next one showing', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'] })
+    await harness.createIncidents([
+      { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], minutes_ago: 10 },
+      { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], minutes_ago: 20 },
+      { address: '1.1.1.1', severity: 'medium', programs: ['wazuh'], minutes_ago: 30 },
+    ])
+
+    await dashboard.goto()
+    await expect(dashboard.needsYouCards).toHaveCount(3)
+
+    const width = page.viewportSize()?.width ?? 0
+    const [first, second] = await Promise.all([
+      dashboard.needsYouCards.nth(0).boundingBox(),
+      dashboard.needsYouCards.nth(1).boundingBox(),
+    ])
+    // The first starts where the page does, and the second is cut off by the edge of the screen.
+    expect(first?.x ?? -1).toBeGreaterThanOrEqual(0)
+    expect(first?.x ?? 99).toBeLessThanOrEqual(24)
+    expect(second?.x ?? width).toBeLessThan(width - 16)
+    expect((second?.x ?? 0) + (second?.width ?? 0)).toBeGreaterThan(width)
+    // The row scrolls by itself, so the page does not.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    // The way to the others is a swipe, which snaps to the next card.
+    await dashboard.needsYouCards.nth(2).scrollIntoViewIfNeeded()
+    const third = await dashboard.needsYouCards.nth(2).boundingBox()
+    expect(third?.x ?? -1).toBeGreaterThanOrEqual(0)
+    expect((third?.x ?? 0) + (third?.width ?? 0)).toBeLessThanOrEqual(width)
+  })
+
+  test('keeps the buttons of the dashboard big enough for a finger', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'], traffic: { igc0: 80 } })
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
+
+    for (const button of [
+      dashboard.day,
+      dashboard.week,
+      dashboard.refresh,
+      dashboard.trafficChart.getByTestId('chart-view'),
+    ]) {
+      const box = await button.boundingBox()
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+    }
+  })
+
   test('lays the dashboard out in one column, with the numbers two to a row', async ({
     page,
     harness,

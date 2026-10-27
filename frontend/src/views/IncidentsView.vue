@@ -400,6 +400,19 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   padding-bottom: 0.25rem;
 }
 
+/* A choice cut off at the edge fades out, so it reads as more to scroll to; the last one has
+   room at its end to scroll clear of the fade. */
+@media (max-width: 599.98px) {
+  .incidents__views {
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+    scrollbar-width: none;
+  }
+
+  .incidents__views > :last-child {
+    margin-inline-end: 1.5rem;
+  }
+}
+
 .incidents__count {
   margin-inline-start: 0.5rem;
 }

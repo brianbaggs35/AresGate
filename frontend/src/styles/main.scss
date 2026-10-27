@@ -131,6 +131,18 @@
       0 0 28px -10px rgba(var(--v-theme-primary), 0.55);
   }
 
+  // A finger needs more than a pointer does: buttons are at least 44px each way, so the small
+  // ones that sit beside a title or in a list are as easy to hit as the large ones.
+  @media (pointer: coarse) {
+    .v-btn:not(.v-btn--stacked) {
+      min-height: 44px;
+    }
+
+    .v-btn--icon {
+      min-width: 44px;
+    }
+  }
+
   // Numbers line up in a column and don't jump as they change.
   .v-card :is(.text-headline-large, .text-headline-medium, .text-display-small) {
     font-variant-numeric: tabular-nums;

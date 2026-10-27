@@ -207,8 +207,13 @@ the keyboard are not in it yet.
 - **Color.** Only theme colors (`primary`, `error`, `success`, `warning`, `info` and the surface
   tokens), so both themes work. A color never says something on its own.
 - **Phones.** Everything works at 360 px wide with no sideways scrolling; the menu becomes a bar at
-  the bottom and `AppPage` already clears it. Tap targets are at least 44 px, which Vuetify's
-  default buttons are.
+  the bottom and `AppPage` already clears it. Tap targets are at least 44 px: on a touch screen
+  (`pointer: coarse`) every Vuetify button is made that tall, small ones and icon buttons
+  included, in `styles/main.scss`, so a page does not size its own. A list that would push the
+  rest of the page far down (the Needs you lane) is swiped through instead, in a row that goes to
+  the edges of the screen with the next card showing at the end, and a row of choices that goes
+  past the edge (the views of the incident list) fades out there. Keep a page's intro to a line or
+  two: a phone shows it above everything else.
 - **Keyboard.** Every action is reachable and visibly focused; when a view replaces another, move
   the keyboard to where it begins (`SectionCard` has `focusTitle()`).
 - **Untrusted text.** Anything another system wrote (a log line, an alert's signature, a host

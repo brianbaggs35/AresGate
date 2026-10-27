@@ -8,6 +8,11 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A phone pass over the app**: on a phone the incidents that need a decision are a row to swipe
+  through, the next one showing at the edge, where three tall cards used to push the charts a
+  screen down; every button is at least 44 px tall on a touch screen, the small ones next to a
+  chart's title and the icon buttons included; the incident list's choices fade where they go
+  past the edge of the screen; and Settings has a shorter introduction.
 - **A command palette**: Ctrl or ⌘ and K, or the *Search* button in the app bar, searches for a page
   or an action from anywhere: every page in the menu and in Settings, each group of incidents,
   the light, dark and system themes, and, for a whole IP address, the incidents about it. It is
