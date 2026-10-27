@@ -274,7 +274,7 @@ test.describe('Settings > AI', () => {
     await aiSettings.test('ollama_cloud').click()
 
     await expect(aiSettings.lastError('ollama_cloud')).toContainText(
-      "glm-5.2 isn't one of the models free usage credits cover (HTTP 402), so it needs a paid plan",
+      "It isn't one of the models free usage covers (HTTP 402), so it needs a paid plan. Try gemma4:31b or gpt-oss:120b, or set the account to Paid if it is.",
     )
     await expect(aiSettings.status('ollama_cloud')).toHaveText('Problem')
 
@@ -282,7 +282,7 @@ test.describe('Settings > AI', () => {
     await aiSettings.planOption('ollama_cloud', 'paid').check()
     await aiSettings.test('ollama_cloud').click()
     await expect(aiSettings.lastError('ollama_cloud')).toContainText(
-      'though the plan is set to paid',
+      'though the account is set to Paid',
     )
 
     await aiSettings.chooseModel('ollama_cloud', /gemma4:31b/)

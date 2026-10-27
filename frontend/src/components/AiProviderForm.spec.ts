@@ -597,7 +597,9 @@ describe('AiProviderForm', () => {
         const { find } = await open(ollamaCloud())
 
         expect(find('provider-plan').text()).toContain('Your Ollama account')
-        expect(find('provider-plan').text()).toContain('nothing Ollama answers says which account')
+        expect(find('provider-plan-help').text()).toContain(
+          'nothing Ollama answers says which account',
+        )
         expect(find('provider-plan-free').find('input').element.checked).toBe(true)
         expect(find('provider-plan-paid').find('input').element.checked).toBe(false)
         expect(find('provider-free-models').text()).toBe(
