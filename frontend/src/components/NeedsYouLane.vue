@@ -92,6 +92,31 @@ const more = computed(() => props.total > props.incidents.length)
   }
 }
 
+/* On a phone three tall cards would push everything else far down the page, so they sit side by
+   side and are swiped through, with the next one showing at the edge to say so. The row goes to
+   the screen's edges (the page's 16px of space is undone and given back as padding), and one
+   card on its own takes the whole width. */
+@media (max-width: 599.98px) {
+  .lane__list {
+    flex-direction: row;
+    margin-inline: -16px;
+    padding: 2px 16px 0.5rem;
+    overflow-x: auto;
+    scroll-padding-inline: 16px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .lane__list > li {
+    flex: 0 0 min(88%, 22rem);
+    scroll-snap-align: start;
+  }
+
+  .lane__list > li:only-child {
+    flex-basis: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lane__list > li {
     animation: none;
