@@ -62,6 +62,9 @@ class AddressPolicy:
 
     allowed: tuple[IPNetwork, ...]
     refused: tuple[IPNetwork, ...] = ()
+    # What a refusal says: what is wrong with the address, and where it should be instead.
+    problem: str = "isn't a private network address"
+    advice: str = "Integrations have to be on your own network."
 
     def allows(self, address: IPAddress) -> bool:
         address = _unmapped(address)
@@ -83,11 +86,46 @@ HOME_NETWORK = AddressPolicy(
     allowed=_networks("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"),
     refused=CLOUD_METADATA,
 )
+# Everything that is not the inside of a network: what a hosted AI provider's address has to lead
+# to, so that a name which has been made to point at the home network, the machine itself or a
+# metadata service is refused.
+INTERNAL = _networks(
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.0.0.0/24",
+    "192.168.0.0/16",
+    "224.0.0.0/3",
+    "::/128",
+    "::1/128",
+    "fc00::/7",
+    "fe80::/10",
+    "ff00::/8",
+)
+PUBLIC_INTERNET = AddressPolicy(
+    allowed=_networks("0.0.0.0/0", "::/0"),
+    refused=(*INTERNAL, *CLOUD_METADATA),
+    problem="isn't an address on the internet",
+    advice="AI providers are on the internet, not on your own network.",
+)
 # For the test server only: the end-to-end harness points integrations at stand-ins on the same
 # machine. The product never uses it.
 HOME_NETWORK_AND_LOOPBACK = AddressPolicy(
     allowed=(*HOME_NETWORK.allowed, *_networks("127.0.0.0/8", "::1/128")),
     refused=CLOUD_METADATA,
+)
+# The same, for hosted AI providers' stand-ins.
+PUBLIC_INTERNET_AND_LOOPBACK = AddressPolicy(
+    allowed=PUBLIC_INTERNET.allowed,
+    refused=(
+        *(network for network in INTERNAL if not network.is_loopback),
+        *CLOUD_METADATA,
+    ),
+    problem=PUBLIC_INTERNET.problem,
+    advice=PUBLIC_INTERNET.advice,
 )
 
 
@@ -191,13 +229,10 @@ def allowed_addresses(
             subject = f"{address}" if host == str(address) else f"{host} is at {address}, which"
             reason = (
                 "is in a range cloud providers use for their metadata services"
-                if policy.refuses(address)
-                else "isn't a private network address"
+                if any(_unmapped(address) in network for network in CLOUD_METADATA)
+                else policy.problem
             )
-            raise Refused(
-                f"{subject} {reason}, so AresGate won't connect to it. Integrations have to be "
-                "on your own network."
-            )
+            raise Refused(f"{subject} {reason}, so AresGate won't connect to it. {policy.advice}")
     return addresses
 
 

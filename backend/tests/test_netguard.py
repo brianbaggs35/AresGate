@@ -14,11 +14,14 @@ from app.integrations.client import in_chain
 from app.integrations.netguard import (
     HOME_NETWORK,
     HOME_NETWORK_AND_LOOPBACK,
+    PUBLIC_INTERNET,
+    PUBLIC_INTERNET_AND_LOOPBACK,
     GuardedBackend,
     GuardedTransport,
     NotFound,
     Origin,
     Refused,
+    allowed_addresses,
     parse_origin,
 )
 from tests.stubs import Answer, Certificate, Serve, StubServer, make_certificate
@@ -135,6 +138,69 @@ def test_the_test_server_policy_adds_only_loopback() -> None:
     assert HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("10.0.0.1"))
     assert not HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("169.254.169.254"))
     assert not HOME_NETWORK_AND_LOOPBACK.allows(ipaddress.ip_address("8.8.8.8"))
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["8.8.8.8", "1.1.1.1", "160.79.104.10", "172.15.255.255", "172.32.0.1", "2606:4700::1111"],
+)
+def test_the_internet_is_where_an_ai_provider_may_be(address: str) -> None:
+    assert PUBLIC_INTERNET.allows(ipaddress.ip_address(address))
+    assert PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address(address))
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "0.0.0.0",  # noqa: S104
+        "10.0.0.1",
+        "100.64.0.1",
+        "127.0.0.1",
+        "169.254.169.254",
+        "172.16.0.1",
+        "192.168.1.1",
+        "224.0.0.1",
+        "255.255.255.255",
+        "::",
+        "::1",
+        "fc00::5",
+        "fd00:ec2::254",
+        "fe80::1",
+        "ff02::1",
+        "::ffff:10.0.0.1",
+        "::ffff:127.0.0.1",
+    ],
+)
+def test_the_inside_of_a_network_is_not(address: str) -> None:
+    assert not PUBLIC_INTERNET.allows(ipaddress.ip_address(address))
+
+
+def test_the_test_server_policy_for_providers_adds_only_loopback() -> None:
+    assert PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("127.0.0.1"))
+    assert PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("::1"))
+    assert not PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("192.168.1.1"))
+    assert not PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("169.254.169.254"))
+
+
+def test_a_refusal_says_where_the_thing_it_is_for_should_be() -> None:
+    with pytest.raises(Refused) as home:
+        allowed_addresses(HOME_NETWORK, "8.8.8.8", [ipaddress.ip_address("8.8.8.8")])
+    with pytest.raises(Refused) as internet:
+        allowed_addresses(PUBLIC_INTERNET, "api.example.com", [ipaddress.ip_address("192.168.1.1")])
+    with pytest.raises(Refused) as metadata:
+        allowed_addresses(
+            PUBLIC_INTERNET, "169.254.169.254", [ipaddress.ip_address("169.254.169.254")]
+        )
+
+    assert str(home.value) == (
+        "8.8.8.8 isn't a private network address, so AresGate won't connect to it. "
+        "Integrations have to be on your own network."
+    )
+    assert str(internet.value) == (
+        "api.example.com is at 192.168.1.1, which isn't an address on the internet, so AresGate "
+        "won't connect to it. AI providers are on the internet, not on your own network."
+    )
+    assert "metadata services" in str(metadata.value)
 
 
 def fake_lookup(monkeypatch: pytest.MonkeyPatch, *addresses: str) -> None:

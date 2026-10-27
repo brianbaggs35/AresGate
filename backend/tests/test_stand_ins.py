@@ -588,6 +588,63 @@ def fetch(url: str, **headers: str) -> tuple[int, str]:
         return error.code, error.read().decode()
 
 
+class TestAiProviders:
+    """The stand-ins for the providers' APIs refuse what the real ones would."""
+
+    anthropic = staticmethod(stand_ins.anthropic("right-key", {"claude-haiku-5-5"}))
+    openai = staticmethod(stand_ins.openai("right-key", {"gpt-6-luna"}))
+    ollama = staticmethod(stand_ins.ollama("right-key", {"qwen3:8b"}))
+
+    def test_anthropic_answers_only_the_messages_api_for_its_key_version_and_models(self) -> None:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        asked = {"model": "claude-haiku-5-5", "max_tokens": 5}
+
+        assert self.anthropic(post("/v1/messages", asked, **good)).status == 200
+        assert self.anthropic(seen("/v1/messages", **good)).status == 404
+        assert self.anthropic(post("/v1/other", asked, **good)).status == 404
+        assert (
+            self.anthropic(post("/v1/messages", asked, **{**good, "x-api-key": "no"})).status == 401
+        )
+        assert (
+            self.anthropic(post("/v1/messages", asked, **{"x-api-key": "right-key"})).status == 401
+        )
+        assert (
+            self.anthropic(post("/v1/messages", {**asked, "model": "gone"}, **good)).status == 404
+        )
+        assert (
+            self.anthropic(post("/v1/messages", {"model": "claude-haiku-5-5"}, **good)).status
+            == 404
+        )
+
+    def test_openai_answers_only_the_responses_api_for_its_key_models_and_enough_tokens(
+        self,
+    ) -> None:
+        good = {"authorization": "Bearer right-key"}
+        asked = {"model": "gpt-6-luna", "max_output_tokens": 16}
+
+        assert self.openai(post("/v1/responses", asked, **good)).status == 200
+        assert self.openai(post("/v1/other", asked, **good)).status == 404
+        assert self.openai(seen("/v1/responses", **good)).status == 404
+        assert self.openai(post("/v1/responses", asked, authorization="Bearer no")).status == 401
+        assert self.openai(post("/v1/responses", {**asked, "model": "gone"}, **good)).status == 400
+        assert (
+            self.openai(post("/v1/responses", {**asked, "max_output_tokens": 15}, **good)).status
+            == 400
+        )
+
+    def test_ollama_lists_its_models_answers_for_them_and_wants_its_key_if_it_has_one(self) -> None:
+        good = {"authorization": "Bearer right-key"}
+
+        tags = self.ollama(seen("/api/tags", **good))
+
+        assert [model["name"] for model in body(tags)["models"]] == ["qwen3:8b"]
+        assert self.ollama(seen("/api/tags")).status == 401
+        assert self.ollama(post("/api/chat", {"model": "qwen3:8b"}, **good)).status == 200
+        assert self.ollama(post("/api/chat", {"model": "gone"}, **good)).status == 404
+        assert self.ollama(seen("/api/other", **good)).status == 404
+        assert stand_ins.ollama("", {"a:1b"})(seen("/api/tags")).status == 200
+
+
 class TestStandIns:
     def test_ntopng_and_crowdsec_answer_over_plain_http(self, running: StandIns) -> None:
         ntopng = running.start("ntopng", token="a-token")

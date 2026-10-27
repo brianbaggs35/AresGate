@@ -905,6 +905,114 @@ def zenarmor(api_key: str) -> Handler:
     return handle
 
 
+def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
+    """Anthropic's Messages API: a key in ``x-api-key``, a version header, and an answer of one
+    text block with the tokens counted in ``usage``."""
+
+    def handle(seen: Seen) -> Answer:
+        if seen.path != "/v1/messages" or seen.method != "POST":
+            return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
+        if seen.headers.get("x-api-key") != api_key or "anthropic-version" not in seen.headers:
+            return _json({"type": "error", "error": {"type": "authentication_error"}}, 401)
+        asked = json.loads(seen.body)
+        if asked.get("model") not in models or not isinstance(asked.get("max_tokens"), int):
+            return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
+        return _json(
+            {
+                "id": "msg_stand_in",
+                "type": "message",
+                "role": "assistant",
+                "model": asked["model"],
+                "content": [{"type": "text", "text": "OK"}],
+                "stop_reason": "max_tokens",
+                "usage": {"input_tokens": 14, "output_tokens": 1},
+            }
+        )
+
+    return handle
+
+
+def openai(api_key: str, models: Collection[str] = ()) -> Handler:
+    """OpenAI's Responses API: a bearer key, at least 16 output tokens asked for, and an answer
+    that says how it ended with the tokens counted in ``usage``."""
+
+    def handle(seen: Seen) -> Answer:
+        if seen.path != "/v1/responses" or seen.method != "POST":
+            return _json({"error": {"type": "invalid_request_error"}}, 404)
+        if seen.headers.get("authorization") != f"Bearer {api_key}":
+            return _json(
+                {"error": {"type": "invalid_request_error", "code": "invalid_api_key"}}, 401
+            )
+        asked = json.loads(seen.body)
+        limit = asked.get("max_output_tokens")
+        if asked.get("model") not in models or not isinstance(limit, int) or limit < 16:
+            return _json({"error": {"type": "invalid_request_error"}}, 400)
+        return _json(
+            {
+                "id": "resp_stand_in",
+                "object": "response",
+                "status": "completed",
+                "model": asked["model"],
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "OK"}],
+                    }
+                ],
+                "usage": {"input_tokens": 16, "output_tokens": 2, "total_tokens": 18},
+            }
+        )
+
+    return handle
+
+
+def ollama(api_key: str = "", models: Collection[str] = ()) -> Handler:
+    """Ollama's API: the models it has at ``/api/tags`` and an answer from ``/api/chat``. With a
+    key (Ollama's cloud) a bearer key is needed, and without one (an Ollama at home) none is."""
+
+    def handle(seen: Seen) -> Answer:
+        if api_key and seen.headers.get("authorization") != f"Bearer {api_key}":
+            return _json({"error": "unauthorized"}, 401)
+        if seen.path == "/api/tags" and seen.method == "GET":
+            return _json(
+                {
+                    "models": [
+                        {
+                            "name": name,
+                            "model": name,
+                            "modified_at": "2026-10-01T12:00:00Z",
+                            "size": 4_700_000_000,
+                            "details": {
+                                "format": "gguf",
+                                "family": name.split(":")[0],
+                                "parameter_size": "8.0B",
+                                "quantization_level": "Q4_K_M",
+                            },
+                        }
+                        for name in sorted(models)
+                    ]
+                }
+            )
+        if seen.path == "/api/chat" and seen.method == "POST":
+            asked = json.loads(seen.body)
+            if asked.get("model") not in models:
+                return _json({"error": f"model '{asked.get('model')}' not found"}, 404)
+            return _json(
+                {
+                    "model": asked["model"],
+                    "message": {"role": "assistant", "content": "OK"},
+                    "done": True,
+                    "done_reason": "length",
+                    "prompt_eval_count": 12,
+                    "eval_count": 1,
+                }
+            )
+        return _json({"error": "not found"}, 404)
+
+    return handle
+
+
 def wazuh(
     username: str,
     password: str,
@@ -1138,7 +1246,9 @@ def sample_wazuh_agents(now: datetime) -> list[dict[str, object]]:
     ]
 
 
-Kind = Literal["opnsense", "zenarmor", "ntopng", "crowdsec", "wazuh"]
+Kind = Literal[
+    "opnsense", "zenarmor", "ntopng", "crowdsec", "wazuh", "anthropic", "openai", "ollama"
+]
 
 
 @dataclass(frozen=True)
@@ -1170,6 +1280,7 @@ class StandIns:
         services: Collection[str] = (),
         username: str = "",
         password: str = "",
+        models: Collection[str] = (),
     ) -> Running:
         now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
@@ -1193,6 +1304,9 @@ class StandIns:
             ),
             "zenarmor": zenarmor(api_key),
             "wazuh": wazuh(username, password, sample_wazuh_alerts(now), sample_wazuh_agents(now)),
+            "anthropic": anthropic(api_key, models),
+            "openai": openai(api_key, models),
+            "ollama": ollama(api_key, models),
         }
         names: dict[Kind, str] = {
             "opnsense": "fw.home.arpa",

@@ -80,8 +80,9 @@ class Loaded(BaseModel):
     tables_emptied: list[str]
 
 
-def _load(db: Session, name: FixtureName) -> Loaded:
+def _load(db: Session, name: FixtureName, request: Request) -> Loaded:
     STAND_INS.stop_all()
+    request.app.state.ai_origins.clear()
     emptied = baseline.load(db, name)
     db.commit()
     return Loaded(fixture=name, tables_emptied=emptied)
@@ -94,15 +95,15 @@ def count_rows(db: Db) -> dict[str, int]:
 
 
 @router.post("/database/clean")
-def clean_database(db: Db) -> Loaded:
+def clean_database(db: Db, request: Request) -> Loaded:
     """Empties every table, then loads the baseline."""
-    return _load(db, "baseline")
+    return _load(db, "baseline", request)
 
 
 @router.post("/fixtures/{name}")
-def load_fixture(name: FixtureName, db: Db) -> Loaded:
+def load_fixture(name: FixtureName, db: Db, request: Request) -> Loaded:
     """Empties every table, then loads a named state (``GET /fixtures`` lists them)."""
-    return _load(db, name)
+    return _load(db, name, request)
 
 
 class SystemInfoRequest(BaseModel):
@@ -270,6 +271,11 @@ class StandInRequest(BaseModel):
     # Wazuh: the user and password of its manager and its indexer.
     username: str = ""
     password: str = ""
+    # An AI provider's stand-in (Anthropic and OpenAI take an `api_key`, an Ollama one only when
+    # it is Ollama's cloud): the models it has, and, for a hosted provider, which one it stands
+    # in for, so AresGate asks it instead of the real one.
+    models: list[str] = []
+    provider: Literal["anthropic", "openai", "ollama_cloud"] | None = None
 
 
 class StandInRecord(BaseModel):
@@ -281,7 +287,7 @@ class StandInRecord(BaseModel):
 
 
 @router.post("/stand-ins", status_code=status.HTTP_201_CREATED)
-def start_stand_in(body: StandInRequest) -> StandInRecord:
+def start_stand_in(body: StandInRequest, request: Request) -> StandInRecord:
     """Starts a server on this machine that answers like an integration, for a test to connect to.
     It runs until the next time the database is put back to a known state."""
     running = STAND_INS.start(
@@ -292,16 +298,20 @@ def start_stand_in(body: StandInRequest) -> StandInRecord:
         services=body.services,
         username=body.username,
         password=body.password,
+        models=body.models,
     )
+    if body.provider is not None:
+        request.app.state.ai_origins[body.provider] = running.url
     return StandInRecord(
         id=running.id, kind=running.kind, url=running.url, fingerprint=running.fingerprint
     )
 
 
 @router.delete("/stand-ins", status_code=status.HTTP_204_NO_CONTENT)
-def stop_stand_ins() -> None:
+def stop_stand_ins(request: Request) -> None:
     """Stops every stand-in."""
     STAND_INS.stop_all()
+    request.app.state.ai_origins.clear()
 
 
 def collector_scheduler(request: Request, settings: SettingsDep, db: Db) -> Scheduler:

@@ -139,6 +139,8 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
     e2e.post("/api/__test__/database/clean")
     expected = {
+        "ai_providers": 0,
+        "ai_settings": 0,
         "audit_events": 0,
         "collector_health": 0,
         "credentials": 0,
@@ -191,6 +193,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "metric_samples",
             "incident_signals",
             "device_addresses",
+            "ai_settings",
             "worker_beats",
             "verdict_rules",
             "users",
@@ -207,6 +210,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "credentials",
             "collector_health",
             "audit_events",
+            "ai_providers",
         ],
     }
     assert system_info(session) == BASELINE_SYSTEM_INFO
@@ -482,6 +486,46 @@ def test_putting_the_database_back_stops_the_stand_ins_too(e2e: TestClient, rese
     e2e.post(f"/api/__test__{reset}")
 
     assert not reachable(started["url"])
+
+
+@pytest.mark.usefixtures("stand_ins")
+@pytest.mark.parametrize("reset", ["clean", "stop"])
+def test_an_ai_stand_in_takes_the_place_of_the_provider_until_it_is_stopped(
+    e2e: TestClient, harness: FastAPI, reset: str
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={
+            "kind": "anthropic",
+            "api_key": "k",
+            "models": ["claude-haiku-5-5"],
+            "provider": "anthropic",
+        },
+    )
+
+    assert started.status_code == 201
+    assert harness.state.ai_origins == {"anthropic": started.json()["url"]}
+    assert reachable(started.json()["url"])
+
+    if reset == "clean":
+        e2e.post("/api/__test__/database/clean")
+    else:
+        e2e.delete("/api/__test__/stand-ins")
+
+    assert harness.state.ai_origins == {}
+    assert not reachable(started.json()["url"])
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_an_ai_stand_in_that_is_not_for_a_provider_changes_nothing_about_where_they_are(
+    e2e: TestClient, harness: FastAPI
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins", json={"kind": "ollama", "models": ["llama3.2:3b"]}
+    )
+
+    assert started.status_code == 201
+    assert harness.state.ai_origins == {}
 
 
 def test_the_production_app_cannot_start_a_stand_in(client: TestClient) -> None:
