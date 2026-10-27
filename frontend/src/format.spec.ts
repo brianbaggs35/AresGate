@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatElapsed,
   formatFigure,
+  formatList,
   formatTimestamp,
 } from '@/format'
 
@@ -209,5 +210,15 @@ describe('formatBitrate', () => {
 
   it('goes on to terabits for a link nobody has at home', () => {
     expect(formatBitrate(3_000_000_000_000)).toBe('3 Tb/s')
+  })
+})
+
+describe('formatList', () => {
+  it('names one, two or several the way people say them', () => {
+    expect(formatList(['CrowdSec'], 'en-US')).toBe('CrowdSec')
+    expect(formatList(['CrowdSec', 'Wazuh'], 'en-US')).toBe('CrowdSec and Wazuh')
+    expect(formatList(['CrowdSec', 'OPNsense', 'Wazuh'], 'en-US')).toBe(
+      'CrowdSec, OPNsense, and Wazuh',
+    )
   })
 })

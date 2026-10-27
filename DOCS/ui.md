@@ -18,8 +18,8 @@ something they don't do, change the part (or add a new one) rather than styling 
 ## The dashboard
 
 The first page is built from the parts above and the charts below, in this order, and a page
-that grows beside it should keep the order: what needs attention (`StatusHero`, with the numbers
-that back it up, the `StatTile`s, inside it), what needs a decision (`NeedsYouLane`), then
+that grows beside it should keep the order: what needs attention (`StatusHero`, a `HeroSurface`, with the
+numbers that back it up, the `StatTile`s, inside it), what needs a decision (`NeedsYouLane`), then
 charts, then lists. The hero is never only a color: each of its four states has its own icon,
 label and words, it announces a change politely (it is an `output`), and it never says all is
 quiet while the collectors that would raise an alarm are not working. Its ring, glow and sweep
@@ -42,7 +42,9 @@ The Incidents pages are built from the same parts. The list is `IncidentCard`s i
 confidence meter that says *High confidence*, not only 100%); what it is narrowed to lives in the
 route's query (`view`, `severity`, `confidence`, `address`), never in component state, so a link
 reproduces it. An incident's page reads in the order a person asks: what is it and what can I
-do (the header and its buttons), the numbers, why is AresGate sure (`IncidentReasons`: the bar
+do (the header and its buttons), what happened (a `HeroSurface`, the same surface as the
+dashboard's hero: a ring drawn to the confidence, a sentence made from what the incident holds
+by `storyOf`, and the numbers inside it), why is AresGate sure (`IncidentReasons`: the bar
 and the list use the chart palette, in the same order, so a color is always the same reason),
 who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program), why the
 signals are one incident (`IncidentGrouping`: a line to a fact, the waves and the ports a sweep

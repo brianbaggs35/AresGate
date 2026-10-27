@@ -5,13 +5,14 @@ import type {
   Activity,
   ConfidenceLevel,
   Incident,
+  IncidentDetail,
   IncidentPage,
   IncidentQuery,
   IncidentStatus,
   Program,
   Signal,
 } from '@/api/incidents'
-import { formatCount, formatDuration } from '@/format'
+import { formatCount, formatDuration, formatList } from '@/format'
 import type { Severity } from '@/severity'
 
 interface StatusLook {
@@ -360,5 +361,62 @@ export function spreadOf(
     ),
     series,
     width: widthName(width),
+  }
+}
+
+/** What happened, in words, to head an incident's page. */
+export interface Story {
+  /** Whether the programs agree: the thing that most makes AresGate sure. */
+  title: string
+  /** Who reported what about whom, over how long, and what it reached. */
+  detail: string
+}
+
+/** How many devices are named before the rest are counted. */
+const NAMED_DEVICES = 3
+
+/** What an incident is, told from what it holds and nothing else: which programs reported how
+ * many signals about what, whether it was banned, which devices on the network are in it and how
+ * often the firewall turned the address away. */
+export function storyOf(
+  incident: Pick<
+    IncidentDetail,
+    | 'subject'
+    | 'sources'
+    | 'signal_count'
+    | 'first_seen_at'
+    | 'last_seen_at'
+    | 'banned'
+    | 'devices'
+    | 'blocked'
+  >,
+  locale?: string,
+): Story {
+  const programs = incident.sources.map(({ name }) => name)
+  const count = incident.signal_count
+  const about = isAboutRule(incident.subject)
+    ? 'about a rule that names no address'
+    : `about ${incident.subject}`
+  const signals = count === 1 ? '1 signal' : `${formatCount(count)} signals`
+  const span = count === 1 ? '' : ` ${spanOf(incident)}`
+  const sentences = [`${formatList(programs, locale)} reported ${signals} ${about}${span}.`]
+  if (incident.banned) sentences.push('An integration banned the address.')
+  if (incident.devices.length > 0) {
+    const names = incident.devices.map(({ hostname, address }) => hostname ?? address)
+    const rest = names.length - NAMED_DEVICES
+    const named =
+      rest > 0
+        ? `${names.slice(0, NAMED_DEVICES).join(', ')} and ${formatCount(rest)} more`
+        : formatList(names, locale)
+    sentences.push(`It involves ${named} on your network.`)
+  }
+  if (incident.blocked) {
+    const times = incident.blocked === 1 ? 'once' : `${formatCount(incident.blocked)} times`
+    sentences.push(`The firewall turned the address away ${times} around then.`)
+  }
+  return {
+    title:
+      programs.length > 1 ? `${programs.length.toString()} programs agree` : 'One program saw it',
+    detail: sentences.join(' '),
   }
 }

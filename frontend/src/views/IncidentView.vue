@@ -22,6 +22,7 @@ import {
 import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
 import AppPage from '@/components/AppPage.vue'
+import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
 import IncidentReasons from '@/components/IncidentReasons.vue'
@@ -44,8 +45,10 @@ import {
   otherAddresses,
   spanOf,
   spreadOf,
+  storyOf,
 } from '@/incidents'
 import { usePolling } from '@/polling'
+import { SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import { mutedIn } from '@/verdicts'
 
@@ -157,6 +160,21 @@ const blocked = computed(() => {
   }
 })
 
+const story = computed(() => storyOf(shown.value))
+/** What the hero is the color of: how serious it is, until it is over. */
+const heroTone = computed(() => {
+  const { status, severity } = shown.value
+  return status === 'resolved' || status === 'dismissed'
+    ? STATUS[status].color
+    : SEVERITY[severity].color
+})
+/** An incident that is not over and is serious draws the eye. */
+const heroMood = computed(() => {
+  const { status, severity } = shown.value
+  const over = status === 'resolved' || status === 'dismissed'
+  return !over && (severity === 'high' || severity === 'critical') ? 'urgent' : 'calm'
+})
+
 const spread = computed(() => spreadOf(shown.value.signals, shown.value.sources))
 const listed = computed(() => shown.value.signals.length)
 const caption = computed(() => {
@@ -223,8 +241,23 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         {{ loadError }} What is shown is from {{ updated }}.
       </v-alert>
 
-      <div class="incident__tiles" data-test="tiles">
+      <HeroSurface
+        test-id="incident-hero"
+        :tone="heroTone"
+        eyebrow="What happened"
+        :title="story.title"
+        :detail="story.detail"
+        :level="shown.confidence"
+        :mood="heroMood"
+      >
+        <template #center>
+          <span class="incident__score" data-test="confidence-score">
+            <b class="incident__figure">{{ shown.confidence }}</b>
+            <span class="incident__of">of 100</span>
+          </span>
+        </template>
         <StatTile
+          flat
           label="Signals"
           :value="formatCount(shown.signal_count)"
           :hint="signalsHint"
@@ -232,6 +265,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-signals"
         />
         <StatTile
+          flat
           label="Programs"
           :value="formatCount(shown.sources.length)"
           :hint="programs"
@@ -239,6 +273,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-programs"
         />
         <StatTile
+          flat
           label="Addresses"
           :value="formatCount(shown.addresses.length)"
           :hint="
@@ -250,13 +285,14 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-addresses"
         />
         <StatTile
+          flat
           label="Firewall blocks"
           :value="blocked.value"
           :hint="blocked.hint"
           :icon="ShieldBan"
           data-test="tile-blocked"
         />
-      </div>
+      </HeroSurface>
 
       <div class="incident__top">
         <SectionCard
@@ -358,17 +394,30 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   container-type: inline-size;
 }
 
-.incident__tiles,
 .incident__top {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
 }
 
-/* Two numbers to a row on a phone, so the four fit without a long scroll. */
-.incident__tiles {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+/* The confidence in the middle of the ring: the figure, and what it is out of. */
+.incident__score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+
+.incident__figure {
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.incident__of {
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
 }
 
 .incident__chips {
@@ -391,17 +440,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   gap: 0.5rem;
 }
 
-@container (min-width: 640px) {
-  .incident__tiles {
-    gap: 1.5rem;
-  }
-}
-
 @container (min-width: 900px) {
-  .incident__tiles {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .incident__top {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
     align-items: start;

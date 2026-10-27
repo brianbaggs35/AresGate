@@ -10,6 +10,11 @@ export class IncidentPage {
   readonly notice: Locator
   readonly changeError: Locator
   /** The four numbers under the title. */
+  /** The sentence at the top that tells what happened, its parts and the confidence in its ring. */
+  readonly hero: Locator
+  readonly heroTitle: Locator
+  readonly heroDetail: Locator
+  readonly score: Locator
   readonly signalsTile: Locator
   readonly programsTile: Locator
   readonly addressesTile: Locator
@@ -55,6 +60,10 @@ export class IncidentPage {
     this.back = page.getByTestId('back')
     this.notice = page.getByTestId('notice')
     this.changeError = page.getByTestId('change-error')
+    this.hero = page.getByTestId('incident-hero')
+    this.heroTitle = page.getByTestId('incident-hero-title')
+    this.heroDetail = page.getByTestId('incident-hero-detail')
+    this.score = page.getByTestId('confidence-score')
     this.signalsTile = page.getByTestId('tile-signals')
     this.programsTile = page.getByTestId('tile-programs')
     this.addressesTile = page.getByTestId('tile-addresses')

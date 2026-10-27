@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A hero on an incident's page**: under its title, a ring drawn to how sure AresGate is (with the
+  figure in it), a sentence that says what happened from what the incident holds (*3 programs
+  agree*; who reported how many signals about which address over how long, whether it was banned,
+  which devices on your network are involved and how often the firewall turned the address away),
+  and its four numbers inside the same surface. It is the color of how serious the incident is
+  until it is resolved or dismissed, and a serious one that is not over breathes faster so it
+  is not missed (and stops moving for anyone who asks their system for less motion).
 - **A bot that keeps coming back is one incident**: a port scan or a brute force from one
   address, or from the neighbouring addresses of its block (a /24 or /64) doing the same thing, is
   one incident however many waves it takes, instead of one for each. An incident never runs more

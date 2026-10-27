@@ -12,7 +12,7 @@ takes the second: quiet surfaces, one loud thing at a time, and the loud thing i
 answer to the question a person came with.
 
 - **One answer first.** Each page opens with the sentence that matters in the biggest type on the
-  page (`StatusHero` on the dashboard), then the numbers that back it up, then the detail. The
+  page (`HeroSurface`: the `StatusHero` on the dashboard, what happened on an incident), then the numbers that back it up, then the detail. The
   order follows the decision a person makes, not the order the data arrived in.
 - **Color is a signal, so it is rare.** The page is neutral; red, amber, green and blue mean
   something and only appear where something does. A state is never only a color: it is also an
