@@ -75,6 +75,61 @@ describe('IncidentCard', () => {
     expect(text('incident-subject')).toBe('93.184.216.34')
   })
 
+  describe('a bot that came back', () => {
+    const sweep = {
+      activities: ['scan' as const],
+      waves: 3,
+      port_count: 14,
+      neighbours: 2,
+      addresses: ['93.184.216.34', '93.184.216.35', '93.184.216.36', '192.168.1.20'],
+    }
+
+    it('says what it was doing, how many bursts it came in and how many ports it touched', async () => {
+      const { text } = await show(sweep)
+
+      expect(text('incident-activity-scan')).toBe('Scanning')
+      expect(text('incident-waves')).toBe('3 waves')
+      expect(text('incident-ports')).toBe('14 ports')
+    })
+
+    it('says how many of its neighbours are grouped in, and does not count them among the others', async () => {
+      const { text } = await show(sweep)
+
+      expect(text('incident-neighbours')).toBe('2 neighbouring addresses')
+      expect(text('incident-subject')).toBe('93.184.216.34 and 1 other address')
+    })
+
+    it('says one neighbour in the singular, and no others when there are none', async () => {
+      const { text } = await show({
+        ...sweep,
+        neighbours: 1,
+        addresses: ['93.184.216.34', '93.184.216.35'],
+      })
+
+      expect(text('incident-neighbours')).toBe('1 neighbouring address')
+      expect(text('incident-subject')).toBe('93.184.216.34')
+    })
+
+    it('says a brute force too, and "at least" for more ports than are kept', async () => {
+      const { text } = await show({
+        activities: ['brute_force', 'scan'],
+        port_count: 1000,
+        ports_capped: true,
+      })
+
+      expect(text('incident-activity-brute_force')).toBe('Brute force')
+      expect(text('incident-ports')).toBe('at least 1,000 ports')
+    })
+
+    it('says nothing of any of it for a single burst on one port by one address', async () => {
+      const { wrapper } = await show({ port_count: 1 })
+
+      for (const part of ['waves', 'ports', 'neighbours', 'activity-scan']) {
+        expect(wrapper.find(`[data-test="incident-${part}"]`).exists()).toBe(false)
+      }
+    })
+  })
+
   it('says when it is about a rule that named no address', async () => {
     const { text } = await show({ subject: 'rule:wazuh:sshd', addresses: [] })
 

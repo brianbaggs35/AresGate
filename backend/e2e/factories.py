@@ -228,6 +228,13 @@ class IncidentSpec(NamedTuple):
     device: str = "192.168.1.20"
     device_name: str | None = None
     status: IncidentStatusName = "open"
+    # A bot sweeping the network: every signal is a port scan, from the address and this many of
+    # its neighbours in turn (they must stay in the address's /24), over as many bursts.
+    neighbours: int = 0
+    waves: int = 1
+    # The ports the signals touch, in turn; only the ssh port when empty.
+    ports: Sequence[int] = ()
+    scan: bool = False
 
 
 class IncidentsRecorded(NamedTuple):
@@ -274,13 +281,27 @@ def incidents(
     return IncidentsRecorded(len(events), len(specs))
 
 
+# How far apart the signals of a burst are, and how much quiet there is between two bursts: more
+# than the engine's quarter of an hour, and less than any gap that would start another incident.
+_STEP = timedelta(minutes=4)
+_QUIET = timedelta(minutes=40)
+
+
 def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> list[NewEvent]:
     """The signals of one attack: the first and worst as serious as asked, the rest a level or
-    two below, then the ban."""
+    two below, then the ban. A scan is all one kind of signal, spread as asked."""
     last = now - timedelta(minutes=spec.minutes_ago)
+    # The signals are shared between the bursts, the last of which ends at ``last``.
+    per_wave = -(-spec.signals // spec.waves)
+    gap = _STEP * (per_wave - 1) + _QUIET
     events: list[NewEvent] = []
     for signal in range(spec.signals):
         program = spec.programs[signal % len(spec.programs)]
+        wave, place = divmod(signal, per_wave)
+        later_waves = (spec.signals - 1) // per_wave - wave
+        later_in_wave = min(per_wave, spec.signals - wave * per_wave) - 1 - place
+        source = str(ip_address(address) + signal % (spec.neighbours + 1))
+        port = spec.ports[signal % len(spec.ports)] if spec.ports else 22
         # The first is the strongest; the others are medium, or low once that is the strongest.
         severity = spec.severity if signal == 0 else min(spec.severity, Severity.MEDIUM)
         events.append(
@@ -289,14 +310,16 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
                 connection=_CONNECTIONS.get(program, "e2e"),
                 kind="alert",
                 severity=severity,
-                occurred_at=last - timedelta(minutes=4 * (spec.signals - 1 - signal)),
+                occurred_at=last - gap * later_waves - _STEP * later_in_wave,
                 identity=(f"e2e-incident-{number}-{signal}",),
-                summary=f"{program.capitalize()} saw {address} try ssh",
-                signature="Brute force on ssh" if signal == 0 else "ET SCAN Potential SSH Scan",
-                src_address=address,
+                summary=f"{program.capitalize()} saw {source} try ssh",
+                signature="ET SCAN Potential SSH Scan"
+                if spec.scan or signal > 0
+                else "Brute force on ssh",
+                src_address=source,
                 src_port=40_000 + signal,
                 dst_address=spec.device,
-                dst_port=22,
+                dst_port=port,
                 protocol="tcp",
             )
         )

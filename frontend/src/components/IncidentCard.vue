@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, Layers } from '@lucide/vue'
+import { Ban, Layers, Network, Repeat, Users } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -12,7 +12,7 @@ import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
-import { isAboutRule, otherAddresses, spanOf } from '@/incidents'
+import { ACTIVITY, isAboutRule, otherAddresses, portsTouched, spanOf } from '@/incidents'
 import { SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import { VERDICT, scopesOf, type Judged, type Scope } from '@/verdicts'
@@ -30,7 +30,15 @@ const session = useSessionStore()
 const { xs: phone } = useDisplay()
 
 const accent = computed(() => `rgb(var(--v-theme-${SEVERITY[props.incident.severity].color}))`)
-const others = computed(() => otherAddresses(props.incident).length)
+/** The addresses besides the one it is about that are not neighbours grouped into it: the
+ * devices that were attacked, and whatever else the signals name. */
+const others = computed(() =>
+  Math.max(0, otherAddresses(props.incident).length - props.incident.neighbours),
+)
+const neighbours = computed(() => {
+  const count = props.incident.neighbours
+  return `${formatCount(count)} neighbouring ${count === 1 ? 'address' : 'addresses'}`
+})
 const signals = computed(() => {
   const count = props.incident.signal_count
   if (count === 1) return '1 signal'
@@ -91,6 +99,15 @@ async function give(kind: VerdictKind) {
         <IncidentStatusChip v-if="incident.status !== 'open'" :status="incident.status" />
         <VerdictChip v-if="incident.verdict" :verdict="incident.verdict" />
         <v-chip
+          v-for="activity in incident.activities"
+          :key="activity"
+          :prepend-icon="ACTIVITY[activity].icon"
+          variant="outlined"
+          :data-test="`incident-activity-${activity}`"
+        >
+          {{ ACTIVITY[activity].label }}
+        </v-chip>
+        <v-chip
           v-if="incident.banned"
           :prepend-icon="Ban"
           variant="tonal"
@@ -123,6 +140,22 @@ async function give(kind: VerdictKind) {
           <li class="incident-card__fact" data-test="incident-signals">
             <v-icon :icon="Layers" size="18" aria-hidden="true" />
             {{ signals }}
+          </li>
+          <li v-if="incident.waves > 1" class="incident-card__fact" data-test="incident-waves">
+            <v-icon :icon="Repeat" size="18" aria-hidden="true" />
+            {{ incident.waves }} waves
+          </li>
+          <li v-if="incident.port_count > 1" class="incident-card__fact" data-test="incident-ports">
+            <v-icon :icon="Network" size="18" aria-hidden="true" />
+            {{ portsTouched(incident) }}
+          </li>
+          <li
+            v-if="incident.neighbours > 0"
+            class="incident-card__fact"
+            data-test="incident-neighbours"
+          >
+            <v-icon :icon="Users" size="18" aria-hidden="true" />
+            {{ neighbours }}
           </li>
           <li class="incident-card__fact" data-test="incident-programs">
             <span class="text-medium-emphasis">Seen by</span>

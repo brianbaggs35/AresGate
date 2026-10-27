@@ -101,6 +101,45 @@ test.describe('incidents', () => {
     await expect(other.getByTestId('confidence-level')).toHaveText('Low confidence')
   })
 
+  test('show a bot that swept from a block in waves as one incident, and say how', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents([
+      {
+        address: '8.8.4.10',
+        scan: true,
+        signals: 6,
+        neighbours: 2,
+        waves: 3,
+        ports: [22, 80, 443],
+        minutes_ago: 20,
+      },
+    ])
+
+    await incidents.goto()
+
+    await expect(incidents.cards).toHaveCount(1)
+    const sweep = incidents.cards.first()
+    await expect(sweep.getByTestId('incident-activity-scan')).toHaveText('Scanning')
+    await expect(sweep.getByTestId('incident-signals')).toContainText('6 signals')
+    await expect(sweep.getByTestId('incident-waves')).toHaveText('3 waves')
+    await expect(sweep.getByTestId('incident-ports')).toHaveText('3 ports')
+    await expect(sweep.getByTestId('incident-neighbours')).toHaveText('2 neighbouring addresses')
+  })
+
+  test('keep the same bot hours later as another incident', async ({ harness, incidents }) => {
+    const scan = { address: '8.8.4.10', scan: true, signals: 3 }
+    await harness.createIncidents([
+      { ...scan, minutes_ago: 600 },
+      { ...scan, minutes_ago: 10 },
+    ])
+
+    await incidents.goto('?view=all')
+
+    await expect(incidents.cards).toHaveCount(2)
+  })
+
   test('count the incidents in each view, and show the others when asked', async ({
     harness,
     incidents,
@@ -226,7 +265,8 @@ test.describe('incidents', () => {
   }) => {
     await harness.createIncidents(
       Array.from({ length: 27 }, (_, number) => ({
-        address: `20.20.20.${(number + 1).toString()}`,
+        // Each from a block of its own: addresses side by side are one bot.
+        address: `20.20.${(number + 1).toString()}.20`,
         minutes_ago: number + 1,
       })),
     )

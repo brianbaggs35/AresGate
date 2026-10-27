@@ -807,6 +807,39 @@ def test_incidents_can_be_made_to_order(e2e: TestClient) -> None:
     assert len(detail["signals"]) == 5
 
 
+def test_a_bot_sweeping_from_a_block_in_waves_is_one_incident(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {
+                    "address": "8.8.4.10",
+                    "scan": True,
+                    "signals": 6,
+                    "neighbours": 2,
+                    "waves": 2,
+                    "ports": [22, 80, 443],
+                },
+                # More bursts than signals can't be made: there are as many as there are signals.
+                {"address": "1.1.1.1", "signals": 2, "waves": 5},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"signals": 8, "incidents": 2}
+    sign_in(e2e)
+    listed = e2e.get("/api/incidents", params={"limit": 10}).json()["items"]
+    sweep, pair = sorted(listed, key=lambda item: item["subject"], reverse=True)
+    assert (sweep["subject"], sweep["signal_count"], sweep["neighbours"]) == ("8.8.4.10", 6, 2)
+    assert (sweep["activities"], sweep["waves"], sweep["port_count"]) == (["scan"], 2, 3)
+    assert (pair["subject"], pair["signal_count"], pair["waves"]) == ("1.1.1.1", 2, 2)
+    detail = e2e.get(f"/api/incidents/{sweep['id']}").json()
+    assert detail["ports"] == [22, 80, 443]
+    assert detail["grouping"][0].startswith("Signals from 3 addresses of 8.8.4.0/24")
+
+
 def test_verdicts_can_be_given_and_judge_the_incidents_there_are(e2e: TestClient) -> None:
     e2e.post("/api/__test__/database/clean")
     e2e.post(
@@ -847,7 +880,18 @@ def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "incident",
-    [{"signals": 0}, {"signals": 51}, {"severity": "scary"}, {"status": "ignored"}],
+    [
+        {"signals": 0},
+        {"signals": 51},
+        {"severity": "scary"},
+        {"status": "ignored"},
+        {"neighbours": 21},
+        {"waves": 0},
+        {"waves": 11},
+        {"ports": [0]},
+        {"ports": [65_536]},
+        {"ports": list(range(1, 52))},
+    ],
 )
 def test_an_incident_that_cannot_be_made_is_refused(
     e2e: TestClient, incident: dict[str, object]

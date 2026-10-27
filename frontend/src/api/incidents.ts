@@ -15,6 +15,9 @@ export interface Program {
   name: string
 }
 
+/** What kind of activity its signals say it was: a scan of ports, or guessing at logins. */
+export type Activity = 'scan' | 'brute_force'
+
 export interface Incident {
   id: number
   title: string
@@ -42,6 +45,16 @@ export interface Incident {
    * priority are listed and counted in `signal_count`, but leave everything else about the
    * incident to the signals that are not. */
   verdict_counts: Partial<Record<VerdictKind, number>>
+  /** What its signals say it was, where they say. */
+  activities: Activity[]
+  /** How many bursts they came in, with a quarter of an hour of quiet between them: a bot that
+   * sweeps the network three times in an afternoon is one incident with three waves. */
+  waves: number
+  /** How many different destination ports they touched, as far as are kept (`ports_capped`). */
+  port_count: number
+  ports_capped: boolean
+  /** How many other addresses of the subject's block (a /24 or /64) are grouped into it. */
+  neighbours: number
 }
 
 /** One thing that makes AresGate as sure as it is: the points add up to the confidence. */
@@ -80,6 +93,10 @@ export interface IncidentDevice {
 
 export interface IncidentDetail extends Incident {
   reasons: Reason[]
+  /** Why its signals are one incident, in plain words, a fact to a line. */
+  grouping: string[]
+  /** The destination ports they touched, lowest first. */
+  ports: number[]
   /** Oldest first. Only the first so many are kept: `signal_count` has them all. */
   signals: Signal[]
   devices: IncidentDevice[]
