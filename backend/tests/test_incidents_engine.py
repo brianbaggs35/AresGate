@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from typing import Any
 
 import pytest
@@ -10,7 +11,7 @@ from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.incidents import engine as correlation
-from app.models import Event, Incident, IncidentSignal, SystemInfo
+from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
 from tests.helpers import new_event
 
 NOW = datetime(2026, 10, 26, 6, 0, tzinfo=UTC)
@@ -549,3 +550,312 @@ class TestLimits:
         run(session)
 
         assert [str(address) for address in incidents(session)[0].addresses] == [ATTACKER]
+
+
+def say(session: Session, verdict: str, **about: str) -> VerdictRule:
+    """The owner gives a verdict: on an address, a program or a signature."""
+    rule = VerdictRule(
+        verdict=verdict,
+        address=ip_address(about["address"]) if "address" in about else None,
+        source=about.get("source"),
+        signature=about.get("signature"),
+    )
+    session.add(rule)
+    session.commit()
+    return rule
+
+
+class TestWhatTheOwnerSaid:
+    def test_a_signal_called_fine_is_listed_and_counted_but_is_sure_of_nothing(
+        self, session: Session, settings: Settings
+    ) -> None:
+        rule = say(session, "not_suspicious", signature="ET SCAN Potential SSH Scan")
+        store(session, settings, alert(severity=Severity.CRITICAL))
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.signal_count == 1
+        assert incident.verdict == "not_suspicious"
+        assert incident.verdict_counts == {"not_suspicious": 1}
+        assert incident.confidence == 0
+        assert [reason["rule"] for reason in incident.reasons] == ["muted"]
+        (signal,) = signals(session)
+        assert (signal.verdict, signal.verdict_rule_id) == ("not_suspicious", rule.id)
+
+    def test_it_is_described_by_what_was_called_fine_until_something_else_comes(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "low_priority", source="opnsense")
+        store(
+            session,
+            settings,
+            alert(n=1, source="opnsense", connection="api", severity=Severity.LOW),
+            alert(NOW + timedelta(minutes=1), n=2, source="opnsense", connection="api"),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.verdict == "low_priority"
+        assert incident.severity == Severity.MEDIUM
+        assert incident.sources == ["opnsense"]
+        assert [str(address) for address in incident.addresses] == [ATTACKER, DEVICE]
+
+    def test_a_signal_that_counts_takes_over_from_the_ones_called_fine(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "not_suspicious", source="opnsense")
+        store(
+            session,
+            settings,
+            alert(n=1, source="opnsense", connection="api", severity=Severity.CRITICAL),
+            alert(
+                NOW + timedelta(minutes=1),
+                n=2,
+                severity=Severity.LOW,
+                signature="sshd: failed",
+                dst_address="192.168.1.21",
+            ),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.verdict is None
+        assert incident.signal_count == 2
+        assert incident.verdict_counts == {"not_suspicious": 1}
+        assert incident.severity == Severity.LOW
+        assert incident.top_summary == "sshd: failed"
+        assert incident.sources == ["wazuh"]
+        assert [str(address) for address in incident.addresses] == [ATTACKER, "192.168.1.21"]
+        assert incident.confidence == 10
+        assert [reason["rule"] for reason in incident.reasons] == ["strongest", "muted"]
+        assert incident.first_seen_at == NOW
+        assert incident.last_seen_at == NOW + timedelta(minutes=1)
+
+    def test_signals_called_fine_after_one_that_counts_change_nothing_but_the_count(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "not_suspicious", source="crowdsec")
+        store(
+            session,
+            settings,
+            alert(n=1, severity=Severity.LOW),
+            new_event(
+                source="crowdsec",
+                connection="lapi",
+                kind="decision",
+                severity=Severity.CRITICAL,
+                occurred_at=NOW + timedelta(minutes=1),
+                identity=("ban-1",),
+                summary="Ban for ssh-bruteforce",
+                src_address=ATTACKER,
+                dst_address="192.168.1.21",
+            ),
+        )
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.signal_count == 2
+        assert incident.severity == Severity.LOW
+        assert incident.sources == ["wazuh"]
+        assert not incident.banned
+        assert [str(address) for address in incident.addresses] == [ATTACKER, DEVICE]
+        assert incident.confidence == 10
+        # They are still part of when it went on.
+        assert incident.last_seen_at == NOW + timedelta(minutes=1)
+
+    def test_a_signal_called_a_threat_makes_the_incident_certain(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "threat", address=ATTACKER)
+        store(session, settings, alert(severity=Severity.LOW))
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.verdict == "threat"
+        assert incident.confidence == 100
+        assert [reason["rule"] for reason in incident.reasons] == ["strongest", "threat"]
+
+    def test_what_was_said_of_a_device_does_not_hide_an_attack_on_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "not_suspicious", address=DEVICE)
+        store(session, settings, alert())
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.verdict is None
+        assert incident.confidence == 25
+
+    def test_the_rule_that_names_more_decides(self, session: Session, settings: Settings) -> None:
+        say(session, "not_suspicious", address=ATTACKER)
+        loud = say(session, "threat", address=ATTACKER, signature="ET SCAN Potential SSH Scan")
+        store(session, settings, alert())
+
+        run(session)
+
+        assert signals(session)[0].verdict_rule_id == loud.id
+        assert incidents(session)[0].verdict == "threat"
+
+    def test_signals_beyond_what_an_incident_lists_are_judged_and_counted_too(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(correlation, "MAX_SIGNALS", 1)
+        say(session, "low_priority", signature="ET SCAN Potential SSH Scan")
+        store(session, settings, *(alert(NOW + timedelta(minutes=n), n=n) for n in range(3)))
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.verdict_counts == {"low_priority": 3}
+        assert incident.verdict == "low_priority"
+        assert len(signals(session)) == 1
+
+
+class TestWhenTheOwnerChangesTheirMind:
+    def attack(self, session: Session, settings: Settings) -> Incident:
+        store(
+            session,
+            settings,
+            alert(n=1, severity=Severity.HIGH),
+            alert(NOW + timedelta(minutes=1), n=2, source="opnsense", connection="api"),
+        )
+        run(session)
+        return incidents(session)[0]
+
+    def reapply(self, session: Session) -> Incident:
+        correlation.reapply(session)
+        session.commit()
+        return incidents(session)[0]
+
+    def test_a_verdict_given_later_applies_to_the_incidents_that_are_going(
+        self, session: Session, settings: Settings
+    ) -> None:
+        before = self.attack(session, settings)
+        assert (before.confidence, before.verdict) == (55, None)
+
+        rule = say(session, "not_suspicious", address=ATTACKER)
+        after = self.reapply(session)
+
+        assert (after.confidence, after.verdict) == (0, "not_suspicious")
+        assert after.verdict_counts == {"not_suspicious": 2}
+        assert after.signal_count == 2
+        assert {signal.verdict_rule_id for signal in signals(session)} == {rule.id}
+
+    def test_one_that_is_taken_back_counts_again(
+        self, session: Session, settings: Settings
+    ) -> None:
+        say(session, "not_suspicious", address=ATTACKER)
+        store(session, settings, alert(severity=Severity.HIGH))
+        run(session)
+        assert incidents(session)[0].confidence == 0
+
+        session.execute(delete(VerdictRule))
+        session.commit()
+        after = self.reapply(session)
+
+        assert (after.confidence, after.verdict, after.verdict_counts) == (40, None, {})
+        assert signals(session)[0].verdict is None
+
+    def test_one_that_is_changed_is_applied_as_it_now_is(
+        self, session: Session, settings: Settings
+    ) -> None:
+        rule = say(session, "not_suspicious", address=ATTACKER)
+        self.attack(session, settings)
+        assert incidents(session)[0].verdict == "not_suspicious"
+
+        rule.verdict = "threat"
+        session.commit()
+        after = self.reapply(session)
+
+        assert (after.confidence, after.verdict) == (100, "threat")
+
+    def test_it_is_worked_out_as_if_the_signals_had_just_come_in(
+        self, session: Session, settings: Settings
+    ) -> None:
+        before = self.attack(session, settings)
+        summary = (
+            before.severity,
+            before.top_source,
+            before.top_summary,
+            before.sources,
+            before.addresses,
+            before.confidence,
+            before.reasons,
+            before.title,
+        )
+
+        say(session, "not_suspicious", address="8.8.8.8")
+        after = self.reapply(session)
+
+        assert summary == (
+            after.severity,
+            after.top_source,
+            after.top_summary,
+            after.sources,
+            after.addresses,
+            after.confidence,
+            after.reasons,
+            after.title,
+        )
+
+    def test_an_incident_that_is_over_is_left_as_it_was(
+        self, session: Session, settings: Settings
+    ) -> None:
+        before = self.attack(session, settings)
+        before.status = "resolved"
+        session.commit()
+
+        say(session, "not_suspicious", address=ATTACKER)
+        after = self.reapply(session)
+
+        assert (after.confidence, after.verdict, after.status) == (55, None, "resolved")
+        assert signals(session)[0].verdict is None
+
+    def test_one_that_is_dismissed_is_judged_again(
+        self, session: Session, settings: Settings
+    ) -> None:
+        before = self.attack(session, settings)
+        before.status = "dismissed"
+        session.commit()
+
+        say(session, "low_priority", address=ATTACKER)
+        after = self.reapply(session)
+
+        assert (after.confidence, after.verdict) == (0, "low_priority")
+
+    def test_an_incident_that_outgrew_its_timeline_keeps_when_it_went_on_until(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(correlation, "MAX_SIGNALS", 2)
+        store(session, settings, *(alert(NOW + timedelta(minutes=n), n=n) for n in range(4)))
+        run(session)
+
+        say(session, "low_priority", address=ATTACKER)
+        after = self.reapply(session)
+
+        # Judged by the two it lists, which is all it can be.
+        assert after.signal_count == 2
+        assert after.verdict_counts == {"low_priority": 2}
+        assert after.first_seen_at == NOW
+        assert after.last_seen_at == NOW + timedelta(minutes=3)
+
+    def test_a_signal_that_comes_after_is_judged_by_the_rules_as_they_are(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.attack(session, settings)
+        say(session, "not_suspicious", address=ATTACKER)
+        self.reapply(session)
+        store(session, settings, alert(NOW + 2 * HOUR, n=3, severity=Severity.CRITICAL))
+
+        run(session)
+
+        (incident,) = incidents(session)
+        assert incident.signal_count == 3
+        assert incident.verdict == "not_suspicious"
+        assert incident.confidence == 0

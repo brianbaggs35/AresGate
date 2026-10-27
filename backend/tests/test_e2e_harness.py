@@ -161,6 +161,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "totp_credentials": 0,
         "user_sessions": 0,
         "users": 1,
+        "verdict_rules": 0,
         "worker_beats": 0,
     }
     assert e2e.get("/api/__test__/database/counts").json() == expected
@@ -191,6 +192,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "incident_signals",
             "device_addresses",
             "worker_beats",
+            "verdict_rules",
             "users",
             "system_info",
             "metric_series",

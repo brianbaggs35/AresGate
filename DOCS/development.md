@@ -188,6 +188,15 @@ overlapping.
   sentence a person can read: nothing is scored that can't be explained.
 - **What is stored** is `incidents` (a summary that grows with each signal) and
   `incident_signals` (the timeline, copied from the events, which expire sooner).
+- **Verdicts** are `verdict_rules` (see `models/verdicts.py`), matched by
+  `incidents/verdicts.py`: `judge(signal, rules)` returns the rule that decides, the most
+  specific first and then the strongest. `engine._absorb` is the one place a signal changes an
+  incident's summary, for a new one (`_join`) and for `reapply`, which the API calls in the
+  same transaction as a change to a rule and which builds each incident that is not resolved
+  again from its stored signals. A signal called not suspicious or low priority only changes the
+  counts and the times; `rules.assess` leaves it out and a threat is worth 100. A new thing the
+  analyst or the alert engine does with a verdict reads `incidents.verdict` and the counts, not
+  the rules.
 - **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
   the AI analyst can call them too. They only read, apart from the status.
 - **Tests** build events with `tests.helpers.new_event`, store them with `record_events` and
