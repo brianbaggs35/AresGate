@@ -5,6 +5,7 @@ import type {
   IncidentPage,
   Reason,
   Signal,
+  SourceCount,
 } from '@/api/incidents'
 
 const NOW = Date.now()
@@ -128,9 +129,26 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
   }
 }
 
-/** A page of incidents, counting each status from the ones in it unless told. */
+/** A page of incidents, counting each status, severity and source from the ones in it unless
+ * told. */
 export function page(items: Incident[] = [incident()], changes: Partial<IncidentPage> = {}) {
   const counts = { open: 0, investigating: 0, resolved: 0, dismissed: 0 }
-  for (const { status } of items) counts[status] += 1
-  return { total: items.length, items, counts, quieted: 0, ...changes } satisfies IncidentPage
+  const severity = { info: 0, low: 0, medium: 0, high: 0, critical: 0 }
+  const sources = new Map<string, SourceCount>()
+  for (const item of items) {
+    counts[item.status] += 1
+    severity[item.severity] += 1
+    for (const { key, name } of item.sources) {
+      sources.set(key, { key, name, count: (sources.get(key)?.count ?? 0) + 1 })
+    }
+  }
+  return {
+    total: items.length,
+    items,
+    terms: [],
+    facets: { severity, sources: [...sources.values()].sort((a, b) => b.count - a.count) },
+    counts,
+    quieted: 0,
+    ...changes,
+  } satisfies IncidentPage
 }

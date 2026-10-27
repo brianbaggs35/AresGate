@@ -1,11 +1,12 @@
 """Reading incidents: what the API lists and shows."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Any, Final, Literal
 
-from sqlalchemy import ColumnElement, false, func, or_, select
+from sqlalchemy import ColumnElement, false, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
@@ -32,11 +33,21 @@ _ORDERINGS: Final[dict[Order, tuple[ColumnElement[Any], ...]]] = {
 
 
 @dataclass(frozen=True)
+class Facets:
+    """How the incidents a search found are spread: how many are at each severity, and how many
+    each integration reported part of (an incident several reported counts for each)."""
+
+    severity: dict[int, int]
+    source: dict[str, int]
+
+
+@dataclass(frozen=True)
 class Page:
     """One page of a search, and how many incidents it found in all."""
 
     total: int
     incidents: list[Incident]
+    facets: Facets
     # How many more would have matched if the owner's verdicts weren't asked about: the ones they
     # said are not suspicious or low priority, which a search for anything else leaves out.
     quieted: int
@@ -61,11 +72,12 @@ def search(
     limit: int,
     offset: int,
     order: Order = "recent",
+    extra: Sequence[ColumnElement[bool]] = (),
 ) -> Page:
     """Incidents that match, the ones that were going most recently first, or the most serious
     and surest first. Nothing given matches everything. A verdict of none is the incidents the
-    owner has said nothing of."""
-    conditions: list[ColumnElement[bool]] = []
+    owner has said nothing of. ``extra`` is what else has to be true (see search.py)."""
+    conditions: list[ColumnElement[bool]] = list(extra)
     if statuses:
         conditions.append(Incident.status.in_(statuses))
     if min_severity is not None:
@@ -90,7 +102,24 @@ def search(
     found = db.scalars(
         select(Incident).where(*conditions).order_by(*_ORDERINGS[order]).limit(limit).offset(offset)
     ).all()
-    return Page(total=total, incidents=list(found), quieted=quieted)
+    return Page(total=total, incidents=list(found), facets=facets(db, conditions), quieted=quieted)
+
+
+def facets(db: Session, conditions: Sequence[ColumnElement[bool]]) -> Facets:
+    """How many of the incidents that meet the conditions are at each severity, and how many
+    each integration reported part of."""
+    severity = db.execute(
+        select(Incident.severity, func.count()).where(*conditions).group_by(Incident.severity)
+    ).all()
+    reporting = func.unnest(Incident.sources).table_valued("source").render_derived()
+    sources = db.execute(
+        select(reporting.c.source, func.count())
+        .select_from(Incident)
+        .join(reporting, true())
+        .where(*conditions)
+        .group_by(reporting.c.source)
+    ).all()
+    return Facets(severity=dict(severity), source=dict(sources))
 
 
 def counts(db: Session, verdicts: list[str]) -> dict[str, int]:

@@ -105,9 +105,38 @@ export interface IncidentDetail extends Incident {
   blocked: number | null
 }
 
+/** One term of a search as AresGate understood it: what it is about and how to read it back. */
+export interface SearchTerm {
+  /** `source`, `severity` and the like, or null for plain words. */
+  field: string | null
+  /** In words to show: `Source: Wazuh`, `Not address: 10.0.0.0/8`. */
+  label: string
+  negated: boolean
+  /** Where it was in the text of the search: the characters from `start` up to `end`. */
+  start: number
+  end: number
+}
+
+/** An integration and how many of the incidents found it reported part of. */
+export interface SourceCount {
+  key: string
+  name: string
+  count: number
+}
+
+/** How the incidents found are spread, whatever page of them is on screen. */
+export interface Facets {
+  severity: Record<Severity, number>
+  /** The most first. */
+  sources: SourceCount[]
+}
+
 export interface IncidentPage {
   total: number
   items: Incident[]
+  /** The search in words, as it was understood: one for each term. */
+  terms: SearchTerm[]
+  facets: Facets
   /** How many incidents there are in each status, whatever the search was for except which
    * verdicts it asked about. */
   counts: Record<IncidentStatus, number>
@@ -124,6 +153,10 @@ export interface IncidentQuery {
   minSeverity?: Severity
   minConfidence?: number
   address?: string
+  /** A search in words, such as `severity>=high source:wazuh -port:22`. */
+  q?: string
+  /** The time zone the person is in, for what `today` means in a search. */
+  tz?: string
   limit?: number
   offset?: number
   /** `priority` puts the most serious and surest first; the default is the most recent. */
@@ -138,6 +171,8 @@ export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage>
   if (query.minSeverity) params.set('min_severity', query.minSeverity)
   if (query.minConfidence) params.set('min_confidence', query.minConfidence.toString())
   if (query.address) params.set('address', query.address)
+  if (query.q) params.set('q', query.q)
+  if (query.tz) params.set('tz', query.tz)
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
   if (query.order) params.set('order', query.order)

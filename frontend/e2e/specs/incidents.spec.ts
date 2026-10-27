@@ -204,7 +204,18 @@ test.describe('incidents', () => {
     await expect(incidents.titles()).toHaveText([title(ATTACKER)])
   })
 
-  test('are searched by an address, once it is a whole one', async ({
+  test('are searched by an address', async ({ harness, incidents, page }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.search('8.8.8.8')
+
+    await expect(page).toHaveURL('/incidents?q=8.8.8.8')
+    await expect(incidents.titles()).toHaveText([title('8.8.8.8')])
+    await expect(incidents.terms).toHaveText(['Address: 8.8.8.8'])
+  })
+
+  test('are searched in words, which are shown as terms that each come off with a tap', async ({
     harness,
     incidents,
     page,
@@ -212,14 +223,126 @@ test.describe('incidents', () => {
     await harness.createIncidents(SOME)
     await incidents.goto()
 
-    await incidents.search('8.8')
-    await expect(incidents.address).toContainText('Type a whole IP address to look for it.')
+    await incidents.search('severity>=high -address:8.8.8.8')
+
+    await expect(page).toHaveURL('/incidents?q=severity%3E=high+-address:8.8.8.8')
+    await expect(incidents.titles()).toHaveText([title(ATTACKER)])
+    await expect(incidents.terms).toHaveText(['Severity: at least high', 'Not address: 8.8.8.8'])
+
+    await incidents.terms.nth(1).click()
+
+    await expect(incidents.titles()).toHaveText([title(ATTACKER), title('8.8.8.8')])
+    await expect(incidents.terms).toHaveText(['Severity: at least high'])
+    await expect(incidents.searchBox).toHaveValue('severity>=high')
+  })
+
+  test('are searched for what they were reported by, how long ago and the device', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.search('source:ntopng')
+    await expect(incidents.titles()).toHaveText([title('1.1.1.1')])
+
+    await incidents.search('since:1h')
+    await expect(incidents.titles()).toHaveText([title(ATTACKER), title('8.8.8.8')])
+
+    // The device that was attacked is the same in all of them.
+    await incidents.search('device:nas')
+    await expect(incidents.titles()).toHaveCount(3)
+    await incidents.search('device:printer')
+    await expect(incidents.empty).toContainText('Nothing matches')
+  })
+
+  test('look across every status for a search that names one', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+
+    await incidents.search('status:resolved')
+
+    await expect(page).toHaveURL('/incidents?view=all&q=status:resolved')
+    await expect(incidents.view('all')).toHaveClass(/v-btn--active/)
+    await expect(incidents.titles()).toHaveText([title('9.9.9.9')])
+  })
+
+  test('say why a search can not be understood, and keep what was listed', async ({
+    harness,
+    incidents,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
     await expect(incidents.titles()).toHaveCount(3)
 
-    await incidents.search('8.8.8.8')
+    await incidents.search('sevrity:high')
 
-    await expect(page).toHaveURL('/incidents?address=8.8.8.8')
+    await expect(incidents.searchField).toContainText('Did you mean "severity"?')
+    await expect(incidents.titles()).toHaveCount(3)
+    await expect(incidents.terms).toHaveCount(0)
+
+    await incidents.search('severity:high')
+
+    await expect(incidents.searchField).not.toContainText('Did you mean')
     await expect(incidents.titles()).toHaveText([title('8.8.8.8')])
+  })
+
+  test('summarise what was found, and narrow it with a tap on a severity or an integration', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+    await expect(incidents.facet('severity:critical')).toHaveText('Critical1')
+    await expect(incidents.facet('source:wazuh')).toHaveText('Wazuh2')
+    await expect(incidents.facet('severity:low')).toHaveCount(0)
+
+    await incidents.facet('source:opnsense').click()
+
+    await expect(page).toHaveURL('/incidents?q=source:opnsense')
+    await expect(incidents.facet('source:opnsense')).toHaveAttribute('aria-pressed', 'true')
+    await expect(incidents.titles()).toHaveText([title(ATTACKER), title('8.8.8.8')])
+
+    await incidents.facet('severity:high').click()
+    await expect(incidents.titles()).toHaveText([title('8.8.8.8')])
+
+    await incidents.facet('source:opnsense').click()
+    await expect(page).toHaveURL('/incidents?q=severity:high')
+  })
+
+  test('show how to search, and the searches made before, and are reached with the slash key', async ({
+    harness,
+    incidents,
+    page,
+  }) => {
+    await harness.createIncidents(SOME)
+    await incidents.goto()
+    await expect(incidents.titles()).toHaveCount(3)
+
+    await page.keyboard.press('/')
+    await expect(incidents.searchBox).toBeFocused()
+    await incidents.searchBox.press('Enter')
+
+    await incidents.search('port:22')
+    await incidents.search('source:wazuh')
+    await incidents.searchHelp.click()
+    await expect(incidents.searchPanel).toBeVisible()
+    await expect(incidents.recent).toHaveText(['source:wazuh', 'port:22'])
+
+    await incidents.recent.last().click()
+
+    await expect(incidents.searchPanel).toBeHidden()
+    await expect(incidents.searchBox).toHaveValue('port:22')
+    await expect(incidents.terms).toHaveText(['Port: 22'])
+
+    await incidents.searchHelp.click()
+    await page.getByTestId('search-example').first().click()
+    await expect(incidents.searchBox).toHaveValue(/^port:22 \S/)
   })
 
   test('say nothing matches when the choices leave none, and drop them when asked', async ({
@@ -246,7 +369,7 @@ test.describe('incidents', () => {
   }) => {
     await harness.createIncidents(SOME)
 
-    await incidents.goto('?view=all&severity=medium')
+    await incidents.goto('?view=all&severity=medium&q=source%3Aopnsense%2Cntopng')
 
     await expect(incidents.view('all')).toHaveClass(/v-btn--active/)
     await expect(incidents.titles()).toHaveText([

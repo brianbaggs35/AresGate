@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { RefreshCw, Search, ShieldCheck } from '@lucide/vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { RefreshCw, ShieldCheck } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 
-import { errorMessage } from '@/api/client'
+import { ApiError, errorMessage } from '@/api/client'
 import { fetchIncidents, type Incident, type IncidentPage } from '@/api/incidents'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
+import IncidentSearch from '@/components/IncidentSearch.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import SearchFacets from '@/components/SearchFacets.vue'
 import { formatCount } from '@/format'
 import {
   CONFIDENCE_FILTERS,
@@ -19,12 +21,12 @@ import {
   VIEWS,
   activeFilters,
   countIn,
-  isAddress,
   queryOf,
   type Filters,
   type ViewKey,
 } from '@/incidents'
 import { usePolling } from '@/polling'
+import { impliedBy, toggled } from '@/search'
 import { SEVERITIES, type Severity } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import type { Judged } from '@/verdicts'
@@ -52,43 +54,51 @@ function filtersOf(query: LocationQuery): Filters {
     view,
     severity,
     confidence: confidence?.value ?? 0,
-    address: one('address'),
+    // A link from before the search had words (`address=`) still finds the address.
+    q: one('q') || (one('address') ? `address:${one('address')}` : ''),
     quieted: one('quieted') === '1',
   }
 }
 
 const filters = computed(() => filtersOf(route.query))
 
-/** The address as it is typed, which counts once it is whole. */
-const typed = ref(filters.value.address)
-const partial = computed(() => typed.value.trim() !== '' && !isAddress(typed.value.trim()))
-
 function show(next: Partial<Filters>) {
   const merged = { ...filters.value, ...next }
+  if (next.q !== undefined) {
+    // A search that names a status or a verdict is about those, whatever the list was showing.
+    const implied = impliedBy(next.q)
+    if (implied.allStatuses) merged.view = 'all'
+    if (implied.quieted) merged.quieted = true
+  }
   const query: Record<string, string> = {}
   if (merged.view !== DEFAULT_VIEW) query.view = merged.view
   if (merged.severity) query.severity = merged.severity
   if (merged.confidence) query.confidence = merged.confidence.toString()
-  if (merged.address) query.address = merged.address
+  if (merged.q) query.q = merged.q
   if (merged.quieted) query.quieted = '1'
   void router.replace({ query })
 }
 
-function typeAddress(text: string | null) {
-  typed.value = text ?? ''
-  const whole = isAddress(typed.value.trim()) ? typed.value.trim() : ''
-  if (whole !== filters.value.address) show({ address: whole })
+function search(text: string) {
+  show({ q: text })
+}
+
+function toggleFacet(term: string) {
+  show({ q: toggled(filters.value.q, term) })
 }
 
 function clearFilters() {
-  typed.value = ''
-  show({ severity: null, confidence: 0, address: '', quieted: false })
+  show({ severity: null, confidence: 0, q: '', quieted: false })
 }
 
 const data = ref<IncidentPage | null>(null)
 /** The incidents on screen: the first page, and any that were asked for after it. */
 const items = ref<Incident[]>([])
 const loadError = ref<string | null>(null)
+/** Why the search could not be understood, while it can't. What was on screen stays, with a note. */
+const searchError = ref<string | null>(null)
+/** The search that `data` is the answer to, which is not the one applied while that is wrong. */
+const answered = ref('')
 /** Whether a load that someone asked for is under way. */
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -97,22 +107,46 @@ const updatedAt = ref<Date | null>(null)
 let latest = 0
 
 /** Fetches the incidents. A refresh in the background (`quiet`) leaves what is on screen as it
- * is until the answer comes, and keeps it if there is none. */
-async function load(quiet = false) {
+ * is until the answer comes, and keeps it if there is none. A `fresh` one starts from the first
+ * page, however far the list had been shown. */
+async function load(quiet = false, fresh = false) {
   const mine = ++latest
+  const asked = filters.value
   if (!quiet) loading.value = true
   try {
-    const limit = Math.max(PAGE_SIZE, items.value.length)
-    const page = await session.call(() => fetchIncidents(queryOf(filters.value, limit)))
+    const limit = fresh ? PAGE_SIZE : Math.max(PAGE_SIZE, items.value.length)
+    const page = await session.call(() => fetchIncidents(queryOf(asked, limit)))
     if (mine !== latest) return
     data.value = page
     items.value = page.items
+    answered.value = asked.q
     updatedAt.value = new Date()
     loadError.value = null
+    searchError.value = null
   } catch (error) {
-    if (mine === latest) loadError.value = errorMessage(error)
+    if (mine !== latest) return
+    if (error instanceof ApiError && error.code === 'invalid' && asked.q) {
+      searchError.value = error.message
+      if (!data.value) await around(asked, mine)
+    } else {
+      loadError.value = errorMessage(error)
+    }
   } finally {
     if (mine === latest) loading.value = false
+  }
+}
+
+/** The page around a search that can't be understood, when there is nothing else to show yet:
+ * the counts, and no incidents. */
+async function around(asked: Filters, mine: number) {
+  try {
+    const page = await session.call(() => fetchIncidents(queryOf({ ...asked, q: '' }, 1)))
+    if (mine !== latest) return
+    data.value = page
+    items.value = []
+    updatedAt.value = new Date()
+  } catch (error) {
+    if (mine === latest) loadError.value = errorMessage(error)
   }
 }
 
@@ -137,19 +171,32 @@ async function loadMore() {
 
 // A new choice starts the list again from the top.
 watch(filters, () => {
-  items.value = []
-  void load()
+  void load(false, true)
 })
 
 const counts = computed(() => (data.value as IncidentPage).counts)
 const everything = computed(() => countIn('all', counts.value))
 const narrowed = computed(() => activeFilters(filters.value))
-const remaining = computed(() => (data.value as IncidentPage).total - items.value.length)
+const remaining = computed(() =>
+  searchError.value ? 0 : (data.value as IncidentPage).total - items.value.length,
+)
 /** How many incidents the owner quieted that the list would include if asked. */
 const quieted = computed(() => (data.value as IncidentPage).quieted)
 
+/** The terms of the search, while they are the reading of the one that is applied. */
+const terms = computed(() =>
+  answered.value === filters.value.q ? (data.value as IncidentPage).terms : [],
+)
+
 /** What the list says when it has nothing to show. */
 const empty = computed(() => {
+  if (searchError.value) {
+    return {
+      title: "That search can't be understood",
+      description: 'Fix it in the box above, or clear it to see the incidents again.',
+      action: 'clear',
+    }
+  }
   if (everything.value === 0 && quieted.value > 0 && !filters.value.quieted) {
     return {
       title: 'Nothing needs you',
@@ -211,7 +258,26 @@ function pickQuieted(include: boolean | null) {
   show({ quieted: include === true })
 }
 
-onMounted(load)
+const searchBox = ref<{ focus: () => void } | null>(null)
+
+/** The slash key goes to the search box from anywhere on the page but another field. */
+function onKey(event: KeyboardEvent) {
+  if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return
+  const { target } = event
+  if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]')) {
+    return
+  }
+  event.preventDefault()
+  searchBox.value?.focus()
+}
+
+onMounted(() => {
+  void load()
+  window.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
+})
 usePolling(() => load(true), REFRESH_SECONDS * 1000)
 </script>
 
@@ -245,6 +311,14 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       <v-alert v-if="loadError" type="warning" variant="tonal" data-test="incidents-stale">
         {{ loadError }} What is shown is from {{ updated }}.
       </v-alert>
+
+      <IncidentSearch
+        ref="searchBox"
+        :model-value="filters.q"
+        :terms="terms"
+        :error="searchError"
+        @update:model-value="search"
+      />
 
       <div class="incidents__views">
         <v-btn-toggle
@@ -295,20 +369,6 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="filter-confidence"
           @update:model-value="pickConfidence"
         />
-        <v-text-field
-          label="Address"
-          placeholder="93.184.216.34"
-          :prepend-inner-icon="Search"
-          :model-value="typed"
-          clearable
-          :hide-details="!partial"
-          :hint="partial ? 'Type a whole IP address to look for it.' : undefined"
-          persistent-hint
-          autocomplete="off"
-          spellcheck="false"
-          data-test="filter-address"
-          @update:model-value="typeAddress"
-        />
       </div>
       <div v-if="narrowed > 0 || quieted > 0" class="incidents__options">
         <v-btn v-if="narrowed > 0" variant="text" data-test="clear-filters" @click="clearFilters">
@@ -326,6 +386,17 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           @update:model-value="pickQuieted"
         />
       </div>
+
+      <SearchFacets :facets="data.facets" :search="filters.q" @toggle="toggleFacet" />
+
+      <p
+        v-if="searchError && items.length"
+        class="text-body-medium text-medium-emphasis"
+        data-test="search-stale"
+      >
+        These are the incidents from the last search that could be understood. Fix the search above
+        to update them.
+      </p>
 
       <ul v-if="items.length" class="incidents__list" data-test="incident-list">
         <li v-for="item in items" :key="item.id">
@@ -424,10 +495,6 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   gap: 0.75rem;
 }
 
-.incidents__filters > :nth-child(3) {
-  grid-column: 1 / -1;
-}
-
 .incidents__options {
   display: flex;
   flex-wrap: wrap;
@@ -459,15 +526,5 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 
 .incidents__more p {
   margin: 0;
-}
-
-@media (min-width: 720px) {
-  .incidents__filters {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
-  }
-
-  .incidents__filters > :nth-child(3) {
-    grid-column: auto;
-  }
 }
 </style>

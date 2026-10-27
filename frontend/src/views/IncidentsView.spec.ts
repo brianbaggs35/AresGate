@@ -200,7 +200,7 @@ describe('IncidentsView', () => {
 
     it('ignore a severity or a confidence that is not one of the choices', async () => {
       const { fetchIncidents, find } = await open({
-        route: '/incidents?severity=catastrophic&confidence=12&address[]=x',
+        route: '/incidents?severity=catastrophic&confidence=12&q[]=x',
       })
 
       expect(last(fetchIncidents)).toEqual({
@@ -212,45 +212,9 @@ describe('IncidentsView', () => {
       expect(find('clear-filters').exists()).toBe(false)
     })
 
-    it('look for a whole address once it is typed, and not before', async () => {
-      const { wrapper, router, fetchIncidents, find, choose } = await open()
-      const address = wrapper.find('[data-test="filter-address"] input')
-
-      await choose(() => address.setValue('93.184'))
-      expect(fetchIncidents).toHaveBeenCalledTimes(1)
-      expect(find('filter-address').text()).toContain('Type a whole IP address to look for it.')
-
-      await choose(() => address.setValue(' 93.184.216.34 '))
-      expect(last(fetchIncidents).address).toBe('93.184.216.34')
-      expect(router.currentRoute.value.query).toEqual({ address: '93.184.216.34' })
-      expect(find('filter-address').text()).not.toContain('Type a whole')
-    })
-
-    it('stop looking for an address when it is cleared', async () => {
-      const { wrapper, router, fetchIncidents, choose } = await open({
-        route: '/incidents?address=93.184.216.34',
-      })
-      expect(last(fetchIncidents).address).toBe('93.184.216.34')
-
-      await choose(() =>
-        wrapper.find('[data-test="filter-address"] [aria-label="Clear Address"]').trigger('click'),
-      )
-
-      expect(last(fetchIncidents).address).toBeUndefined()
-      expect(router.currentRoute.value.query).toEqual({})
-    })
-
-    it('start with the address that is in the address of the page', async () => {
-      const { wrapper } = await open({ route: '/incidents?address=2001:db8::1' })
-
-      expect(
-        wrapper.find<HTMLInputElement>('[data-test="filter-address"] input').element.value,
-      ).toBe('2001:db8::1')
-    })
-
     it('are all dropped by the button for it, but not the view', async () => {
       const { find, router, fetchIncidents, wrapper, choose } = await open({
-        route: '/incidents?view=resolved&severity=high&confidence=65&address=93.184.216.34',
+        route: '/incidents?view=resolved&severity=high&confidence=65&q=source%3Awazuh',
       })
 
       await choose(() => find('clear-filters').trigger('click'))
@@ -262,10 +226,295 @@ describe('IncidentsView', () => {
         minConfidence: 0,
         limit: 25,
       })
-      expect(
-        wrapper.find<HTMLInputElement>('[data-test="filter-address"] input').element.value,
-      ).toBe('')
+      expect(wrapper.find<HTMLInputElement>('[data-test="search"] input').element.value).toBe('')
       expect(find('clear-filters').exists()).toBe(false)
+    })
+  })
+
+  describe('the search', () => {
+    const box = (wrapper: VueWrapper) =>
+      wrapper.find<HTMLInputElement>('[data-test="search"] input')
+    const term = (label: string, start: number, end: number, field: string | null = null) => ({
+      field,
+      label,
+      negated: false,
+      start,
+      end,
+    })
+    /** Types something and presses Enter, which applies it at once. */
+    const searchFor = async (wrapper: VueWrapper, text: string, choose: Choose) => {
+      await box(wrapper).setValue(text)
+      await choose(() => box(wrapper).trigger('keydown.enter'))
+    }
+    type Choose = (act: () => unknown) => Promise<void>
+    interface Settle {
+      resolve: (page: incidentsApi.IncidentPage) => void
+      reject: (error: Error) => void
+    }
+    let pending: Settle
+
+    it('starts empty and asks for no search', async () => {
+      const { wrapper, fetchIncidents } = await open()
+
+      expect(box(wrapper).element.value).toBe('')
+      expect(last(fetchIncidents)).not.toHaveProperty('q')
+    })
+
+    it('asks for what was typed, with the time zone, and says so in the address of the page', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open()
+
+      await searchFor(wrapper, ' severity>=high  ssh ', choose)
+
+      expect(last(fetchIncidents)).toMatchObject({
+        q: 'severity>=high  ssh',
+        tz: expect.any(String) as string,
+      })
+      expect(router.currentRoute.value.query).toEqual({ q: 'severity>=high  ssh' })
+    })
+
+    it('starts with the search that is in the address of the page', async () => {
+      const { wrapper, fetchIncidents } = await open({ route: '/incidents?q=source%3Awazuh' })
+
+      expect(box(wrapper).element.value).toBe('source:wazuh')
+      expect(last(fetchIncidents).q).toBe('source:wazuh')
+    })
+
+    it('finds the address of a link from before the search had words', async () => {
+      const { wrapper, router, fetchIncidents } = await open({
+        route: '/incidents?view=all&address=93.184.216.34',
+      })
+
+      expect(box(wrapper).element.value).toBe('address:93.184.216.34')
+      expect(last(fetchIncidents).q).toBe('address:93.184.216.34')
+      // The address of the page is left as it was until something else is asked for.
+      expect(router.currentRoute.value.query).toEqual({ view: 'all', address: '93.184.216.34' })
+    })
+
+    it('is one of the filters that the button clears', async () => {
+      const { find, wrapper, router, choose } = await open()
+      await searchFor(wrapper, 'ssh', choose)
+      expect(find('clear-filters').exists()).toBe(true)
+
+      await choose(() => find('clear-filters').trigger('click'))
+
+      expect(box(wrapper).element.value).toBe('')
+      expect(router.currentRoute.value.query).toEqual({})
+    })
+
+    it('shows how it was understood, a chip for each term, and a chip comes off with a tap', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open({
+        route: '/incidents?q=source%3Awazuh%20ssh',
+        answer: page(some().items, {
+          terms: [term('Source: Wazuh', 0, 12, 'source'), term('Contains: ssh', 13, 16)],
+        }),
+      })
+      const chips = () => wrapper.findAll('[data-test="search-term"]').map((chip) => chip.text())
+      expect(chips()).toEqual(['Source: Wazuh', 'Contains: ssh'])
+
+      await choose(() => wrapper.find('[aria-label="Remove Source: Wazuh"]').trigger('click'))
+
+      expect(router.currentRoute.value.query).toEqual({ q: 'ssh' })
+      expect(last(fetchIncidents).q).toBe('ssh')
+      expect(box(wrapper).element.value).toBe('ssh')
+    })
+
+    it('says a search names a status, so it looks across every status', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open()
+
+      await searchFor(wrapper, 'status:resolved', choose)
+
+      expect(router.currentRoute.value.query).toEqual({ view: 'all', q: 'status:resolved' })
+      expect(last(fetchIncidents).statuses).toEqual([])
+    })
+
+    it('says a search names a verdict, so it includes the incidents your verdicts quiet', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open()
+
+      await searchFor(wrapper, 'verdict:not-suspicious', choose)
+
+      expect(router.currentRoute.value.query).toEqual({
+        q: 'verdict:not-suspicious',
+        quieted: '1',
+      })
+      expect(last(fetchIncidents)).not.toHaveProperty('verdicts')
+    })
+
+    describe('that cannot be understood', () => {
+      const refused = () =>
+        new ApiError(422, 'There is no search field called "sevrity".', 'invalid')
+
+      it('says why under the box and keeps what was listed, saying whose it is, with no chips', async () => {
+        const { wrapper, find, fetchIncidents, choose, titles } = await open({
+          route: '/incidents?q=ssh',
+          answer: page(some().items, { terms: [term('Contains: ssh', 0, 3)] }),
+        })
+        expect(wrapper.findAll('[data-test="search-term"]')).toHaveLength(1)
+        fetchIncidents.mockRejectedValue(refused())
+
+        await searchFor(wrapper, 'sevrity:high', choose)
+
+        expect(find('search').text()).toContain('There is no search field called "sevrity".')
+        expect(find('search-stale').text()).toContain('last search that could be understood')
+        expect(titles()).toHaveLength(2)
+        expect(wrapper.findAll('[data-test="search-term"]')).toHaveLength(0)
+        expect(find('incidents-error').exists()).toBe(false)
+        expect(find('incidents-stale').exists()).toBe(false)
+      })
+
+      it('goes when the search is fixed', async () => {
+        const { wrapper, find, fetchIncidents, choose } = await open()
+        fetchIncidents.mockRejectedValueOnce(refused())
+        await searchFor(wrapper, 'sevrity:high', choose)
+        expect(find('search').text()).toContain('no search field')
+
+        await searchFor(wrapper, 'severity:high', choose)
+
+        expect(find('search').text()).not.toContain('no search field')
+        expect(find('search-stale').exists()).toBe(false)
+      })
+
+      it('shows the page around it when it is the first thing asked, in a link', async () => {
+        const fetchIncidents = vi.spyOn(incidentsApi, 'fetchIncidents')
+        fetchIncidents.mockRejectedValueOnce(refused())
+        fetchIncidents.mockResolvedValue(
+          page([], { counts: { open: 0, investigating: 0, resolved: 4, dismissed: 0 }, total: 4 }),
+        )
+        const { wrapper } = await mountWithPlugins(IncidentsView, {
+          signedIn: 'admin',
+          withApp: true,
+          route: '/incidents?q=sevrity%3Ahigh',
+        })
+        await flushPromises()
+
+        expect(wrapper.find('[data-test="incidents-empty"]').text()).toContain(
+          "That search can't be understood",
+        )
+        expect(wrapper.find('[data-test="count-all"]').text()).toBe('4')
+        expect(wrapper.find('[data-test="more"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="search"]').text()).toContain('no search field')
+        expect((fetchIncidents.mock.calls[1]?.[0] as incidentsApi.IncidentQuery).q).toBeUndefined()
+      })
+
+      it('says so when even the page around it cannot be had', async () => {
+        const fetchIncidents = vi.spyOn(incidentsApi, 'fetchIncidents')
+        fetchIncidents.mockRejectedValueOnce(refused())
+        fetchIncidents.mockRejectedValue(offline())
+        const { wrapper } = await mountWithPlugins(IncidentsView, {
+          signedIn: 'admin',
+          withApp: true,
+          route: '/incidents?q=sevrity%3Ahigh',
+        })
+        await flushPromises()
+
+        expect(wrapper.find('[data-test="incidents-error"]').text()).toContain("Can't reach")
+      })
+
+      it.each([
+        [
+          'an answer',
+          (settle: Settle) => {
+            settle.resolve(page([], { total: 99 }))
+          },
+        ],
+        [
+          'a failure',
+          (settle: Settle) => {
+            settle.reject(offline())
+          },
+        ],
+      ])(
+        'drops %s about the page around it when something else was asked for since',
+        async (_name, settle) => {
+          const around = new Promise<incidentsApi.IncidentPage>((resolve, reject) => {
+            pending = { resolve, reject }
+          })
+          const fetchIncidents = vi.spyOn(incidentsApi, 'fetchIncidents')
+          fetchIncidents.mockRejectedValueOnce(refused())
+          fetchIncidents.mockReturnValueOnce(around)
+          fetchIncidents.mockResolvedValue(some())
+          const { wrapper, router } = await mountWithPlugins(IncidentsView, {
+            signedIn: 'admin',
+            withApp: true,
+            route: '/incidents?q=sevrity%3Ahigh',
+          })
+          await flushPromises()
+
+          await router.replace({ query: { q: 'ssh' } })
+          await flushPromises()
+          settle(pending)
+          await flushPromises()
+
+          expect(wrapper.findAll('[data-test="incident-title"]')).toHaveLength(2)
+          expect(wrapper.find('[data-test="incidents-error"]').exists()).toBe(false)
+          expect(wrapper.find('[data-test="more"]').exists()).toBe(false)
+        },
+      )
+
+      it('is not a search when it was something else the API refused', async () => {
+        const { find } = await open({ answer: new ApiError(422, 'Nope.', 'invalid') })
+
+        expect(find('incidents-error').text()).toContain('Nope.')
+      })
+    })
+
+    describe('and what the results are made of', () => {
+      it('adds a term for the severity or the integration that was chosen, and takes it out', async () => {
+        const { find, router, fetchIncidents, choose } = await open()
+        expect(find('facets').exists()).toBe(true)
+
+        await choose(() => find('facet-severity:critical').trigger('click'))
+        expect(router.currentRoute.value.query).toEqual({ q: 'severity:critical' })
+        expect(last(fetchIncidents).q).toBe('severity:critical')
+        expect(find('facet-severity:critical').attributes('aria-pressed')).toBe('true')
+
+        await choose(() => find('facet-source:wazuh').trigger('click'))
+        expect(router.currentRoute.value.query).toEqual({ q: 'severity:critical source:wazuh' })
+
+        await choose(() => find('facet-severity:critical').trigger('click'))
+        expect(router.currentRoute.value.query).toEqual({ q: 'source:wazuh' })
+      })
+    })
+
+    describe('and the slash key', () => {
+      const slash = (target: EventTarget = window, init: KeyboardEventInit = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key: '/',
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        })
+        target.dispatchEvent(event)
+        return event
+      }
+
+      it('goes to the box from anywhere on the page', async () => {
+        const { wrapper } = await open()
+        const focus = vi.spyOn(box(wrapper).element, 'focus')
+
+        expect(slash().defaultPrevented).toBe(true)
+
+        expect(focus).toHaveBeenCalled()
+      })
+
+      it('is left alone in a field, and with Ctrl, Command or Alt', async () => {
+        const { wrapper } = await open()
+        const focus = vi.spyOn(box(wrapper).element, 'focus')
+
+        expect(slash(box(wrapper).element).defaultPrevented).toBe(false)
+        expect(slash(window, { ctrlKey: true }).defaultPrevented).toBe(false)
+        expect(slash(window, { metaKey: true }).defaultPrevented).toBe(false)
+        expect(slash(window, { altKey: true }).defaultPrevented).toBe(false)
+        expect(slash(window, { key: 'k' }).defaultPrevented).toBe(false)
+
+        expect(focus).not.toHaveBeenCalled()
+      })
+
+      it('stops when the page is left', async () => {
+        const { wrapper } = await open()
+        wrapper.unmount()
+
+        expect(slash().defaultPrevented).toBe(false)
+      })
     })
   })
 

@@ -36,6 +36,16 @@ describe('incidents', () => {
     expect(get).toHaveBeenCalledWith('/incidents?verdict=none&verdict=threat')
   })
 
+  it('asks for a search in words, with the time zone it is in', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
+
+    await fetchIncidents({ q: 'severity>=high -port:22', tz: 'America/Halifax' })
+
+    expect(get).toHaveBeenCalledWith(
+      '/incidents?q=severity%3E%3Dhigh+-port%3A22&tz=America%2FHalifax',
+    )
+  })
+
   it('can ask for the most serious first', async () => {
     const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
 
