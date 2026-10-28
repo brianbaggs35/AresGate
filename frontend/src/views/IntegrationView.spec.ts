@@ -45,6 +45,11 @@ async function open(
   const save = vi.spyOn(integrationsApi, 'saveIntegration')
   const test = vi.spyOn(integrationsApi, 'testIntegration')
   const disconnect = vi.spyOn(integrationsApi, 'disconnectIntegration')
+  const lookUp = vi.spyOn(integrationsApi, 'lookUpField').mockResolvedValue({
+    ok: true,
+    message: 'ntopng lists 1 interface.',
+    entries: [{ value: '0', label: 'eth0', detail: 'live packet capture', quiet: false }],
+  })
   const calls = vi
     .spyOn(integrationsApi, 'fetchCalls')
     .mockResolvedValue({ calls: [call()], next_before: null })
@@ -68,7 +73,20 @@ async function open(
     await mounted.wrapper.find('form').trigger('submit')
     await flushPromises()
   }
-  return { ...mounted, fetch, save, test, disconnect, calls, collectors, find, type, click, submit }
+  return {
+    ...mounted,
+    fetch,
+    save,
+    test,
+    disconnect,
+    lookUp,
+    calls,
+    collectors,
+    find,
+    type,
+    click,
+    submit,
+  }
 }
 
 describe('IntegrationView', () => {
@@ -280,6 +298,17 @@ describe('IntegrationView', () => {
       expect(opened.calls).toHaveBeenCalledTimes(2)
     })
 
+    it('lists the interfaces of a connection that is saved, and reloads the log for it', async () => {
+      const { find, lookUp, calls, collectors } = await open(working())
+
+      expect(lookUp).toHaveBeenCalledOnce()
+      expect(find('lookup-message').text()).toBe('ntopng lists 1 interface.')
+      // The page loaded the log once, and the request for the interfaces is in it too.
+      expect(calls).toHaveBeenCalledTimes(2)
+      // Asking for the interfaces doesn't make the collectors run, so they aren't reloaded.
+      expect(collectors).toHaveBeenCalledOnce()
+    })
+
     it('says why the test failed, and keeps what was saved', async () => {
       const opened = await open()
       const after = working()
@@ -453,7 +482,9 @@ describe('IntegrationView', () => {
       expect(opened.test).toHaveBeenCalledWith('ntopng', TOKEN)
       expect(opened.save).not.toHaveBeenCalled()
       expect(opened.find('report').text()).toContain('The test passed')
-      expect(opened.calls).toHaveBeenCalledTimes(2)
+      // The log was loaded when the page opened, again for the interfaces it asked for, and after
+      // the test.
+      expect(opened.calls).toHaveBeenCalledTimes(3)
     })
 
     it('says why it could not be run', async () => {
@@ -511,7 +542,7 @@ describe('IntegrationView', () => {
     it('is left out of what is saved unless it is switched on', async () => {
       const opened = await open(opnsense())
       opened.save.mockResolvedValue(opnsense())
-      opened.test.mockResolvedValue(passed())
+      opened.test.mockResolvedValue(passed(opnsense()))
       await opened.submit()
       expect(Object.keys(opened.save.mock.calls[0]?.[1] ?? {})).toEqual(['api'])
     })
@@ -519,7 +550,7 @@ describe('IntegrationView', () => {
     it('is saved along with the other when it is switched on', async () => {
       const opened = await open(opnsense())
       opened.save.mockResolvedValue(opnsense())
-      opened.test.mockResolvedValue(passed())
+      opened.test.mockResolvedValue(passed(opnsense()))
       await switchOn(opened)
       await opened.submit()
       expect(Object.keys(opened.save.mock.calls[0]?.[1] ?? {})).toEqual(['api', 'zenarmor'])

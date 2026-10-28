@@ -21,6 +21,13 @@ from tests.stubs import Serve
 COLLECTORS = [Hosts, InterfaceTraffic, Alerts]
 
 
+def refusing(seen: Seen) -> Answer:
+    """A ntopng that has interface 0 and refuses every other request with a 400."""
+    if seen.path.endswith("interfaces.lua"):
+        return Answer(body=json.dumps({"rc": 0, "rc_str": "OK", "rsp": [{"ifid": 0}]}))
+    return Answer(status=400)
+
+
 def run(
     session: Session,
     settings: Settings,
@@ -80,7 +87,7 @@ class TestWhenNtopngRefuses:
 
         assert said == "ntopng answered with the error NOT_GRANTED."
 
-    def test_an_interface_it_does_not_have_is_named_too(
+    def test_an_interface_it_does_not_have_is_named_and_the_ones_it_has_are_listed(
         self,
         session: Session,
         settings: Settings,
@@ -90,7 +97,51 @@ class TestWhenNtopngRefuses:
     ) -> None:
         said = run(session, settings, engine, serve, make(), ntopng(TOKEN), interface_id=7)
 
-        assert said == "ntopng answered with the error INVALID_INTERFACE."
+        assert said == (
+            "ntopng has no interface 7, so it refused the request. It has: ID 0: eth0, "
+            "ID 1: LAN (eth1). Choose one under Interface in the connection's settings."
+        )
+
+    def test_a_400_for_an_interface_it_has_is_just_a_400(
+        self,
+        session: Session,
+        settings: Settings,
+        engine: Engine,
+        serve: Serve,
+        make: Callable[[], Collector],
+    ) -> None:
+        said = run(session, settings, engine, serve, make(), lambda seen: refusing(seen))
+
+        assert said == "ntopng refused the request (HTTP 400)."
+
+    def test_a_400_when_it_cannot_even_list_its_interfaces_is_just_a_400(
+        self,
+        session: Session,
+        settings: Settings,
+        engine: Engine,
+        serve: Serve,
+        make: Callable[[], Collector],
+    ) -> None:
+        said = run(session, settings, engine, serve, make(), lambda seen: Answer(status=400))
+
+        assert said == "ntopng refused the request (HTTP 400)."
+
+    def test_a_400_when_the_list_request_breaks_is_just_a_400(
+        self,
+        session: Session,
+        settings: Settings,
+        engine: Engine,
+        serve: Serve,
+        make: Callable[[], Collector],
+    ) -> None:
+        def handle(seen: Seen) -> Answer:
+            if seen.path.endswith("interfaces.lua"):
+                return Answer(drop=True)
+            return Answer(status=400)
+
+        said = run(session, settings, engine, serve, make(), handle)
+
+        assert said == "ntopng refused the request (HTTP 400)."
 
     @pytest.mark.parametrize("body", ["not json", "[]", '{"rc": 0}'])
     def test_an_answer_that_is_not_ntopngs_is_not_taken_for_it(

@@ -52,6 +52,34 @@ def verdict(
     return asyncio.run(go()), server, log
 
 
+def lookup(
+    serve: Serve,
+    key: tuple[str, str, str],
+    handler: Router,
+    *,
+    options: dict[str, str | int] | None = None,
+    secrets: dict[str, str] | None = None,
+) -> tuple[probes.Lookup, StubServer, Log]:
+    server = serve(handler)
+    where = Target(
+        integration=key[0],
+        connection=key[1],
+        origin=netguard.parse_origin(server.url, allow_http=True),
+        tls_mode="system",
+        tls_ca_pem=None,
+        tls_fingerprint=None,
+        options=options or {},
+        secrets=secrets or {},
+    )
+    log = Log()
+
+    async def go() -> probes.Lookup:
+        async with ApiClient(where, log, HOME_NETWORK_AND_LOOPBACK) as client:
+            return await probes.look_up(probes.LOOKUPS[key], client, where)
+
+    return asyncio.run(go()), server, log
+
+
 def basic(seen: Seen) -> tuple[str, str]:
     encoded = seen.headers["authorization"].removeprefix("Basic ")
     user, _, password = base64.b64decode(encoded).decode().partition(":")
@@ -218,25 +246,49 @@ def test_zenarmor_that_does_not_answer_properly_is_explained(
     assert message in result.message
 
 
-def ntopng_router(interfaces: object, status: int = 200) -> Router:
-    return lambda seen: json_answer({"rc": 0, "rc_str": "OK", "rsp": interfaces}, status)
+BUSY = {"num_hosts": 41, "num_local_hosts": 18, "num_flows": 212, "bytes": 1_016_560_334}
+QUIET = {"num_hosts": 0, "num_local_hosts": 0, "num_flows": 0, "bytes": 0}
+INTERFACES = "/lua/rest/v2/get/ntopng/interfaces.lua"
+INTERFACE = "/lua/rest/v2/get/interface/data.lua"
 
 
-def test_ntopng_with_a_token_lists_its_interfaces(serve: Serve) -> None:
+def ntopng_router(
+    interfaces: object, data: dict[int, object] | None = None, status: int = 200
+) -> Router:
+    """ntopng with its list of interfaces, and what each has seen (``data``, by ifid) for the
+    request that asks about one; an interface it has no data for is answered with a 400."""
+
+    def route(seen: Seen) -> Answer:
+        if seen.path == INTERFACES:
+            return json_answer({"rc": 0, "rc_str": "OK", "rsp": interfaces}, status)
+        ifid = int(seen.target.partition("ifid=")[2].partition("&")[0] or -1)
+        if data is None or ifid not in data:
+            return json_answer({"rc": -2, "rc_str": "INVALID_INTERFACE", "rsp": {}}, 400)
+        return json_answer({"rc": 0, "rc_str": "OK", "rsp": data[ifid]})
+
+    return route
+
+
+def test_ntopng_with_a_token_lists_its_interfaces_and_what_the_chosen_one_holds(
+    serve: Serve,
+) -> None:
     result, server, log = verdict(
         serve,
         "ntopng",
         "api",
-        ntopng_router([{"ifid": 0, "ifname": "eth0"}, {"ifid": 1, "name": "eth1"}]),
+        ntopng_router([{"ifid": 0, "ifname": "eth0"}, {"ifid": 1, "name": "eth1"}], {1: BUSY}),
         options={"auth": "token", "interface_id": 1},
         secrets={"token": "tok-abcdef"},
     )
 
-    assert result == Verdict(True, "ntopng answered. Interface 1 is eth1.")
-    [seen] = server.seen
-    assert seen.path == "/lua/rest/v2/get/ntopng/interfaces.lua"
-    assert seen.headers["authorization"] == "Token tok-abcdef"
-    assert log.calls[0].path == "/lua/rest/v2/get/ntopng/interfaces.lua"
+    assert result == Verdict(
+        True, "ntopng answered. Interface 1 is eth1: 41 hosts (18 local), 212 flows, 1.0 GB seen."
+    )
+    first, second = server.seen
+    assert first.path == INTERFACES
+    assert first.headers["authorization"] == "Token tok-abcdef"
+    assert (second.path, second.target.partition("?")[2]) == (INTERFACE, "ifid=1")
+    assert [call.path for call in log.calls] == [INTERFACES, INTERFACE]
 
 
 def test_ntopng_with_a_password_uses_basic_authentication(serve: Serve) -> None:
@@ -244,20 +296,76 @@ def test_ntopng_with_a_password_uses_basic_authentication(serve: Serve) -> None:
         serve,
         "ntopng",
         "api",
-        ntopng_router([{"ifid": 0, "ifname": "eth0"}]),
+        ntopng_router([{"ifid": 0, "ifname": "eth0"}], {0: BUSY}),
         options={"auth": "basic", "username": "admin", "interface_id": 0},
         secrets={"password": "p w"},
     )
 
     assert result.ok
-    assert basic(server.seen[0]) == ("admin", "p w")
+    assert [basic(seen) for seen in server.seen] == [("admin", "p w")] * 2
+
+
+def test_ntopng_says_when_the_chosen_interface_has_seen_no_traffic(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router([{"ifid": 1, "ifname": "eth1"}], {1: QUIET}),
+        options={"auth": "token", "interface_id": 1},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert result.message.startswith(
+        "ntopng answered. Interface 1 is eth1, but it hasn't seen any traffic yet"
+    )
+    assert "choose another" in result.message
+
+
+@pytest.mark.parametrize(
+    "data",
+    [None, {1: {"num_hosts": 3}}, {1: "junk"}, {1: {"num_hosts": -1, "num_flows": 1, "bytes": 1}}],
+)
+def test_ntopng_that_does_not_say_what_the_interface_holds_is_still_a_pass(
+    serve: Serve, data: dict[int, object] | None
+) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router([{"ifid": 1, "ifname": "eth1"}], data),
+        options={"auth": "token", "interface_id": 1},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result == Verdict(True, "ntopng answered. Interface 1 is eth1.")
+
+
+def test_ntopng_that_drops_the_request_for_what_the_interface_holds_is_still_a_pass(
+    serve: Serve,
+) -> None:
+    def route(seen: Seen) -> Answer:
+        if seen.path == INTERFACES:
+            return json_answer({"rc": 0, "rsp": [{"ifid": 1, "ifname": "eth1"}]})
+        return Answer(drop=True)
+
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        route,
+        options={"auth": "token", "interface_id": 1},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result == Verdict(True, "ntopng answered. Interface 1 is eth1.")
 
 
 def test_ntopng_without_the_chosen_interface_lists_the_ones_it_has(serve: Serve) -> None:
     options: dict[str, str | int] = {"auth": "token", "interface_id": 7}
     secrets = {"token": "tok-abcdef"}
 
-    result, _, _ = verdict(
+    result, server, _ = verdict(
         serve,
         "ntopng",
         "api",
@@ -272,9 +380,10 @@ def test_ntopng_without_the_chosen_interface_lists_the_ones_it_has(serve: Serve)
     assert not result.ok
     assert (
         result.message
-        == "ntopng answered, but has no interface with ID 7. It has: wan (0), lan (1)."
+        == "ntopng answered, but has no interface with ID 7. It has: ID 0: wan, ID 1: lan."
     )
     assert empty.message.endswith("It has: none.")
+    assert len(server.seen) == 1
 
 
 def test_ntopng_that_refuses_a_login_redirects_to_its_login_page(serve: Serve) -> None:
@@ -315,6 +424,104 @@ def test_ntopng_that_does_not_answer_properly_is_explained(
 
     assert not result.ok
     assert message in result.message
+
+
+NTOPNG_KEY = ("ntopng", "api", "interface_id")
+NTOPNG_OPTIONS: dict[str, str | int] = {"auth": "token", "interface_id": 0}
+NTOPNG_SECRETS = {"token": "tok-abcdef"}
+
+
+def test_ntopng_lists_each_interface_with_what_it_takes_traffic_from_and_has_seen(
+    serve: Serve,
+) -> None:
+    router = ntopng_router(
+        [
+            {"ifid": 2, "ifname": "eth2", "name": "eth2", "is_pcap_interface": True},
+            {
+                "ifid": 0,
+                "ifname": "eth0",
+                "name": "WAN",
+                "is_packet_interface": True,
+                "is_pcap_interface": False,
+                "is_zmq_interface": False,
+            },
+            {"ifid": 1, "ifname": "tcp://*:5556", "name": "tcp://*:5556", "is_zmq_interface": True},
+            {"ifid": 3, "ifname": "br0"},
+        ],
+        {0: BUSY, 1: {**BUSY, "num_hosts": 1, "num_local_hosts": None}, 2: QUIET},
+    )
+
+    result, server, log = lookup(
+        serve, NTOPNG_KEY, router, options=NTOPNG_OPTIONS, secrets=NTOPNG_SECRETS
+    )
+
+    assert result.ok
+    assert result.message == "ntopng lists 4 interfaces."
+    assert [(entry.value, entry.label, entry.detail, entry.quiet) for entry in result.entries] == [
+        (
+            "0",
+            "WAN (eth0)",
+            "live packet capture · 41 hosts (18 local), 212 flows, 1.0 GB seen",
+            False,
+        ),
+        ("1", "tcp://*:5556", "flows from an exporter · 1 host, 212 flows, 1.0 GB seen", False),
+        ("2", "eth2", "from a capture file · no traffic seen yet", True),
+        ("3", "br0", "", False),
+    ]
+    assert server.seen[0].headers["authorization"] == "Token tok-abcdef"
+    assert len(log.calls) == 5
+
+
+def test_ntopng_asks_about_what_only_the_first_interfaces_hold(serve: Serve) -> None:
+    listed = [
+        {"ifid": number, "ifname": f"eth{number}"} for number in range(probes.MAX_DETAILED + 3)
+    ]
+
+    result, server, _ = lookup(
+        serve,
+        NTOPNG_KEY,
+        ntopng_router(listed, {number: BUSY for number in range(len(listed))}),
+        options=NTOPNG_OPTIONS,
+        secrets=NTOPNG_SECRETS,
+    )
+
+    assert len(result.entries) == probes.MAX_DETAILED + 3
+    assert result.entries[-1].detail == ""
+    assert len(server.seen) == probes.MAX_DETAILED + 1
+
+
+def test_ntopng_with_no_interfaces_says_so(serve: Serve) -> None:
+    result, _, _ = lookup(
+        serve, NTOPNG_KEY, ntopng_router([]), options=NTOPNG_OPTIONS, secrets=NTOPNG_SECRETS
+    )
+
+    assert not result.ok
+    assert result.message == "ntopng answered, but lists no interfaces."
+    assert result.entries == ()
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (
+            Answer(status=302, headers={"Location": "/lua/login.lua"}),
+            "redirected to its login page",
+        ),
+        (Answer(status=403), "ntopng didn't accept the credentials"),
+        (Answer(body="nope"), "doesn't look like ntopng's"),
+        (Answer(drop=True), "broke, or it isn't a web server"),
+    ],
+)
+def test_ntopng_that_cannot_list_its_interfaces_says_why(
+    serve: Serve, answer: Answer, message: str
+) -> None:
+    result, _, _ = lookup(
+        serve, NTOPNG_KEY, lambda seen: answer, options=NTOPNG_OPTIONS, secrets=NTOPNG_SECRETS
+    )
+
+    assert not result.ok
+    assert message in result.message
+    assert result.entries == ()
 
 
 MANAGER_OPTIONS: dict[str, str | int] = {"username": "wazuh-wui"}
@@ -507,3 +714,17 @@ def test_what_an_integration_says_is_cut_to_a_short_plain_fact() -> None:
     assert probes.fact("line\nbreak " + "x" * 100) == "line break " + "x" * 49
     assert probes.fact("") == "unknown"
     assert probes.fact(7) == "7"
+
+
+@pytest.mark.parametrize(
+    ("bytes_seen", "text"),
+    [(512, "512 B"), (1_500, "1.5 kB"), (2_500_000, "2.5 MB"), (3_200_000_000, "3.2 GB")],
+)
+def test_sizes_are_said_in_the_unit_that_fits(bytes_seen: int, text: str) -> None:
+    assert probes.Traffic(1, None, 1, bytes_seen).describe().endswith(f"{text} seen")
+
+
+def test_a_size_beyond_the_gigabytes_is_in_terabytes() -> None:
+    assert probes.Traffic(2, 1, 3, 4_700_000_000_000).describe() == (
+        "2 hosts (1 local), 3 flows, 4.7 TB seen"
+    )

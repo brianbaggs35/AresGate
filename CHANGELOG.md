@@ -223,6 +223,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **ntopng's interface is chosen by name**: the **Interface ID** box is now an **Interface** list.
+  **Fetch interfaces** asks ntopng (before anything is saved, with what is typed) and names each
+  interface with its ID, where its traffic comes from and what it has seen; a saved connection
+  fills the list in when the page opens. ntopng answers an interface it doesn't have with HTTP
+  400, which every ntopng collector used to report as "ntopng answered HTTP 400": it now says
+  that ntopng has no interface with that ID and which ones it has. The connection test and the
+  *Interface traffic* collector say plainly when the interface has seen no traffic yet, so
+  "nothing comes in" has a reason on the page
+  ([DOCS/integrations.md](DOCS/integrations.md#ntopng)).
 - Two collectors storing events at the moment a new week begins could wait for each other and one
   of them fail that run: a collector that stores events it has not seen before (the CrowdSec
   bans) read what was stored before taking the lock that making the week takes, which makes the
