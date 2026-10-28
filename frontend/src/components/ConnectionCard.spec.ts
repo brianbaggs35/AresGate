@@ -1,23 +1,27 @@
-import { defineComponent, reactive } from 'vue'
+import { defineComponent, reactive, ref } from 'vue'
+import { VSelect } from 'vuetify/components'
 
 import type { Connection } from '@/api/integrations'
+import * as integrationsApi from '@/api/integrations'
 import ConnectionCard from '@/components/ConnectionCard.vue'
+import LookupField from '@/components/LookupField.vue'
 import { WHOLE, draftFrom } from '@/integrations'
-import { module, ntopngApi, opnsense } from '@/test/integrations'
+import { connection, field, module, ntopngApi, opnsense } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 async function open(connection: Connection = ntopngApi(), problems: Record<string, string> = {}) {
   const draft = reactive(draftFrom(connection))
+  const asked = ref(0)
   const host = defineComponent({
     components: { ConnectionCard },
-    setup: () => ({ connection, draft, problems }),
+    setup: () => ({ connection, draft, problems, asked }),
     template:
-      '<ConnectionCard v-model="draft" integration="ntopng" :connection="connection" :problems="problems" />',
+      '<ConnectionCard v-model="draft" integration="ntopng" :connection="connection" :problems="problems" @asked="asked += 1" />',
   })
   const mounted = await mountWithPlugins(host, { signedIn: 'admin' })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const input = (selector: string) => find(selector).find('input')
-  return { ...mounted, draft, find, input }
+  return { ...mounted, draft, asked, find, input }
 }
 
 const [, zenarmor] = opnsense().connections
@@ -75,18 +79,60 @@ describe('ConnectionCard', () => {
     })
 
     it('takes text, numbers and secrets', async () => {
-      const { find, input, draft } = await open(ntopngApi({ options: { auth: 'basic' } }))
+      const withPort = connection(
+        {
+          key: 'api',
+          label: 'REST API',
+          fields: [
+            ...ntopngApi().definition.fields.filter(({ key }) => key !== 'interface_id'),
+            field({
+              key: 'port',
+              label: 'Port',
+              kind: 'number',
+              default: 0,
+              help: 'Where it listens.',
+              maximum: 999,
+            }),
+          ],
+        },
+        { options: { auth: 'basic' } },
+      )
+      const { find, input, draft } = await open(withPort)
       await input('field-username').setValue('reader')
       await input('field-password').setValue('a-password')
-      await input('field-interface_id').setValue('3')
+      await input('field-port').setValue('3')
       expect(draft.options.username).toBe('reader')
       expect(draft.secrets.password).toBe('a-password')
-      expect(draft.options.interface_id).toBe('3')
+      expect(draft.options.port).toBe('3')
       expect(input('field-password').attributes('type')).toBe('password')
-      expect(input('field-interface_id').attributes('type')).toBe('number')
-      expect(input('field-interface_id').attributes('max')).toBe('999')
-      expect(input('field-interface_id').attributes('min')).toBe('0')
-      expect(find('field-interface_id').text()).toContain('The ifid of the interface to read.')
+      expect(input('field-port').attributes('type')).toBe('number')
+      expect(input('field-port').attributes('max')).toBe('999')
+      expect(input('field-port').attributes('min')).toBe('0')
+      expect(find('field-port').text()).toContain('Where it listens.')
+    })
+
+    it('lists what the system has for a field that is a lookup, and passes on that it asked', async () => {
+      const lookUp = vi.spyOn(integrationsApi, 'lookUpField').mockResolvedValue({
+        ok: true,
+        message: 'ntopng lists 1 interface.',
+        entries: [{ value: '2', label: 'eth2', detail: '', quiet: false }],
+      })
+      const { wrapper, find, draft, asked } = await open(
+        ntopngApi({ url: 'http://x', secrets_set: ['token'] }),
+      )
+      await flushPromises()
+
+      // A saved connection asks at once, so the interfaces are named when the page opens.
+      expect(lookUp).toHaveBeenCalledOnce()
+      expect(find('lookup-message').text()).toBe('ntopng lists 1 interface.')
+      expect(find('field-interface_id').find('input[id]').attributes('id')).toBe('api-interface_id')
+      expect(wrapper.findComponent(LookupField).props('saved')).toBe(true)
+      expect(asked.value).toBe(1)
+      expect(draft.options.interface_id).toBe('0')
+
+      wrapper.findComponent(VSelect).vm.$emit('update:modelValue', '2')
+      await flushPromises()
+      expect(draft.options.interface_id).toBe('2')
     })
 
     it('does not mark a field as a number, or limit it, unless it is one', async () => {

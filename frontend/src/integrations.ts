@@ -20,6 +20,7 @@ import type {
   ConnectionSettings,
   Field,
   Integration,
+  LookupEntry,
   ModuleState,
   Status,
   TlsMode,
@@ -193,4 +194,28 @@ export function connectionLabels(integration: Integration): Record<string, strin
   return Object.fromEntries(
     integration.connections.map(({ definition }) => [definition.key, definition.label]),
   )
+}
+
+/** One choice of a list a system gave, as a select shows it. */
+export interface LookupItem {
+  value: string
+  title: string
+  props: { subtitle: string }
+}
+
+/** The choices a system listed, each with its identifier and what else is known of it. What is
+ * chosen now is among them even when the system doesn't list it (it was saved earlier, or the
+ * list hasn't been asked for), so the select never shows an empty box, and says why it is there. */
+export function lookupItems(entries: readonly LookupEntry[], chosen: string): LookupItem[] {
+  const items = entries.map((entry) => ({
+    value: entry.value,
+    title: entry.label,
+    props: { subtitle: [`ID ${entry.value}`, entry.detail].filter(Boolean).join(' · ') },
+  }))
+  if (chosen !== '' && !items.some((item) => item.value === chosen)) {
+    const subtitle =
+      entries.length > 0 ? 'Saved, but not in the list it gave now' : 'Not looked up yet'
+    items.unshift({ value: chosen, title: `ID ${chosen}`, props: { subtitle } })
+  }
+  return items
 }

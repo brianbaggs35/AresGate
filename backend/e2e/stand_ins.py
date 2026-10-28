@@ -202,29 +202,70 @@ def ntopng(
 ) -> Handler:
     """ntopng's REST API with one authentication token. A login it refuses is sent to its login
     page, as ntopng does, not answered with a 401, and so is anything it doesn't have. Every
-    answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has one interface, ``0``,
-    and gives the hosts of the local network when asked for ``mode=local``, and the alerts that
-    began between the times asked for, newest first and no more than ``length``."""
+    answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has two interfaces: ``0``
+    (``eth0``) carries everything given here, and ``1`` (``eth1``, named LAN) has seen nothing.
+    An interface it doesn't have is refused with a 400, as ntopng does. It gives the hosts of the
+    local network when asked for ``mode=local``, and the alerts that began between the times asked
+    for, newest first and no more than ``length``."""
 
     def handle(seen: Seen) -> Answer:
         if seen.headers.get("authorization") != f"Token {token}":
             return Answer(status=302, headers={"Location": "/lua/login.lua"})
         query = parse_qs(urlsplit(seen.target).query)
         if seen.path == "/lua/rest/v2/get/ntopng/interfaces.lua":
-            return _ntopng_answer([{"ifid": 0, "ifname": "eth0"}])
+            return _ntopng_answer(_NTOPNG_INTERFACES)
+        busy = query.get("ifid") == ["0"]
         answers: dict[str, Callable[[], Answer]] = {
-            "/lua/rest/v2/get/host/active.lua": lambda: _ntopng_hosts(query, hosts),
-            "/lua/rest/v2/get/interface/data.lua": lambda: _ntopng_answer(interface or {}),
-            "/lua/rest/v2/get/flow/alert/list.lua": lambda: _ntopng_alerts(query, flow_alerts),
-            "/lua/rest/v2/get/host/alert/list.lua": lambda: _ntopng_alerts(query, host_alerts),
+            "/lua/rest/v2/get/host/active.lua": lambda: _ntopng_hosts(query, hosts if busy else ()),
+            "/lua/rest/v2/get/interface/data.lua": lambda: _ntopng_answer(
+                (interface or {}) if busy else _NTOPNG_QUIET
+            ),
+            "/lua/rest/v2/get/flow/alert/list.lua": lambda: _ntopng_alerts(
+                query, flow_alerts if busy else ()
+            ),
+            "/lua/rest/v2/get/host/alert/list.lua": lambda: _ntopng_alerts(
+                query, host_alerts if busy else ()
+            ),
         }
         if seen.path not in answers:
             return Answer(status=302, headers={"Location": "/lua/login.lua"})
-        if query.get("ifid") != ["0"]:
-            return _ntopng_answer({}, "INVALID_INTERFACE", -2)
+        if query.get("ifid") not in (["0"], ["1"]):
+            return _ntopng_answer({}, "INVALID_INTERFACE", -2, status=400)
         return answers[seen.path]()
 
     return handle
+
+
+# The interfaces the stand-in has, as ntopng lists them, and what the quiet one has seen.
+_NTOPNG_INTERFACES = [
+    {
+        "ifid": 0,
+        "ifname": "eth0",
+        "name": "eth0",
+        "is_packet_interface": True,
+        "is_pcap_interface": False,
+        "is_zmq_interface": False,
+    },
+    {
+        "ifid": 1,
+        "ifname": "eth1",
+        "name": "LAN",
+        "is_packet_interface": True,
+        "is_pcap_interface": False,
+        "is_zmq_interface": False,
+    },
+]
+_NTOPNG_QUIET = {
+    "ifid": "1",
+    "ifname": "eth1",
+    "bytes": 0,
+    "bytes_download": 0,
+    "bytes_upload": 0,
+    "num_hosts": 0,
+    "num_local_hosts": 0,
+    "num_devices": 0,
+    "num_flows": 0,
+}
 
 
 def _ntopng_hosts(
@@ -235,9 +276,11 @@ def _ntopng_hosts(
     return _ntopng_answer({"perPage": -1, "currentPage": 0, "data": found})
 
 
-def _ntopng_answer(rsp: object, rc_str: str = "OK", rc: int = 0, **more: object) -> Answer:
+def _ntopng_answer(
+    rsp: object, rc_str: str = "OK", rc: int = 0, status: int = 200, **more: object
+) -> Answer:
     hr = "Success" if rc == 0 else rc_str
-    return _json({"rc": rc, "rc_str": rc_str, "rc_str_hr": hr, "rsp": rsp, **more})
+    return _json({"rc": rc, "rc_str": rc_str, "rc_str_hr": hr, "rsp": rsp, **more}, status)
 
 
 def _ntopng_alerts(

@@ -11,6 +11,7 @@ import {
   fieldId,
   integrationIcon,
   isPlainHttp,
+  lookupItems,
   settingsFrom,
   sameFingerprint,
   sortProblems,
@@ -242,5 +243,37 @@ describe('connectionLabels', () => {
       api: 'OPNsense API',
       zenarmor: 'Zenarmor API',
     })
+  })
+})
+
+describe('lookupItems', () => {
+  const entries = [
+    { value: '0', label: 'eth0', detail: 'live packet capture', quiet: false },
+    { value: '1', label: 'LAN (eth1)', detail: '', quiet: true },
+  ]
+
+  it('names each choice, with its ID and what else is known of it', () => {
+    expect(lookupItems(entries, '0')).toEqual([
+      { value: '0', title: 'eth0', props: { subtitle: 'ID 0 · live packet capture' } },
+      { value: '1', title: 'LAN (eth1)', props: { subtitle: 'ID 1' } },
+    ])
+  })
+
+  it('still offers a choice that was kept but is not on the list now, and says why', () => {
+    expect(lookupItems(entries, '7')[0]).toEqual({
+      value: '7',
+      title: 'ID 7',
+      props: { subtitle: 'Saved, but not in the list it gave now' },
+    })
+  })
+
+  it('offers the choice that was kept before anything has been listed', () => {
+    expect(lookupItems([], '3')).toEqual([
+      { value: '3', title: 'ID 3', props: { subtitle: 'Not looked up yet' } },
+    ])
+  })
+
+  it('offers nothing when nothing was chosen and nothing is listed', () => {
+    expect(lookupItems([], '')).toEqual([])
   })
 })

@@ -23,6 +23,9 @@ class FieldKind(StrEnum):
     SECRET = "secret"  # noqa: S105  # nosec B105: a kind of field, not a password
     NUMBER = "number"
     CHOICE = "choice"
+    # A whole number the system itself lists, such as ntopng's interfaces, which the web app asks
+    # for with a button (``FieldDef.action``) and offers as a list. It is kept like a number.
+    LOOKUP = "lookup"
 
 
 class ModuleState(StrEnum):
@@ -49,6 +52,20 @@ class Choice(BaseModel):
     label: str
 
 
+class Entry(BaseModel):
+    """One thing a system lists when asked, such as one of ntopng's interfaces."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # What is kept when it is chosen.
+    value: str
+    label: str
+    # What else is known of it, in a few words.
+    detail: str = ""
+    # Nothing has passed through it yet.
+    quiet: bool = False
+
+
 class Condition(BaseModel):
     """The field only applies while another field has this value."""
 
@@ -71,6 +88,8 @@ class FieldDef(BaseModel):
     minimum: int = 0
     maximum: int = 65535
     only_if: Condition | None = None
+    # For a lookup: the button that asks the system for its list ("Fetch interfaces").
+    action: str = ""
 
 
 class ModuleDef(BaseModel):
@@ -266,7 +285,8 @@ NTOPNG = IntegrationDef(
         "authentication instead.",
         "ntopng answers a login it refuses by redirecting to its login page, and AresGate doesn't "
         "follow redirects, so a refused login shows up as a redirect.",
-        "The interface ID is the ifid in ntopng's addresses. The first interface is usually 0.",
+        "Press Fetch interfaces to choose which interface AresGate reads, from the ones ntopng "
+        "lists with what each has seen.",
         "The user must be allowed to see alerts, which AresGate reads along with the hosts and the "
         "interface's traffic.",
     ),
@@ -308,12 +328,13 @@ NTOPNG = IntegrationDef(
                 ),
                 FieldDef(
                     key="interface_id",
-                    label="Interface ID",
-                    kind=FieldKind.NUMBER,
+                    label="Interface",
+                    kind=FieldKind.LOOKUP,
                     default=0,
                     minimum=0,
                     maximum=999,
-                    help="The ifid of the interface to read.",
+                    help="The interface ntopng watches that AresGate reads (its ifid).",
+                    action="Fetch interfaces",
                 ),
             ),
         ),
@@ -437,6 +458,10 @@ def clean_options(
     return options
 
 
+# The kinds of field that hold a whole number.
+_WHOLE = (FieldKind.NUMBER, FieldKind.LOOKUP)
+
+
 class _Invalid(Exception):
     """What is wrong with one field's value, in words for whoever filled it in."""
 
@@ -451,12 +476,12 @@ def _accept(item: FieldDef, given: Mapping[str, str | int | None]) -> str | int:
     problem = _check(item, value)
     if problem:
         raise _Invalid(problem)
-    return int(value) if item.kind is FieldKind.NUMBER else str(value).strip()
+    return int(value) if item.kind in _WHOLE else str(value).strip()
 
 
 def _check(item: FieldDef, value: str | int) -> str | None:
     text = str(value).strip()
-    if item.kind is FieldKind.NUMBER:
+    if item.kind in _WHOLE:
         whole = text.isascii() and text.isdigit()
         if not whole or not item.minimum <= int(text) <= item.maximum:
             return f"Enter a whole number from {item.minimum} to {item.maximum}."

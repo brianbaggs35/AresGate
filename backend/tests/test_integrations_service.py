@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.integrations import netguard, registry, service
-from app.integrations.client import Call
+from app.integrations import netguard, probes, registry, service
+from app.integrations.client import Call, Target
 from app.integrations.netguard import HOME_NETWORK, HOME_NETWORK_AND_LOOPBACK
 from app.integrations.probes import Verdict
 from app.integrations.registry import ModuleState, SettingsError
@@ -457,3 +457,111 @@ def test_checking_a_connection_runs_its_probe_and_logs_the_calls(
     assert not result.ok
     assert "doesn't look like CrowdSec's" in result.message
     assert [call.path for call in calls] == ["/v1/decisions"]
+
+
+def ntopng_draft(**changes: object) -> Submission:
+    fields: dict[str, object] = {
+        "url": "http://192.168.1.5:3000",
+        "tls_mode": "system",
+        "tls_ca_pem": None,
+        "tls_fingerprint": None,
+        "options": {"auth": "token", "interface_id": 1},
+        "secrets": {"token": "typed-token-123"},
+    }
+    return Submission(**{**fields, **changes})  # type: ignore[arg-type]
+
+
+def draft(
+    session: Session,
+    settings: Settings,
+    submission: Submission,
+    policy: netguard.AddressPolicy = HOME_NETWORK,
+) -> Target:
+    return service.draft_target(
+        session, settings, policy, NTOPNG, NTOPNG.connections[0], submission
+    )
+
+
+def test_a_connection_not_yet_saved_is_opened_with_what_was_typed(
+    session: Session, settings: Settings
+) -> None:
+    target = draft(session, settings, ntopng_draft())
+
+    assert (target.integration, target.connection) == ("ntopng", "api")
+    assert target.origin == netguard.Origin("http", "192.168.1.5", 3000)
+    assert target.options == {"auth": "token", "interface_id": 1}
+    assert target.secrets == {"token": "typed-token-123"}
+    assert session.scalars(select(IntegrationConnection)).all() == []
+    assert session.scalars(select(StoredCredential)).all() == []
+
+
+def test_a_secret_left_blank_in_a_draft_is_the_one_kept(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, NTOPNG, {"api": ntopng_draft(secrets={"token": "kept-token-123"})})
+
+    target = draft(session, settings, ntopng_draft(secrets={}, options={"auth": "token"}))
+
+    assert target.secrets == {"token": "kept-token-123"}
+    assert target.options == {"auth": "token", "interface_id": 0}
+
+
+def test_a_draft_that_cannot_be_used_says_what_is_wrong_by_field(
+    session: Session, settings: Settings
+) -> None:
+    with pytest.raises(SettingsError) as raised:
+        draft(session, settings, ntopng_draft(url="http://8.8.8.8", secrets={}))
+
+    assert set(raised.value.problems) == {"url", "token"}
+
+
+def test_a_draft_without_a_secret_is_refused_when_none_is_kept(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, NTOPNG, {"api": ntopng_draft()})
+    credential_store.remove(session, Kind.INTEGRATION, "ntopng-api", "token")
+    session.commit()
+    with pytest.raises(SettingsError):
+        draft(session, settings, ntopng_draft(secrets={}))
+
+
+def test_a_draft_whose_kept_secret_cannot_be_opened_is_incomplete(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, NTOPNG, {"api": ntopng_draft()})
+
+    with pytest.raises(Incomplete, match="missing or can't be opened"):
+        service.draft_target(
+            session,
+            _wrong_key(settings),
+            HOME_NETWORK,
+            NTOPNG,
+            NTOPNG.connections[0],
+            ntopng_draft(secrets={}),
+        )
+
+
+def test_a_lookup_asks_the_connection_what_it_lists_and_logs_the_calls(
+    serve: Serve, session: Session, settings: Settings
+) -> None:
+    from e2e.stand_ins import ntopng
+
+    server = serve(ntopng("typed-token-123"))
+    target = draft(session, settings, ntopng_draft(url=server.url), HOME_NETWORK_AND_LOOPBACK)
+    calls: list[Call] = []
+
+    async def record(call: Call) -> None:
+        calls.append(call)
+
+    result = asyncio.run(
+        service.look_up(
+            probes.LOOKUPS[("ntopng", "api", "interface_id")],
+            target,
+            record,
+            HOME_NETWORK_AND_LOOPBACK,
+        )
+    )
+
+    assert result.ok
+    assert [entry.value for entry in result.entries] == ["0", "1"]
+    assert calls[0].path == "/lua/rest/v2/get/ntopng/interfaces.lua"

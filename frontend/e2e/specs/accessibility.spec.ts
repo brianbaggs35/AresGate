@@ -823,6 +823,19 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(integration.status).toHaveText('Connected')
       await expectAccessible(page)
 
+      // The interfaces ntopng lists, with the one that has seen nothing chosen and said so, and
+      // the list open.
+      await integration.lookupFetch('api').click()
+      await expect(integration.lookupMessage('api')).toBeVisible()
+      await integration.lookupSelect('api').click()
+      await page.getByRole('option').nth(1).click()
+      await expect(integration.lookupQuiet('api')).toBeVisible()
+      await expectAccessible(page)
+      await integration.lookupSelect('api').click()
+      await expect(page.getByRole('option')).toHaveCount(2)
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+
       // The collection card, whether the worker has reported in or not, and with a job listed.
       await expect(integration.collectionWorker).toBeVisible()
       await expectAccessible(page)
