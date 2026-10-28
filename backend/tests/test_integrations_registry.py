@@ -175,3 +175,14 @@ def test_every_problem_is_reported_at_once() -> None:
 
     assert set(raised.value.problems) == {"username", "interface_id"}
     assert "username: Enter a value." in str(raised.value)
+
+
+def test_a_lookup_field_is_kept_as_a_whole_number_like_a_number() -> None:
+    field = next(item for item in NTOPNG.fields if item.key == "interface_id")
+
+    assert field.kind is FieldKind.LOOKUP
+    assert field.action == "Fetch interfaces"
+    assert clean_options(NTOPNG, {"interface_id": " 12 "})["interface_id"] == 12
+    with pytest.raises(SettingsError) as raised:
+        clean_options(NTOPNG, {"interface_id": "eth1"})
+    assert "whole number from 0 to 999" in raised.value.problems["interface_id"]

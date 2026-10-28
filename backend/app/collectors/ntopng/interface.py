@@ -42,6 +42,10 @@ _READINGS = (
 )
 
 
+# The members that are all zero on an interface nothing has passed through.
+_SILENCE = ("bytes_download", "bytes_upload", "num_hosts", "num_flows")
+
+
 class InterfaceTraffic(Collector):
     key = "ntopng-interface"
     title = "Interface traffic"
@@ -59,9 +63,22 @@ class InterfaceTraffic(Collector):
         if data is None:
             raise CollectorFailed(probes.unexpected(PRODUCT).message)
         name = traffic.text(data, "ifname") or interface(context)
+        if _quiet(data):
+            raise CollectorFailed(
+                f"ntopng's interface {name} hasn't seen any traffic yet, so there is nothing to "
+                "read from it. If it isn't the interface you mean, choose another under "
+                "Interface in the connection's settings."
+            )
         readings = Readings(context)
         for member, metric in _READINGS:
             readings.add(metric, number(data.get(member)), interface=name)
         if not readings.samples:
             raise CollectorFailed("It answered, but the interface isn't in a form AresGate reads.")
         return Outcome(items=await readings.save())
+
+
+def _quiet(data: dict[str, object]) -> bool:
+    """Whether the interface has seen nothing since ntopng started: no hosts, flows or bytes. One
+    that doesn't give the numbers isn't called quiet."""
+    counts = [number(data.get(member)) for member in _SILENCE]
+    return all(count == 0 for count in counts)

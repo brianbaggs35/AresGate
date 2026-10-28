@@ -59,6 +59,8 @@ const notice = ref<string | null>(null)
 const confirming = ref(false)
 /** Counts what made requests to the integration, so the log reloads. */
 const requests = ref(0)
+/** Counts the tests, which make the collectors run, so how they are doing reloads. */
+const tests = ref(0)
 /** The setup guide is open while there is nothing connected yet. */
 const guide = ref<number | undefined>(undefined)
 
@@ -146,6 +148,7 @@ async function runTest(): Promise<string | null> {
     return errorMessage(error)
   } finally {
     requests.value += 1
+    tests.value += 1
     busy.value = null
   }
 }
@@ -301,6 +304,7 @@ onMounted(load)
           :integration="integration.key"
           :connection="connection"
           :problems="problems[connection.definition.key] ?? {}"
+          @asked="requests += 1"
         />
 
         <v-alert
@@ -384,7 +388,7 @@ onMounted(load)
         v-if="connected"
         :integration="integration.key"
         :connections="logConnections(integration)"
-        :refresh="requests"
+        :refresh="tests"
       />
 
       <ApiLog

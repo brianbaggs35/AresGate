@@ -3,6 +3,7 @@ import { TriangleAlert } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Connection } from '@/api/integrations'
+import LookupField from '@/components/LookupField.vue'
 import ModuleList from '@/components/ModuleList.vue'
 import SecretField from '@/components/SecretField.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -32,6 +33,8 @@ const props = defineProps<{
   problems: Readonly<Record<string, string>>
 }>()
 const draft = defineModel<ConnectionDraft>({ required: true })
+/** A field asked the system for its choices, which is a request the log of requests has. */
+const emit = defineEmits<{ asked: [] }>()
 
 const definition = computed(() => props.connection.definition)
 const saved = computed(() => props.connection.url !== null)
@@ -150,6 +153,18 @@ function secret(key: string): string {
             :error-messages="problems[field.key]"
             :data-test="`field-${field.key}`"
             @update:model-value="draft.secrets[field.key] = $event"
+          />
+          <LookupField
+            v-else-if="field.kind === 'lookup'"
+            :id="id(field.key)"
+            v-model="draft.options[field.key]!"
+            :integration="integration"
+            :definition="definition"
+            :field="field"
+            :draft="draft"
+            :saved="saved"
+            :error-messages="problems[field.key]"
+            @asked="emit('asked')"
           />
           <v-radio-group
             v-else-if="field.kind === 'choice'"

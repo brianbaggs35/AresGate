@@ -109,18 +109,24 @@ test.describe('integrations', () => {
       await integration.save.click()
 
       await expect(integration.report).toContainText('The test passed')
-      await expect(integration.report).toContainText('ntopng answered. Interface 0 is eth0.')
+      await expect(integration.report).toContainText(
+        'ntopng answered. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen.',
+      )
       await expect(integration.status).toHaveText('Connected')
       await expect(integration.save).toHaveText('Save and test')
       await expect(integration.connectionStatus('api')).toHaveText('Connected')
       await expect(integration.lastSuccess).toContainText('Last successful call')
-      // The log has the request, with its path and no query string, and how it went.
-      await expect(integration.logCalls).toHaveCount(1)
+      // The log has the requests, newest first, with their paths and no query string, and how
+      // they went: the interfaces ntopng has, then what the chosen one has seen.
+      await expect(integration.logCalls).toHaveCount(2)
       await expect(integration.logCalls.first()).toContainText(
+        '/lua/rest/v2/get/interface/data.lua',
+      )
+      await expect(integration.logCalls.last()).toContainText(
         '/lua/rest/v2/get/ntopng/interfaces.lua',
       )
-      await expect(integration.logCalls.first()).toContainText('200')
-      await expect(integration.logCalls.first().getByRole('img')).toHaveAttribute(
+      await expect(integration.logCalls.last()).toContainText('200')
+      await expect(integration.logCalls.last().getByRole('img')).toHaveAttribute(
         'aria-label',
         'Worked',
       )
@@ -138,6 +144,125 @@ test.describe('integrations', () => {
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
       await expect(integrations.count).toHaveText('1 of 4 set up')
+    })
+
+    test('names the interfaces before anything is saved, and says which has seen nothing', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      // There is nothing to ask until the address is there.
+      await expect(integration.lookupFetch('api')).toBeDisabled()
+      await expect(integration.lookupNeedsAddress('api')).toBeVisible()
+
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await expect(integration.lookupFetch('api')).toBeEnabled()
+      await integration.lookupFetch('api').click()
+
+      await expect(integration.lookupMessage('api')).toHaveText('ntopng lists 2 interfaces.')
+      await expect(integration.lookupSelect('api')).toContainText('eth0')
+      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+      // Each is named, with its ID, where its traffic comes from and what it has seen.
+      await integration.lookupSelect('api').click()
+      const options = page.getByRole('option')
+      await expect(options).toHaveCount(2)
+      await expect(options.nth(0)).toContainText('eth0')
+      await expect(options.nth(0)).toContainText(
+        'ID 0 · live packet capture · 41 hosts (18 local), 212 flows, 1.0 GB seen',
+      )
+      await expect(options.nth(1)).toContainText('LAN (eth1)')
+      await expect(options.nth(1)).toContainText('ID 1 · live packet capture · no traffic seen yet')
+      await options.nth(1).click()
+      await expect(integration.lookupSelect('api')).toContainText('LAN (eth1)')
+      await expect(integration.lookupQuiet('api')).toContainText(
+        "LAN (eth1) hasn't seen any traffic yet",
+      )
+      // Nothing was saved by asking, and the requests are in the log.
+      await expect(integration.status).toHaveText('Not connected')
+      await integration.logRefresh.click()
+      await expect(integration.logCalls).toHaveCount(3)
+
+      await integration.save.click()
+
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.report).toContainText(
+        "ntopng answered. Interface 1 is LAN (eth1), but it hasn't seen any traffic yet",
+      )
+      await expect(integration.status).toHaveText('Connected')
+
+      // The next visit names the interfaces at once, and the one kept is still the quiet one.
+      await page.reload()
+      await expect(integration.lookupMessage('api')).toHaveText('ntopng lists 2 interfaces.')
+      await expect(integration.lookupSelect('api')).toContainText('LAN (eth1)')
+      await expect(integration.lookupQuiet('api')).toBeVisible()
+
+      // Choosing the busy one is saved and tested like any other setting.
+      await integration.lookupSelect('api').click()
+      await page.getByRole('option').nth(0).click()
+      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+      await integration.save.click()
+      await expect(integration.report).toContainText('Interface 0 is eth0: 41 hosts')
+    })
+
+    test('starts on the first interface that has seen traffic when the default is not there', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await page.route('**/api/integrations/ntopng/connections/api/lookup/interface_id', (route) =>
+        route.fulfill({
+          json: {
+            ok: true,
+            message: 'ntopng lists 2 interfaces.',
+            entries: [
+              { value: '5', label: 'quiet', detail: 'no traffic seen yet', quiet: true },
+              { value: '6', label: 'busy', detail: '3 hosts', quiet: false },
+            ],
+          },
+        }),
+      )
+
+      await integration.lookupFetch('api').click()
+
+      await expect(integration.lookupSelect('api')).toContainText('busy')
+      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+    })
+
+    test('says why the interfaces could not be listed, and what to fix first', async ({
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+
+      // No token yet: the API says what is missing, in a sentence.
+      await integration.lookupFetch('api').click()
+      await expect(integration.lookupError('api')).toContainText(
+        'Fill in the connection first. Authentication token: Enter a value.',
+      )
+
+      // A token ntopng refuses is ntopng's answer, in words, and the choice stays as it was.
+      await integration.field('api', 'token').fill('the wrong token')
+      await integration.lookupFetch('api').click()
+      await expect(integration.lookupError('api')).toContainText(
+        'ntopng redirected to its login page',
+      )
+      await expect(integration.lookupMessage('api')).toHaveCount(0)
+      await expect(integration.lookupSelect('api')).toContainText('ID 0')
+
+      // The right one clears it.
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.lookupFetch('api').click()
+      await expect(integration.lookupError('api')).toHaveCount(0)
+      await expect(integration.lookupMessage('api')).toBeVisible()
     })
 
     test('says so when the token is refused, and logs the failed request', async ({
@@ -202,10 +327,11 @@ test.describe('integrations', () => {
       await expect(integration.collectorTimings.first()).toContainText('next run in 5 minutes')
       await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
-      // The collectors' requests are in the log with the ones made from this page: the check,
-      // and for every other collector, its own.
+      // The collectors' requests are in the log with the ones made from this page: the check
+      // (the interfaces, then what the chosen one has seen, from the page and again from the
+      // collector), and for every other collector, its own.
       await integration.logRefresh.click()
-      await expect(integration.logCalls).toHaveCount(6)
+      await expect(integration.logCalls).toHaveCount(8)
     })
 
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({
@@ -297,7 +423,8 @@ test.describe('integrations', () => {
       await expect(integration.report).toContainText('The test passed')
       await expect(integration.status).toHaveText('Connected')
       await expect(integration.lastError('api')).toHaveCount(0)
-      await expect(integration.logCalls).toHaveCount(2)
+      // The refused token made one request, and the one that works two.
+      await expect(integration.logCalls).toHaveCount(3)
     })
 
     test('reaches an address it is not allowed to, and says why in the field', async ({
@@ -403,7 +530,7 @@ test.describe('integrations', () => {
       await expect(integration.disconnect).toHaveCount(0)
       await expect(integration.test).toHaveCount(0)
       // What it logged stays in the log.
-      await expect(integration.logCalls).toHaveCount(1)
+      await expect(integration.logCalls).toHaveCount(2)
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Not connected')
     })
@@ -458,7 +585,7 @@ test.describe('integrations', () => {
       await integration.address('api').fill(ntopng.url)
       await integration.field('api', 'token').fill(TOKEN)
       await integration.save.click()
-      await expect(integration.logCalls).toHaveCount(1)
+      await expect(integration.logCalls).toHaveCount(2)
       let fail = true
       await page.route('**/api/integrations/ntopng/calls*', (route) =>
         fail ? route.abort() : route.continue(),
@@ -471,7 +598,7 @@ test.describe('integrations', () => {
       fail = false
       await integration.logRefresh.click()
       await expect(integration.logError).toHaveCount(0)
-      await expect(integration.logCalls).toHaveCount(1)
+      await expect(integration.logCalls).toHaveCount(2)
     })
   })
 

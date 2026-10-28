@@ -5,6 +5,7 @@ import {
   fetchIntegration,
   fetchIntegrations,
   lookUpCertificate,
+  lookUpField,
   saveIntegration,
   testIntegration,
   type ConnectionSettings,
@@ -68,6 +69,30 @@ describe('integrations', () => {
     expect(post).toHaveBeenCalledWith(
       '/integrations/opnsense/certificate',
       { url: 'https://192.168.1.1' },
+      TOKEN,
+    )
+  })
+
+  it('asks a connection for the choices of one of its fields, with what is filled in', async () => {
+    const result = { ok: true, message: 'ntopng lists 1 interface.', entries: [] }
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue(result)
+    const settings: ConnectionSettings = {
+      url: 'http://192.168.1.2:3000',
+      tls_mode: 'system',
+      tls_ca_pem: null,
+      tls_fingerprint: null,
+      options: { auth: 'token' },
+      disabled_modules: [],
+      secrets: { token: 'typed' },
+    }
+
+    await expect(lookUpField('ntopng', 'api', 'interface_id', settings, TOKEN)).resolves.toBe(
+      result,
+    )
+
+    expect(post).toHaveBeenCalledWith(
+      '/integrations/ntopng/connections/api/lookup/interface_id',
+      settings,
       TOKEN,
     )
   })

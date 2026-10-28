@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import Action, Outcome
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.integrations import netguard
 from app.models import ApiCall, AuditEvent, IntegrationConnection, User
 from app.security import credential_store
@@ -453,6 +453,162 @@ def test_a_certificate_lookup_that_fails_says_why(
 
     assert response.status_code == 422
     assert "Couldn't make a secure connection" in response.json()["detail"][0]["msg"]
+
+
+NTOPNG_TOKEN = "an-ntopng-token-for-tests"
+
+
+def ntopng_draft(server: StubServer, **changes: object) -> dict[str, object]:
+    return {
+        "url": server.url,
+        "options": {"auth": "token", "interface_id": 0},
+        "secrets": {"token": NTOPNG_TOKEN},
+        **changes,
+    }
+
+
+def look_up(client: TestClient, token: str, body: object, field: str = "interface_id"):
+    return client.post(
+        f"{BASE}/ntopng/connections/api/lookup/{field}", json=body, headers=headers(token)
+    )
+
+
+def test_ntopng_lists_its_interfaces_for_the_address_and_token_typed_so_far(
+    client: TestClient, csrf_token: str, serve: Serve, session: Session
+) -> None:
+    from e2e.stand_ins import ntopng
+
+    server = serve(ntopng(NTOPNG_TOKEN))
+
+    response = look_up(client, csrf_token, ntopng_draft(server))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["message"] == "ntopng lists 2 interfaces."
+    assert [(entry["value"], entry["label"], entry["quiet"]) for entry in body["entries"]] == [
+        ("0", "eth0", False),
+        ("1", "LAN (eth1)", True),
+    ]
+    assert "live packet capture" in body["entries"][1]["detail"]
+    assert NTOPNG_TOKEN not in response.text
+    # Nothing was saved, and the requests are in the API log.
+    assert client.get(f"{BASE}/ntopng").json()["status"] == "not_connected"
+    assert session.scalars(select(IntegrationConnection)).all() == []
+    calls = client.get(f"{BASE}/ntopng/calls").json()["calls"]
+    assert {call["path"] for call in calls} == {
+        "/lua/rest/v2/get/ntopng/interfaces.lua",
+        "/lua/rest/v2/get/interface/data.lua",
+    }
+
+
+def test_a_token_left_blank_is_the_one_kept(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    from e2e.stand_ins import ntopng
+
+    server = serve(ntopng(NTOPNG_TOKEN))
+    saved = put(client, csrf_token, "ntopng", {"connections": {"api": ntopng_draft(server)}})
+    assert saved.status_code == 200
+
+    response = look_up(client, csrf_token, ntopng_draft(server, secrets={}))
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
+def test_a_login_ntopng_refuses_is_said_in_the_answer_not_as_an_error(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    from e2e.stand_ins import ntopng
+
+    server = serve(ntopng("some-other-token"))
+
+    response = look_up(client, csrf_token, ntopng_draft(server))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert "ntopng" in body["message"]
+    assert body["entries"] == []
+
+
+def test_a_lookup_before_the_connection_is_filled_in_says_what_to_fix_first(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(lambda seen: Answer())
+
+    nothing_typed = look_up(client, csrf_token, ntopng_draft(server, secrets={}))
+    far_away = look_up(client, csrf_token, ntopng_draft(server, url="http://8.8.8.8"))
+
+    assert nothing_typed.status_code == 422
+    assert (
+        nothing_typed.json()["detail"]
+        == "Fill in the connection first. Authentication token: Enter a value."
+    )
+    assert far_away.status_code == 422
+    assert far_away.json()["detail"].startswith("Fill in the connection first. Address: 8.8.8.8")
+    assert server.seen == []
+
+
+def test_a_lookup_whose_kept_secret_cannot_be_opened_says_so(
+    client: TestClient, csrf_token: str, serve: Serve, settings: Settings
+) -> None:
+    from pydantic import SecretStr
+
+    from e2e.stand_ins import ntopng
+
+    server = serve(ntopng(NTOPNG_TOKEN))
+    put(client, csrf_token, "ntopng", {"connections": {"api": ntopng_draft(server)}})
+    other = settings.model_copy(
+        update={"secret_key": SecretStr("a different key altogether, 32+ bytes")}
+    )
+    client.app.dependency_overrides[get_settings] = lambda: other  # type: ignore[attr-defined]
+
+    response = look_up(client, csrf_token, ntopng_draft(server, secrets={}))
+
+    assert response.status_code == 422
+    assert "missing or can't be opened" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/ntopng/connections/api/lookup/username",
+        "/ntopng/connections/other/lookup/interface_id",
+        "/opnsense/connections/api/lookup/interface_id",
+        "/nowhere/connections/api/lookup/interface_id",
+    ],
+)
+def test_there_is_only_a_lookup_where_one_is_defined(
+    client: TestClient, csrf_token: str, serve: Serve, path: str
+) -> None:
+    server = serve(lambda seen: Answer())
+
+    response = client.post(f"{BASE}{path}", json=ntopng_draft(server), headers=headers(csrf_token))
+
+    assert response.status_code == 404
+
+
+def test_a_lookup_needs_the_security_token_and_someone_signed_in(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(lambda seen: Answer())
+    path = f"{BASE}/ntopng/connections/api/lookup/interface_id"
+
+    assert client.post(path, json=ntopng_draft(server)).status_code == 403
+    assert (
+        client.post(
+            path, json=ntopng_draft(server), headers={**headers(csrf_token), "Origin": OTHER_ORIGIN}
+        ).status_code
+        == 403
+    )
+
+
+def test_a_lookup_is_only_for_someone_signed_in(client: TestClient, account: User) -> None:
+    response = client.post(f"{BASE}/ntopng/connections/api/lookup/interface_id", json={})
+
+    assert response.status_code == 401
 
 
 def add_calls(session: Session) -> list[int]:

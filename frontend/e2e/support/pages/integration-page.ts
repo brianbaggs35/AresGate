@@ -140,6 +140,34 @@ export class IntegrationPage {
     return this.connection(connection).getByTestId(`field-${key}`).locator('input')
   }
 
+  /** A field that lists what the system has, such as ntopng's interface: the list ... */
+  lookupSelect(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-select')
+  }
+
+  /** ... the button that asks the system for it ... */
+  lookupFetch(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-fetch')
+  }
+
+  lookupNeedsAddress(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-needs-url')
+  }
+
+  /** ... what the system answered, or why it couldn't ... */
+  lookupMessage(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-message')
+  }
+
+  lookupError(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-error')
+  }
+
+  /** ... and the warning that the choice has seen nothing. */
+  lookupQuiet(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-quiet')
+  }
+
   lastError(connection: string): Locator {
     return this.connection(connection).getByTestId('connection-last-error')
   }

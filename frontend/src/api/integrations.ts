@@ -19,7 +19,7 @@ export interface Choice {
 export interface Field {
   key: string
   label: string
-  kind: 'text' | 'secret' | 'number' | 'choice'
+  kind: 'text' | 'secret' | 'number' | 'choice' | 'lookup'
   help: string
   placeholder: string
   default: string | number | null
@@ -28,6 +28,8 @@ export interface Field {
   maximum: number
   /** The field only applies while another field has this value. */
   only_if: { field: string; value: string } | null
+  /** For a lookup: the button that asks the system for its list, such as `Fetch interfaces`. */
+  action: string
 }
 
 /** What a connection takes, from the integration's definition. */
@@ -120,6 +122,24 @@ export interface CheckReport {
   integration: Integration
 }
 
+/** One thing a system lists when asked, such as one of ntopng's interfaces. */
+export interface LookupEntry {
+  /** What is kept when it is chosen. */
+  value: string
+  label: string
+  /** What else is known of it, in a few words. */
+  detail: string
+  /** Nothing has passed through it yet. */
+  quiet: boolean
+}
+
+/** What a system listed when it was asked for the choices of a field, or why it couldn't say. */
+export interface LookupResult {
+  ok: boolean
+  message: string
+  entries: LookupEntry[]
+}
+
 /** The certificate a system presents. */
 export interface Certificate {
   /** SHA-256, as pairs of hexadecimal digits separated by colons. */
@@ -188,6 +208,19 @@ export async function disconnectIntegration(key: string, csrfToken: string): Pro
 /** Tests each saved connection with one harmless read. */
 export function testIntegration(key: string, csrfToken: string): Promise<CheckReport> {
   return apiPost<CheckReport>(path(key, '/test'), undefined, csrfToken)
+}
+
+/** Asks a connection for the choices of one of its fields (the interfaces ntopng has), with the
+ * address and sign-in as they are filled in. Nothing is saved. */
+export function lookUpField(
+  key: string,
+  connection: string,
+  field: string,
+  settings: ConnectionSettings,
+  csrfToken: string,
+): Promise<LookupResult> {
+  const rest = `/connections/${encodeURIComponent(connection)}/lookup/${encodeURIComponent(field)}`
+  return apiPost<LookupResult>(path(key, rest), settings, csrfToken)
 }
 
 /** The certificate that the system at an address presents, to pin or to compare. */
