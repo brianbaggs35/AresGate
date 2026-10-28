@@ -200,7 +200,7 @@ If you have cloned the repository, releases can also be started with `make pull`
 
 ```sh
 ARESGATE_IMAGE=ghcr.io/brianbaggs35/aresgate
-ARESGATE_VERSION=0.0.3
+ARESGATE_VERSION=0.0.4
 ```
 
 and run `make pull` instead of `make up`. This is the way to run AresGate on a server that
