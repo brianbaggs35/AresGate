@@ -303,19 +303,24 @@ def disconnect(db: Session, definition: IntegrationDef) -> bool:
     return found
 
 
-def load_target(
+def _open_secrets(
     db: Session,
     settings: Settings,
     definition: IntegrationDef,
     connection: ConnectionDef,
-    row: IntegrationConnection,
-) -> Target:
-    """A saved connection with its secrets opened, for the code that makes requests to it.
-    Raises ``Incomplete`` if a secret it needs is gone or can't be opened."""
+    options: Mapping[str, str | int],
+    typed: Mapping[str, str],
+) -> dict[str, str]:
+    """The secrets a connection needs for the way of signing in that the options choose: the ones
+    just typed, and otherwise the ones kept. Raises ``Incomplete`` if one is gone or can't be
+    opened."""
     name = registry.credential_name(definition.key, connection.key)
     secrets: dict[str, str] = {}
-    for item in registry.active_fields(connection, row.options):
+    for item in registry.active_fields(connection, options):
         if item.kind is not FieldKind.SECRET:
+            continue
+        if item.key in typed:
+            secrets[item.key] = typed[item.key]
             continue
         try:
             value = credential_store.reveal(db, settings, Kind.INTEGRATION, name, item.key)
@@ -326,6 +331,19 @@ def load_target(
                 f"{connection.label}: {item.label} is missing or can't be opened. Enter it again."
             )
         secrets[item.key] = value
+    return secrets
+
+
+def load_target(
+    db: Session,
+    settings: Settings,
+    definition: IntegrationDef,
+    connection: ConnectionDef,
+    row: IntegrationConnection,
+) -> Target:
+    """A saved connection with its secrets opened, for the code that makes requests to it.
+    Raises ``Incomplete`` if a secret it needs is gone or can't be opened."""
+    secrets = _open_secrets(db, settings, definition, connection, row.options, {})
     return Target(
         integration=definition.key,
         connection=connection.key,
@@ -338,11 +356,48 @@ def load_target(
     )
 
 
+def draft_target(
+    db: Session,
+    settings: Settings,
+    policy: AddressPolicy,
+    definition: IntegrationDef,
+    connection: ConnectionDef,
+    submission: Submission,
+) -> Target:
+    """A connection as it is being filled in, before anything is saved, for asking the system
+    something (such as which interfaces it has) with the address and sign-in typed so far. A
+    secret left blank is the one kept. Raises ``SettingsError``, keyed by field, if what is
+    filled in can't be used, and ``Incomplete`` if a kept secret can't be opened."""
+    ready, problems = _prepare(db, policy, definition, connection, submission)
+    if ready is None:
+        raise SettingsError(problems)
+    return Target(
+        integration=definition.key,
+        connection=connection.key,
+        origin=ready.origin,
+        tls_mode=ready.tls_mode,
+        tls_ca_pem=ready.tls_ca_pem,
+        tls_fingerprint=ready.tls_fingerprint,
+        options=ready.options,
+        secrets=_open_secrets(
+            db, settings, definition, connection, ready.options, ready.new_secrets
+        ),
+    )
+
+
 async def check(target: Target, recorder: Recorder, policy: AddressPolicy) -> Verdict:
     """Tests a connection: what the integration's probe made of it."""
     probe = probes.PROBES[(target.integration, target.connection)]
     async with ApiClient(target, recorder, policy) as client:
         return await probes.run(probe, client, target)
+
+
+async def look_up(
+    lookup: probes.Lookuper, target: Target, recorder: Recorder, policy: AddressPolicy
+) -> probes.Lookup:
+    """Asks a connection what it lists (a lookup for one of its fields)."""
+    async with ApiClient(target, recorder, policy) as client:
+        return await probes.look_up(lookup, client, target)
 
 
 def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> None:

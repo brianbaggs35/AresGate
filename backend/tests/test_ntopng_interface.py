@@ -79,6 +79,54 @@ class TestRunningAgainstNtopng:
 
         assert stored(session) == {"interface.bytes_in": (5, {"interface": "3"})}
 
+    def test_an_interface_that_has_seen_nothing_says_so_instead_of_keeping_zeros(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        quiet = {
+            "ifname": "eth1",
+            "bytes_download": 0,
+            "bytes_upload": 0,
+            "num_hosts": 0,
+            "num_flows": 0,
+        }
+        connect(session, settings, serve(answering(quiet)).url, interface_id=1)
+
+        collect(settings, engine, InterfaceTraffic())
+
+        assert health(session).last_error == (
+            "ntopng's interface eth1 hasn't seen any traffic yet, so there is nothing to read "
+            "from it. If it isn't the interface you mean, choose another under Interface in "
+            "the connection's settings."
+        )
+        assert stored(session) == {}
+
+    def test_an_interface_that_does_not_give_all_the_counts_is_not_called_quiet(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        rsp: dict[str, Any] = {"ifname": "eth1", "bytes_download": 0, "bytes_upload": 0}
+        connect(session, settings, serve(answering(rsp)).url, interface_id=1)
+
+        collect(settings, engine, InterfaceTraffic())
+
+        assert health(session).last_error is None
+        assert stored(session)["interface.bytes_in"] == (0, {"interface": "eth1"})
+
+    def test_an_interface_with_hosts_but_no_bytes_yet_is_not_quiet(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        rsp: dict[str, Any] = {
+            "ifname": "eth1",
+            "bytes_download": 0,
+            "bytes_upload": 0,
+            "num_hosts": 3,
+            "num_flows": 0,
+        }
+        connect(session, settings, serve(answering(rsp)).url, interface_id=1)
+
+        collect(settings, engine, InterfaceTraffic())
+
+        assert health(session).last_error is None
+
     def test_an_answer_without_anything_to_read_fails(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
     ) -> None:

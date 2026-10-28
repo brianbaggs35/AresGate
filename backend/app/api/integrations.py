@@ -13,11 +13,17 @@ from sqlalchemy.orm import Session
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.db import get_sessionmaker
-from app.integrations import apilog, netguard, registry, service
+from app.integrations import apilog, netguard, probes, registry, service
 from app.integrations.apilog import DEFAULT_PAGE, MAX_PAGE, ApiLogRecorder
 from app.integrations.client import Recorder
 from app.integrations.netguard import AddressPolicy
-from app.integrations.registry import ConnectionDef, IntegrationDef, ModuleState, SettingsError
+from app.integrations.registry import (
+    ConnectionDef,
+    Entry,
+    IntegrationDef,
+    ModuleState,
+    SettingsError,
+)
 from app.integrations.service import Status, Submission
 from app.models import IntegrationConnection, utcnow
 from app.security.credential_store import NAME_PATTERN
@@ -130,6 +136,15 @@ class CheckReport(BaseModel):
     ok: bool
     checks: list[Check]
     integration: IntegrationOut
+
+
+class LookupOut(BaseModel):
+    """What a system listed when it was asked for a field's choices (such as ntopng's
+    interfaces), or why it couldn't say."""
+
+    ok: bool
+    message: str
+    entries: list[Entry]
 
 
 class CertificateRequest(BaseModel):
@@ -376,6 +391,66 @@ def test_integration(
     )
     db.commit()
     return CheckReport(ok=ok, checks=checks, integration=_integration_out(db, definition))
+
+
+# What a setting is called when a lookup can't be made for want of it.
+_WHERE = {
+    "url": "Address",
+    "tls_mode": "Certificate",
+    "tls_ca_pem": "Certificate",
+    "tls_fingerprint": "Certificate",
+    "disabled_modules": "Services",
+}
+
+
+def _fix_first(connection: ConnectionDef, error: SettingsError) -> str:
+    """What is wrong with the settings filled in so far, in one sentence for a lookup."""
+    labels = {item.key: item.label for item in connection.fields}
+    parts = [
+        f"{_WHERE.get(name) or labels.get(name) or name}: {text}"
+        for name, text in error.problems.items()
+    ]
+    return f"Fill in the connection first. {' '.join(parts)}"
+
+
+@router.post("/{key}/connections/{connection}/lookup/{field}")
+def look_up_field(
+    key: Key,
+    connection: Annotated[str, Path(pattern=NAME_PATTERN)],
+    field: Annotated[str, Path(pattern=NAME_PATTERN)],
+    body: ConnectionIn,
+    db: Db,
+    settings: SettingsDep,
+    policy: PolicyDep,
+    recorder: RecorderDep,
+) -> LookupOut:
+    """Asks the system for the choices of a field, such as the interfaces ntopng has, with the
+    address and sign-in as they are filled in (a secret left blank is the one kept). Nothing is
+    saved."""
+    definition = _definition(key)
+    found = definition.connection(connection)
+    lookup = probes.LOOKUPS.get((key, connection, field))
+    if found is None or lookup is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is nothing to look up there.")
+    submission = Submission(
+        url=body.url,
+        tls_mode=body.tls_mode,
+        tls_ca_pem=body.tls_ca_pem,
+        tls_fingerprint=body.tls_fingerprint,
+        options=body.options,
+        secrets={name: value.get_secret_value() for name, value in body.secrets.items()},
+        disabled_modules=body.disabled_modules,
+    )
+    try:
+        target = service.draft_target(db, settings, policy, definition, found, submission)
+    except SettingsError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, _fix_first(found, error)
+        ) from error
+    except service.Incomplete as incomplete:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(incomplete)) from incomplete
+    result = anyio.from_thread.run(service.look_up, lookup, target, recorder, policy)
+    return LookupOut(ok=result.ok, message=result.message, entries=list(result.entries))
 
 
 @router.post("/{key}/certificate")

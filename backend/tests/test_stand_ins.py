@@ -37,12 +37,15 @@ class TestNtopng:
         )
 
         assert answer.status == 200
-        assert body(answer) == {
+        assert {key: value for key, value in body(answer).items() if key != "rsp"} == {
             "rc": 0,
             "rc_str": "OK",
             "rc_str_hr": "Success",
-            "rsp": [{"ifid": 0, "ifname": "eth0"}],
         }
+        assert [(item["ifid"], item["ifname"], item["name"]) for item in body(answer)["rsp"]] == [
+            (0, "eth0", "eth0"),
+            (1, "eth1", "LAN"),
+        ]
 
     @pytest.mark.parametrize("authorization", ["Token wrong", "Bearer right-token", None])
     def test_it_sends_a_login_it_refuses_to_its_login_page(self, authorization: str | None) -> None:
@@ -86,6 +89,40 @@ class TestNtopngReadings:
 
         assert body(answer)["rsp"]["ifname"] == "eth0"
 
+    def test_the_other_interface_has_seen_nothing(self) -> None:
+        handler = self.handler(
+            hosts=stand_ins.sample_ntopng_hosts(self.now),
+            interface=stand_ins.sample_ntopng_interface(),
+            flow_alerts=stand_ins.sample_ntopng_flow_alerts(self.now),
+            host_alerts=stand_ins.sample_ntopng_host_alerts(self.now),
+        )
+        quiet = "/lua/rest/v2/get/interface/data.lua?ifid=1"
+
+        data = body(handler(seen(quiet, **self.login)))["rsp"]
+        hosts = handler(seen("/lua/rest/v2/get/host/active.lua?ifid=1&mode=local", **self.login))
+        flows = handler(
+            seen(
+                "/lua/rest/v2/get/flow/alert/list.lua?ifid=1&epoch_begin=0&epoch_end=9999999999",
+                **self.login,
+            )
+        )
+        hosts_alerts = handler(
+            seen(
+                "/lua/rest/v2/get/host/alert/list.lua?ifid=1&epoch_begin=0&epoch_end=9999999999",
+                **self.login,
+            )
+        )
+
+        assert (data["ifname"], data["bytes"], data["num_hosts"], data["num_flows"]) == (
+            "eth1",
+            0,
+            0,
+            0,
+        )
+        assert body(hosts)["rsp"]["data"] == []
+        assert body(flows)["rsp"]["records"] == []
+        assert body(hosts_alerts)["rsp"]["records"] == []
+
     @pytest.mark.parametrize(
         "path",
         [
@@ -95,11 +132,11 @@ class TestNtopngReadings:
             "/lua/rest/v2/get/host/alert/list.lua",
         ],
     )
-    def test_an_interface_it_does_not_have_is_an_error_in_the_answer(self, path: str) -> None:
+    def test_an_interface_it_does_not_have_is_refused_with_a_400(self, path: str) -> None:
         answer = self.handler()(seen(f"{path}?ifid=4", **self.login))
         missing = self.handler()(seen(path, **self.login))
 
-        assert answer.status == 200
+        assert answer.status == 400
         assert body(answer) == {
             "rc": -2,
             "rc_str": "INVALID_INTERFACE",
