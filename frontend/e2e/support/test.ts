@@ -4,6 +4,7 @@ import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
 import { AiSettingsPage } from './pages/ai-settings-page'
+import { AiUsagePage } from './pages/ai-usage-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { IncidentPage } from './pages/incident-page'
@@ -43,6 +44,8 @@ export interface AresGateFixtures {
   data: DataPage
   /** The settings page for which AI AresGate may ask. */
   aiSettings: AiSettingsPage
+  /** The settings page for what AI took and cost. */
+  aiUsage: AiUsagePage
   status: StatusPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
@@ -153,6 +156,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   aiSettings: async ({ page }, use) => {
     await use(new AiSettingsPage(page))
+  },
+
+  aiUsage: async ({ page }, use) => {
+    await use(new AiUsagePage(page))
   },
 
   status: async ({ page }, use) => {

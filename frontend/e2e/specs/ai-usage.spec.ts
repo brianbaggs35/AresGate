@@ -1,0 +1,179 @@
+import { expect, test } from '../support'
+
+/** A few days of reading incidents with Claude Haiku, and one chat on a model with no price. */
+const CALLS = [
+  { about: 'incident 3', hours_ago: 2, cost_micros: 2_500, repeat: 3 },
+  { about: 'incident 4', hours_ago: 30, cost_micros: 4_000, cached_tokens: 600 },
+  { purpose: 'chat', provider: 'ollama', model: 'llama3', cost_micros: 0, hours_ago: 6 },
+  { purpose: 'chat', model: 'a-model-nobody-priced', cost_micros: null, hours_ago: 7 },
+  { about: 'incident 5', ok: false, error: "It didn't answer in time.", hours_ago: 50 },
+]
+
+test.describe('Settings > AI usage', () => {
+  test('is a page of the settings that says AI has not been asked, before it has', async ({
+    page,
+    settings,
+    aiUsage,
+  }) => {
+    await settings.goto()
+
+    await settings.aiUsageLink.click()
+
+    await expect(page).toHaveURL('/settings/ai-usage')
+    await expect(settings.aiUsageLink).toHaveAttribute('aria-current', 'page')
+    await expect(aiUsage.never).toContainText("AI hasn't been asked anything yet")
+    await aiUsage.never.getByRole('link', { name: 'Set up an AI provider' }).click()
+    await expect(page).toHaveURL('/settings/ai')
+  })
+
+  test('adds up what was asked, what it took and what it cost', async ({ harness, aiUsage }) => {
+    await harness.createAiCalls(CALLS)
+
+    await aiUsage.goto()
+
+    await expect(aiUsage.costTile).toContainText('$0.01')
+    await expect(aiUsage.tokensTile).toContainText('10.5K')
+    await expect(aiUsage.requestsTile).toContainText('1 failed')
+    await expect(aiUsage.monthTile).toContainText('Too early in the month')
+    // Every request is listed, newest first.
+    await expect(aiUsage.requests).toHaveCount(7)
+    await expect(aiUsage.requests.first()).toContainText('Reading incidents, incident 3')
+    await expect(aiUsage.requests.last()).toContainText('incident 5')
+    await expect(aiUsage.requests.last()).toContainText("Failed: It didn't answer in time.")
+  })
+
+  test('says the costs are estimates, from the pages the prices were read on, and which have no price', async ({
+    harness,
+    aiUsage,
+  }) => {
+    await harness.createAiCalls(CALLS)
+
+    await aiUsage.goto()
+
+    await expect(aiUsage.estimate).toContainText('Costs are estimates')
+    await expect(aiUsage.estimate.getByRole('link', { name: 'Anthropic' })).toHaveAttribute(
+      'href',
+      'https://platform.claude.com/docs/en/about-claude/pricing',
+    )
+    await expect(aiUsage.estimate).toContainText('1 request used a model with no known price')
+  })
+
+  test('charts the days, and the models, in cost, tokens or calls', async ({
+    harness,
+    aiUsage,
+  }) => {
+    await harness.createAiCalls(CALLS)
+
+    await aiUsage.goto()
+    await expect(aiUsage.dailyChart).toBeVisible()
+    await expect(aiUsage.groupsChart).toContainText('Claude Haiku 5.5')
+
+    await aiUsage.metric('tokens').click()
+    await expect(aiUsage.dailyChart).toContainText('Tokens by day')
+    await aiUsage.metric('calls').click()
+    await expect(aiUsage.dailyChart).toContainText('Calls by day')
+
+    await aiUsage.grouping('provider').click()
+    await expect(aiUsage.groupsChart).toContainText('Anthropic')
+    await aiUsage.grouping('use').click()
+    await expect(aiUsage.groupsChart).toContainText('Chat')
+  })
+
+  test('lists what took the most, with a link to the incident', async ({
+    page,
+    harness,
+    aiUsage,
+  }) => {
+    await harness.createAiCalls(CALLS)
+    await aiUsage.goto()
+
+    // Incident 3 was asked about three times, so it cost more than incident 4.
+    await expect(aiUsage.topItems.first()).toContainText('Reading incidents: incident 3')
+    await expect(aiUsage.topItems.first()).toContainText('3 requests')
+
+    await aiUsage.topItems.first().getByRole('link').click()
+    await expect(page).toHaveURL(/\/incidents\/3$/)
+  })
+
+  test('shows another range', async ({ harness, aiUsage }) => {
+    await harness.createAiCalls([...CALLS, { about: 'incident 9', hours_ago: 24 * 20 }])
+    await aiUsage.goto()
+    await expect(aiUsage.requests).toHaveCount(8)
+
+    await aiUsage.range('7d').click()
+
+    await expect(aiUsage.requests).toHaveCount(7)
+    await expect(aiUsage.costTile).toContainText('In the last 7 days')
+  })
+
+  test('opens a request to show exactly what the provider was sent', async ({
+    harness,
+    aiUsage,
+  }) => {
+    await harness.createAiCalls([{ about: 'incident 3' }])
+    await aiUsage.goto()
+
+    await aiUsage.requests
+      .first()
+      .getByRole('button', { name: /See what was sent/ })
+      .click()
+
+    await expect(aiUsage.dialog).toContainText('HOST_1 was scanned by WAN_1 on port 22.')
+    await expect(aiUsage.dialog).toContainText('HOST_1 was probed by WAN_1; nothing got in.')
+    await expect(aiUsage.dialog).toContainText('stand-ins')
+    await aiUsage.dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(aiUsage.dialog).toHaveCount(0)
+  })
+
+  test('shows the rest of the requests a page at a time', async ({ harness, aiUsage }) => {
+    await harness.createAiCalls([{ repeat: 30 }])
+    await aiUsage.goto()
+    await expect(aiUsage.requests).toHaveCount(25)
+
+    await aiUsage.more.click()
+
+    await expect(aiUsage.requests).toHaveCount(30)
+    await expect(aiUsage.more).toHaveCount(0)
+  })
+
+  test('keeps the spending limits, and shows how much of them has gone', async ({
+    page,
+    harness,
+    aiUsage,
+  }) => {
+    await harness.createAiCalls([{ cost_micros: 900_000, hours_ago: 1 }])
+    await aiUsage.goto()
+    await expect(aiUsage.limitWords('day')).toHaveText('$0.90 spent, with no limit')
+
+    await aiUsage.dailyField.fill('1')
+    await aiUsage.monthlyField.fill('20.50')
+    await aiUsage.saveLimits.click()
+
+    await expect(aiUsage.limitsSaved).toBeVisible()
+    await expect(aiUsage.limitWords('day')).toHaveText('$0.90 of $1.00: nearly used up')
+    await expect(aiUsage.limitWords('month')).toContainText('of $20.50')
+    // The limits are kept, not just shown.
+    await page.reload()
+    await expect(aiUsage.dailyField).toHaveValue('1')
+    await expect(aiUsage.monthlyField).toHaveValue('20.5')
+  })
+
+  test('refuses an amount that makes no sense', async ({ page, harness, aiUsage }) => {
+    await harness.createAiCalls([{}])
+    await aiUsage.goto()
+
+    await aiUsage.dailyField.fill('lots')
+
+    await expect(page.getByText('Use dollars and cents')).toBeVisible()
+    await expect(aiUsage.saveLimits).toBeDisabled()
+  })
+
+  test('downloads the requests as a spreadsheet', async ({ page, harness, aiUsage }) => {
+    await harness.createAiCalls([{ about: 'incident 3' }, { about: 'incident 4' }])
+    await aiUsage.goto()
+
+    const [download] = await Promise.all([page.waitForEvent('download'), aiUsage.download.click()])
+
+    expect(download.suggestedFilename()).toMatch(/^aresgate-ai-usage-\d{4}-\d{2}-\d{2}-30d\.csv$/)
+  })
+})

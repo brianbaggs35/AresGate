@@ -160,6 +160,18 @@ investigating* can follow the status change with a reading of an incident the AI
 full. The chip in the list and in the page header is `AiChip`; looks and wording are in
 `src/triage.ts`.
 
+The AI usage page (Settings > AI usage) is the reference for a page of numbers inside the Settings
+area. It leads with four `StatTile`s (the month so far with where it is heading, the cost of the
+range, the tokens, the requests) that each compare themselves with the stretch before in words, then
+says in a plain alert that the costs are estimates, from where and when the prices were read. The
+spending limits card is meters with the amount typed beside them; the meter's color and its words
+both say when a limit is nearly or fully used (never the color alone). The charts are the chart kit's
+`BarChart`: the days as stacked bars by use with a toggle between cost, tokens and calls, and a
+ranking by provider, model or use that shares the toggle. The list of every request is a plain list
+of rows (not a table) that stack on a phone, and each row opens `AiCallDialog`, which shows what the
+provider was sent and what it answered. The page asks again when the range changes or *Refresh* is
+pressed, and keeps what it showed, with a warning, if asking again fails.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

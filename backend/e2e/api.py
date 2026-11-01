@@ -327,6 +327,41 @@ def make_verdicts(body: VerdictsRequest, db: Db) -> VerdictsRecord:
     return VerdictsRecord(verdicts=given)
 
 
+class AiCallRequest(BaseModel):
+    """One request to an AI provider. All of it is optional: it is made up where left out."""
+
+    purpose: str = Field(default="triage", max_length=24)
+    about: str | None = Field(default=None, max_length=120)
+    provider: str = Field(default="anthropic", max_length=32)
+    model: str = Field(default="claude-haiku-5-5", max_length=128)
+    ok: bool = True
+    input_tokens: int = Field(default=1200, ge=0, le=10_000_000)
+    output_tokens: int = Field(default=300, ge=0, le=10_000_000)
+    cached_tokens: int = Field(default=0, ge=0, le=10_000_000)
+    cost_micros: int | None = Field(default=1_500, ge=0, le=10_000_000_000)
+    hours_ago: int = Field(default=1, ge=0, le=24 * 100)
+    error: str | None = Field(default=None, max_length=500)
+    repeat: int = Field(default=1, ge=1, le=200)
+
+
+class AiCallsRequest(BaseModel):
+    calls: list[AiCallRequest]
+
+
+class AiCallsRecord(BaseModel):
+    calls: int
+
+
+@router.post("/factories/ai-calls", status_code=status.HTTP_201_CREATED)
+def make_ai_calls(body: AiCallsRequest, db: Db) -> AiCallsRecord:
+    """Records some requests to AI providers as of now, for the usage page to show."""
+    made = factories.ai_calls(
+        db, utcnow(), [factories.CallSpec(**item.model_dump()) for item in body.calls]
+    )
+    db.commit()
+    return AiCallsRecord(calls=made)
+
+
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)
 def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""

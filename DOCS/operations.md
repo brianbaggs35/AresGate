@@ -834,6 +834,34 @@ AresGate works without it. A test sends only the words "Say OK."
   two minutes, and nginx waits for that), answers `{ok, reason, incident}` and is in the activity
   log; `GET /api/incidents/{id}` carries `reading`, and the list `ai`.
 
+- **What AI took and cost.** **Settings > AI usage** adds up every request in the `ai_calls`
+  record: for the last 7, 30 or 90 days (days are counted in the time zone of your browser) the
+  cost, the tokens (what was sent and what came back, and how much of what was sent was already
+  cached), the number of requests and how many failed, each compared with the stretch before; the
+  calendar month so far with where it is heading at this pace (UTC, as providers bill it; nothing
+  is guessed in the first day); the days as stacked bars by what the AI was used for, in cost,
+  tokens or calls; the same by provider, model or use; the incidents and other things that took
+  the most; and every request, a page at a time, each opening to show exactly what the provider
+  was sent and what it answered, with the stand-ins (`HOST_3`) it was given. **The costs are
+  estimates**: each request is priced when it is made from the catalog's price list, which is a
+  snapshot of the providers' own pricing pages (the page links them and says the day they were
+  read), and a model the catalog has no price for is counted in the tokens but not in the cost,
+  and the page says how many. A model on your own computer, and Ollama's cloud, cost nothing here.
+  *Download as a spreadsheet* saves the range's requests as a CSV file (when, what for, about,
+  provider, model, level, tokens, estimated cost, seconds and any error; never what was sent or
+  said).
+- **Spending limits.** On the same page you can set what may be spent in the last 24 hours and in
+  the calendar month. Past 80% the meter turns to a warning. When a limit is used up, AresGate
+  stops asking providers that charge by the token (Anthropic and OpenAI), including what the
+  worker does by itself, and whatever wanted an answer says which limit it is and what to do: a
+  daily limit lifts as spending in the last 24 hours falls below it, a monthly one at the start of
+  the next month, and you can raise or remove either at any time. A provider on your own computer
+  or Ollama's cloud is never stopped. Only requests with a known price count towards a limit.
+  Changes are in the activity log. The API: `GET /api/ai/usage?range=7d|30d|90d&timezone=...`,
+  `GET /api/ai/usage/calls` (a page of requests) and `GET /api/ai/usage/calls/{id}` (one, with
+  what was sent and said), `GET /api/ai/usage.csv` and `PUT /api/ai/limits` (`daily` and
+  `monthly` in dollars, or null for no limit).
+
 ## Signing in
 
 AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create

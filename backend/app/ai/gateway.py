@@ -29,7 +29,7 @@ import anyio.from_thread
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.ai import redaction, service, wire
+from app.ai import limits, redaction, service, wire
 from app.ai.catalog import Kind, ProviderDef
 from app.ai.catalog import provider as provider_def
 from app.ai.redaction import Level, Redactor
@@ -161,10 +161,16 @@ def _unavailable(db: Session, now: datetime) -> tuple[AiProvider | None, str | N
     if chosen.provider is None:
         return None, "No AI provider is chosen. Choose one under Settings > AI."
     row = db.get(AiProvider, chosen.provider)
-    if row is None or provider_def(chosen.provider) is None:
+    definition = provider_def(chosen.provider)
+    if row is None or definition is None:
         return None, "The AI provider that was chosen is gone. Choose one under Settings > AI."
     if not row.model:
         return None, "The AI provider has no model yet. Choose one under Settings > AI."
+    # A provider on the owner's own computer, or Ollama's cloud, costs nothing by the token.
+    if definition.kind is Kind.HOSTED:
+        stopped = limits.reached(db, now)
+        if stopped is not None:
+            return None, stopped
     return row, None
 
 
