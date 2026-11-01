@@ -152,7 +152,7 @@ def test_changing_how_ntopng_is_signed_into_drops_the_secret_no_longer_used(
 
     assert service.secrets_set(session, "ntopng", "api") == ["password"]
     row = service.rows_for(session, "ntopng")["api"]
-    assert row.options == {"auth": "basic", "username": "admin", "interface_id": 1}
+    assert row.options == {"auth": "basic", "username": "admin", "interface_id": "1"}
 
 
 def test_a_plain_http_address_has_no_certificate_settings(
@@ -489,7 +489,7 @@ def test_a_connection_not_yet_saved_is_opened_with_what_was_typed(
 
     assert (target.integration, target.connection) == ("ntopng", "api")
     assert target.origin == netguard.Origin("http", "192.168.1.5", 3000)
-    assert target.options == {"auth": "token", "interface_id": 1}
+    assert target.options == {"auth": "token", "interface_id": "1"}
     assert target.secrets == {"token": "typed-token-123"}
     assert session.scalars(select(IntegrationConnection)).all() == []
     assert session.scalars(select(StoredCredential)).all() == []
@@ -503,7 +503,7 @@ def test_a_secret_left_blank_in_a_draft_is_the_one_kept(
     target = draft(session, settings, ntopng_draft(secrets={}, options={"auth": "token"}))
 
     assert target.secrets == {"token": "kept-token-123"}
-    assert target.options == {"auth": "token", "interface_id": 0}
+    assert target.options == {"auth": "token", "interface_id": "0"}
 
 
 def test_a_draft_that_cannot_be_used_says_what_is_wrong_by_field(

@@ -18,6 +18,8 @@ from app.integrations.guides import Guide
 
 MAX_TEXT = 128
 API_KEY = "API key"
+# The most a lookup that allows several can have chosen: more than any home has interfaces.
+MAX_CHOSEN = 16
 
 
 class FieldKind(StrEnum):
@@ -27,7 +29,8 @@ class FieldKind(StrEnum):
     NUMBER = "number"
     CHOICE = "choice"
     # A whole number the system itself lists, such as ntopng's interfaces, which the web app asks
-    # for with a button (``FieldDef.action``) and offers as a list. It is kept like a number.
+    # for with a button (``FieldDef.action``) and offers as a list. It is kept like a number, or,
+    # if more than one can be chosen (``FieldDef.multiple``), as the numbers joined by commas.
     LOOKUP = "lookup"
 
 
@@ -93,6 +96,9 @@ class FieldDef(BaseModel):
     only_if: Condition | None = None
     # For a lookup: the button that asks the system for its list ("Fetch interfaces").
     action: str = ""
+    # For a lookup: more than one can be chosen. They are kept as numbers joined by commas
+    # (``0,1``), lowest first, and ``chosen_numbers`` reads them back.
+    multiple: bool = False
 
 
 class ModuleDef(BaseModel):
@@ -306,13 +312,14 @@ NTOPNG = IntegrationDef(
                 ),
                 FieldDef(
                     key="interface_id",
-                    label="Interface",
+                    label="Interfaces",
                     kind=FieldKind.LOOKUP,
                     default=0,
                     minimum=0,
                     maximum=999,
-                    help="The interface ntopng watches that AresGate reads (its ifid).",
+                    help="The interfaces ntopng watches that AresGate reads (their ifid).",
                     action="Fetch interfaces",
+                    multiple=True,
                 ),
             ),
         ),
@@ -434,10 +441,35 @@ def _accept(item: FieldDef, given: Mapping[str, str | int | None]) -> str | int:
         value = item.default
     if value is None:
         raise _Invalid("Enter a value.")
+    if item.kind is FieldKind.LOOKUP and item.multiple:
+        return ",".join(str(number) for number in _several(item, value))
     problem = _check(item, value)
     if problem:
         raise _Invalid(problem)
     return int(value) if item.kind in _WHOLE else str(value).strip()
+
+
+def chosen_numbers(value: str | int) -> list[int]:
+    """The whole numbers a lookup that allows several holds, lowest first, from what was saved:
+    ``"0,1"``, or a single number such as an interface chosen before several could be. What isn't
+    a number is left out."""
+    parts = (part.strip() for part in str(value).split(","))
+    return sorted({int(part) for part in parts if part.isascii() and part.isdigit()})
+
+
+def _several(item: FieldDef, value: str | int) -> list[int]:
+    """The numbers chosen, each checked, without repeats and lowest first. Raises ``_Invalid``."""
+    parts = [part.strip() for part in str(value).split(",") if part.strip()]
+    for part in parts:
+        if not (part.isascii() and part.isdigit() and item.minimum <= int(part) <= item.maximum):
+            raise _Invalid(
+                "Choose from the list, or enter whole numbers from "
+                f"{item.minimum} to {item.maximum} separated by commas."
+            )
+    numbers = chosen_numbers(",".join(parts))
+    if len(numbers) > MAX_CHOSEN:
+        raise _Invalid(f"Choose at most {MAX_CHOSEN}.")
+    return numbers
 
 
 def _check(item: FieldDef, value: str | int) -> str | None:

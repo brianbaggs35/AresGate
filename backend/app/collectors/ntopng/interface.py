@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.ntopng.api import PRODUCT, interface, read
+from app.collectors.ntopng.api import PRODUCT, interfaces, read
 from app.collectors.readings import Readings, number
 from app.integrations import probes
 
@@ -59,22 +59,40 @@ class InterfaceTraffic(Collector):
     connection = "api"
 
     async def collect(self, context: Context) -> Outcome:
-        data = probes.as_object(await read(context, PATH, {"ifid": interface(context)}))
-        if data is None:
-            raise CollectorFailed(probes.unexpected(PRODUCT).message)
-        name = traffic.text(data, "ifname") or interface(context)
-        if _quiet(data):
-            raise CollectorFailed(
-                f"ntopng's interface {name} hasn't seen any traffic yet, so there is nothing to "
-                "read from it. If it isn't the interface you mean, choose another under "
-                "Interface in the connection's settings."
-            )
         readings = Readings(context)
-        for member, metric in _READINGS:
-            readings.add(metric, number(data.get(member)), interface=name)
+        quiet: list[str] = []
+        for ifid in interfaces(context):
+            data = probes.as_object(await read(context, PATH, {"ifid": str(ifid)}))
+            if data is None:
+                raise CollectorFailed(probes.unexpected(PRODUCT).message)
+            name = traffic.text(data, "ifname") or str(ifid)
+            if _quiet(data):
+                quiet.append(name)
+                continue
+            for member, metric in _READINGS:
+                readings.add(metric, number(data.get(member)), interface=name)
+        # An interface nothing has passed through is left out, as long as another has something to
+        # read. When none has, there is nothing to read at all, and that is said.
+        if quiet and not readings.samples:
+            raise CollectorFailed(_nothing(quiet))
         if not readings.samples:
             raise CollectorFailed("It answered, but the interface isn't in a form AresGate reads.")
         return Outcome(items=await readings.save())
+
+
+def _nothing(quiet: list[str]) -> str:
+    """Why there is nothing to read, when every interface chosen is quiet."""
+    if len(quiet) == 1:
+        return (
+            f"ntopng's interface {quiet[0]} hasn't seen any traffic yet, so there is nothing to "
+            "read from it. If it isn't the interface you mean, choose another under "
+            "Interfaces in the connection's settings."
+        )
+    return (
+        f"ntopng's interfaces {', '.join(quiet)} haven't seen any traffic yet, so there is "
+        "nothing to read from them. If they aren't the interfaces you mean, choose others under "
+        "Interfaces in the connection's settings."
+    )
 
 
 def _quiet(data: dict[str, object]) -> bool:

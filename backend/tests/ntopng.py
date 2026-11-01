@@ -17,7 +17,7 @@ def connect(
     server_url: str,
     *,
     basic: bool = False,
-    interface_id: int = 0,
+    interface_id: int | str = 0,
 ) -> None:
     """Saves a connection to the ntopng at the address (plain http, which ntopng allows), signing
     in with a token or, if ``basic``, with a user name and password."""

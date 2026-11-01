@@ -386,6 +386,79 @@ def test_ntopng_without_the_chosen_interface_lists_the_ones_it_has(serve: Serve)
     assert len(server.seen) == 1
 
 
+def test_ntopng_with_several_interfaces_says_what_each_holds(serve: Serve) -> None:
+    result, server, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(
+            [
+                {"ifid": 0, "ifname": "eth0"},
+                {"ifid": 1, "ifname": "eth1"},
+                {"ifid": 2, "ifname": "eth2"},
+            ],
+            {0: BUSY, 1: BUSY},
+        ),
+        options={"auth": "token", "interface_id": "0,1"},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result == Verdict(
+        True,
+        "ntopng answered. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen. "
+        "Interface 1 is eth1: 41 hosts (18 local), 212 flows, 1.0 GB seen.",
+    )
+    assert [seen.path for seen in server.seen] == [INTERFACES, INTERFACE, INTERFACE]
+
+
+def test_ntopng_with_several_interfaces_says_which_has_seen_no_traffic(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(
+            [
+                {"ifid": 0, "ifname": "eth0"},
+                {"ifid": 1, "ifname": "eth1"},
+                {"ifid": 2, "ifname": "eth2"},
+            ],
+            {0: BUSY, 1: QUIET},
+        ),
+        options={"auth": "token", "interface_id": "0,1,2"},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert result.message == (
+        "ntopng answered. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen. "
+        "Interface 1 is eth1 and hasn't seen any traffic yet. Interface 2 is eth2. "
+        "Nothing comes in from an interface until it has seen traffic."
+    )
+
+
+def test_ntopng_without_some_of_the_interfaces_chosen_names_them(serve: Serve) -> None:
+    listing = ntopng_router([{"ifid": 0, "ifname": "wan"}], {0: BUSY})
+    options: dict[str, str | int] = {"auth": "token", "interface_id": "0,3,7"}
+
+    result, _, _ = verdict(
+        serve, "ntopng", "api", listing, options=options, secrets={"token": "tok-abcdef"}
+    )
+    one, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        listing,
+        options={"auth": "token", "interface_id": "0,3"},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert not result.ok
+    assert result.message == (
+        "ntopng answered, but has no interfaces with IDs 3, 7. It has: ID 0: wan."
+    )
+    assert one.message == "ntopng answered, but has no interface with ID 3. It has: ID 0: wan."
+
+
 def test_ntopng_that_refuses_a_login_redirects_to_its_login_page(serve: Serve) -> None:
     result, server, _ = verdict(
         serve,

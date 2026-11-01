@@ -7,6 +7,7 @@ from app.integrations import probes, registry
 from app.integrations.registry import (
     INTEGRATIONS,
     ConnectionDef,
+    FieldDef,
     FieldKind,
     ModuleState,
     SettingsError,
@@ -159,7 +160,7 @@ def test_a_module_is_present_if_it_was_found(state: ModuleState, present: bool) 
 
 
 def test_defaults_fill_in_what_is_missing() -> None:
-    assert clean_options(NTOPNG, {}) == {"auth": "token", "interface_id": 0}
+    assert clean_options(NTOPNG, {}) == {"auth": "token", "interface_id": "0"}
 
 
 def test_only_the_fields_that_apply_are_kept() -> None:
@@ -167,7 +168,7 @@ def test_only_the_fields_that_apply_are_kept() -> None:
         NTOPNG, {"auth": "basic", "username": " admin ", "interface_id": "2", "token": "ignored"}
     )
 
-    assert options == {"auth": "basic", "username": "admin", "interface_id": 2}
+    assert options == {"auth": "basic", "username": "admin", "interface_id": "2"}
     assert [item.key for item in active_fields(NTOPNG, options)] == [
         "auth",
         "username",
@@ -188,7 +189,7 @@ def test_a_number_is_a_whole_number_in_range(value: str) -> None:
     with pytest.raises(SettingsError) as raised:
         clean_options(NTOPNG, {"interface_id": value})
 
-    assert "whole number from 0 to 999" in raised.value.problems["interface_id"]
+    assert "whole numbers from 0 to 999" in raised.value.problems["interface_id"]
 
 
 def test_a_choice_must_be_one_of_the_options() -> None:
@@ -216,12 +217,71 @@ def test_every_problem_is_reported_at_once() -> None:
     assert "username: Enter a value." in str(raised.value)
 
 
-def test_a_lookup_field_is_kept_as_a_whole_number_like_a_number() -> None:
+def test_a_lookup_field_that_allows_several_keeps_them_lowest_first_without_repeats() -> None:
     field = next(item for item in NTOPNG.fields if item.key == "interface_id")
 
     assert field.kind is FieldKind.LOOKUP
     assert field.action == "Fetch interfaces"
-    assert clean_options(NTOPNG, {"interface_id": " 12 "})["interface_id"] == 12
+    assert field.multiple is True
+    assert clean_options(NTOPNG, {"interface_id": " 12 "})["interface_id"] == "12"
+    assert clean_options(NTOPNG, {"interface_id": "3, 1,,3 ,2"})["interface_id"] == "1,2,3"
+    assert clean_options(NTOPNG, {"interface_id": 5})["interface_id"] == "5"
+
+
+@pytest.mark.parametrize("value", ["eth1", "1,x", "1,-2", "1,1000", "0;1"])
+def test_a_lookup_field_that_allows_several_refuses_what_is_not_numbers_in_range(
+    value: str,
+) -> None:
     with pytest.raises(SettingsError) as raised:
-        clean_options(NTOPNG, {"interface_id": "eth1"})
-    assert "whole number from 0 to 999" in raised.value.problems["interface_id"]
+        clean_options(NTOPNG, {"interface_id": value})
+
+    assert (
+        "whole numbers from 0 to 999 separated by commas" in raised.value.problems["interface_id"]
+    )
+
+
+def test_a_lookup_field_that_allows_several_has_a_limit() -> None:
+    many = ",".join(str(number) for number in range(registry.MAX_CHOSEN + 1))
+
+    with pytest.raises(SettingsError) as raised:
+        clean_options(NTOPNG, {"interface_id": many})
+
+    assert raised.value.problems == {"interface_id": "Choose at most 16."}
+    assert (
+        len(clean_options(NTOPNG, {"interface_id": many[: -len(f",{registry.MAX_CHOSEN}")]})) == 2
+    )
+
+
+@pytest.mark.parametrize(
+    ("saved", "numbers"),
+    [("0,1", [0, 1]), (" 3 , 1 ", [1, 3]), (2, [2]), ("x,4,,٣", [4]), ("", [])],
+)
+def test_what_was_chosen_is_read_back_whatever_it_was_saved_as(
+    saved: str | int, numbers: list[int]
+) -> None:
+    assert registry.chosen_numbers(saved) == numbers
+
+
+def test_a_lookup_field_that_allows_one_is_kept_as_a_whole_number_like_a_number() -> None:
+    single = ConnectionDef(
+        key="api",
+        label="API",
+        summary="",
+        url_example="",
+        allow_http=False,
+        fields=(
+            FieldDef(
+                key="slot",
+                label="Slot",
+                kind=FieldKind.LOOKUP,
+                default=0,
+                maximum=9,
+                action="Fetch",
+            ),
+        ),
+    )
+
+    assert clean_options(single, {"slot": " 4 "}) == {"slot": 4}
+    with pytest.raises(SettingsError) as raised:
+        clean_options(single, {"slot": "10"})
+    assert "whole number from 0 to 9" in raised.value.problems["slot"]

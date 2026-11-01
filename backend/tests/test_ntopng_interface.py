@@ -95,7 +95,7 @@ class TestRunningAgainstNtopng:
 
         assert health(session).last_error == (
             "ntopng's interface eth1 hasn't seen any traffic yet, so there is nothing to read "
-            "from it. If it isn't the interface you mean, choose another under Interface in "
+            "from it. If it isn't the interface you mean, choose another under Interfaces in "
             "the connection's settings."
         )
         assert stored(session) == {}

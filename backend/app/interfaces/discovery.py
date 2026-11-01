@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.integrations import probes
 from app.integrations.client import ApiClient, CallFailed, Recorder, Target
 from app.integrations.netguard import AddressPolicy
+from app.integrations.registry import chosen_numbers
 from app.models import Event, IntegrationConnection, InterfaceFeed, MetricSeries
 
 # How far back the events are looked through. A port that has sent nothing for this long is
@@ -82,7 +83,8 @@ def whole_connections(db: Session) -> list[Found]:
 async def ntopng_live(
     target: Target, recorder: Recorder, policy: AddressPolicy
 ) -> list[Found] | str:
-    """The interfaces ntopng lists, named as its metrics name them, or why it couldn't be asked."""
+    """The interfaces ntopng lists that the connection reads, named as its metrics name them, or why
+    it couldn't be asked. One that isn't read has no data to place."""
     try:
         async with ApiClient(target, recorder, policy) as client:
             listed = await probes.ntopng_interfaces(client, target)
@@ -90,6 +92,7 @@ async def ntopng_live(
         return str(failure)
     if isinstance(listed, probes.Verdict):
         return listed.message
+    read = chosen_numbers(target.options["interface_id"])
     return [
         Found(
             target.integration,
@@ -99,6 +102,7 @@ async def ntopng_live(
             item.source,
         )
         for item in listed
+        if item.ifid in read
     ]
 
 

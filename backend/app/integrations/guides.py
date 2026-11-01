@@ -355,11 +355,11 @@ NTOPNG = Guide(
                     ),
                 ),
                 Step(
-                    title="Connect and choose the interface",
+                    title="Connect and choose the interfaces",
                     detail=(
                         "Enter ntopng's address, with the port of its web interface (3000 unless "
                         "you changed it). Then press Fetch interfaces: it lists the interfaces "
-                        "ntopng watches, with what each has seen, and you choose the one "
+                        "ntopng watches, with what each has seen, and you choose each one "
                         "AresGate reads. Username and password, instead of the token, use HTTP "
                         "basic authentication."
                     ),

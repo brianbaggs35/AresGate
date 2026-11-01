@@ -99,7 +99,8 @@ class TestWhenNtopngRefuses:
 
         assert said == (
             "ntopng has no interface 7, so it refused the request. It has: ID 0: eth0, "
-            "ID 1: LAN (eth1). Choose one under Interface in the connection's settings."
+            "ID 1: LAN (eth1). Choose the interfaces to read under Interfaces in the "
+            "connection's settings."
         )
 
     def test_a_400_for_an_interface_it_has_is_just_a_400(

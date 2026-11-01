@@ -87,6 +87,13 @@ Every release's notes are here, newest first. The format follows
   stored before. Changes are in the audit log. The page for all this comes next
   ([DOCS/development.md](DOCS/development.md#interfaces-the-parts-of-the-network)).
 
+- **ntopng can be read on several interfaces**: the **Interface** list is now **Interfaces**, and
+  one or more can be chosen (up to 16). The interface traffic, hosts and alerts collectors read
+  each in turn, the connection test says what each has seen, and an alert keeps the interface it
+  came in on, so that it can be placed on a part of the network. A connection saved with one
+  interface keeps reading it, and a new one starts on every interface that has seen traffic
+  ([DOCS/integrations.md](DOCS/integrations.md#ntopng)).
+
 ### Fixed
 
 - **Why a certificate isn't trusted is explained**: a valid Let's Encrypt certificate was reported

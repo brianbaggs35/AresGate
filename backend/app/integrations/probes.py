@@ -13,7 +13,7 @@ from typing import cast
 
 from app import audit
 from app.integrations.client import ApiClient, CallFailed, Reply, Target
-from app.integrations.registry import OPNSENSE_MODULES, Entry, ModuleState
+from app.integrations.registry import OPNSENSE_MODULES, Entry, ModuleState, chosen_numbers
 
 # What a system is asked about, small enough to say nothing about the person's network: CrowdSec
 # is asked whether this address (from the range reserved for documentation) is banned.
@@ -313,21 +313,44 @@ def interface_names(found: list[NtopngInterface]) -> str:
 
 
 async def ntopng(client: ApiClient, target: Target) -> Verdict:
-    """The interfaces ntopng monitors, which also shows the chosen interface exists, and whether
-    it has seen anything."""
+    """The interfaces ntopng monitors, which also shows the interfaces chosen exist, and whether
+    each has seen anything."""
     listed = await ntopng_interfaces(client, target)
     if isinstance(listed, Verdict):
         return listed
-    wanted = int(target.options["interface_id"])
-    chosen = next((item for item in listed if item.ifid == wanted), None)
-    if chosen is None:
+    wanted = chosen_numbers(target.options["interface_id"])
+    known = {item.ifid: item for item in listed}
+    missing = [ifid for ifid in wanted if ifid not in known]
+    if missing:
+        which = (
+            f"interface with ID {missing[0]}"
+            if len(missing) == 1
+            else (f"interfaces with IDs {', '.join(str(ifid) for ifid in missing)}")
+        )
         return Verdict(
             False,
-            f"ntopng answered, but has no interface with ID {wanted}. "
-            f"It has: {interface_names(listed)}.",
+            f"ntopng answered, but has no {which}. It has: {interface_names(listed)}.",
         )
-    message = f"ntopng answered. Interface {wanted} is {chosen.label}"
-    traffic = await ntopng_traffic(client, target, wanted)
+    seen = [(known[ifid], await ntopng_traffic(client, target, ifid)) for ifid in wanted]
+    if len(seen) == 1:
+        return _one_interface(*seen[0])
+    sentences: list[str] = []
+    for chosen, traffic in seen:
+        sentence = f"Interface {chosen.ifid} is {chosen.label}"
+        if traffic is not None:
+            sentence += (
+                " and hasn't seen any traffic yet" if traffic.quiet else f": {traffic.describe()}"
+            )
+        sentences.append(f"{sentence}.")
+    message = f"ntopng answered. {' '.join(sentences)}"
+    if any(traffic is not None and traffic.quiet for _, traffic in seen):
+        message += " Nothing comes in from an interface until it has seen traffic."
+    return Verdict(True, message)
+
+
+def _one_interface(chosen: NtopngInterface, traffic: Traffic | None) -> Verdict:
+    """The verdict for a connection that reads one interface."""
+    message = f"ntopng answered. Interface {chosen.ifid} is {chosen.label}"
     if traffic is None:
         return Verdict(True, f"{message}.")
     if traffic.quiet:

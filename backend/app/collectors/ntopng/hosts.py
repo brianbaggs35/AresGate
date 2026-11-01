@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.ntopng.api import PRODUCT, interface, read
+from app.collectors.ntopng.api import PRODUCT, interfaces, read
 from app.collectors.readings import Readings, number
 from app.devices.sighting import NewSighting
 from app.integrations import probes
@@ -46,15 +46,17 @@ class Hosts(Collector):
     connection = "api"
 
     async def collect(self, context: Context) -> Outcome:
-        answer = probes.as_object(
-            await read(context, PATH, {"ifid": interface(context), "mode": "local", "all": "true"})
-        )
-        rows = probes.as_array(answer.get("data")) if answer else None
-        if rows is None:
-            raise CollectorFailed(probes.unexpected(PRODUCT).message)
-        found = [host for row in rows[:LIMIT] if (host := probes.as_object(row)) is not None]
-        if rows and not found:
-            raise CollectorFailed("It answered, but the hosts aren't in a form AresGate reads.")
+        found: list[Mapping[str, object]] = []
+        for ifid in interfaces(context):
+            query = {"ifid": str(ifid), "mode": "local", "all": "true"}
+            answer = probes.as_object(await read(context, PATH, query))
+            rows = probes.as_array(answer.get("data")) if answer else None
+            if rows is None:
+                raise CollectorFailed(probes.unexpected(PRODUCT).message)
+            hosts = [host for row in rows[:LIMIT] if (host := probes.as_object(row)) is not None]
+            if rows and not hosts:
+                raise CollectorFailed("It answered, but the hosts aren't in a form AresGate reads.")
+            found.extend(hosts)
         readings = Readings(context)
         for host in found:
             if address := traffic.text(host, "ip"):
