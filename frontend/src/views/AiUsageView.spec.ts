@@ -27,7 +27,9 @@ async function open(answer: usageApi.Usage | Error = usage()) {
   const chart = (selector: string) =>
     mounted.wrapper
       .findAllComponents(BarChart)
-      .find((item) => item.attributes('data-test') === selector) as VueWrapper
+      .find((item) => item.attributes('data-test') === selector) as VueWrapper<
+      InstanceType<typeof BarChart>
+    >
   return { ...mounted, fetchIt, find, text, chart }
 }
 
@@ -135,7 +137,7 @@ describe('AiUsageView', () => {
       expect(daily.props('categories')).toHaveLength(7)
       expect(daily.props('series')).toHaveLength(1)
       expect(daily.props('whole')).toBe(false)
-      expect(daily.props('format')(0.0415)).toBe('$0.04')
+      expect(daily.props('format')?.(0.0415)).toBe('$0.04')
     })
 
     it('shows tokens or calls instead when asked', async () => {
@@ -144,11 +146,11 @@ describe('AiUsageView', () => {
       await find('metric-tokens').trigger('click')
       expect(chart('daily-chart').props('title')).toBe('Tokens by day')
       expect(chart('daily-chart').props('whole')).toBe(true)
-      expect(chart('groups-chart').props('series')[0].values).toEqual([27_600])
+      expect(chart('groups-chart').props('series')[0]?.values).toEqual([27_600])
 
       await find('metric-calls').trigger('click')
       expect(chart('daily-chart').props('title')).toBe('Calls by day')
-      expect(chart('groups-chart').props('series')[0].values).toEqual([12])
+      expect(chart('groups-chart').props('series')[0]?.values).toEqual([12])
     })
 
     it('ranks the models, and can rank the providers or the uses instead', async () => {
