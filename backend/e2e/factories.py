@@ -23,7 +23,7 @@ from app.events.store import record as record_events
 from app.incidents import engine as incident_engine
 from app.metrics.sample import NewSample
 from app.metrics.store import record as record_samples
-from app.models import CollectorHealth, Incident, SystemInfo, User, VerdictRule
+from app.models import AiCall, CollectorHealth, Incident, SystemInfo, User, VerdictRule
 from app.security import passwords
 from app.security.accounts import normalize_username
 
@@ -485,3 +485,52 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
     session.flush()
     incident_engine.reapply(session)
     return len(specs)
+
+
+class CallSpec(NamedTuple):
+    """A request to an AI provider for `ai_calls` to record, as the gateway would have."""
+
+    purpose: str = "triage"
+    about: str | None = None
+    provider: str = "anthropic"
+    model: str = "claude-haiku-5-5"
+    ok: bool = True
+    input_tokens: int = 1200
+    output_tokens: int = 300
+    cached_tokens: int = 0
+    # Millionths of a US dollar; None for a call whose price is not known.
+    cost_micros: int | None = 1_500
+    # How long ago, counting from now.
+    hours_ago: int = 1
+    error: str | None = None
+    # How many to make, an hour apart (the first of them the oldest).
+    repeat: int = 1
+
+
+def ai_calls(session: Session, now: datetime, specs: Sequence[CallSpec]) -> int:
+    """Records AI calls as of now, for the usage page to show, and returns how many."""
+    made = 0
+    for spec in specs:
+        for place in range(spec.repeat):
+            session.add(
+                AiCall(
+                    occurred_at=now - timedelta(hours=spec.hours_ago + spec.repeat - 1 - place),
+                    purpose=spec.purpose,
+                    about=spec.about,
+                    provider=spec.provider,
+                    model=spec.model,
+                    level="balanced",
+                    ok=spec.ok,
+                    input_tokens=spec.input_tokens,
+                    output_tokens=spec.output_tokens,
+                    cached_tokens=spec.cached_tokens,
+                    cost_micros=spec.cost_micros,
+                    duration_ms=1800,
+                    error=spec.error,
+                    prompt="HOST_1 was scanned by WAN_1 on port 22.",
+                    answer=None if spec.error else "HOST_1 was probed by WAN_1; nothing got in.",
+                )
+            )
+            made += 1
+    session.flush()
+    return made

@@ -493,11 +493,17 @@ test.describe('layout on a phone', () => {
     activity,
     verdicts,
     aiSettings,
+    aiUsage,
     harness,
     data,
   }) => {
     await harness.createVerdicts([
       { verdict: 'not_suspicious', address: '93.184.216.34', note: 'a long reason '.repeat(8) },
+    ])
+    await harness.createAiCalls([
+      { about: 'incident 3', hours_ago: 2, cost_micros: 2_500, repeat: 3 },
+      { purpose: 'chat', model: 'a-model-nobody-priced', cost_micros: null, hours_ago: 7 },
+      { about: 'incident 5', ok: false, error: 'A long reason '.repeat(10), hours_ago: 50 },
     ])
     for (const [name, show, ready] of [
       ['account', () => security.goto(), security.twoFactorOff],
@@ -512,6 +518,7 @@ test.describe('layout on a phone', () => {
         },
         aiSettings.card('ollama_cloud'),
       ],
+      ['ai-usage', () => aiUsage.goto(), aiUsage.requests.first()],
       ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()

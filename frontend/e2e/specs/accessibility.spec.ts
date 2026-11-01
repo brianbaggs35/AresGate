@@ -378,6 +378,31 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the AI usage page, with its charts, requests and a request opened, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiUsage,
+      shell,
+    }) => {
+      await harness.createAiCalls([
+        { about: 'incident 3', hours_ago: 2, cost_micros: 2_500, repeat: 3 },
+        { about: 'incident 4', hours_ago: 30, cost_micros: 4_000, cached_tokens: 600 },
+        { purpose: 'chat', model: 'a-model-nobody-priced', cost_micros: null, hours_ago: 7 },
+        { about: 'incident 5', ok: false, error: "It didn't answer in time.", hours_ago: 50 },
+      ])
+      await aiUsage.goto()
+      await expect(aiUsage.requests.first()).toBeVisible()
+      await expect(aiUsage.dailyChart).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+
+      await aiUsage.requests.first().getByTestId('call-open').click()
+      await expect(aiUsage.dialog).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the account settings page has no WCAG 2.2 AA problems', async ({
       page,
       security,

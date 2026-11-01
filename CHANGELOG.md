@@ -23,7 +23,7 @@ Every release's notes are here, newest first. The format follows
   the provider and model, the level, the prompt and the answer exactly as the provider saw them,
   the tokens (cached, written and thinking counted separately), the cost from the catalog's
   prices, how long it took and why a request failed. It keeps 90 days
-  (`ARESGATE_AI_LOG_RETENTION_DAYS`). The usage page that reads it comes next.
+  (`ARESGATE_AI_LOG_RETENTION_DAYS`). The usage page reads it.
 - **The AI reads incidents.** The incident page has a new card, *What the AI makes of it*: what
   kind of thing the AI thinks it is (a possible compromise, an active attack, a probe, harmless or
   unclear), how sure it is, the story in plain words, what to check, and the verdict it would give
@@ -34,6 +34,17 @@ Every release's notes are here, newest first. The format follows
   most 20 an hour), and the incident list shows the AI's word beside the others. Nothing is asked
   when AI is off, and everything the AI is asked is recorded. See
   [DOCS/operations.md](DOCS/operations.md#ai-providers).
+- **What AI took and cost, and spending limits.** The new **Settings > AI usage** page adds up
+  every request to an AI provider: the cost, tokens and requests for the last 7, 30 or 90 days
+  against the stretch before, the month so far and where it is heading, the days as stacked bars by
+  use (in cost, tokens or calls), the same by provider, model or use, what took the most (an
+  incident links to its page), and every request, each opening to show exactly what the provider
+  was sent and what it answered, with the stand-ins it was given. The costs are estimates from a
+  price list that the page links to and dates, and requests to a model with no known price are
+  counted in tokens and say so. *Download as a spreadsheet* saves the range's requests as a CSV.
+  You can also set **spending limits** for the last 24 hours and for the month: past 80% the meter
+  warns, and when one is used up AresGate stops asking providers that charge by the token, the
+  worker included, and says which limit it was. A provider on your own computer is never stopped.
 
 ### Fixed
 

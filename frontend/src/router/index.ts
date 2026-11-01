@@ -105,6 +105,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AiSettingsView.vue'),
       },
       {
+        path: 'ai-usage',
+        name: 'settings-ai-usage',
+        component: () => import('@/views/AiUsageView.vue'),
+      },
+      {
         path: 'data',
         name: 'settings-data',
         component: () => import('@/views/DataView.vue'),

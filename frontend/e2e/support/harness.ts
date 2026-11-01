@@ -150,6 +150,30 @@ export interface VerdictsRecord {
   verdicts: number
 }
 
+/** A request to an AI provider as the gateway would have recorded it. Whatever is left out is
+ * made up. */
+export interface AiCallRequest {
+  purpose?: string
+  about?: string
+  provider?: string
+  model?: string
+  ok?: boolean
+  input_tokens?: number
+  output_tokens?: number
+  cached_tokens?: number
+  /** Millionths of a US dollar; null for a model whose price is not known. */
+  cost_micros?: number | null
+  /** How long ago the last was; a run goes back from there, an hour apart. */
+  hours_ago?: number
+  error?: string
+  repeat?: number
+}
+
+/** How many calls `createAiCalls()` recorded. */
+export interface AiCallsRecord {
+  calls: number
+}
+
 /** The kinds of integration a stand-in can answer like. */
 export type StandInKind =
   'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh' | 'anthropic' | 'openai' | 'ollama'
@@ -317,6 +341,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/verdicts', { data: { verdicts } })
       .then((response) => readJson<VerdictsRecord>(response, 'Giving verdicts'))
+  }
+
+  /** Records requests to AI providers as of now, for the usage page to show. */
+  createAiCalls(calls: AiCallRequest[]): Promise<AiCallsRecord> {
+    return this.api
+      .post('/api/__test__/factories/ai-calls', { data: { calls } })
+      .then((response) => readJson<AiCallsRecord>(response, 'Recording AI calls'))
   }
 
   /** Starts a server that answers like an integration. It runs until the next test's clean. */
