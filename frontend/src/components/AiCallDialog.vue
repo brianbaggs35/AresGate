@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 
 import { fetchUsageCall, type UsageCallDetail } from '@/api/aiUsage'
 import { errorMessage } from '@/api/client'
@@ -17,6 +18,9 @@ const props = defineProps<{ callId: number | null }>()
 const open = defineModel<boolean>({ required: true })
 
 const session = useSessionStore()
+// On a phone it fills the screen: what was sent is long, and a card that stops short of the
+// bottom bar leaves its Close button half under it.
+const { smAndDown } = useDisplay()
 const call = ref<UsageCallDetail | null>(null)
 const failure = ref<string | null>(null)
 const loading = ref(false)
@@ -51,7 +55,7 @@ watch(
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="760" scrollable>
+  <v-dialog v-model="open" max-width="760" scrollable :fullscreen="smAndDown">
     <v-card data-test="call-dialog">
       <v-card-title class="text-title-large">What was sent</v-card-title>
       <v-card-text>

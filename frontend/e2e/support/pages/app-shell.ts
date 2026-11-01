@@ -5,10 +5,11 @@ import { waitForMotion } from '../accessibility'
 export type ThemeChoice = 'light' | 'dark' | 'system'
 
 /** The places in the menu, by the names of their routes. */
-export type Place = 'home' | 'incidents' | 'logs' | 'integrations' | 'status' | 'settings'
+export type Place =
+  'home' | 'incidents' | 'assistant' | 'logs' | 'integrations' | 'status' | 'settings'
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
-const BEHIND_MORE: readonly Place[] = ['status', 'settings']
+const BEHIND_MORE: readonly Place[] = ['integrations', 'status', 'settings']
 
 /**
  * What's around every page: the logo, which links home, the menu (at the side on a computer or
@@ -22,6 +23,7 @@ export class AppShell {
   readonly incidentsLink: Locator
   readonly logsLink: Locator
   readonly integrationsLink: Locator
+  readonly assistantLink: Locator
   readonly statusLink: Locator
   readonly settingsLink: Locator
   /** A phone's button for the places that do not fit in the bar, and the sheet it opens. */
@@ -61,6 +63,7 @@ export class AppShell {
     this.incidentsLink = page.getByTestId('nav-incidents')
     this.logsLink = page.getByTestId('nav-logs')
     this.integrationsLink = page.getByTestId('nav-integrations')
+    this.assistantLink = page.getByTestId('nav-assistant')
     this.statusLink = page.getByTestId('nav-status')
     this.settingsLink = page.getByTestId('nav-settings')
     this.moreButton = page.getByTestId('nav-more')

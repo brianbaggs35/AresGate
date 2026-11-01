@@ -45,6 +45,17 @@ Every release's notes are here, newest first. The format follows
   You can also set **spending limits** for the last 24 hours and for the month: past 80% the meter
   warns, and when one is used up AresGate stops asking providers that charge by the token, the
   worker included, and says which limit it was. A provider on your own computer is never stopped.
+- **An assistant you can ask about your network.** The new **Assistant** page in the menu answers
+  questions in plain words ("What needs my attention right now?", "Are all my integrations
+  working?"). It never answers from memory: it is shown an overview of the network and either
+  answers or asks to look something up, from a short list of reads (open incidents, one incident,
+  recent alerts, who the firewall blocked most, a device, how the integrations are doing), and
+  then says what it looked at and what it is based on, with links to the incidents and
+  integrations. It can only read: nothing it can do changes AresGate or the network. Everything it
+  is shown goes through the same privacy level as the rest, every request is recorded under
+  Settings > AI usage, and every answer has a button to read exactly what the provider was sent.
+  Conversations are kept until you delete them. An incident's AI card has *Ask the assistant*,
+  which opens the chat with a question about it ready to send.
 
 ## 0.0.4
 

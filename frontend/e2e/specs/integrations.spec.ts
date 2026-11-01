@@ -19,7 +19,7 @@ test.describe('integrations', () => {
   }) => {
     await page.goto('/')
 
-    await shell.integrationsLink.click()
+    await shell.goTo('integrations')
 
     await expect(page).toHaveURL('/integrations')
     await expect(page).toHaveTitle('Integrations · AresGate')
@@ -30,7 +30,7 @@ test.describe('integrations', () => {
       await expect(integrations.status(key)).toHaveText('Not connected')
       await expect(integrations.lastCall(key)).toHaveText('Not set up yet')
     }
-    await expect(shell.integrationsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('integrations')
 
     await integrations.card('ntopng').click()
 
@@ -38,7 +38,7 @@ test.describe('integrations', () => {
     await expect(integration.title).toHaveText('ntopng')
     await expect(integration.status).toHaveText('Not connected')
     // The place in the menu stays marked on the integration's own page.
-    await expect(shell.integrationsLink).toHaveAttribute('aria-current', 'page')
+    await shell.expectCurrent('integrations')
 
     await integration.back.click()
 

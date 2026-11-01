@@ -85,6 +85,16 @@ describe('AiReading', () => {
     })
   })
 
+  describe('the assistant', () => {
+    it('can be asked about the incident, whether or not the AI has read it', async () => {
+      const read = await show(detail({ id: 14, reading: reading() }))
+      expect(read.find('ai-chat').attributes('href')).toBe('/assistant?about=incident:14')
+
+      const unread = await show(detail({ id: 15, reading: null }))
+      expect(unread.find('ai-chat').attributes('href')).toBe('/assistant?about=incident:15')
+    })
+  })
+
   describe('the verdict it suggests', () => {
     it('is a button that says what it is about, with the AI’s reason', async () => {
       const { text, find } = await show()

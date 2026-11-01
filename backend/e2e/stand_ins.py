@@ -1005,19 +1005,26 @@ def zenarmor(api_key: str) -> Handler:
     return handle
 
 
-def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
-    """What an analyst would answer to a request for a reading of an incident (one that asks for
-    a JSON schema with a ``classification``), naming the device by the stand-in the prompt used."""
+def _schema_properties(asked: Mapping[str, Any]) -> dict[str, Any]:
+    """The properties of the JSON schema a request asks the answer to follow, if it asks."""
     config = cast("dict[str, Any]", asked.get("output_config") or {})
     schema = cast(
         "dict[str, Any]", cast("dict[str, Any]", config.get("format") or {}).get("schema")
     )
-    properties = cast("dict[str, Any]", (schema or {}).get("properties") or {})
-    if "classification" not in properties:
-        return None
+    return cast("dict[str, Any]", (schema or {}).get("properties") or {})
+
+
+def _prompt_of(asked: Mapping[str, Any]) -> str:
     messages = cast("list[dict[str, Any]]", asked.get("messages") or [])
-    prompt = str(messages[0].get("content", "")) if messages else ""
-    found = re.search(r"HOST_\d+", prompt)
+    return str(messages[0].get("content", "")) if messages else ""
+
+
+def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
+    """What an analyst would answer to a request for a reading of an incident (one that asks for
+    a JSON schema with a ``classification``), naming the device by the stand-in the prompt used."""
+    if "classification" not in _schema_properties(asked):
+        return None
+    found = re.search(r"HOST_\d+", _prompt_of(asked))
     device = found.group(0) if found else "A device"
     return json.dumps(
         {
@@ -1033,6 +1040,37 @@ def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
     )
 
 
+def _lookup(tool: str) -> dict[str, Any]:
+    return {"tool": tool, "id": None, "name": None, "hours": None, "limit": None}
+
+
+def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
+    """What the assistant would answer in the chat (a request for a JSON schema with ``lookups``):
+    a question about what needs attention is answered after a look at the open incidents, one
+    about the integrations after a look at them, and any other straight away."""
+    if "lookups" not in _schema_properties(asked):
+        return None
+    prompt = _prompt_of(asked)
+    question = prompt.rsplit("The owner asks:", 1)[-1].lower()
+    for words, tool, kind in (
+        ("attention", "open_incidents", "incident"),
+        ("integration", "integrations", "integration"),
+    ):
+        if words not in question:
+            continue
+        if f'<data label="{tool.replace("_", " ")}' not in prompt:
+            return json.dumps({"lookups": [_lookup(tool)], "answer": "", "cites": []})
+        found = re.search(rf"\[{kind} (\w+)\]", prompt)
+        answer = (
+            f"Start with {kind} {found.group(1)}: it is the one that needs you most."
+            if found
+            else "Nothing needs your attention right now."
+        )
+        cites = [f"{kind} {found.group(1)}"] if found else []
+        return json.dumps({"lookups": [], "answer": answer, "cites": cites})
+    return json.dumps({"lookups": [], "answer": "All quiet on the home network.", "cites": []})
+
+
 def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
     """Anthropic's Messages API: a key in ``x-api-key``, a version header, and an answer of one
     text block with the tokens counted in ``usage``. Asked for a reading of an incident, it gives
@@ -1046,7 +1084,7 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
         asked = json.loads(seen.body)
         if asked.get("model") not in models or not isinstance(asked.get("max_tokens"), int):
             return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
-        reading = _reading_of_an_incident(asked)
+        reading = _reading_of_an_incident(asked) or _answer_of_the_assistant(asked)
         return _json(
             {
                 "id": "msg_stand_in",
