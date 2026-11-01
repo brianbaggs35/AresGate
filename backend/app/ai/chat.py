@@ -79,7 +79,7 @@ LOOKUP: Final[Mapping[str, object]] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "tool": {"type": "string", "enum": list(tools.NAMES)},
+        "tool": {"type": "string", "enum": list(tools.names())},
         "id": {"type": ["integer", "null"]},
         "name": {"type": ["string", "null"]},
         "hours": {"type": ["integer", "null"]},

@@ -43,9 +43,15 @@ def run(
 
 class TestTheList:
     def test_every_tool_is_found_by_its_name_and_nothing_else_is(self) -> None:
-        assert [tools.by_name(name) is not None for name in tools.NAMES] == [True] * len(
-            tools.NAMES
+        assert tools.names() == (
+            "open_incidents",
+            "incident",
+            "alerts",
+            "blocked_sources",
+            "device",
+            "integrations",
         )
+        assert all(tools.by_name(name) is not None for name in tools.names())
         assert tools.by_name("delete_everything") is None
 
     def test_every_tool_says_what_it_gives(self) -> None:
