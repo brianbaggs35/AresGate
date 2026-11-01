@@ -89,10 +89,53 @@ export interface IntegrationSummary {
   services: Service[]
 }
 
+/** A page of the product's documentation (or source) that a guide was written from. */
+export interface GuideSource {
+  title: string
+  url: string
+}
+
+/** An exact value to pick or enter, and what it is for. */
+export interface GuideFill {
+  label: string
+  value: string
+}
+
+export interface GuideStep {
+  title: string
+  detail: string
+  /** The menus to go through, in order. */
+  menu: string[]
+  fills: GuideFill[]
+  /** Something to run in a shell, to be copied as it is. */
+  command: string
+  /** Which of AresGate's fields what this step produced goes into. */
+  result: string
+  /** What is easy to get wrong. */
+  watch: string
+  /** What was worked out rather than read from the documentation, and why. */
+  inferred: string
+}
+
+/** The steps for one connection of the integration. */
+export interface GuidePart {
+  title: string
+  /** The connection whose form the steps fill in. */
+  connection: string
+  intro: string
+  steps: GuideStep[]
+  optional: boolean
+}
+
+export interface Guide {
+  parts: GuidePart[]
+  sources: GuideSource[]
+}
+
 export interface Integration extends IntegrationSummary {
   docs_url: string
-  /** How to get what the fields ask for, in the product's own terms. */
-  setup: string[]
+  /** How to get what the fields ask for, step by step, in the product's own terms. */
+  guide: Guide
   last_error: string | null
   connections: Connection[]
 }

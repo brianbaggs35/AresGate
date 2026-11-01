@@ -13,6 +13,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.integrations import guides
+from app.integrations.guides import Guide
+
 MAX_TEXT = 128
 API_KEY = "API key"
 
@@ -133,8 +136,8 @@ class IntegrationDef(BaseModel):
     # The kind of thing it is, as one word ("firewall"): the web app picks the picture.
     icon: str
     docs_url: str
-    # How to get what the fields ask for, in the product's own terms.
-    setup: tuple[str, ...]
+    # How to get what the fields ask for, step by step, in the product's own terms.
+    guide: Guide
     connections: tuple[ConnectionDef, ...]
 
     def connection(self, key: str) -> ConnectionDef | None:
@@ -218,21 +221,7 @@ OPNSENSE = IntegrationDef(
     ),
     icon="firewall",
     docs_url="https://docs.opnsense.org/development/how-tos/api.html",
-    setup=(
-        "In OPNsense, open System, Access, Users and make a user for AresGate, or edit one.",
-        "Give that user only the privileges to view what AresGate collects: diagnostics, "
-        "interfaces, gateways, the firewall log, intrusion detection and the services you run. "
-        "OPNsense applies the same permissions to the API as to its web pages, and a key can do "
-        "whatever its user can.",
-        "Under API keys on the user, click +. OPNsense downloads apikey.txt with the key and the "
-        "secret. The secret is shown only once, so make a new key if it is lost.",
-        "Enter the address you open OPNsense at, then paste the key and the secret. Testing the "
-        "connection then finds which services are installed, such as Suricata, CrowdSec, OpenVPN "
-        "and WireGuard, and shows them under Services. Switch off any you don't want read.",
-        "Zenarmor has an API of its own, on a port of its own, that takes a key made in "
-        "Zenconsole: register the firewall there, enable the API and make a key. Add it under "
-        "Zenarmor if you use it.",
-    ),
+    guide=guides.OPNSENSE,
     connections=(
         ConnectionDef(
             key="api",
@@ -278,18 +267,7 @@ NTOPNG = IntegrationDef(
     ),
     icon="traffic",
     docs_url="https://www.ntop.org/guides/ntopng/api/rest/api_v2.html",
-    setup=(
-        "In ntopng, edit the user AresGate will use and generate its User Authentication Token. "
-        "ntopng's authentication guide shows where.",
-        "Choose Token below and paste it, or choose Username and password to use HTTP basic "
-        "authentication instead.",
-        "ntopng answers a login it refuses by redirecting to its login page, and AresGate doesn't "
-        "follow redirects, so a refused login shows up as a redirect.",
-        "Press Fetch interfaces to choose which interface AresGate reads, from the ones ntopng "
-        "lists with what each has seen.",
-        "The user must be allowed to see alerts, which AresGate reads along with the hosts and the "
-        "interface's traffic.",
-    ),
+    guide=guides.NTOPNG,
     connections=(
         ConnectionDef(
             key="api",
@@ -347,17 +325,7 @@ WAZUH = IntegrationDef(
     provides=("Security alerts from the indexer, and the health of the agents from the manager."),
     icon="alerts",
     docs_url="https://documentation.wazuh.com/current/user-manual/api/getting-started.html",
-    setup=(
-        "Manager: in the Wazuh dashboard, create an API user for AresGate (Server management, "
-        "Security, Users) and give it a read-only role, rather than using the administrator. "
-        "The API listens on port 55000 over HTTPS, with a self-signed certificate until you "
-        "replace it.",
-        "Indexer: create a user that may read the wazuh-alerts-* indices, rather than using "
-        "admin. It listens on port 9200 over HTTPS and uses basic authentication, also with a "
-        "self-signed certificate in a default install.",
-        "A self-signed certificate is trusted by pasting the certificate authority that signed "
-        "it, or by pinning its fingerprint, under Certificate.",
-    ),
+    guide=guides.WAZUH,
     connections=(
         ConnectionDef(
             key="manager",
@@ -390,14 +358,7 @@ CROWDSEC = IntegrationDef(
     provides="The ban decisions CrowdSec has made, from its local API.",
     icon="threats",
     docs_url="https://docs.crowdsec.net/docs/local_api/authentication/",
-    setup=(
-        "Where CrowdSec runs, run cscli bouncers add aresgate. It prints an API key once. A "
-        "bouncer's key can only read decisions.",
-        "The local API listens on 127.0.0.1:8080 unless api.server.listen_uri in CrowdSec's "
-        "config.yaml says otherwise. Make it listen on an address AresGate can reach.",
-        "The local API speaks plain HTTP unless you set up TLS for it. AresGate accepts http:// "
-        "here, but anyone on the network path can read the key.",
-    ),
+    guide=guides.CROWDSEC,
     connections=(
         ConnectionDef(
             key="lapi",

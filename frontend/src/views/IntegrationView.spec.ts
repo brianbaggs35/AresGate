@@ -132,22 +132,28 @@ describe('IntegrationView', () => {
       expect(document.title).toBe('ntopng · Integrations · AresGate')
     })
 
-    it('opens the guide while nothing is connected, and closes it after', async () => {
+    it('offers the setup instructions, as the main thing to do while nothing is connected', async () => {
       const fresh = await open()
-      expect(fresh.wrapper.find('.v-expansion-panel--active').exists()).toBe(true)
-      expect(fresh.wrapper.text()).toContain('Create a token in ntopng.')
+      const button = fresh.find('guide-open')
+      expect(button.text()).toBe('Setup instructions')
+      expect(button.classes()).toContain('v-btn--variant-tonal')
+      expect(button.attributes('aria-haspopup')).toBe('dialog')
       const set = await open(working())
-      expect(set.wrapper.find('.v-expansion-panel--active').exists()).toBe(false)
+      expect(set.find('guide-open').classes()).toContain('v-btn--variant-text')
     })
 
-    it('opens and closes the guide when its title is chosen', async () => {
-      const { wrapper } = await open(working())
-      const open_ = () => wrapper.find('.v-expansion-panel--active').exists()
-      expect(open_()).toBe(false)
-      await wrapper.find('.v-expansion-panel-title').trigger('click')
-      expect(open_()).toBe(true)
-      await wrapper.find('.v-expansion-panel-title').trigger('click')
-      expect(open_()).toBe(false)
+    it('opens the instructions in a window, and closes it again', async () => {
+      const { find } = await open()
+      const shown = () =>
+        document.querySelector<HTMLElement>('.v-overlay--active [data-test="setup-guide"]')
+      expect(shown()).toBeNull()
+      await find('guide-open').trigger('click')
+      await flushPromises()
+      expect(shown()?.textContent).toContain('Set up ntopng')
+      expect(shown()?.textContent).toContain('Create a token in ntopng.')
+      document.querySelector<HTMLElement>('[data-test="guide-close"]')!.click()
+      await flushPromises()
+      expect(shown()).toBeNull()
     })
 
     it('takes in a form that a connection hands back', async () => {
@@ -642,7 +648,8 @@ describe('IntegrationView', () => {
       expect(opened.find('status').text()).toBe('Not connected')
       expect(opened.find('save').text()).toBe('Connect')
       expect(opened.find('disconnect').exists()).toBe(false)
-      expect(opened.wrapper.find('.v-expansion-panel--active').exists()).toBe(true)
+      // Back to the main thing to do: the instructions for getting what it asks for.
+      expect(opened.find('guide-open').classes()).toContain('v-btn--variant-tonal')
     })
 
     it('says why it could not, on the page', async () => {

@@ -87,8 +87,12 @@ def test_an_integration_describes_what_it_takes_to_connect(
 
     docs_url: str = body["docs_url"]
     assert urlsplit(docs_url).hostname == "docs.opnsense.org"
-    assert body["setup"]
     assert body["status"] == "not_connected"
+    guide = body["guide"]
+    assert [part["connection"] for part in guide["parts"]] == ["api", "zenarmor"]
+    assert [part["optional"] for part in guide["parts"]] == [False, True]
+    assert guide["parts"][0]["steps"][0]["menu"] == ["System", "Access", "Users"]
+    assert {urlsplit(source["url"]).scheme for source in guide["sources"]} == {"https"}
     assert [item["definition"]["key"] for item in body["connections"]] == ["api", "zenarmor"]
     api, zenarmor = body["connections"]
     assert [field["key"] for field in api["definition"]["fields"]] == ["api_key", "api_secret"]
@@ -96,7 +100,7 @@ def test_an_integration_describes_what_it_takes_to_connect(
     assert zenarmor["definition"]["optional"] is True
     assert [module["key"] for module in api["modules"]][:3] == ["firewall", "suricata", "crowdsec"]
     assert all(module["state"] is None and module["enabled"] for module in api["modules"])
-    assert "path" not in json.dumps(body)
+    assert '"path"' not in json.dumps(body)
     assert (api["url"], api["tls_mode"], api["secrets_set"]) == (None, "system", [])
 
 

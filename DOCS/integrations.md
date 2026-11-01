@@ -457,6 +457,46 @@ country and network (AS) the attacker came from, and a decision lifted early sho
 decisions stream. Both need a machine login (`cscli machines add`) or the stream rather than a
 bouncer's key. AresGate doesn't read those yet.
 
+## Setup instructions
+
+Each integration's page has a **Setup instructions** button that opens the steps for getting what
+its connections ask for: a user or key made in the product, the privileges or roles it needs and
+the address to enter. They are written from the product's own documentation and source, and the
+window lists the pages at its end:
+
+| Integration | Written from |
+| ----------- | ------------ |
+| OPNsense | [API how-to](https://docs.opnsense.org/development/how-tos/api.html), [API](https://docs.opnsense.org/development/api.html), [local users and groups](https://docs.opnsense.org/manual/how-tos/user-local.html), the privileges in OPNsense's [core](https://github.com/opnsense/core/tree/master/src/opnsense/mvc/app/models/OPNsense) and [plugins](https://github.com/opnsense/plugins/tree/master/security) source, and Zenarmor's API pages |
+| ntopng | [authentication](https://www.ntop.org/guides/ntopng/authentication.html#token-based-authentication), [settings](https://www.ntop.org/guides/ntopng/web_gui/settings.html), and the source of `add/ntopng/user.lua`, `create/ntopng/api_token.lua` and the user form's labels |
+| Wazuh | [API](https://documentation.wazuh.com/current/user-manual/api/getting-started.html), [RBAC](https://documentation.wazuh.com/current/user-manual/api/rbac/configuration.html), [internal users](https://documentation.wazuh.com/current/user-manual/user-administration/rbac.html) and the default roles in Wazuh's source |
+| CrowdSec | [local API authentication](https://docs.crowdsec.net/docs/local_api/authentication/) and [configuration](https://docs.crowdsec.net/docs/configuration/crowdsec_configuration/) |
+
+A step marked **Not from the documentation** says what was worked out and why. These were
+read, not run against every release, so the connection test is what tells whether a step worked.
+The ones to know about:
+
+- **OPNsense privileges.** OPNsense's documentation doesn't list what an API client needs. The
+  list (*Lobby: Dashboard*, *Diagnostics: System Activity*, *Netstat*, *ARP Table*, *Logs:
+  Firewall: Live View*, *System: Gateways*, *Services: Intrusion Detection*, the DHCP service you
+  use and the CrowdSec and Wazuh agent plugins) is the privileges whose rules, in OPNsense's
+  source, allow the calls AresGate makes. The Wazuh agent plugin's rules name `wazuh_agent` while
+  AresGate asks `wazuhagent`, so whether that privilege alone is enough is not known.
+- **OPNsense's key button** is in the API section of the user's page in one page of the
+  documentation and a key button in the list of users in another; the window says both.
+- **ntopng.** Its guide says where to generate a token (Settings, User, Edit, *User Authentication
+  Token*) for the signed-in user. The role and the *Allow Alerts* flag a read-only client needs
+  come from ntopng's user form and source, not from its guide. An administrator can make the token
+  for another user with `create/ntopng/api_token.lua`, which the window shows.
+- **Wazuh.** The pages found describe creating a user through the API and the `agents_readonly`
+  role, but not the dashboard's Users tab, and the indexer role is narrowed from Wazuh's
+  read-only example to `wazuh-alerts-*`. If the indexer's test is refused, add `cluster_monitor`.
+- **CrowdSec.** The configuration page gives `api.server.listen_uri` as `host:port` but no
+  default; `127.0.0.1:8080` is from other pages' examples.
+
+The text is in `backend/app/integrations/guides.py`, one `Guide` for each integration with a
+`Part` for each of its connections (a test requires every connection to have one), and reaches
+the web app in the integration's `guide`.
+
 ## What AresGate will connect to
 
 Every integration is reached the same way, and a few rules are not settings:

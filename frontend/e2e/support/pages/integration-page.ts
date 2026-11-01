@@ -10,9 +10,15 @@ export class IntegrationPage {
   readonly lastSuccess: Locator
   readonly docs: Locator
   readonly back: Locator
-  /** The setup guide, which opens while nothing is connected. */
+  /** The setup instructions: the button that opens them, and the window they are in. */
+  readonly guideOpen: Locator
   readonly guide: Locator
-  readonly guideToggle: Locator
+  readonly guideTitle: Locator
+  readonly guideClose: Locator
+  readonly guideDone: Locator
+  readonly guideSteps: Locator
+  readonly guideStepTitles: Locator
+  readonly guideSources: Locator
   readonly notice: Locator
   /** Shown instead of the page when it can't be loaded. */
   readonly loadError: Locator
@@ -61,8 +67,14 @@ export class IntegrationPage {
     this.lastSuccess = page.getByTestId('integration-last-success')
     this.docs = page.getByTestId('docs')
     this.back = page.getByTestId('back')
-    this.guide = page.getByTestId('guide')
-    this.guideToggle = this.guide.locator('.v-expansion-panel-title')
+    this.guideOpen = page.getByTestId('guide-open')
+    this.guide = page.getByTestId('setup-guide')
+    this.guideTitle = page.getByTestId('guide-title')
+    this.guideClose = page.getByTestId('guide-close')
+    this.guideDone = page.getByTestId('guide-done')
+    this.guideSteps = page.getByTestId('step')
+    this.guideStepTitles = page.getByTestId('step-title')
+    this.guideSources = page.getByTestId('guide-sources').getByRole('link')
     this.notice = page.getByTestId('notice')
     this.loadError = page.getByTestId('integration-error')
     this.retry = page.getByTestId('retry')
@@ -102,6 +114,11 @@ export class IntegrationPage {
 
   async goto(key: string): Promise<void> {
     await this.page.goto(`/integrations/${key}`)
+  }
+
+  /** The instructions for one of the integration's connections, such as `api` or `manager`. */
+  guidePart(key: string): Locator {
+    return this.page.getByTestId(`guide-part-${key}`)
   }
 
   /** The card of one of the integration's connections, such as `api` or `zenarmor`. */

@@ -488,6 +488,45 @@ test.describe('layout on a phone', () => {
     })
   })
 
+  test.describe('the setup instructions', () => {
+    test('fill the screen, scroll to the pages they come from, and close', async ({
+      page,
+      integration,
+    }) => {
+      await integration.goto('opnsense')
+      await integration.guideOpen.click()
+      await expect(integration.guide).toBeVisible()
+
+      const viewport = page.viewportSize()
+      // The whole screen, so the bar at the bottom doesn't cover the buttons that close it. It
+      // grows into place as it opens, so it is looked at once it has.
+      await expect
+        .poll(async () => {
+          const box = await integration.guide.boundingBox()
+          return (
+            box !== null &&
+            box.x <= 1 &&
+            box.y <= 1 &&
+            box.width >= (viewport?.width ?? 0) - 1 &&
+            box.height >= (viewport?.height ?? 0) - 1
+          )
+        })
+        .toBe(true)
+      const sideways = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(sideways).toBeLessThanOrEqual(0)
+      await expect(integration.guideClose).toBeInViewport()
+
+      await integration.guideSources.last().scrollIntoViewIfNeeded()
+      await expect(integration.guideSources.last()).toBeInViewport()
+      await expect(integration.guideDone).toBeInViewport()
+
+      await integration.guideDone.click()
+      await expect(integration.guide).toBeHidden()
+    })
+  })
+
   test.describe('before signing in', () => {
     test.use({ signedIn: false })
 

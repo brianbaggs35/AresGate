@@ -3,6 +3,9 @@ import type {
   Connection,
   ConnectionDefinition,
   Field,
+  Guide,
+  GuidePart,
+  GuideStep,
   Integration,
   IntegrationSummary,
   Module,
@@ -72,11 +75,45 @@ export function summary(overrides: Partial<IntegrationSummary> = {}): Integratio
   }
 }
 
+/** One step of a guide, with nothing beyond its title and what to do. */
+export function step(overrides: Partial<GuideStep> = {}): GuideStep {
+  return {
+    title: 'Create a token',
+    detail: 'Create a token in ntopng.',
+    menu: [],
+    fills: [],
+    command: '',
+    result: '',
+    watch: '',
+    inferred: '',
+    ...overrides,
+  }
+}
+
+export function part(overrides: Partial<GuidePart> = {}): GuidePart {
+  return {
+    title: 'Make a token',
+    connection: 'api',
+    intro: 'AresGate needs a token.',
+    steps: [step()],
+    optional: false,
+    ...overrides,
+  }
+}
+
+export function guide(overrides: Partial<Guide> = {}): Guide {
+  return {
+    parts: [part()],
+    sources: [{ title: 'ntopng: authentication', url: 'https://www.ntop.org/guides/ntopng/' }],
+    ...overrides,
+  }
+}
+
 export function integration(overrides: Partial<Integration> = {}): Integration {
   return {
     ...summary(),
     docs_url: 'https://www.ntop.org/guides/ntopng/',
-    setup: ['Create a token in ntopng.', 'Paste it here.'],
+    guide: guide(),
     last_error: null,
     connections: [ntopngApi()],
     ...overrides,
@@ -148,7 +185,16 @@ export function opnsense(overrides: Partial<Integration> = {}): Integration {
     provides: 'The firewall, and the services that run on it.',
     icon: 'firewall',
     docs_url: 'https://docs.opnsense.org/development/api.html',
-    setup: ['Create an API key under System, Access, Users.'],
+    guide: guide({
+      parts: [
+        part({
+          title: 'Make a key for AresGate',
+          connection: 'api',
+          steps: [step({ title: 'Create the API key', menu: ['System', 'Access', 'Users'] })],
+        }),
+        part({ title: 'Zenarmor', connection: 'zenarmor', optional: true }),
+      ],
+    }),
     connections: [
       connection(
         {
