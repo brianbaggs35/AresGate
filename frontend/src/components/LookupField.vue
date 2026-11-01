@@ -172,9 +172,10 @@ onMounted(() => {
       @update:model-value="choose"
     >
       <!-- Where several can be chosen, a picture of a box says what is chosen: the select's own
-           checkbox is a control inside an option, which a screen reader cannot use. -->
+           checkbox is a control inside an option, which a screen reader cannot use. The list
+           item gives itself the role of an option and says whether it is selected. -->
       <template v-if="field.multiple" #item="{ props: itemProps }">
-        <v-list-item v-bind="itemProps" role="option">
+        <v-list-item v-bind="itemProps">
           <template #prepend="{ isSelected }">
             <v-icon :icon="isSelected ? SquareCheck : Square" data-test="lookup-box" />
           </template>
