@@ -54,6 +54,8 @@ export class IncidentPage {
   readonly aiUnread: Locator
   readonly aiBusy: Locator
   readonly aiAsk: Locator
+  /** The button that opens the assistant with a question about this incident. */
+  readonly aiChat: Locator
   readonly aiAgain: Locator
   readonly aiClass: Locator
   readonly aiConfidence: Locator
@@ -127,6 +129,7 @@ export class IncidentPage {
     this.aiUnread = page.getByTestId('ai-unread')
     this.aiBusy = page.getByTestId('ai-busy')
     this.aiAsk = page.getByTestId('ai-ask')
+    this.aiChat = page.getByTestId('ai-chat')
     this.aiAgain = page.getByTestId('ai-again')
     this.aiClass = page.getByTestId('ai-class')
     this.aiConfidence = page.getByTestId('ai-confidence')

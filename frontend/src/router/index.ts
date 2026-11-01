@@ -42,6 +42,24 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // The chat, and a page for each conversation. Both belong to the one place in the menu.
+    path: '/assistant',
+    children: [
+      {
+        path: '',
+        name: 'assistant',
+        component: () => import('@/views/AssistantView.vue'),
+        meta: { title: 'Assistant' },
+      },
+      {
+        path: String.raw`:id(\d+)`,
+        name: 'assistant-chat',
+        component: () => import('@/views/AssistantView.vue'),
+        meta: { title: 'Assistant' },
+      },
+    ],
+  },
+  {
     path: '/logs',
     name: 'logs',
     component: () => import('@/views/LogsView.vue'),

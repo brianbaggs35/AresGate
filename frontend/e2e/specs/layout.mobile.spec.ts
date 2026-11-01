@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { connectFirewall, expect, test, waitForMotion } from '../support'
+import { connectFirewall, expect, test, turnOnAi, waitForMotion } from '../support'
 
 test.describe('layout on a phone', () => {
   test('the dashboard fits the screen without scrolling sideways', async ({ page, dashboard }) => {
@@ -72,6 +72,44 @@ test.describe('layout on a phone', () => {
     await incidents.cards.first().click()
     await expect(incident.reasonsCard).toBeVisible()
     await expect(incident.signals.first()).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+  })
+
+  test('the assistant fits the screen, keeps the box to type in above the bottom bar, and lists conversations in a sheet', async ({
+    page,
+    harness,
+    aiSettings,
+    assistant,
+    shell,
+  }) => {
+    await harness.createIncidents([
+      { address: '93.184.216.34', severity: 'high', programs: ['wazuh'], signals: 4 },
+    ])
+    await turnOnAi(harness, aiSettings)
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+    await assistant.goto()
+    await expect(assistant.empty).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+    await expect(assistant.conversationsButton).toBeVisible()
+
+    await assistant.ask('What needs my attention right now?')
+    await expect(assistant.answers).toContainText('Start with incident')
+    await expect(assistant.busy).toHaveCount(0)
+    expect(await overflow()).toBeLessThanOrEqual(0)
+
+    const bar = await shell.menu.boundingBox()
+    const composer = await assistant.composer.boundingBox()
+    expect((composer?.y ?? Infinity) + (composer?.height ?? Infinity)).toBeLessThanOrEqual(
+      bar?.y ?? 0,
+    )
+    expect((await assistant.send.boundingBox())?.height).toBeGreaterThanOrEqual(48)
+
+    await assistant.showConversations()
+    await expect(assistant.conversations).toHaveCount(1)
     expect(await overflow()).toBeLessThanOrEqual(0)
   })
 
@@ -328,18 +366,20 @@ test.describe('layout on a phone', () => {
     for (const link of [
       shell.dashboardLink,
       shell.incidentsLink,
+      shell.assistantLink,
       shell.logsLink,
-      shell.integrationsLink,
       shell.moreButton,
     ]) {
       expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
     }
+    await expect(shell.integrationsLink).toHaveCount(0)
     await expect(shell.statusLink).toHaveCount(0)
 
     await shell.moreButton.click()
 
     await expect(shell.moreSheet).toBeVisible()
     await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(shell.integrationsLink).toBeVisible()
     await expect(shell.statusLink).toBeVisible()
     await expect(shell.settingsLink).toBeVisible()
     await shell.statusLink.click()
@@ -370,8 +410,8 @@ test.describe('layout on a phone', () => {
       for (const link of [
         shell.dashboardLink,
         shell.incidentsLink,
+        shell.assistantLink,
         shell.logsLink,
-        shell.integrationsLink,
         shell.moreButton,
       ]) {
         expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)

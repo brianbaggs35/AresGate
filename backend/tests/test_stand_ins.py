@@ -701,6 +701,57 @@ class TestAiProviders:
         assert "HOST_7" in said["story"]
         assert body["stop_reason"] == "end_turn"
 
+    def chat(self, content: str) -> dict[str, Any]:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        schema: dict[str, object] = {
+            "format": {"type": "json_schema", "schema": {"properties": {"lookups": {}}}}
+        }
+        asked: dict[str, object] = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 1500,
+            "output_config": schema,
+            "messages": [{"role": "user", "content": content}],
+        }
+        body = json.loads(self.anthropic(post("/v1/messages", asked, **good)).body)
+        return json.loads(body["content"][0]["text"])
+
+    def test_anthropic_looks_up_what_needs_attention_and_then_answers_citing_it(self) -> None:
+        first = self.chat("Overview.\n\nThe owner asks: What needs my attention?")
+        second = self.chat(
+            'Overview.\n\n<data label="open incidents">\n[incident 7] high\n</data>\n\n'
+            "The owner asks: What needs my attention?"
+        )
+
+        assert [lookup["tool"] for lookup in first["lookups"]] == ["open_incidents"]
+        assert first["answer"] == ""
+        assert second["lookups"] == []
+        assert second["answer"] == "Start with incident 7: it is the one that needs you most."
+        assert second["cites"] == ["incident 7"]
+
+    def test_anthropic_says_nothing_needs_attention_when_nothing_was_found(self) -> None:
+        said = self.chat(
+            '<data label="open incidents">\nThere are no open incidents.\n</data>\n\n'
+            "The owner asks: Anything needing attention?"
+        )
+
+        assert said["answer"] == "Nothing needs your attention right now."
+        assert said["cites"] == []
+
+    def test_anthropic_looks_up_the_integrations_when_asked_about_them(self) -> None:
+        first = self.chat("The owner asks: Are my integrations working?")
+        second = self.chat(
+            '<data label="integrations">\n[integration opnsense] OPNsense\n</data>\n\n'
+            "The owner asks: Are my integrations working?"
+        )
+
+        assert [lookup["tool"] for lookup in first["lookups"]] == ["integrations"]
+        assert second["cites"] == ["integration opnsense"]
+
+    def test_anthropic_answers_any_other_question_straight_away(self) -> None:
+        said = self.chat("The owner asks: How are you?")
+
+        assert said == {"lookups": [], "answer": "All quiet on the home network.", "cites": []}
+
     def test_anthropic_gives_a_reading_naming_no_device_when_the_prompt_has_none(self) -> None:
         good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
         schema: dict[str, object] = {"format": {"schema": {"properties": {"classification": {}}}}}

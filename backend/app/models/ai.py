@@ -178,3 +178,43 @@ class AiTriage(Base):
     verdict_reason: Mapped[str | None] = mapped_column(String(300), default=None)
     provider: Mapped[str] = mapped_column(String(32))
     model: Mapped[str] = mapped_column(String(128))
+
+
+class AiConversation(Base):
+    """A conversation with the assistant on the chat page (app/ai/chat.py). It is kept until the
+    owner deletes it, and holds the real values the owner and the assistant wrote: the stand-ins
+    a provider saw are in ``ai_calls``."""
+
+    __tablename__ = "ai_conversations"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    # The first question, cut short.
+    title: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AiMessage(Base):
+    """One thing said in a conversation: by the owner, or the assistant's answer to it. An answer
+    that could not be made is kept too, with the reason as its text and ``ok`` false."""
+
+    __tablename__ = "ai_messages"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant')", name="role"),
+        Index("ix_ai_messages_conversation_id_id", "conversation_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("ai_conversations.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(9))
+    text: Mapped[str] = mapped_column(Text)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    # What an answer looked at to make it, as {tool, summary} (the summary says what was found,
+    # in words without a name or an address in them), and what it cites: {kind, key, label}.
+    lookups: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
+    cites: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
+    # The requests to the provider that made it, in ``ai_calls`` (which may have been deleted).
+    call_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

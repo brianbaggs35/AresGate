@@ -870,6 +870,26 @@ AresGate works without it. A test sends only the words "Say OK."
   what was sent and said), `GET /api/ai/usage.csv` and `PUT /api/ai/limits` (`daily` and
   `monthly` in dollars, or null for no limit).
 
+- **The assistant.** The **Assistant** page answers questions about your network. Each time you
+  ask, the model is shown a short overview (how many incidents need someone, how many integrations
+  fail), what was said earlier in the conversation, and your question, and it either answers or
+  names up to four things to look up from a fixed list: `open_incidents`, `incident` (one, with
+  its signals and the devices it involves), `alerts`, `blocked_sources`, `device` (found by name,
+  address, hardware address or maker) and `integrations` (how each connection and its collectors
+  are doing). It may look things up twice and has to answer the third time, so one question is at
+  most three requests. Every lookup only reads, goes through the privacy level of Settings > AI
+  (a provider that must not see an address is given a stand-in, and a stand-in it asks about is
+  turned back to the device it stood for), and there is no tool that writes. An answer keeps what
+  it looked at (in words with no address in them) and what it cites, which the page turns into
+  links to incidents and integrations; a citation it was not given is dropped. Requests are
+  recorded with the purpose `chat` and `about` `chat <conversation>`, so they are on the usage
+  page and the spending limits apply. Conversations (`ai_conversations`, `ai_messages`) are
+  yours: they are kept until deleted, hold the real values, and are not sent anywhere. The model is
+  shown only the last six answers it made. The API: `GET /api/ai/conversations`, `POST` the same
+  to begin one with a question, `GET /api/ai/conversations/{id}`, `POST .../{id}/messages` to ask
+  again, `POST .../{id}/retry` to ask the last question again after an answer that could not be
+  made, and `DELETE`. Asking can take a minute or two, and nginx waits up to 400 seconds for it.
+
 ## Signing in
 
 AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create

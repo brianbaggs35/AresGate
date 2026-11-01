@@ -18,9 +18,9 @@ describe('BottomNavigation', () => {
     expect(dashboard.classes()).toContain('v-btn--active')
   })
 
-  it('keeps Integrations marked on the page of one of them', async () => {
-    const { wrapper } = await open('/integrations/opnsense')
-    expect(wrapper.find('[data-test="nav-integrations"]').classes()).toContain('v-btn--active')
+  it('keeps Assistant marked on the page of one of its conversations', async () => {
+    const { wrapper } = await open('/assistant/5')
+    expect(wrapper.find('[data-test="nav-assistant"]').classes()).toContain('v-btn--active')
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')
   })
 
@@ -40,7 +40,7 @@ describe('BottomNavigation', () => {
 
     expect(
       wrapper.findAll('.v-bottom-navigation .v-btn').map((place) => place.attributes('data-test')),
-    ).toEqual(['nav-home', 'nav-incidents', 'nav-logs', 'nav-integrations', 'nav-more'])
+    ).toEqual(['nav-home', 'nav-incidents', 'nav-assistant', 'nav-logs', 'nav-more'])
     expect(wrapper.find('[data-test="nav-more"]').text()).toBe('More')
     expect(wrapper.find('[data-test="nav-status"]').exists()).toBe(false)
   })
@@ -81,7 +81,7 @@ describe('BottomNavigation', () => {
         [...(inSheet('more-sheet')?.querySelectorAll('a') ?? [])].map((place) =>
           place.textContent.trim(),
         ),
-      ).toEqual(['Status', 'Settings'])
+      ).toEqual(['Integrations', 'Status', 'Settings'])
       expect(inSheet('nav-status')?.getAttribute('href')).toBe('/status')
     })
 
