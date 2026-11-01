@@ -210,17 +210,24 @@ def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
         lines += [
             f"- {redactor.text(str(reason.get('text', '')), 200)}" for reason in incident.reasons
         ]
-    devices = queries.devices(db, incident)
-    if devices:
-        lines.append("Devices on the home network involved:")
-        for address, device in devices:
-            name = redactor.name(device.hostname) if device.hostname else "unnamed"
-            vendor = f", made by {redactor.text(device.vendor, 60)}" if device.vendor else ""
-            lines.append(f"- {redactor.address(str(address))}: {name}{vendor}")
+    lines += _device_lines(db, incident, redactor)
     lines.append(
         redactor.evidence("signals, oldest first", _timeline(queries.signals(db, incident)))
     )
     return "\n".join(lines)
+
+
+def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[str]:
+    """The devices on the home network that the incident involves, by stand-in."""
+    devices = queries.devices(db, incident)
+    if not devices:
+        return []
+    lines = ["Devices on the home network involved:"]
+    for address, device in devices:
+        name = redactor.name(device.hostname) if device.hostname else "unnamed"
+        vendor = f", made by {redactor.text(device.vendor, 60)}" if device.vendor else ""
+        lines.append(f"- {redactor.address(str(address))}: {name}{vendor}")
+    return lines
 
 
 def _span(span: timedelta) -> str:
@@ -290,13 +297,14 @@ def parse(text: str) -> Reading | None:
         return None
     given = fields.get("checks")
     items = cast("list[object]", given) if isinstance(given, list) else []
+    texts = (_text(item, MAX_CHECK) for item in items)
     verdict = fields.get("verdict")
     return Reading(
         classification=classification,
         confidence=max(0, min(100, round(confidence))),
         headline=headline,
         story=story,
-        checks=[line for item in items if (line := _text(item, MAX_CHECK))][:MAX_CHECKS],
+        checks=[line for line in texts if line][:MAX_CHECKS],
         verdict=verdict if isinstance(verdict, str) and verdict in VERDICTS else None,
         verdict_reason=_text(fields.get("verdict_reason"), MAX_REASON),
     )
