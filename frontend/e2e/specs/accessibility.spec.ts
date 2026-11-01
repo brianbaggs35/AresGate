@@ -892,6 +892,25 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the setup instructions have no WCAG 2.2 AA problems', async ({
+      page,
+      integration,
+      shell,
+    }) => {
+      // Two connections, one of them optional, so every part of the window is drawn.
+      await integration.goto('opnsense')
+      await expect(integration.title).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await integration.guideOpen.click()
+      await expect(integration.guide).toBeVisible()
+      await expectAccessible(page)
+
+      await integration.guide.getByTestId('guide-sources').scrollIntoViewIfNeeded()
+      await expectAccessible(page)
+    })
+
     test('an integration, with its mistakes and its log, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

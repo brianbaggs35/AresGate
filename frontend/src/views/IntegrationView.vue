@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ExternalLink, FlaskConical, Plug, Unplug } from '@lucide/vue'
+import { BookOpen, ExternalLink, FlaskConical, Plug, Unplug } from '@lucide/vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -19,6 +19,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ConnectionCard from '@/components/ConnectionCard.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import SetupGuideDialog from '@/components/SetupGuideDialog.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import { formatAgo, formatDateTime } from '@/format'
 import {
@@ -61,8 +62,8 @@ const confirming = ref(false)
 const requests = ref(0)
 /** Counts the tests, which make the collectors run, so how they are doing reloads. */
 const tests = ref(0)
-/** The setup guide is open while there is nothing connected yet. */
-const guide = ref<number | undefined>(undefined)
+/** The setup instructions, in a window over the page. */
+const guideOpen = ref(false)
 
 const summary = ref<HTMLElement | null>(null)
 
@@ -98,7 +99,6 @@ async function load() {
   try {
     const next = await session.call(() => fetchIntegration(key.value))
     adopt(next)
-    guide.value = next.status === 'not_connected' ? 0 : undefined
   } catch (error) {
     loadError.value = {
       message: errorMessage(error),
@@ -185,7 +185,6 @@ async function disconnect(current: Integration) {
   try {
     await session.change((token) => disconnectIntegration(key.value, token))
     adopt(await session.call(() => fetchIntegration(key.value)))
-    guide.value = 0
     notice.value = `${current.name} is disconnected. AresGate forgot its addresses and keys.`
   } catch (error) {
     failure.value = errorMessage(error)
@@ -252,6 +251,16 @@ onMounted(load)
         </p>
         <template #actions>
           <v-btn
+            :color="connected ? undefined : 'primary'"
+            :variant="connected ? 'text' : 'tonal'"
+            :prepend-icon="BookOpen"
+            aria-haspopup="dialog"
+            data-test="guide-open"
+            @click="guideOpen = true"
+          >
+            Setup instructions
+          </v-btn>
+          <v-btn
             :href="integration.docs_url"
             target="_blank"
             rel="noopener noreferrer"
@@ -269,15 +278,7 @@ onMounted(load)
         {{ notice }}
       </v-alert>
 
-      <v-expansion-panels v-model="guide" data-test="guide">
-        <v-expansion-panel title="How to get what you need" elevation="0" border>
-          <v-expansion-panel-text>
-            <ol class="integration__steps text-body-large">
-              <li v-for="step in integration.setup" :key="step">{{ step }}</li>
-            </ol>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
+      <SetupGuideDialog v-model="guideOpen" :name="integration.name" :guide="integration.guide" />
 
       <form
         id="integration-form"
@@ -411,15 +412,6 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-}
-
-.integration__steps {
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.integration__steps li + li {
-  margin-top: 0.75rem;
 }
 
 .integration__checks {

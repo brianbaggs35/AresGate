@@ -8,6 +8,19 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Setup instructions for every integration, in a window.** Each integration's page has a
+  **Setup instructions** button (the main thing to do until it is connected, instead of a panel
+  that took the top of the page; the **Documentation** link stays beside it). The window gives
+  numbered steps, each with a short title, the menus to go through (OPNsense: System, Access,
+  Users; ntopng: Manage Users; Wazuh: Server management, Security, and Indexer management,
+  Security; CrowdSec: `cscli bouncers add`), the exact values to pick or enter (names, roles and
+  privileges as the product spells them) and which AresGate field what the step produced goes
+  into. A step says what is easy to get wrong, and what was worked out rather than read from the
+  documentation, so a guess isn't passed off as documentation; the pages each guide was written
+  from are listed at the end. It takes the whole screen on a phone, and works with the keyboard
+  (focus moves in, Escape closes it, focus goes back to the button). The old ntopng text told you
+  to edit "the user AresGate will use" without saying where to make one or where the token is.
+  See [DOCS/integrations.md](DOCS/integrations.md#setup-instructions).
 - **One place that asks the AI, and what it is shown.** Everything AresGate will ask a model
   (incident triage and the chat come next) goes through `backend/app/ai/gateway.py`, which is the
   only code besides the connection test that calls a provider. Before a hosted provider reads

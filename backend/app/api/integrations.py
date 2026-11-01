@@ -16,6 +16,7 @@ from app.db import get_sessionmaker
 from app.integrations import apilog, netguard, probes, registry, service
 from app.integrations.apilog import DEFAULT_PAGE, MAX_PAGE, ApiLogRecorder
 from app.integrations.client import Recorder
+from app.integrations.guides import Guide
 from app.integrations.netguard import AddressPolicy
 from app.integrations.registry import (
     ConnectionDef,
@@ -97,7 +98,7 @@ class IntegrationSummary(BaseModel):
 
 class IntegrationOut(IntegrationSummary):
     docs_url: str
-    setup: tuple[str, ...]
+    guide: Guide
     last_error: str | None
     connections: list[ConnectionOut]
 
@@ -248,7 +249,7 @@ def _integration_out(db: Session, definition: IntegrationDef) -> IntegrationOut:
         last_success_at=service.last_success(rows),
         services=_services(definition, rows),
         docs_url=definition.docs_url,
-        setup=definition.setup,
+        guide=definition.guide,
         last_error=problems[0] if problems else None,
         connections=[
             _connection_out(db, definition.key, item, rows.get(item.key))

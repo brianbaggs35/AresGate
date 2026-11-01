@@ -46,17 +46,84 @@ test.describe('integrations', () => {
     await expect(integrations.names).toHaveCount(4)
   })
 
-  test('explains how to get what is needed, and links to the official documentation', async ({
+  test('explains how to get what is needed in a window, and links to the official documentation', async ({
+    page,
     integration,
   }) => {
     await integration.goto('ntopng')
 
-    await expect(integration.guide).toContainText(/authentication token/i)
     await expect(integration.docs).toHaveAttribute('href', /^https:\/\/www\.ntop\.org\//)
     await expect(integration.docs).toHaveAttribute('target', '_blank')
     await expect(integration.docs).toHaveAttribute('rel', 'noopener noreferrer')
-    await integration.guideToggle.click()
-    await expect(integration.guide.getByRole('list')).toBeHidden()
+    await expect(integration.guide).toBeHidden()
+
+    await integration.guideOpen.click()
+
+    await expect(integration.guideTitle).toHaveText('Set up ntopng')
+    // The menus, the user's role and the token, named as ntopng names them.
+    await expect(integration.guide).toContainText('Manage Users')
+    await expect(integration.guide).toContainText('Non Privileged User')
+    await expect(integration.guide).toContainText('User Authentication Token')
+    await expect(integration.guideStepTitles).toHaveText([
+      'Open user management',
+      'Add a user for AresGate',
+      "Generate the user's token",
+      'Connect and choose the interface',
+    ])
+    // The pages it comes from are linked, and open in a tab of their own.
+    await expect(integration.guideSources.first()).toHaveAttribute(
+      'href',
+      /^https:\/\/www\.ntop\.org\//,
+    )
+    await expect(integration.guideSources.first()).toHaveAttribute('target', '_blank')
+
+    await integration.guideDone.click()
+
+    await expect(integration.guide).toBeHidden()
+    await expect(page).toHaveURL('/integrations/ntopng')
+  })
+
+  test('has instructions for every connection of every integration, from its own documentation', async ({
+    integration,
+  }) => {
+    const connections = {
+      opnsense: ['api', 'zenarmor'],
+      ntopng: ['api'],
+      wazuh: ['manager', 'indexer'],
+      crowdsec: ['lapi'],
+    }
+    for (const [key, parts] of Object.entries(connections)) {
+      await integration.goto(key)
+      await integration.guideOpen.click()
+
+      for (const part of parts) await expect(integration.guidePart(part)).toBeVisible()
+      await expect(integration.guideSteps.first()).toBeVisible()
+      expect(await integration.guideSources.count()).toBeGreaterThan(0)
+      await integration.guideClose.click()
+      await expect(integration.guide).toBeHidden()
+    }
+  })
+
+  test('moves the keyboard into the instructions, closes them with Escape and gives it back', async ({
+    page,
+    integration,
+  }) => {
+    await integration.goto('crowdsec')
+    await integration.guideOpen.focus()
+    await page.keyboard.press('Enter')
+
+    await expect(integration.guide).toBeVisible()
+    await expect(integration.guideTitle).toBeFocused()
+    const inside = () =>
+      page.evaluate(() => document.activeElement?.closest('.v-overlay__content') != null)
+    // Tab stays inside the window, however many times it is pressed.
+    for (let press = 0; press < 12; press++) await page.keyboard.press('Tab')
+    expect(await inside()).toBe(true)
+
+    await page.keyboard.press('Escape')
+
+    await expect(integration.guide).toBeHidden()
+    await expect(integration.guideOpen).toBeFocused()
   })
 
   test('says so when the list can’t be loaded, and loads it again on request', async ({

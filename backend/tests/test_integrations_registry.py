@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -32,11 +33,49 @@ def test_the_four_integrations_are_listed_in_order() -> None:
     assert list(INTEGRATIONS) == ["opnsense", "ntopng", "wazuh", "crowdsec"]
 
 
+def test_a_guide_has_steps_for_each_connection_it_names_and_cites_its_sources() -> None:
+    for integration in INTEGRATIONS.values():
+        guide = integration.guide
+        connections = {connection.key: connection for connection in integration.connections}
+        named = [part.connection for part in guide.parts]
+
+        assert set(named) <= set(connections)
+        assert len(named) == len(set(named))
+        assert guide.sources
+        for source in guide.sources:
+            assert source.title
+            assert urlsplit(source.url).scheme == "https"
+        for part in guide.parts:
+            # A part is left out only where the connection can be.
+            assert part.optional == connections[part.connection].optional
+            assert part.title
+            assert part.intro
+            assert part.steps
+            for step in part.steps:
+                assert step.title
+                assert step.detail
+
+
+def test_every_connection_is_covered_by_a_part_of_its_guide() -> None:
+    for integration in INTEGRATIONS.values():
+        covered = {part.connection for part in integration.guide.parts}
+
+        assert covered == {connection.key for connection in integration.connections}
+
+
+def test_a_step_never_asks_for_a_secret_to_be_typed_into_the_guide() -> None:
+    # The guide is plain text on a page: what it shows must be an example that is safe to read.
+    for integration in INTEGRATIONS.values():
+        for part in integration.guide.parts:
+            for step in part.steps:
+                assert "BEGIN" not in step.command
+                assert "token=" not in step.command.lower()
+
+
 def test_names_fit_where_they_are_kept() -> None:
     for integration in INTEGRATIONS.values():
         assert re.fullmatch(NAME_PATTERN, integration.key)
         assert integration.docs_url.startswith("https://")
-        assert integration.setup
         for connection in integration.connections:
             assert re.fullmatch(NAME_PATTERN, connection.key)
             assert len(credential_name(integration.key, connection.key)) <= 63
