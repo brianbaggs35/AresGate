@@ -110,7 +110,7 @@ class TestWhenNtopngRefuses:
         serve: Serve,
         make: Callable[[], Collector],
     ) -> None:
-        said = run(session, settings, engine, serve, make(), lambda seen: refusing(seen))
+        said = run(session, settings, engine, serve, make(), refusing)
 
         assert said == "ntopng refused the request (HTTP 400)."
 
