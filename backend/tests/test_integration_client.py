@@ -247,7 +247,7 @@ def test_an_untrusted_certificate_says_how_to_trust_it(serve: Serve) -> None:
     where = target(server)
     log = Log()
 
-    with pytest.raises(CallFailed, match=r"certificate isn't trusted \(.*self.signed") as raised:
+    with pytest.raises(CallFailed, match="vouches for itself") as raised:
         request(where, log, "GET", "/x")
 
     assert "pin the certificate's fingerprint" in str(raised.value)

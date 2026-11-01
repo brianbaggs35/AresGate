@@ -6,7 +6,8 @@ Run them inside the container as the ``aresgate`` user, which is the one the dat
     docker compose exec -u aresgate -w /app/backend aresgate \\
         python -m app.cli disable-two-factor USERNAME
 
-and ``make rotate-secret-key`` does the same for ``rotate-secret-key``.
+and ``make rotate-secret-key`` does the same for ``rotate-secret-key``. ``trust-store`` needs
+no account and no database.
 """
 
 import argparse
@@ -23,6 +24,7 @@ from app import audit
 from app.audit import Action, Outcome
 from app.config import get_settings
 from app.db import get_sessionmaker
+from app.integrations import netguard
 from app.models import UserSession
 from app.secret_key import SecretKeyError, check_length, is_container_made, load_secret_key
 from app.security import rotation, two_factor
@@ -182,6 +184,23 @@ def rotate_secret_key(new_key_file: Path | None) -> int:
     return 0
 
 
+def trust_store() -> int:
+    """Says how many certificate authorities this computer trusts, and fails if there are none:
+    an integration with a certificate from a public authority (such as Let's Encrypt) can't be
+    checked without them."""
+    store = netguard.trust_store()
+    if store.certificates == 0:
+        print(
+            "This computer trusts no certificate authorities (looked in "
+            f"{', '.join(store.where) or 'no file or directory that exists'}), so a certificate "
+            "from a public authority, such as Let's Encrypt, can't be checked.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"This computer trusts {store.certificates} certificates, from {', '.join(store.where)}.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app.cli", description="Commands for whoever runs AresGate."
@@ -201,7 +220,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="a file holding the new key (- for standard input), instead of a random one",
     )
+    commands.add_parser(
+        "trust-store",
+        help="say how many certificate authorities this computer trusts, for checking certificates",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.command == "trust-store":
+        return trust_store()
     if arguments.command == "rotate-secret-key":
         return rotate_secret_key(arguments.new_key_file)
     return disable_two_factor(arguments.username)

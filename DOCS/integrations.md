@@ -463,6 +463,32 @@ Every integration is reached the same way, and a few rules are not settings:
     shows with the one in the product (OPNsense: **System, Trust, Certificates**), then click
     **Trust this certificate**. The connection then only accepts that exact certificate.
 
+### When a certificate that looks valid isn't trusted
+
+A browser accepts a Let's Encrypt certificate that AresGate refuses with "unable to get local
+issuer certificate" when the system **sends only its own certificate** (Let's Encrypt's
+`cert.pem`) and not the certificate of the intermediate authority that signed it (`fullchain.pem`
+has both). A browser fetches or remembers the missing one; OpenSSL, and so AresGate, doesn't.
+OpenSSL words that the same as a certificate signed by an authority nobody here knows, so
+AresGate connects once more, to look at the certificates the system presents (nothing is sent),
+and says which it is, naming the authority:
+
+- **Sent without the certificate that signed it.** Serve the whole chain on that system (with
+  Let's Encrypt, `fullchain.pem` instead of `cert.pem`). Or, in AresGate, paste the missing
+  authority's certificate under **Certificate**, **A certificate authority I paste**: the
+  intermediate is enough, you don't need the root. The message gives the address the
+  certificate itself names for it, if it names one. Pinning the fingerprint works too, and is the
+  only choice for a certificate nothing vouches for.
+- **Signed by an authority this computer doesn't trust.** The message says where the chain it
+  sent ends. Paste that authority's certificate (or add it to the one pasted), or pin.
+- **Also named in words:** a certificate that vouches for itself, one that has expired (and
+  when), one that isn't valid yet (check the clocks), and one made for other names than the one
+  in the address, which are listed. Use one of them in the address, since a certificate for a
+  name isn't accepted for an IP address.
+
+The image carries Wolfi's `ca-certificates-bundle`, and its smoke test fails if Python finds no
+certificate authority in it (`python -m app.cli trust-store` shows how many).
+
 ## Testing
 
 **Save and test** keeps the settings and then makes the product's own harmless read request,

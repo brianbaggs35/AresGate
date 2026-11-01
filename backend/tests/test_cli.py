@@ -1,5 +1,8 @@
 import runpy
+import ssl
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +15,7 @@ from app.config import Settings
 from app.models import AuditEvent, RecoveryCode, TotpCredential, User, UserSession
 from app.security import two_factor
 from tests.helpers import ACCOUNT_USERNAME, turn_on_two_factor
+from tests.stubs import make_certificate
 
 
 def test_it_takes_the_authenticator_app_off(
@@ -129,3 +133,49 @@ def test_it_runs_as_a_module(
 
     # The account has no authenticator app, which is reported with a 1.
     assert stopped.value.code == 1
+
+
+def stores(monkeypatch: pytest.MonkeyPatch, cafile: str | None, capath: str | None) -> None:
+    paths = SimpleNamespace(cafile=cafile, capath=capath)
+    monkeypatch.setattr(ssl, "get_default_verify_paths", lambda: paths)
+
+
+def test_it_says_how_many_certificate_authorities_this_computer_trusts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle = tmp_path / "bundle.pem"
+    bundle.write_text(make_certificate().pem + make_certificate().pem)
+    directory = tmp_path / "certs"
+    directory.mkdir()
+    (directory / "5a1c2b3d.0").write_text(make_certificate().pem)
+    (directory / "readme.txt").write_text("not a certificate")
+    stores(monkeypatch, str(bundle), str(directory))
+
+    assert cli.main(["trust-store"]) == 0
+
+    assert capsys.readouterr().out == (
+        f"This computer trusts 3 certificates, from {bundle}, {directory}.\n"
+    )
+
+
+def test_it_fails_when_there_are_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "empty.pem").write_text("")
+    stores(monkeypatch, str(tmp_path / "empty.pem"), str(tmp_path / "missing"))
+
+    assert cli.main(["trust-store"]) == 1
+
+    error = capsys.readouterr().err
+    assert error.startswith("This computer trusts no certificate authorities (looked in ")
+    assert str(tmp_path / "empty.pem") in error
+
+
+def test_it_says_when_there_is_nowhere_to_look(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stores(monkeypatch, None, None)
+
+    assert cli.main(["trust-store"]) == 1
+
+    assert "looked in no file or directory that exists" in capsys.readouterr().err

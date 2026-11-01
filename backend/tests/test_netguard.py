@@ -26,7 +26,7 @@ from app.integrations.netguard import (
     allowed_addresses,
     parse_origin,
 )
-from tests.stubs import Answer, Certificate, Serve, StubServer, make_certificate
+from tests.stubs import Answer, Certificate, Serve, StubServer, make_certificate, make_chain
 
 
 def ok(_: object) -> Answer:
@@ -622,6 +622,57 @@ def test_a_system_that_presents_no_certificate_is_refused(
 
     with pytest.raises(Refused, match="didn't present a certificate"):
         asyncio.run(lookup)
+
+
+def test_every_certificate_a_system_presents_can_be_looked_at(serve: Serve) -> None:
+    chain = make_chain()
+    server = serve(ok, chain.full)
+    origin = netguard.parse_origin(server.url, allow_http=False)
+
+    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+
+    assert len(found) == 2
+    assert found[0] == chain.full.der
+    assert server.seen == []
+
+
+def test_a_system_that_sends_only_its_own_certificate_has_a_chain_of_one(serve: Serve) -> None:
+    chain = make_chain()
+    server = serve(ok, chain.leaf)
+    origin = netguard.parse_origin(server.url, allow_http=False)
+
+    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+
+    assert found == [chain.leaf.der]
+
+
+def test_looking_at_a_chain_respects_the_allowed_addresses_and_says_when_nothing_answers(
+    serve: Serve,
+) -> None:
+    server = serve(ok, make_certificate())
+    origin = netguard.parse_origin(server.url, allow_http=False)
+
+    with pytest.raises(Refused, match="isn't a private network address"):
+        asyncio.run(netguard.look_up_chain(HOME_NETWORK, origin, 5.0))
+
+    server.stop()
+    with pytest.raises(Refused, match="Couldn't make a secure connection"):
+        asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+
+
+def test_a_chain_that_is_not_there_is_refused(
+    serve: Serve, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server = serve(ok, make_certificate())
+    origin = netguard.parse_origin(server.url, allow_http=False)
+
+    def none(self: ssl.SSLObject) -> None:
+        return None
+
+    monkeypatch.setattr(ssl.SSLObject, "get_unverified_chain", none)
+
+    with pytest.raises(Refused, match="didn't present a certificate"):
+        asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
 
 
 def test_a_certificate_without_names_is_described_without_them() -> None:

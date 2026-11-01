@@ -7,20 +7,24 @@ from typing import Protocol
 from e2e.stand_ins import (
     Answer,
     Certificate,
+    Chain,
     Handler,
     Seen,
     StubServer,
     make_certificate,
+    make_chain,
 )
 
 __all__ = [
     "Answer",
     "Certificate",
+    "Chain",
     "Handler",
     "Seen",
     "Serve",
     "StubServer",
     "make_certificate",
+    "make_chain",
 ]
 
 
