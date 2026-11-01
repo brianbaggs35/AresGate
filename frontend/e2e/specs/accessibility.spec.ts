@@ -1,4 +1,11 @@
-import { authenticatorCode, connectFirewall, expect, expectAccessible, test } from '../support'
+import {
+  authenticatorCode,
+  connectFirewall,
+  expect,
+  expectAccessible,
+  test,
+  turnOnAi,
+} from '../support'
 
 // Both themes, since contrast is checked against the colors each one draws.
 for (const theme of ['light', 'dark'] as const) {
@@ -89,6 +96,41 @@ for (const theme of ['light', 'dark'] as const) {
 
       await incident.action('investigating').click()
       await expect(incident.notice).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('what the AI makes of an incident has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiSettings,
+      incidents,
+      incident,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'high',
+          programs: ['wazuh', 'opnsense'],
+          signals: 4,
+          device_name: 'nas',
+        },
+      ])
+      await turnOnAi(harness, aiSettings)
+      await incidents.goto()
+      await incidents.cards.first().click()
+      await expect(incident.aiUnread).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await incident.aiAsk.click()
+      await expect(incident.aiClass).toBeVisible()
+      await expect(incident.aiSuggestion).toBeVisible()
+      await expectAccessible(page)
+
+      await incidents.goto()
+      await expect(page.getByTestId('ai-chip')).toBeVisible()
       await expectAccessible(page)
     })
 

@@ -48,6 +48,26 @@ export class IncidentPage {
   readonly why: Locator
   readonly verdictNotice: Locator
   readonly verdictError: Locator
+  /** What the AI made of it: the card, its busy line, the reading's parts, the verdict it
+   * suggests, and why it could not be asked. */
+  readonly aiCard: Locator
+  readonly aiUnread: Locator
+  readonly aiBusy: Locator
+  readonly aiAsk: Locator
+  readonly aiAgain: Locator
+  readonly aiClass: Locator
+  readonly aiConfidence: Locator
+  readonly aiHeadline: Locator
+  readonly aiStory: Locator
+  readonly aiChecks: Locator
+  readonly aiSource: Locator
+  readonly aiSuggestion: Locator
+  readonly aiAccept: Locator
+  readonly aiNotice: Locator
+  readonly aiFailure: Locator
+  readonly aiSettingsLink: Locator
+  /** The AI's word for it in the chips at the top. */
+  readonly aiChip: Locator
   /** Why its signals are one incident: the lines, the kind of activity, the waves and ports. */
   readonly groupingCard: Locator
   readonly grouping: Locator
@@ -103,6 +123,23 @@ export class IncidentPage {
     this.why = page.getByTestId('verdict-note').locator('input')
     this.verdictNotice = page.getByTestId('verdict-notice')
     this.verdictError = page.getByTestId('verdict-error')
+    this.aiCard = page.getByTestId('ai-card')
+    this.aiUnread = page.getByTestId('ai-unread')
+    this.aiBusy = page.getByTestId('ai-busy')
+    this.aiAsk = page.getByTestId('ai-ask')
+    this.aiAgain = page.getByTestId('ai-again')
+    this.aiClass = page.getByTestId('ai-class')
+    this.aiConfidence = page.getByTestId('ai-confidence')
+    this.aiHeadline = page.getByTestId('ai-headline')
+    this.aiStory = page.getByTestId('ai-story')
+    this.aiChecks = page.getByTestId('ai-check')
+    this.aiSource = page.getByTestId('ai-source')
+    this.aiSuggestion = page.getByTestId('ai-suggestion')
+    this.aiAccept = page.getByTestId('ai-accept')
+    this.aiNotice = page.getByTestId('ai-notice')
+    this.aiFailure = page.getByTestId('ai-failure')
+    this.aiSettingsLink = page.getByTestId('ai-settings-link')
+    this.aiChip = page.locator('.incident__chips').getByTestId('ai-chip')
     this.groupingCard = page.getByTestId('grouping-card')
     this.grouping = page.getByTestId('grouping-line')
     this.waves = page.getByTestId('waves')

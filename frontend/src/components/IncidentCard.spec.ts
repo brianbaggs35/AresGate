@@ -36,6 +36,18 @@ describe('IncidentCard', () => {
     )
   })
 
+  it('says what the AI made of it, when it has read it', async () => {
+    const { text } = await show({ ai: { classification: 'attack', confidence: 88 } })
+
+    expect(text('ai-chip')).toBe('AI: Active attack, 88% sure')
+  })
+
+  it('says nothing of the AI for an incident it has not read', async () => {
+    const { wrapper } = await show()
+
+    expect(wrapper.find('[data-test="ai-chip"]').exists()).toBe(false)
+  })
+
   it('says how many signals there were, over how long, and who saw them', async () => {
     const { text } = await show()
 

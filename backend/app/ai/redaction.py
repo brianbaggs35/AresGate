@@ -181,6 +181,12 @@ def _own_networks(values: Iterable[str]) -> tuple[Network, ...]:
     return tuple(found)
 
 
+def _fenced(label: str, body: str) -> str:
+    safe = _DATA_END.sub(lambda _: "<\\/data", body)
+    name = re.sub(r"[^A-Za-z0-9 _.-]", "", label)[:40]
+    return f'<data label="{name}">\n{safe}\n</data>'
+
+
 class Redactor:
     """Turns what a prompt is made of into what a provider may see, at one level."""
 
@@ -355,9 +361,24 @@ class Redactor:
     def data(self, label: str, value: str, limit: int = 4000) -> str:
         """Evidence for the prompt, in tags that tell the model it is not to be obeyed. A
         closing tag inside it is broken so that it can't end the evidence early."""
-        safe = _DATA_END.sub(lambda _: "<\\/data", self.text(value, limit))
-        name = re.sub(r"[^A-Za-z0-9 _.-]", "", label)[:40]
-        return f'<data label="{name}">\n{safe}\n</data>'
+        return _fenced(label, self.text(value, limit))
+
+    def evidence(
+        self, label: str, lines: Iterable[str], *, per_line: int = 400, limit: int = 12000
+    ) -> str:
+        """Evidence of one line per event, kept as lines (``data`` makes one line of its value),
+        each passed through the redactor and fenced like ``data``. What does not fit in ``limit``
+        is left out whole lines at a time."""
+        kept: list[str] = []
+        used = 0
+        for line in lines:
+            safe = self.text(line, per_line)
+            if used + len(safe) + 1 > limit:
+                kept.append(CUT.strip())
+                break
+            kept.append(safe)
+            used += len(safe) + 1
+        return _fenced(label, "\n".join(kept))
 
     def finish(self, prompt: str) -> str:
         """The whole prompt, once more: whatever a builder forgot to pass through is caught."""

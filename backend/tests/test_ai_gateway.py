@@ -474,6 +474,7 @@ class TestWhatIsKept:
 
         assert isinstance(answer, Answer)
         assert answer.text == "done"
+        assert (answer.provider, answer.model) == ("anthropic", catalog.ANTHROPIC.default_model)
         assert session.scalars(select(AiCall)).one().answer == "done"
 
 

@@ -9,6 +9,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import config, db, worker
+from app.ai.gateway import Context
 from app.config import Settings
 from app.models import CollectorHealth, IntegrationConnection, WorkerBeat
 from app.secret_key import SecretKeyError
@@ -109,7 +110,7 @@ def test_it_collects_on_a_real_install_unless_it_is_turned_off(
 
 
 class TestServing:
-    def test_it_collects_and_files_incidents_side_by_side(
+    def test_it_collects_files_incidents_and_has_them_read_side_by_side(
         self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         started: list[str] = []
@@ -122,16 +123,24 @@ class TestServing:
             assert callable(new_session)
             started.append(f"incidents, enabled: {enabled}")
 
+        async def read_incidents(
+            new_session: Callable[[], Session], context: Context, *, enabled: bool
+        ) -> None:
+            assert callable(new_session)
+            assert context.settings.environment == "production"
+            started.append(f"AI, enabled: {enabled}")
+
         def collecting(_: Settings) -> Collecting:
             return Collecting()
 
         monkeypatch.setattr(worker, "build", collecting)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
+        monkeypatch.setattr(worker.ai, "run", read_incidents)
         production = settings.model_copy(update={"environment": "production"})
 
         asyncio.run(worker.serve(production))
 
-        assert sorted(started) == ["collectors", "incidents, enabled: True"]
+        assert sorted(started) == ["AI, enabled: True", "collectors", "incidents, enabled: True"]
 
     def test_one_that_stops_takes_the_other_with_it(
         self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
@@ -142,18 +151,22 @@ class TestServing:
             async def run(self) -> None:
                 raise RuntimeError("the scheduler fell over")
 
-        async def wait_forever(*_: object, **__: object) -> None:
-            try:
-                await asyncio.sleep(3600)
-            except asyncio.CancelledError:
-                cancelled.append("incidents")
-                raise
+        def waiting(name: str) -> Callable[..., Coroutine[Any, Any, None]]:
+            async def wait_forever(*_: object, **__: object) -> None:
+                try:
+                    await asyncio.sleep(3600)
+                except asyncio.CancelledError:
+                    cancelled.append(name)
+                    raise
+
+            return wait_forever
 
         def failing(_: Settings) -> Failing:
             return Failing()
 
         monkeypatch.setattr(worker, "build", failing)
-        monkeypatch.setattr(worker.incidents, "run", wait_forever)
+        monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
+        monkeypatch.setattr(worker.ai, "run", waiting("AI"))
 
         serving = worker.serve(settings)
 
@@ -161,7 +174,7 @@ class TestServing:
             asyncio.run(serving)
 
         assert raised.group_contains(RuntimeError, match="fell over")
-        assert cancelled == ["incidents"]
+        assert sorted(cancelled) == ["AI", "incidents"]
 
 
 @pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")

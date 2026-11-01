@@ -148,6 +148,18 @@ refused is under the field and moves the keyboard to the first one. How a test w
 chip and, when it failed, the reason in an alert that stays until the next try. Looks and wording
 for prices and models are in `src/ai.ts`.
 
+The incident page puts `AiReading` straight after the hero: a card that says what the AI made
+of the incident as chips (the kind of thing, *n of 100 sure*, and *The AI's opinion*, so it is
+never mistaken for AresGate's own confidence), a headline, the story, *What to check* and, unless
+the owner has already given a verdict, the verdict it would give with its reason and one button to
+give it. Under it is who read it and when, and how many signals came in since. An incident it has
+not read says so and offers *Ask the AI*; while it reads, a spinner says it can take up to a
+minute; when it could not be asked (AI is off, no provider, the provider failed) the reason is in
+an alert with a link to Settings > AI. The page owns the asking (`askTheAi`), so pressing *Start
+investigating* can follow the status change with a reading of an incident the AI hasn't read in
+full. The chip in the list and in the page header is `AiChip`; looks and wording are in
+`src/triage.ts`.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

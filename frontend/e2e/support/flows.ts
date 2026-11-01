@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test'
 
 import type { Harness } from './harness'
+import type { AiSettingsPage } from './pages/ai-settings-page'
 import type { IntegrationPage } from './pages/integration-page'
 
 /** The key and secret that the OPNsense stand-in accepts. */
@@ -31,4 +32,27 @@ export async function connectFirewall(
   await integration.trust('api').click()
   await integration.save.click()
   await expect(integration.status).toHaveText('Connected')
+}
+
+/** The key the Anthropic stand-in accepts. */
+export const AI_KEY = 'sk-a-key-for-the-stand-in'
+
+/**
+ * Sets up Anthropic against a stand-in that answers like it, through the page for AI, and turns AI
+ * on, as a person would: pick it, type the key, test it, and use it.
+ */
+export async function turnOnAi(harness: Harness, aiSettings: AiSettingsPage): Promise<void> {
+  await harness.standIn({
+    kind: 'anthropic',
+    api_key: AI_KEY,
+    models: ['claude-haiku-5-5'],
+    provider: 'anthropic',
+  })
+  await aiSettings.goto()
+  await aiSettings.choose('anthropic')
+  await aiSettings.apiKey('anthropic').fill(AI_KEY)
+  await aiSettings.test('anthropic').click()
+  await expect(aiSettings.status('anthropic')).toHaveText('Connected')
+  await aiSettings.enabled.check()
+  await expect(aiSettings.state).toHaveText('On · Claude Haiku 5.5')
 }
