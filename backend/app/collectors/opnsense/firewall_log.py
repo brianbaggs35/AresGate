@@ -132,6 +132,7 @@ def _event(
         dst_address=destination or None,
         dst_port=traffic.number(entry, "dstport"),
         protocol=protocol or None,
+        iface=traffic.text(entry, "interface") or None,
         raw={key: value for key, value in entry.items() if key != "__spec__"},
     )
 

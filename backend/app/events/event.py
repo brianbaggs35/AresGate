@@ -20,6 +20,7 @@ MAX_RAW_BYTES = 64 * 1024
 MAX_SUMMARY = 500
 MAX_SIGNATURE = 256
 MAX_PROTOCOL = 16
+MAX_IFACE = 64
 
 # Lowercase words, digits and hyphens: what an integration, a connection and a kind are called.
 KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -60,6 +61,8 @@ class NewEvent:
     dst_address: str | None = None
     dst_port: int | None = None
     protocol: str | None = None
+    # The port of the source it came in on, as the program names it, when it says.
+    iface: str | None = None
     raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -93,6 +96,7 @@ class NewEvent:
             "dst_address": _address(self.dst_address),
             "dst_port": _port(self.dst_port),
             "protocol": _protocol(self.protocol),
+            "iface": _text(self.iface, MAX_IFACE),
             "fingerprint": self.fingerprint,
             "raw": _raw(self.raw),
         }
