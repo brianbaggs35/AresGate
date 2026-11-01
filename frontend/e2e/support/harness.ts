@@ -122,6 +122,8 @@ export interface EventRequest {
   dst_address?: string
   dst_port?: number
   protocol?: string
+  /** The port it came in on, in the program's own name for it (`igc0`). */
+  iface?: string
   /** How long ago the first was; a run goes back from there in time. */
   seconds_ago?: number
   /** The integration's own record of it, which the detail shows. */
@@ -134,6 +136,29 @@ export interface EventRequest {
 /** How many events `createEvents()` stored. */
 export interface EventsRecord {
   events: number
+}
+
+/** What a program reports about one of its ports, as discovery finds it and as the Interfaces
+ * page leaves it. Left out, it is OPNsense's, with no name: a whole connection. */
+export interface FeedRequest {
+  integration?: string
+  /** The name the program uses for the port; empty for a connection that has none. */
+  native_name?: string
+  connection?: string
+  label?: string
+  detail?: string
+  /** The interface it is placed on, made if there isn't one of that name. Left out, it is not
+   * placed. */
+  interface?: string
+  /** The role of an interface that is made for it. */
+  role?: 'internet' | 'dmz' | 'home' | 'guest' | 'iot' | 'vpn' | 'management' | 'other'
+  /** Set aside as not wanted. */
+  ignored?: boolean
+}
+
+/** How many feeds `createFeeds()` made. */
+export interface FeedsRecord {
+  feeds: number
 }
 
 /** A verdict as the owner would give it: what it says and at least one thing it is about. */
@@ -310,6 +335,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/events', { data: { events } })
       .then((response) => readJson<EventsRecord>(response, 'Making events'))
+  }
+
+  /** Makes feeds, and the interfaces they are placed on, as the Interfaces page leaves them. */
+  createFeeds(feeds: FeedRequest[]): Promise<FeedsRecord> {
+    return this.api
+      .post('/api/__test__/factories/feeds', { data: { feeds } })
+      .then((response) => readJson<FeedsRecord>(response, 'Making feeds'))
   }
 
   /** Gives some verdicts and judges the incidents there are by them, as the page for them does. */

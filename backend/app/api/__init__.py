@@ -14,6 +14,7 @@ from app.api import (
     health,
     incidents,
     integrations,
+    interfaces,
     logs,
     metrics,
     passkeys,
@@ -35,6 +36,7 @@ api_router.include_router(two_factor.router)
 api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
+api_router.include_router(interfaces.router)
 api_router.include_router(ai.router)
 api_router.include_router(collectors.router)
 api_router.include_router(dashboard.router)

@@ -64,6 +64,7 @@ class TestReadingAlerts:
         assert (event.src_address, event.src_port) == ("198.51.100.7", 51514)
         assert (event.dst_address, event.dst_port) == ("192.0.2.10", 22)
         assert event.protocol == "tcp"
+        assert event.iface == "igb0"
         assert event.summary == (
             "ET SCAN Potential SSH Scan (allowed): tcp 198.51.100.7:51514 to 192.0.2.10:22"
         )

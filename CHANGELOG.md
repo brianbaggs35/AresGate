@@ -6,6 +6,20 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **Interfaces, the foundation**: the parts of the network can now be named, with a role
+  (Internet, DMZ, Home, Guest, IoT, VPN, Management or Other) and their networks, and the ports
+  the programs report data under (OPNsense `igc0`, ntopng `eno1`) can be placed on them, so that
+  what different programs say can be read as one. Finding the ports is on request
+  (`POST /api/interfaces/discover`) and looks at the events of the last three days, the metrics,
+  the connections that are one feed (CrowdSec, Wazuh) and the interfaces ntopng lists. Suggestions
+  from the names (`wan`, `guest`, `wg0`) are shown and never applied by themselves. Events now
+  keep the port they came in on (OPNsense's firewall log and Suricata alerts say it), and the
+  interface is worked out when data is read, so placing a port somewhere else relabels what was
+  stored before. Changes are in the audit log. The page for all this comes next
+  ([DOCS/development.md](DOCS/development.md#interfaces-the-parts-of-the-network)).
+
 ### Fixed
 
 - **ntopng's interface is chosen by name**: the **Interface ID** box is now an **Interface** list.

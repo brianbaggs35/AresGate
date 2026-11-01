@@ -154,6 +154,8 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "incidents": 0,
         "integration_api_calls": 0,
         "integration_connections": 0,
+        "interface_feeds": 0,
+        "interfaces": 0,
         "login_throttles": 0,
         "metric_retention": 0,
         "metric_samples": 0,
@@ -194,6 +196,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "passkeys",
             "passkey_challenges",
             "metric_samples",
+            "interface_feeds",
             "incident_signals",
             "device_addresses",
             "ai_settings",
@@ -205,6 +208,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "metric_series",
             "metric_retention",
             "login_throttles",
+            "interfaces",
             "integration_connections",
             "integration_api_calls",
             "incidents",
@@ -966,6 +970,52 @@ def test_verdicts_can_be_given_and_judge_the_incidents_there_are(e2e: TestClient
         ("threat", None, 2),
         ("not_suspicious", "my scanner", 0),
     ]
+
+
+def test_events_can_be_made_to_come_in_on_a_port(e2e: TestClient, session: Session) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    made = e2e.post(
+        "/api/__test__/factories/events",
+        json={"events": [{"iface": "igc0"}, {"iface": "igc1", "repeat": 2}, {}]},
+    )
+
+    assert made.json() == {"events": 4}
+    ports = session.scalars(select(Event.iface).order_by(Event.id)).all()
+    assert sorted(ports, key=str) == [None, "igc0", "igc1", "igc1"]
+
+
+def test_feeds_can_be_made_and_placed_to_order(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    made = e2e.post(
+        "/api/__test__/factories/feeds",
+        json={
+            "feeds": [
+                {"native_name": "igc0", "interface": "Internet", "role": "internet"},
+                {"integration": "ntopng", "native_name": "eth0", "interface": "Internet"},
+                {"native_name": "igc1", "label": "LAN", "detail": "wired"},
+                {"native_name": "lo0", "ignored": True},
+                {"integration": "crowdsec"},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"feeds": 5}
+    sign_in(e2e)
+    body = e2e.get("/api/interfaces").json()
+    [internet] = body["interfaces"]
+    assert (internet["name"], internet["role"], internet["position"]) == ("Internet", "internet", 0)
+    assert [(f["integration"], f["connection"], f["native_name"]) for f in internet["feeds"]] == [
+        ("ntopng", "api", "eth0"),
+        ("opnsense", "api", "igc0"),
+    ]
+    assert [(f["integration"], f["connection"], f["native_name"]) for f in body["unplaced"]] == [
+        ("crowdsec", "lapi", ""),
+        ("opnsense", "api", "igc1"),
+    ]
+    assert [f["native_name"] for f in body["ignored"]] == ["lo0"]
 
 
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:

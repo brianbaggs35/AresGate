@@ -65,6 +65,10 @@ class Action(StrEnum):
     VERDICT_GIVEN = "verdict.given"
     VERDICT_CHANGED = "verdict.changed"
     VERDICT_REMOVED = "verdict.removed"
+    INTERFACE_CREATED = "interface.created"
+    INTERFACE_CHANGED = "interface.changed"
+    INTERFACE_REMOVED = "interface.removed"
+    INTERFACE_FEED_PLACED = "interface.feed_placed"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

@@ -23,7 +23,15 @@ from app.events.store import record as record_events
 from app.incidents import engine as incident_engine
 from app.metrics.sample import NewSample
 from app.metrics.store import record as record_samples
-from app.models import CollectorHealth, Incident, SystemInfo, User, VerdictRule
+from app.models import (
+    CollectorHealth,
+    Incident,
+    Interface,
+    InterfaceFeed,
+    SystemInfo,
+    User,
+    VerdictRule,
+)
 from app.security import passwords
 from app.security.accounts import normalize_username
 
@@ -421,6 +429,8 @@ class EventSpec(NamedTuple):
     dst_address: str | None = None
     dst_port: int | None = None
     protocol: str | None = None
+    # The port it came in on, in the program's own name for it.
+    iface: str | None = None
     # How long ago the last of them happened.
     seconds_ago: int = 60
     # The program's own record of it, when it has one.
@@ -452,6 +462,7 @@ def events(session: Session, settings: Settings, now: datetime, specs: Sequence[
                     dst_address=spec.dst_address,
                     dst_port=spec.dst_port,
                     protocol=spec.protocol,
+                    iface=spec.iface,
                     raw=spec.raw,
                 )
             )
@@ -484,4 +495,51 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
         )
     session.flush()
     incident_engine.reapply(session)
+    return len(specs)
+
+
+class FeedSpec(NamedTuple):
+    """A feed for `feeds` to make, as discovery would have found it."""
+
+    integration: str = "opnsense"
+    native_name: str = ""
+    connection: str | None = None
+    label: str = ""
+    detail: str = ""
+    # The interface it is placed on, made if there isn't one with that name; none leaves the feed
+    # not placed.
+    interface: str | None = None
+    role: str = "other"
+    ignored: bool = False
+
+
+def feeds(session: Session, specs: Sequence[FeedSpec]) -> int:
+    """Makes feeds, and the interfaces they are placed on, the way the Interfaces page leaves
+    them. Returns how many feeds were made."""
+    for spec in specs:
+        placed: Interface | None = None
+        if spec.interface:
+            placed = session.scalars(
+                select(Interface).where(Interface.name == spec.interface)
+            ).first()
+            if placed is None:
+                placed = Interface(
+                    name=spec.interface,
+                    role=spec.role,
+                    position=len(session.scalars(select(Interface.id)).all()),
+                )
+                session.add(placed)
+                session.flush()
+        session.add(
+            InterfaceFeed(
+                integration=spec.integration,
+                connection=spec.connection or _CONNECTIONS.get(spec.integration, "e2e"),
+                native_name=spec.native_name,
+                label=spec.label,
+                detail=spec.detail,
+                interface_id=placed.id if placed else None,
+                ignored=spec.ignored,
+            )
+        )
+    session.flush()
     return len(specs)

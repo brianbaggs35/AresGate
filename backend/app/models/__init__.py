@@ -17,6 +17,8 @@ from app.models.events import Event, EventRetention
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
 from app.models.incidents import Incident, IncidentSignal
 from app.models.integrations import ApiCall, IntegrationConnection
+from app.models.interfaces import ROLES as INTERFACE_ROLES
+from app.models.interfaces import Interface, InterfaceFeed
 from app.models.metrics import MetricRetention, MetricSample, MetricSeries
 from app.models.passkeys import Passkey, PasskeyChallenge
 from app.models.retention import SourceRetention
@@ -26,6 +28,7 @@ from app.models.verdicts import VERDICTS, VerdictRule
 
 __all__ = [
     "INCIDENT_STATUSES",
+    "INTERFACE_ROLES",
     "VERDICTS",
     "AiProvider",
     "AiSettings",
@@ -40,6 +43,8 @@ __all__ = [
     "Incident",
     "IncidentSignal",
     "IntegrationConnection",
+    "Interface",
+    "InterfaceFeed",
     "LoginThrottle",
     "MetricRetention",
     "MetricSample",

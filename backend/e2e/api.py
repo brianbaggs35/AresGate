@@ -252,6 +252,7 @@ class EventRequest(BaseModel):
     dst_address: str | None = None
     dst_port: int | None = Field(default=None, ge=0, le=65_535)
     protocol: str | None = Field(default=None, max_length=16)
+    iface: str | None = Field(default=None, max_length=64)
     seconds_ago: int = Field(default=60, ge=0, le=60 * 60 * 24 * 20)
     raw: dict[str, Any] | None = None
     repeat: int = Field(default=1, ge=1, le=500)
@@ -287,6 +288,7 @@ def make_events(body: EventsRequest, db: Db, settings: SettingsDep) -> EventsRec
                 dst_address=item.dst_address,
                 dst_port=item.dst_port,
                 protocol=item.protocol,
+                iface=item.iface,
                 seconds_ago=item.seconds_ago,
                 raw=item.raw,
                 repeat=item.repeat,
@@ -325,6 +327,35 @@ def make_verdicts(body: VerdictsRequest, db: Db) -> VerdictsRecord:
     )
     db.commit()
     return VerdictsRecord(verdicts=given)
+
+
+class FeedRequest(BaseModel):
+    """One feed, as discovery would have found it, and where it is placed."""
+
+    integration: str = Field(default="opnsense", max_length=32)
+    native_name: str = Field(default="", max_length=64)
+    connection: str | None = Field(default=None, max_length=32)
+    label: str = Field(default="", max_length=120)
+    detail: str = Field(default="", max_length=200)
+    interface: str | None = Field(default=None, max_length=40)
+    role: str = Field(default="other", max_length=16)
+    ignored: bool = False
+
+
+class FeedsRequest(BaseModel):
+    feeds: list[FeedRequest]
+
+
+class FeedsRecord(BaseModel):
+    feeds: int
+
+
+@router.post("/factories/feeds", status_code=status.HTTP_201_CREATED)
+def make_feeds(body: FeedsRequest, db: Db) -> FeedsRecord:
+    """Makes feeds, and the interfaces they are placed on, for the Interfaces page to show."""
+    made = factories.feeds(db, [factories.FeedSpec(**item.model_dump()) for item in body.feeds])
+    db.commit()
+    return FeedsRecord(feeds=made)
 
 
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)

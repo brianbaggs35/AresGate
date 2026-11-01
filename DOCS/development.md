@@ -167,6 +167,39 @@ devices there were.
 - The OPNsense lease searches share `app/collectors/opnsense/leases.py`: a collector for another
   DHCP server only needs its path and what makes a lease current.
 
+## Interfaces: the parts of the network
+
+Each program calls its own ports something else (OPNsense `igc0`, ntopng `eno1`), so the data of
+different programs can't be read as one until the owner says which are the same part of the
+network. `app/interfaces` holds that, and the Interfaces page (a later change) is where it is
+done.
+
+- An **interface** (`interfaces`) is a name the owner chooses with a role (Internet, DMZ, Home,
+  Guest, IoT, VPN, Management or Other; only Internet is outside), notes and its networks as CIDR
+  blocks. A **feed** (`interface_feeds`) is what one connection reports about one port: the
+  program, the connection and the name the program uses (empty for a connection that has no
+  ports, such as CrowdSec's bans or Wazuh's alerts). A feed is on at most one interface, or set
+  aside as not wanted, or not placed yet.
+- **Data keeps the name its program gave it** (`events.iface`, and the `interface` label of the
+  metrics), and the interface is worked out when the data is read with `scope.Resolver`. Placing
+  a feed somewhere else therefore relabels what came in before as well, and nothing is rewritten.
+  A collector that knows the port of an event sets `NewEvent.iface` (the OPNsense firewall log and
+  Suricata alerts do).
+- **Finding** (`discovery.py`) is on request (`POST /api/interfaces/discover`): the ports of the
+  events of the last three days (under a five-second limit, said if it is hit), the ports the
+  metrics are kept for, the connections that are one feed, and the interfaces ntopng lists. It
+  makes feeds that aren't placed; it never places one.
+- **Suggestions** (`suggest.py`) are rules, shown beside the unplaced feeds and never applied by
+  themselves, because a wrong guess about which port is the Internet would mislabel every threat
+  that comes in on it: a name that says what it is for (`wan`, `guest`, `wg0`, `mgmt`), a name
+  an interface already has, and the same name in more than one program.
+- The API is `GET /api/interfaces`, `POST /api/interfaces`, `PATCH` and `DELETE
+  /api/interfaces/{id}`, `PUT /api/interfaces/feeds/{id}` (an interface, or `ignored`),
+  `POST /api/interfaces/discover` and `GET /api/interfaces/resolve`. Every change is in the audit
+  log. Removing an interface puts its feeds back to not placed.
+- The Playwright harness makes feeds and interfaces with `POST /api/__test__/factories/feeds`, and
+  events take an `iface`.
+
 ## Incidents
 
 `app/incidents` groups the events of every integration into incidents, with no AI. The worker
