@@ -8,6 +8,10 @@ products: the connection test is what tells whether a step worked."""
 
 from pydantic import BaseModel, ConfigDict
 
+# Said the same way in every guide, and by the guides that mention the same menu.
+ADDRESS = "Address, for example"
+INDEXER = "Indexer management"
+
 
 class Source(BaseModel):
     """A page of the product's documentation, or of its source, that a guide was written from."""
@@ -168,7 +172,7 @@ OPNSENSE = Guide(
                         "(Suricata, CrowdSec, OpenVPN, WireGuard and more) and lists them under "
                         "Services, where you can switch off any you don't want read."
                     ),
-                    fills=(Fill(label="Address, for example", value="https://192.168.1.1"),),
+                    fills=(Fill(label=ADDRESS, value="https://192.168.1.1"),),
                     watch=(
                         "If OPNsense uses a certificate it made itself, choose how AresGate "
                         "trusts it under Certificate on the card."
@@ -216,7 +220,7 @@ OPNSENSE = Guide(
                         "required, and the key is sent as the user name of HTTP basic "
                         "authentication."
                     ),
-                    fills=(Fill(label="Address, for example", value="https://192.168.1.1:8090"),),
+                    fills=(Fill(label=ADDRESS, value="https://192.168.1.1:8090"),),
                     inferred=(
                         "Zenarmor's pages give no fixed port; their examples use 8090. Use the "
                         "port your firewall shows."
@@ -360,7 +364,7 @@ NTOPNG = Guide(
                         "basic authentication."
                     ),
                     fills=(
-                        Fill(label="Address, for example", value="http://192.168.1.2:3000"),
+                        Fill(label=ADDRESS, value="http://192.168.1.2:3000"),
                         Fill(label="Sign in with", value="Authentication token"),
                     ),
                     watch=(
@@ -461,7 +465,7 @@ WAZUH = Guide(
                         "on the card, by pasting the certificate authority that signed it or "
                         "pinning its fingerprint."
                     ),
-                    fills=(Fill(label="Address, for example", value="https://192.168.1.3:55000"),),
+                    fills=(Fill(label=ADDRESS, value="https://192.168.1.3:55000"),),
                 ),
             ),
         ),
@@ -478,7 +482,7 @@ WAZUH = Guide(
                     title="Create an internal user",
                     detail="Click Create internal user, enter a user name and a password, and "
                     "click Create.",
-                    menu=("Indexer management", "Security", "Internal users"),
+                    menu=(INDEXER, "Security", "Internal users"),
                     fills=(
                         Fill(label="Username", value="aresgate"),
                         Fill(label="Password", value="A long random one."),
@@ -487,7 +491,7 @@ WAZUH = Guide(
                 Step(
                     title="Create a read-only role",
                     detail="Click Create role, or open one that already only reads.",
-                    menu=("Indexer management", "Security", "Roles"),
+                    menu=(INDEXER, "Security", "Roles"),
                     fills=(
                         Fill(label="Cluster permissions", value="cluster_composite_ops_ro"),
                         Fill(label="Index", value="wazuh-alerts-*"),
@@ -507,7 +511,7 @@ WAZUH = Guide(
                         "Open the role, go to the Mapped users tab, click Manage mapping, add the "
                         "user and click Map."
                     ),
-                    menu=("Indexer management", "Security", "Roles", "Mapped users"),
+                    menu=(INDEXER, "Security", "Roles", "Mapped users"),
                 ),
                 Step(
                     title="Enter the address and the sign-in",
@@ -516,7 +520,7 @@ WAZUH = Guide(
                         "password of this user. A default install uses a certificate made by "
                         "Wazuh here too, so choose how AresGate trusts it under Certificate."
                     ),
-                    fills=(Fill(label="Address, for example", value="https://192.168.1.3:9200"),),
+                    fills=(Fill(label=ADDRESS, value="https://192.168.1.3:9200"),),
                 ),
             ),
         ),
@@ -599,7 +603,7 @@ CROWDSEC = Guide(
                         "http:// here, but anyone on the network path can read the key, so keep "
                         "it to a network you trust."
                     ),
-                    fills=(Fill(label="Address, for example", value="http://192.168.1.4:8080"),),
+                    fills=(Fill(label=ADDRESS, value="http://192.168.1.4:8080"),),
                 ),
             ),
         ),
