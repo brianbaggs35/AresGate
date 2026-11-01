@@ -24,6 +24,7 @@ describe('SettingsNav', () => {
       '/settings/activity',
       '/settings/verdicts',
       '/settings/ai',
+      '/settings/ai-usage',
       '/settings/data',
     ])
     expect(links.map((link) => link.text())).toEqual([
@@ -32,6 +33,7 @@ describe('SettingsNav', () => {
       'Activity',
       'Verdicts',
       'AI',
+      'AI usage',
       'Data',
     ])
   })
@@ -57,6 +59,7 @@ describe('SettingsNav', () => {
       '/settings/activity',
       '/settings/verdicts',
       '/settings/ai',
+      '/settings/ai-usage',
       '/settings/data',
     ])
     expect(tabs.map((tab) => tab.text())).toEqual([
@@ -65,6 +68,7 @@ describe('SettingsNav', () => {
       'Activity',
       'Verdicts',
       'AI',
+      'AI usage',
       'Data',
     ])
     expect(tabs[2]?.classes()).toContain('v-tab--selected')

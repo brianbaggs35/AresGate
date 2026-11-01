@@ -75,6 +75,11 @@ class AiSettings(Base):
     redaction: Mapped[str] = mapped_column(String(8), default="balanced")
     # How much AI is used without being asked (``medium`` until the owner says otherwise).
     usage_level: Mapped[str] = mapped_column(String(10), default="medium")
+    # What may be spent on a provider that charges by the token, in millionths of a US dollar:
+    # in the last 24 hours and in the calendar month (UTC, as providers bill it). None is no
+    # limit. Reaching one stops the requests to such a provider until it passes.
+    daily_limit_micros: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    monthly_limit_micros: Mapped[int | None] = mapped_column(BigInteger, default=None)
     # Forgetting a provider turns it off here rather than leaving a dangling choice.
     provider: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("ai_providers.provider", ondelete="SET NULL"), default=None

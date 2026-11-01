@@ -1,4 +1,12 @@
-import { Database, Gavel, History, MonitorSmartphone, Sparkles, UserRound } from '@lucide/vue'
+import {
+  ChartColumn,
+  Database,
+  Gavel,
+  History,
+  MonitorSmartphone,
+  Sparkles,
+  UserRound,
+} from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A page of the Settings area. */
@@ -19,5 +27,6 @@ export const settingsSections: readonly SettingsSection[] = [
   { key: 'activity', route: 'settings-activity', title: 'Activity', icon: History },
   { key: 'verdicts', route: 'settings-verdicts', title: 'Verdicts', icon: Gavel },
   { key: 'ai', route: 'settings-ai', title: 'AI', icon: Sparkles },
+  { key: 'ai-usage', route: 'settings-ai-usage', title: 'AI usage', icon: ChartColumn },
   { key: 'data', route: 'settings-data', title: 'Data', icon: Database },
 ]

@@ -3,6 +3,8 @@ export { expectAccessible, waitForMotion } from './accessibility'
 export { AI_KEY, connectFirewall, FIREWALL_KEY, FIREWALL_SECRET, turnOnAi } from './flows'
 export {
   Harness,
+  type AiCallRequest,
+  type AiCallsRecord,
   type ApiCoverage,
   type BaselineData,
   type EventRequest,
@@ -20,6 +22,7 @@ export {
 } from './harness'
 export { ActivityPage } from './pages/activity-page'
 export { AiSettingsPage } from './pages/ai-settings-page'
+export { AiUsagePage } from './pages/ai-usage-page'
 export { DataPage } from './pages/data-page'
 export { AppShell, type Place, type ThemeChoice } from './pages/app-shell'
 export { IncidentPage } from './pages/incident-page'

@@ -974,6 +974,39 @@ def test_verdicts_can_be_given_and_judge_the_incidents_there_are(e2e: TestClient
     ]
 
 
+def test_ai_calls_can_be_recorded_for_the_usage_page(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    made = e2e.post(
+        "/api/__test__/factories/ai-calls",
+        json={
+            "calls": [
+                {"about": "incident 3", "repeat": 3},
+                {"purpose": "chat", "provider": "ollama", "model": "llama3", "cost_micros": 0},
+                {"ok": False, "error": "It didn't answer in time.", "cost_micros": None},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"calls": 5}
+    sign_in(e2e)
+    usage = e2e.get("/api/ai/usage?range=7d").json()
+    assert usage["totals"]["calls"] == 5
+    assert usage["totals"]["failed"] == 1
+    assert usage["totals"]["unpriced"] == 1
+    assert usage["totals"]["cost_micros"] == 4_500
+    first = e2e.get("/api/ai/usage/calls?limit=1").json()["items"][0]
+    detail = e2e.get(f"/api/ai/usage/calls/{first['id']}").json()
+    assert "HOST_1" in detail["prompt"]
+
+
+def test_an_empty_list_of_ai_calls_records_nothing(e2e: TestClient) -> None:
+    made = e2e.post("/api/__test__/factories/ai-calls", json={"calls": []})
+
+    assert made.json() == {"calls": 0}
+
+
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
     made = e2e.post("/api/__test__/factories/incidents", json={"incidents": []})
 

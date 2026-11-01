@@ -33,6 +33,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'ai.provider_tested': 'An AI provider was tested',
   'ai.models_fetched': 'The models an AI provider has were fetched',
   'ai.settings_changed': 'AI was turned on or off, or another provider chosen',
+  'ai.limits_changed': 'The limits on what AI may spend were changed',
   'events.retention_changed': 'How long events are kept was changed',
   'metrics.retention_changed': 'How long metrics are kept was changed',
   'incident.status_changed': "An incident's status was changed",
