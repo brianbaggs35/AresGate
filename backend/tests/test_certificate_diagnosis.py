@@ -20,9 +20,9 @@ def refused(served: Certificate, serve: Serve, **options: object) -> str:
     """What the client says when it can't trust the certificate a server presents."""
     server = serve(lambda seen: Answer(), served)
     log = Log()
-    system = target(server, **options)
+    system = target(server, **options)  # type: ignore[arg-type]
     with pytest.raises(CallFailed) as raised:
-        request(system, log, "GET", "/x")  # type: ignore[arg-type]
+        request(system, log, "GET", "/x")
     assert server.seen == []
     assert log.calls[0].error == str(raised.value)
     return str(raised.value)
