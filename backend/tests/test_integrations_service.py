@@ -509,8 +509,10 @@ def test_a_secret_left_blank_in_a_draft_is_the_one_kept(
 def test_a_draft_that_cannot_be_used_says_what_is_wrong_by_field(
     session: Session, settings: Settings
 ) -> None:
+    unusable = ntopng_draft(url="http://8.8.8.8", secrets={})
+
     with pytest.raises(SettingsError) as raised:
-        draft(session, settings, ntopng_draft(url="http://8.8.8.8", secrets={}))
+        draft(session, settings, unusable)
 
     assert set(raised.value.problems) == {"url", "token"}
 
@@ -521,24 +523,21 @@ def test_a_draft_without_a_secret_is_refused_when_none_is_kept(
     save(session, settings, NTOPNG, {"api": ntopng_draft()})
     credential_store.remove(session, Kind.INTEGRATION, "ntopng-api", "token")
     session.commit()
+    without_secret = ntopng_draft(secrets={})
+
     with pytest.raises(SettingsError):
-        draft(session, settings, ntopng_draft(secrets={}))
+        draft(session, settings, without_secret)
 
 
 def test_a_draft_whose_kept_secret_cannot_be_opened_is_incomplete(
     session: Session, settings: Settings
 ) -> None:
     save(session, settings, NTOPNG, {"api": ntopng_draft()})
+    wrong_key = _wrong_key(settings)
+    blank = ntopng_draft(secrets={})
 
     with pytest.raises(Incomplete, match="missing or can't be opened"):
-        service.draft_target(
-            session,
-            _wrong_key(settings),
-            HOME_NETWORK,
-            NTOPNG,
-            NTOPNG.connections[0],
-            ntopng_draft(secrets={}),
-        )
+        service.draft_target(session, wrong_key, HOME_NETWORK, NTOPNG, NTOPNG.connections[0], blank)
 
 
 def test_a_lookup_asks_the_connection_what_it_lists_and_logs_the_calls(

@@ -130,14 +130,13 @@ onMounted(() => {
         Fill in the address and how to sign in first.
       </p>
     </div>
-    <p
+    <output
       v-if="message && !failed"
-      class="text-body-medium text-medium-emphasis"
-      role="status"
+      class="lookup__message text-body-medium text-medium-emphasis"
       data-test="lookup-message"
     >
       {{ message }}
-    </p>
+    </output>
     <v-alert
       v-if="failed && message"
       type="error"
@@ -177,6 +176,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.lookup__message {
+  display: block;
 }
 
 .lookup__actions {
