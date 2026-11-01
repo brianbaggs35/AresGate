@@ -4,6 +4,26 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **`make stop` and `make start`.** `make stop` stops AresGate and keeps its container, so the data
+  volume stays in use; `make start` starts the same container again, with every setting as it was.
+  `make down` (which removes the container, and keeps the data volume) says so when it finishes,
+  and warns that Docker's clean-up tools can delete a volume no container uses.
+- **`make data`** shows the Docker volume that holds your settings and data, when it was made and
+  which container uses it, for finding out whether AresGate is on the volume you used before.
+- **The container's log says whether it found its data.** The start now logs `using the database
+  already in the data volume (made <date>)` or `making a new database: the data volume has none`,
+  the second being the sign that this is not the volume that held your settings.
+- **A test that stops and starts every way.** CI saves an integration and an AI provider, each with
+  a secret, then does `make stop` and `make start`, `make restart`, and `make down` and `up`, and
+  after each checks that the account signs in, the settings are in the API, the sealed secrets
+  in the database are the same bytes and the app secret key is the same file. Before, only a
+  restart was tested for the account, and `down` and `up` only for health.
+  See [DOCS/operations.md](DOCS/operations.md#stopping-and-starting).
+
 ## 0.0.5
 
 ### Added
