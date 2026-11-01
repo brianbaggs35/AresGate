@@ -290,7 +290,7 @@ def get_usage(db: Db, range: Range = "30d", timezone: Zone = "UTC") -> UsageOut:
         level=levels.current(db),
         levels=[
             LevelOut(key=item.key, label=item.label, summary=item.summary, per_hour=item.per_hour)
-            for item in levels.LEVELS
+            for item in levels.listing()
         ],
         prices=_prices(),
         ever=db.scalar(select(AiCall.id).limit(1)) is not None,

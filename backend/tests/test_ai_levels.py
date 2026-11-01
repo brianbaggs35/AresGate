@@ -9,14 +9,14 @@ from app.events.event import Severity
 
 
 def test_every_level_the_worker_follows_is_one_the_owner_can_choose() -> None:
-    assert [level.key for level in levels.LEVELS] == list(POLICIES)
+    assert [level.key for level in levels.listing()] == list(POLICIES)
     assert set(get_args(levels.LevelKey)) == set(POLICIES)
     assert set(levels.LABELS) == set(POLICIES)
 
 
 def test_the_levels_run_from_nothing_by_itself_to_the_most() -> None:
-    assert [level.per_hour for level in levels.LEVELS] == [0, 6, 20, 60, 150]
-    assert [level.label for level in levels.LEVELS] == [
+    assert [level.per_hour for level in levels.listing()] == [0, 6, 20, 60, 150]
+    assert [level.label for level in levels.listing()] == [
         "Very low",
         "Low",
         "Medium",
@@ -27,7 +27,7 @@ def test_the_levels_run_from_nothing_by_itself_to_the_most() -> None:
 
 class TestWhatEachLevelSays:
     def said(self, key: str) -> str:
-        return next(level.summary for level in levels.LEVELS if level.key == key)
+        return next(level.summary for level in levels.listing() if level.key == key)
 
     def test_the_lowest_reads_nothing_by_itself_but_still_answers_what_is_asked(self) -> None:
         said = self.said("very_low")
