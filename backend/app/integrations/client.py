@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 MAX_BODY = 2 * 1024 * 1024
 # The whole request, from connecting to the last byte.
 DEADLINE = 20.0
+# How long to wait for the next of an answer, which a model that is thinking takes longer to start.
+READ_TIMEOUT = 10.0
 MAX_PATH = 256
 MAX_ERROR = 500
 HIDDEN = "***"
@@ -117,6 +119,7 @@ class ApiClient:
         record: Recorder,
         policy: AddressPolicy = netguard.HOME_NETWORK,
         deadline: float = DEADLINE,
+        read_timeout: float = READ_TIMEOUT,
     ) -> None:
         self._target = target
         self._record = record
@@ -134,7 +137,7 @@ class ApiClient:
             # home network goes straight to it.
             trust_env=False,
             follow_redirects=False,
-            timeout=httpx2.Timeout(10.0, connect=5.0),
+            timeout=httpx2.Timeout(read_timeout, connect=5.0),
             headers={"User-Agent": f"AresGate/{__version__}", "Accept": "application/json"},
         )
 

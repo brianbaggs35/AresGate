@@ -14,8 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.ai import wire
+from app.ai import catalog, wire
 from app.ai.catalog import Kind, ProviderDef, Wire
+from app.ai.redaction import Level
 from app.config import Settings
 from app.integrations import netguard
 from app.integrations.client import ApiClient, CallFailed, Recorder, Target
@@ -200,10 +201,19 @@ def remove(db: Session, definition: ProviderDef, now: datetime) -> bool:
     return found
 
 
-def choose(db: Session, *, enabled: bool, provider: str | None, now: datetime) -> AiSettings:
-    """Whether AI is used and which provider is asked, or raises ``SettingsError``. The caller
-    commits."""
+def choose(
+    db: Session,
+    *,
+    enabled: bool,
+    provider: str | None,
+    now: datetime,
+    redaction: str | None = None,
+) -> AiSettings:
+    """Whether AI is used, which provider is asked and how much of the network it is shown
+    (the level that is kept if none is given), or raises ``SettingsError``. The caller commits."""
     problems: dict[str, str] = {}
+    if redaction is not None and redaction not in Level:
+        problems["redaction"] = "Choose strict, balanced or local."
     row = db.get(AiProvider, provider) if provider is not None else None
     if provider is not None and row is None:
         problems["provider"] = "Set that provider up first."
@@ -211,11 +221,18 @@ def choose(db: Session, *, enabled: bool, provider: str | None, now: datetime) -
         problems["provider"] = "Choose a model for it first."
     elif enabled and provider is None:
         problems["provider"] = "Choose which provider to ask."
+    chosen_def = catalog.provider(provider) if provider is not None else None
+    if redaction == Level.LOCAL and chosen_def is not None and chosen_def.kind is not Kind.LOCAL:
+        problems["redaction"] = (
+            "Only a provider on your own network can be shown everything. Choose strict or "
+            "balanced."
+        )
     if problems:
         raise SettingsError(problems)
     chosen = usage(db, now)
     chosen.enabled = enabled
     chosen.provider = provider
+    chosen.redaction = redaction or chosen.redaction
     chosen.updated_at = now
     return chosen
 

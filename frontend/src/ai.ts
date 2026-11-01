@@ -8,14 +8,15 @@ import type {
   Price,
   ProviderKind,
   ProviderSettings,
+  Redaction,
 } from '@/api/ai'
 import { formatBytes, formatCount } from '@/format'
 
 /** What reading one incident is assumed to take, in tokens: the incident and what surrounds it
  * go in, and a class, a confidence, a story and what to check come out. `fixed` is the part of
  * what goes in that is the same every time (the analyst's instructions), which a provider can
- * keep cached. It is a round guess to make prices comparable, not a measurement; the usage page
- * shows what was really used. */
+ * keep cached. It is a round guess to make prices comparable, not a measurement; the figures of
+ * each request that is made are kept as it is asked. */
 export const ASSUMED_TOKENS = { input: 3000, fixed: 1500, output: 600 } as const
 
 /** US dollars, with as many decimals as the price needs: $2.00, $0.10, $0.075, $0.0006. */
@@ -242,3 +243,47 @@ export const FIELD_ORDER = ['base_url', 'api_key', 'model'] as const
 
 /** The id of a provider's field, which is what a problem with it moves the keyboard to. */
 export const providerFieldId = (provider: string, field: string) => `${provider}-${field}`
+
+/** What a provider may be shown, from the most careful to the least: the name, what it replaces
+ * and what a provider reads of the same event. */
+export const REDACTION_LEVELS: readonly {
+  key: Redaction
+  label: string
+  summary: string
+  example: string
+}[] = [
+  {
+    key: 'strict',
+    label: 'Strict',
+    summary:
+      'Every address, hardware address and name is replaced, including the addresses of attackers on the internet.',
+    example: 'HOST_1 (NAME_2) was probed by EXT_3 on port 22.',
+  },
+  {
+    key: 'balanced',
+    label: 'Balanced',
+    summary:
+      'Your devices, their names and hardware addresses are replaced. Attackers on the internet are shown as they are, since that is what a provider can say something about.',
+    example: 'HOST_1 (NAME_2) was probed by 203.0.113.5 on port 22.',
+  },
+  {
+    key: 'local',
+    label: 'Local',
+    summary:
+      'Nothing is replaced, for a provider on your own network that nothing leaves. Passwords and keys are still taken out.',
+    example: "192.168.1.20 (Sam's laptop) was probed by 203.0.113.5 on port 22.",
+  },
+]
+
+/** The level a provider is really given: Local is only for a provider on your own network, so
+ * any other is given Balanced instead. */
+export function shownLevel(level: Redaction, provider: AiProvider | undefined): Redaction {
+  return level === 'local' && provider !== undefined && provider.kind !== 'local'
+    ? 'balanced'
+    : level
+}
+
+/** Whether a provider may be shown everything. With none chosen yet, nothing says it can't. */
+export function mayShowEverything(provider: AiProvider | undefined): boolean {
+  return provider === undefined || provider.kind === 'local'
+}

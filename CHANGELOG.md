@@ -6,6 +6,25 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **One place that asks the AI, and what it is shown.** Everything AresGate will ask a model
+  (incident triage and the chat come next) goes through `backend/app/ai/gateway.py`, which is the
+  only code besides the connection test that calls a provider. Before a hosted provider reads
+  anything, what identifies your home is replaced by stand-ins only AresGate can turn back
+  (`HOST_12` for a device, `WAN_n`, `EXT_n`, `MAC_n`, `NAME_n`, `USER_n`); passwords, keys and
+  tokens are taken out at every level; log text goes between `<data>` tags that the instructions
+  say are evidence, never orders; and the whole prompt is gone over once more. **Settings > AI >
+  What the provider sees** chooses the level: *Strict* (everything, even attackers' addresses),
+  *Balanced* (the default: your devices and names, not attackers on the internet) or *Local*
+  (nothing, only for a provider on your own network), each shown with the same event as a
+  provider would read it. See [DOCS/operations.md](DOCS/operations.md#ai-providers).
+- **A record of every request to an AI provider.** The new `ai_calls` table keeps when, what for,
+  the provider and model, the level, the prompt and the answer exactly as the provider saw them,
+  the tokens (cached, written and thinking counted separately), the cost from the catalog's
+  prices, how long it took and why a request failed. It keeps 90 days
+  (`ARESGATE_AI_LOG_RETENTION_DAYS`). The usage page that reads it comes next.
+
 ### Fixed
 
 - **Why a certificate isn't trusted is explained**: a valid Let's Encrypt certificate was reported

@@ -5,6 +5,9 @@ import type { Status } from '@/api/integrations'
  * internet as Ollama's own cloud. */
 export type ProviderKind = 'hosted' | 'local' | 'cloud'
 
+/** How much of the network a provider is shown (see app/ai/redaction.py). */
+export type Redaction = 'strict' | 'balanced' | 'local'
+
 /** What an account may use, for a provider whose plans differ in the models they allow: only the
  * models its free usage covers, or every model. Only the owner can say which: nothing the
  * provider answers does. */
@@ -88,6 +91,8 @@ export interface Ai {
   enabled: boolean
   /** The provider that is asked. */
   provider: string | null
+  /** How much of the network the provider is shown. */
+  redaction: Redaction
   /** When the prices were read from the providers' pages, and the free models were. */
   priced_as_of: string
   free_models_as_of: string
@@ -138,9 +143,10 @@ export function fetchProviderModels(key: string, csrfToken: string): Promise<AiC
   return apiPost<AiCheck>(`/ai/providers/${key}/models`, undefined, csrfToken)
 }
 
-/** Turns AI on or off, and says which provider it asks. */
+/** Turns AI on or off, says which provider it asks and how much it is shown (the level that
+ * is kept, if none is given). */
 export function useAi(
-  choice: { enabled: boolean; provider: string | null },
+  choice: { enabled: boolean; provider: string | null; redaction?: Redaction },
   csrfToken: string,
 ): Promise<Ai> {
   return apiPut<Ai>('/ai/use', choice, csrfToken)

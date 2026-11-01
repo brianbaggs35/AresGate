@@ -205,6 +205,7 @@ export const ollamaCloud = (overrides: Partial<AiProvider> = {}): AiProvider => 
 export const ai = (overrides: Partial<Ai> = {}): Ai => ({
   enabled: false,
   provider: null,
+  redaction: 'balanced',
   priced_as_of: '2026-10-27',
   free_models_as_of: '2026-10-27',
   providers: [ollama(), ollamaCloud(), anthropic(), openai()],

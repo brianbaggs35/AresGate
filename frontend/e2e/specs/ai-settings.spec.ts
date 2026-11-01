@@ -4,7 +4,7 @@ const KEY = 'sk-a-key-for-the-stand-in'
 const HAIKU = 'claude-haiku-5-5'
 
 test.describe('Settings > AI', () => {
-  test('is a page of the settings, with one card to choose where the AI runs', async ({
+  test('is a page of the settings, with a card to choose where the AI runs and one on what it sees', async ({
     page,
     settings,
     aiSettings,
@@ -16,7 +16,7 @@ test.describe('Settings > AI', () => {
     await expect(page).toHaveURL('/settings/ai')
     await expect(page).toHaveTitle('Settings · AresGate')
     await expect(settings.aiLink).toHaveAttribute('aria-current', 'page')
-    await expect(aiSettings.headings).toHaveText(['AI provider'])
+    await expect(aiSettings.headings).toHaveText(['AI provider', 'What the provider sees'])
     for (const [key, name] of [
       ['ollama', 'Ollama (on your computer)'],
       ['ollama_cloud', 'Ollama Cloud'],
@@ -317,6 +317,43 @@ test.describe('Settings > AI', () => {
     await expect(aiSettings.enabled).not.toBeChecked()
     await expect(aiSettings.enabled).toBeDisabled()
     expect((await harness.rowCounts()).credentials).toBe(0)
+  })
+
+  test('chooses what the provider is shown, keeps it, and allows Local only at home', async ({
+    page,
+    harness,
+    aiSettings,
+  }) => {
+    await harness.standIn({
+      kind: 'anthropic',
+      api_key: KEY,
+      models: [HAIKU],
+      provider: 'anthropic',
+    })
+    await aiSettings.goto()
+
+    // Balanced to begin with, with what each level shows of the same event.
+    await expect(aiSettings.level('balanced')).toBeChecked()
+    await expect(aiSettings.example('balanced')).toHaveText(
+      'HOST_1 (NAME_2) was probed by 203.0.113.5 on port 22.',
+    )
+    await expect(aiSettings.level('local')).toBeEnabled()
+    await aiSettings.choose('anthropic')
+    await aiSettings.apiKey('anthropic').fill(KEY)
+    await aiSettings.test('anthropic').click()
+    await expect(aiSettings.status('anthropic')).toHaveText('Connected')
+    await aiSettings.enabled.check()
+    await expect(aiSettings.state).toHaveText('On · Claude Haiku 5.5')
+
+    // A hosted provider is never shown everything.
+    await expect(aiSettings.level('local')).toBeDisabled()
+    await expect(aiSettings.privacyNote).toContainText('Anthropic is hosted')
+    await aiSettings.level('strict').check()
+
+    await expect(aiSettings.level('strict')).toBeChecked()
+    await page.reload()
+    await expect(aiSettings.level('strict')).toBeChecked()
+    await expect(aiSettings.level('balanced')).not.toBeChecked()
   })
 
   test('says so when the page can’t be loaded, and loads it again on request', async ({

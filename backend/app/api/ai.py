@@ -118,6 +118,8 @@ class ProviderOut(BaseModel):
 class AiOut(BaseModel):
     enabled: bool
     provider: str | None
+    # How much of the network the provider is shown: ``strict``, ``balanced`` or ``local``.
+    redaction: str
     # When the prices were read from the providers' pages, and the free models were.
     priced_as_of: str
     free_models_as_of: str
@@ -140,6 +142,8 @@ class UseIn(BaseModel):
 
     enabled: bool
     provider: str | None = Field(default=None, pattern=NAME_PATTERN)
+    # How much of the network the provider is shown. Left out, the level that is kept stays.
+    redaction: Literal["strict", "balanced", "local"] | None = None
 
 
 class CheckOut(BaseModel):
@@ -227,6 +231,7 @@ def _ai_out(db: Session) -> AiOut:
     return AiOut(
         enabled=chosen.enabled,
         provider=chosen.provider,
+        redaction=chosen.redaction,
         priced_as_of=catalog.PRICES_AS_OF,
         free_models_as_of=catalog.FREE_MODELS_AS_OF,
         providers=[
@@ -396,9 +401,15 @@ def fetch_models(
 def use_ai(
     body: UseIn, auth: Annotated[SignedIn, Depends(signed_in)], request: Request, db: Db
 ) -> AiOut:
-    """Turns AI on or off, and says which provider it asks."""
+    """Turns AI on or off, and says which provider it asks and how much it is shown."""
     try:
-        service.choose(db, enabled=body.enabled, provider=body.provider, now=utcnow())
+        chosen = service.choose(
+            db,
+            enabled=body.enabled,
+            provider=body.provider,
+            now=utcnow(),
+            redaction=body.redaction,
+        )
     except SettingsError as error:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -410,7 +421,11 @@ def use_ai(
         Action.AI_CHOSEN,
         Outcome.SUCCESS,
         user=auth.user,
-        detail={"enabled": body.enabled, "provider": body.provider or "none"},
+        detail={
+            "enabled": body.enabled,
+            "provider": body.provider or "none",
+            "redaction": chosen.redaction,
+        },
     )
     out = _ai_out(db)
     db.commit()

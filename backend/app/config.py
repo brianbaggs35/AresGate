@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # How long the API log keeps a request made to an integration. It is much busier than the
     # audit log, and only useful while it is recent.
     api_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 30
+    # How long the record of what was asked of an AI provider, and what it answered, is kept. It
+    # is what the usage page adds up, so it is kept longer than the API log.
+    ai_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 90
 
     # How long events from the integrations are kept, for a source that has no setting of its own.
     event_retention_days: Annotated[int, Field(ge=1, le=3650)] = 30
