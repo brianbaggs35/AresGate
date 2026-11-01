@@ -67,6 +67,16 @@ export interface UsageLimit {
   state: LimitState
 }
 
+/** One of the levels of how much AI is used without being asked, from the least to the most. */
+export interface UsageLevel {
+  key: 'very_low' | 'low' | 'medium' | 'high' | 'maximum'
+  label: string
+  /** What it reads by itself, in words, made by the server from what the worker does. */
+  summary: string
+  /** The most it reads in an hour; none reads nothing by itself. */
+  per_hour: number
+}
+
 export interface Usage {
   range: UsageRange
   start: string
@@ -83,6 +93,9 @@ export interface Usage {
   top: UsageConsumer[]
   month: UsageMonth
   limits: UsageLimit[]
+  /** The level chosen, and the levels there are to choose between. */
+  level: UsageLevel['key']
+  levels: UsageLevel[]
   /** Where the prices come from and when they were read. */
   prices: { as_of: string; sources: { provider: string; url: string }[] }
   /** Whether AI has ever been asked. */
@@ -161,4 +174,11 @@ export interface LimitsInput {
 
 export function saveLimits(limits: LimitsInput, csrfToken: string): Promise<UsageLimit[]> {
   return apiPut('/ai/limits', limits, csrfToken)
+}
+
+export function saveLevel(
+  level: UsageLevel['key'],
+  csrfToken: string,
+): Promise<{ level: UsageLevel['key'] }> {
+  return apiPut('/ai/level', { level }, csrfToken)
 }

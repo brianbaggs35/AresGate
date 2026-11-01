@@ -26,6 +26,7 @@ import {
   type Metric,
 } from '@/aiUsage'
 import BarChart from '@/charts/BarChart.vue'
+import AiLevelCard from '@/components/AiLevelCard.vue'
 import AiLimitsCard from '@/components/AiLimitsCard.vue'
 import AiCallsTable from '@/components/AiCallsTable.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -39,7 +40,8 @@ import { useSessionStore } from '@/stores/session'
 /**
  * Settings > AI usage: what AI has been asked to do, how many tokens that took and what it cost,
  * by day, provider, model and use; what took the most; how the month is going; the spending
- * limits; and every request, to see exactly what a provider was sent. Costs are estimates.
+ * limits; how much AI is used without being asked; and every request, to see exactly what a
+ * provider was sent. Costs are estimates.
  */
 const session = useSessionStore()
 
@@ -80,6 +82,11 @@ async function load() {
 function pick(next: UsageRange) {
   range.value = next
   void load()
+}
+
+function levelChanged(level: Usage['level']) {
+  const known = usage.value as Usage
+  usage.value = { ...known, level }
 }
 
 function limitsChanged(limits: UsageLimit[]) {
@@ -225,6 +232,8 @@ onMounted(load)
         />
       </div>
     </SectionCard>
+
+    <AiLevelCard :level="usage.level" :levels="usage.levels" @changed="levelChanged" />
 
     <template v-if="usage.ever">
       <v-alert type="info" variant="tonal" density="compact" data-test="usage-estimate">

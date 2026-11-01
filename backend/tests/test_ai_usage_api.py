@@ -30,6 +30,7 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("get", f"{BASE}/usage/calls/1"),
         ("get", f"{BASE}/usage.csv"),
         ("put", f"{BASE}/limits"),
+        ("put", f"{BASE}/level"),
     ):
         assert client.request(method, path).status_code == 401, (method, path)
 
@@ -45,6 +46,14 @@ class TestTheUsage:
         assert body["month"]["projected_micros"] is None
         assert [limit["state"] for limit in body["limits"]] == ["none", "none"]
         assert len(body["days"]) == 30
+        assert body["level"] == "medium"
+        assert [item["key"] for item in body["levels"]] == [
+            "very_low",
+            "low",
+            "medium",
+            "high",
+            "maximum",
+        ]
 
     def test_it_says_what_was_used_and_what_it_cost(
         self, client: TestClient, csrf_token: str, session: Session
@@ -273,6 +282,42 @@ class TestTheLimits:
 
     def test_it_needs_the_token(self, client: TestClient, csrf_token: str) -> None:
         assert client.put(f"{BASE}/limits", json={"daily": "1"}).status_code == 403
+
+
+class TestTheLevel:
+    def test_it_is_kept_and_the_change_is_noted(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        put = client.put(f"{BASE}/level", json={"level": "high"}, headers=headers(csrf_token))
+
+        assert put.status_code == 200
+        assert put.json() == {"level": "high"}
+        assert client.get(f"{BASE}/usage").json()["level"] == "high"
+        session.expire_all()
+        events = list(
+            session.scalars(
+                select(AuditEvent).where(AuditEvent.action == Action.AI_LEVEL_CHANGED.value)
+            )
+        )
+        assert [event.detail for event in events] == [{"from": "medium", "to": "high"}]
+
+    def test_each_level_says_what_it_reads(self, client: TestClient, csrf_token: str) -> None:
+        levels = {item["key"]: item for item in client.get(f"{BASE}/usage").json()["levels"]}
+
+        assert levels["very_low"]["per_hour"] == 0
+        assert levels["maximum"]["per_hour"] == 150
+        assert "high or higher" in levels["low"]["summary"]
+
+    @pytest.mark.parametrize("level", ["", "extreme", "Medium", "none"])
+    def test_a_level_that_is_not_offered_is_refused(
+        self, client: TestClient, csrf_token: str, level: str
+    ) -> None:
+        refused = client.put(f"{BASE}/level", json={"level": level}, headers=headers(csrf_token))
+
+        assert refused.status_code == 422
+
+    def test_it_needs_the_token(self, client: TestClient, csrf_token: str) -> None:
+        assert client.put(f"{BASE}/level", json={"level": "low"}).status_code == 403
 
 
 def test_the_record_is_kept_when_the_page_is_read(

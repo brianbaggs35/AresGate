@@ -4,6 +4,7 @@ import * as usageApi from '@/api/aiUsage'
 import { ApiError } from '@/api/client'
 import BarChart from '@/charts/BarChart.vue'
 import AiCallsTable from '@/components/AiCallsTable.vue'
+import AiLevelCard from '@/components/AiLevelCard.vue'
 import AiLimitsCard from '@/components/AiLimitsCard.vue'
 import { callPage, group, limit, totals, usage } from '@/test/aiUsage'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -62,6 +63,12 @@ describe('AiUsageView', () => {
       expect(find('tile-cost').exists()).toBe(false)
       expect(find('limits-card').exists()).toBe(false)
       expect(find('download').exists()).toBe(false)
+    })
+
+    it('still lets the level be chosen, before anything has been asked', async () => {
+      const { wrapper } = await open(usage({ ever: false, level: 'low' }))
+
+      expect(wrapper.findComponent(AiLevelCard).props('level')).toBe('low')
     })
   })
 
@@ -278,6 +285,20 @@ describe('AiUsageView', () => {
       await flushPromises()
 
       expect(find('usage-stale').exists()).toBe(false)
+    })
+  })
+
+  describe('the level', () => {
+    it('shows the levels, and takes the new one when it is kept', async () => {
+      const { wrapper, find } = await open()
+      expect(wrapper.findComponent(AiLevelCard).props('levels')).toHaveLength(5)
+      expect(find('level-name').text()).toBe('Medium')
+
+      wrapper.findComponent(AiLevelCard).vm.$emit('changed', 'maximum')
+      await flushPromises()
+
+      expect(wrapper.findComponent(AiLevelCard).props('level')).toBe('maximum')
+      expect(find('level-name').text()).toBe('Maximum')
     })
   })
 

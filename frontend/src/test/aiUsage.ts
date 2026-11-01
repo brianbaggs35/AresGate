@@ -4,6 +4,7 @@ import type {
   UsageCallDetail,
   UsageCallPage,
   UsageGroup,
+  UsageLevel,
   UsageLimit,
   UsageTotals,
 } from '@/api/aiUsage'
@@ -38,6 +39,42 @@ export function group(over: Partial<UsageGroup> = {}): UsageGroup {
     unpriced: 0,
     ...over,
   }
+}
+
+/** The levels as the server words them. */
+export function levels(): UsageLevel[] {
+  return [
+    {
+      key: 'very_low',
+      label: 'Very low',
+      summary: 'Reads nothing by itself. AI answers only when you ask.',
+      per_hour: 0,
+    },
+    {
+      key: 'low',
+      label: 'Low',
+      summary: 'Reads incidents rated high or higher, up to 6 an hour. Reads each one once.',
+      per_hour: 6,
+    },
+    {
+      key: 'medium',
+      label: 'Medium',
+      summary: 'Reads incidents rated medium or higher, up to 20 an hour.',
+      per_hour: 20,
+    },
+    {
+      key: 'high',
+      label: 'High',
+      summary: 'Reads incidents rated low or higher, up to 60 an hour.',
+      per_hour: 60,
+    },
+    {
+      key: 'maximum',
+      label: 'Maximum',
+      summary: 'Reads every incident, even the least serious, up to 150 an hour.',
+      per_hour: 150,
+    },
+  ]
 }
 
 /** A month of use by reading incidents, on three days of the week. */
@@ -95,6 +132,8 @@ export function usage(over: Partial<Usage> = {}): Usage {
       projected_micros: 160_000,
     },
     limits: [limit(), limit({ period: 'month', spent_micros: 82_000 })],
+    level: 'medium',
+    levels: levels(),
     prices: {
       as_of: '2026-10-27',
       sources: [

@@ -162,9 +162,13 @@ full. The chip in the list and in the page header is `AiChip`; looks and wording
 
 The AI usage page (Settings > AI usage) is the reference for a page of numbers inside the Settings
 area. It leads with four `StatTile`s (the month so far with where it is heading, the cost of the
-range, the tokens, the requests) that each compare themselves with the stretch before in words, then
-says in a plain alert that the costs are estimates, from where and when the prices were read. The
-spending limits card is meters with the amount typed beside them; the meter's color and its words
+range, the tokens, the requests) that each compare themselves with the stretch before in words. The
+level card under them is the one slider in the app: five stops with the level's name and what it
+reads an hour above, the words for the stop it is on below it (in a live region, so moving it is
+read out), and a *Save* that is enabled only when it has moved; it is shown before AI has ever been
+asked, since it can be chosen first. A plain alert then says that the costs are estimates, from
+where and when the prices were read. The spending limits card is meters with the amount typed
+beside them; the meter's color and its words
 both say when a limit is nearly or fully used (never the color alone). The charts are the chart kit's
 `BarChart`: the days as stacked bars by use with a toggle between cost, tokens and calls, and a
 ranking by provider, model or use that shares the toggle. The list of every request is a plain list
