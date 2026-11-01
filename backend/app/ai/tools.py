@@ -348,7 +348,11 @@ TOOLS: Final[Sequence[Tool]] = (
         integrations,
     ),
 )
-NAMES: Final = tuple(tool.name for tool in TOOLS)
+
+
+def names() -> tuple[str, ...]:
+    """What each of the lookups is called, in the order they are listed."""
+    return tuple(tool.name for tool in TOOLS)
 
 
 def by_name(name: str) -> Tool | None:
