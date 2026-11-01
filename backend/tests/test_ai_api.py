@@ -428,6 +428,45 @@ def test_ai_is_turned_on_and_off_for_a_provider_that_is_ready(
     ]
 
 
+def test_what_the_provider_is_shown_is_listed_and_chosen_with_the_rest(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    put(client, csrf_token, "anthropic", {"model": "claude-haiku-5-5", "api_key": KEY})
+
+    assert client.get(BASE).json()["redaction"] == "balanced"
+    strict = use(client, csrf_token, enabled=True, provider="anthropic", redaction="strict")
+    kept = use(client, csrf_token, enabled=False, provider="anthropic")
+
+    assert (strict.status_code, strict.json()["redaction"]) == (200, "strict")
+    assert kept.json()["redaction"] == "strict"
+    assert [
+        (event.detail or {}).get("redaction") for event in audited(session, Action.AI_CHOSEN)
+    ] == [
+        "strict",
+        "strict",
+    ]
+
+
+@pytest.mark.parametrize("level", ["everything", "", "LOCAL"])
+def test_a_level_that_is_not_one_is_refused(
+    client: TestClient, csrf_token: str, level: str
+) -> None:
+    response = use(client, csrf_token, enabled=False, provider=None, redaction=level)
+
+    assert response.status_code == 422
+    assert client.get(BASE).json()["redaction"] == "balanced"
+
+
+def test_a_hosted_provider_is_not_shown_everything(client: TestClient, csrf_token: str) -> None:
+    put(client, csrf_token, "anthropic", {"model": "claude-haiku-5-5", "api_key": KEY})
+
+    response = use(client, csrf_token, enabled=True, provider="anthropic", redaction="local")
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "redaction"]
+    assert client.get(BASE).json()["redaction"] == "balanced"
+
+
 @pytest.mark.parametrize(
     ("body", "field"),
     [

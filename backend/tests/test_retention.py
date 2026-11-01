@@ -15,7 +15,7 @@ from app.events import store as events
 from app.integrations.apilog import ApiLogRecorder
 from app.integrations.client import Call
 from app.metrics import store as metrics
-from app.models import ApiCall, AuditEvent, Event, MetricSample, MetricSeries
+from app.models import AiCall, ApiCall, AuditEvent, Event, MetricSample, MetricSeries
 from app.partitions import EVENTS, METRIC_SAMPLES
 from tests.helpers import new_event, new_sample
 
@@ -59,6 +59,30 @@ def test_purging_also_deletes_the_api_log_entries_past_their_retention_period(
 
     session.expire_all()
     assert session.scalar(select(func.count()).select_from(ApiCall)) == 1
+
+
+def test_purging_also_deletes_the_record_of_ai_requests_past_its_retention_period(
+    session: Session, settings: Settings, new_session: Callable[[], Session]
+) -> None:
+    now = datetime.now(UTC)
+    for age in (settings.ai_log_retention_days + 1, 1):
+        session.add(
+            AiCall(
+                occurred_at=now - timedelta(days=age),
+                purpose="triage",
+                provider="anthropic",
+                model="claude-haiku-5-5",
+                level="balanced",
+                ok=True,
+                prompt="p",
+            )
+        )
+    session.commit()
+
+    retention.purge_once(settings, new_session)
+
+    session.expire_all()
+    assert session.scalar(select(func.count()).select_from(AiCall)) == 1
 
 
 def test_purging_also_deletes_the_events_past_their_retention_period(

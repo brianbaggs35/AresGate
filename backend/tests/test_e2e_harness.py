@@ -141,6 +141,8 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
     e2e.post("/api/__test__/database/clean")
     expected = {
+        "ai_aliases": 0,
+        "ai_calls": 0,
         "ai_providers": 0,
         "ai_settings": 0,
         "audit_events": 0,
@@ -215,6 +217,8 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "collector_health",
             "audit_events",
             "ai_providers",
+            "ai_calls",
+            "ai_aliases",
         ],
     }
     assert system_info(session) == BASELINE_SYSTEM_INFO
