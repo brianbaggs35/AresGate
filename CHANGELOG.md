@@ -4,6 +4,20 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **Why a certificate isn't trusted is explained**: a valid Let's Encrypt certificate was reported
+  as "unable to get local issuer certificate", which is what OpenSSL says both when a system sends
+  only its own certificate, without the intermediate authority's (`cert.pem` instead of
+  `fullchain.pem`, which browsers forgive), and when an authority is simply unknown. AresGate now looks at what the
+  system sends and says which, names the authority and the cure: serve the whole chain, or paste
+  that authority's certificate, or pin the fingerprint. Expired, not yet valid, self-signed and
+  made-for-other-names certificates are named in words too. The image's smoke test fails if the
+  image has no certificate authorities
+  ([DOCS/integrations.md](DOCS/integrations.md#when-a-certificate-that-looks-valid-isnt-trusted)).
+
 ## 0.0.4
 
 ### Added
@@ -223,15 +237,6 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
-- **Why a certificate isn't trusted is explained**: a valid Let's Encrypt certificate was reported
-  as "unable to get local issuer certificate", which is what OpenSSL says both when a system sends
-  only its own certificate, without the intermediate authority's (`cert.pem` instead of
-  `fullchain.pem`, which browsers forgive), and when an authority is simply unknown. AresGate now looks at what the
-  system sends and says which, names the authority and the cure: serve the whole chain, or paste
-  that authority's certificate, or pin the fingerprint. Expired, not yet valid, self-signed and
-  made-for-other-names certificates are named in words too. The image's smoke test fails if the
-  image has no certificate authorities
-  ([DOCS/integrations.md](DOCS/integrations.md#when-a-certificate-that-looks-valid-isnt-trusted)).
 - Two collectors storing events at the moment a new week begins could wait for each other and one
   of them fail that run: a collector that stores events it has not seen before (the CrowdSec
   bans) read what was stored before taking the lock that making the week takes, which makes the
