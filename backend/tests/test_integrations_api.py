@@ -92,7 +92,8 @@ def test_an_integration_describes_what_it_takes_to_connect(
     assert [part["connection"] for part in guide["parts"]] == ["api", "zenarmor"]
     assert [part["optional"] for part in guide["parts"]] == [False, True]
     assert guide["parts"][0]["steps"][0]["menu"] == ["System", "Access", "Users"]
-    assert {urlsplit(source["url"]).scheme for source in guide["sources"]} == {"https"}
+    source_urls: list[str] = [source["url"] for source in guide["sources"]]
+    assert {urlsplit(url).scheme for url in source_urls} == {"https"}
     assert [item["definition"]["key"] for item in body["connections"]] == ["api", "zenarmor"]
     api, zenarmor = body["connections"]
     assert [field["key"] for field in api["definition"]["fields"]] == ["api_key", "api_secret"]
