@@ -25,6 +25,9 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     op.alter_column("ai_settings", "redaction", server_default=None)
+    # A constraint has no `if_not_exists`: it is dropped first, so applying this again changes
+    # nothing.
+    op.execute("ALTER TABLE ai_settings DROP CONSTRAINT IF EXISTS ck_ai_settings_redaction")
     op.create_check_constraint(
         op.f("ck_ai_settings_redaction"),
         "ai_settings",
@@ -73,5 +76,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("ai_calls", if_exists=True)
     op.drop_table("ai_aliases", if_exists=True)
-    op.drop_constraint(op.f("ck_ai_settings_redaction"), "ai_settings", type_="check")
+    op.execute("ALTER TABLE ai_settings DROP CONSTRAINT IF EXISTS ck_ai_settings_redaction")
     op.drop_column("ai_settings", "redaction", if_exists=True)
