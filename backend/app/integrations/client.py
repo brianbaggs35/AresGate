@@ -39,8 +39,6 @@ MAX_BODY = 2 * 1024 * 1024
 DEADLINE = 20.0
 MAX_PATH = 256
 MAX_ERROR = 500
-# How long, in seconds, looking again at a certificate that wasn't trusted may take.
-CERTIFICATE_LOOKUP = 5.0
 HIDDEN = "***"
 
 
@@ -187,7 +185,7 @@ class ApiClient:
         so the certificates the system presents are looked at again to tell which it is."""
         target = self._target
         try:
-            der = await netguard.look_up_chain(self._policy, target.origin, CERTIFICATE_LOOKUP)
+            der = await netguard.look_up_chain(self._policy, target.origin)
         except netguard.Refused, OSError:
             der = []
         return certdiag.explain(
