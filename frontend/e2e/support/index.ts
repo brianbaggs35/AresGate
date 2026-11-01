@@ -1,6 +1,6 @@
 // Everything a spec needs: `import { test, expect } from '../support'`.
 export { expectAccessible, waitForMotion } from './accessibility'
-export { connectFirewall, FIREWALL_KEY, FIREWALL_SECRET } from './flows'
+export { AI_KEY, connectFirewall, FIREWALL_KEY, FIREWALL_SECRET, turnOnAi } from './flows'
 export {
   Harness,
   type ApiCoverage,

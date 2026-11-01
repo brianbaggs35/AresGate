@@ -8,6 +8,8 @@ never takes the web app with it. They share the database and nothing else.
 import asyncio
 
 from app import logs
+from app.ai import gateway
+from app.ai import run as ai
 from app.collectors.scheduler import Scheduler
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
@@ -36,10 +38,14 @@ def build(settings: Settings) -> Scheduler:
 
 
 async def serve(settings: Settings) -> None:
-    """Collects, and files what is collected into incidents, until cancelled."""
+    """Collects, files what is collected into incidents and has the AI read them, until
+    cancelled."""
+    new_session = get_sessionmaker()
+    context = gateway.context_for_worker(settings, ApiLogRecorder(new_session))
     async with asyncio.TaskGroup() as work:
         work.create_task(build(settings).run())
-        work.create_task(incidents.run(get_sessionmaker(), enabled=collecting(settings)))
+        work.create_task(incidents.run(new_session, enabled=collecting(settings)))
+        work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
 
 
 def main() -> None:

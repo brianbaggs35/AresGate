@@ -36,6 +36,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'events.retention_changed': 'How long events are kept was changed',
   'metrics.retention_changed': 'How long metrics are kept was changed',
   'incident.status_changed': "An incident's status was changed",
+  'incident.triaged': 'The AI was asked about an incident',
   'incidents.changed': 'Several incidents were changed together',
   'incidents.change_undone': 'A change to several incidents was taken back',
   'logs.exported': 'Logs were downloaded',

@@ -14,6 +14,7 @@ import { useRoute } from 'vue-router'
 
 import { ApiError, errorMessage } from '@/api/client'
 import {
+  askAi,
   fetchIncident,
   setIncidentStatus,
   type IncidentDetail,
@@ -21,6 +22,8 @@ import {
 } from '@/api/incidents'
 import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
+import AiChip from '@/components/AiChip.vue'
+import AiReading from '@/components/AiReading.vue'
 import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
@@ -51,6 +54,7 @@ import {
 import { usePolling } from '@/polling'
 import { SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
+import { needsReading } from '@/triage'
 import { mutedIn } from '@/verdicts'
 
 /** How often the page asks again while it is on screen. */
@@ -74,6 +78,9 @@ const changing = ref<IncidentStatus | null>(null)
 /** What the last change did, or why it didn't. */
 const notice = ref<string | null>(null)
 const changeError = ref<string | null>(null)
+/** Whether the AI is being asked about it, which can take a minute, and why it could not be. */
+const asking = ref(false)
+const aiFailure = ref<string | null>(null)
 let latest = 0
 
 /** Fetches the incident. A refresh in the background (`quiet`) leaves what is on screen as it is
@@ -83,8 +90,8 @@ async function load(quiet = false) {
   if (!quiet) loading.value = true
   try {
     const found = await session.call(() => fetchIncident(id.value))
-    // A change under way will answer with a newer one.
-    if (mine !== latest || changing.value) return
+    // A change or a reading under way will answer with a newer one.
+    if (mine !== latest || changing.value || asking.value) return
     incident.value = found
     updatedAt.value = new Date()
     loadError.value = null
@@ -111,19 +118,41 @@ async function refresh() {
   await Promise.all([load(true), loadVerdicts()])
 }
 
+/** Has the AI read it now. Whatever comes of it, the page says: the reading, or why there is
+ * none. */
+async function askTheAi() {
+  asking.value = true
+  aiFailure.value = null
+  try {
+    const result = await session.change((token) => askAi(id.value, token))
+    // What was on its way before is older than this.
+    latest += 1
+    incident.value = result.incident
+    aiFailure.value = result.ok ? null : result.reason
+  } catch (error) {
+    aiFailure.value = errorMessage(error)
+  } finally {
+    asking.value = false
+  }
+}
+
 async function change(status: IncidentStatus) {
   changing.value = status
   notice.value = null
   changeError.value = null
+  let made = false
   try {
     incident.value = await session.change((token) => setIncidentStatus(id.value, status, token))
     notice.value = changedTo(status)
     loadError.value = null
+    made = true
   } catch (error) {
     changeError.value = errorMessage(error)
   } finally {
     changing.value = null
   }
+  // Looking into it is what the AI is for: it reads what it has not yet read.
+  if (made && status === 'investigating' && needsReading(shown.value)) await askTheAi()
 }
 
 const shown = computed(() => incident.value as IncidentDetail)
@@ -199,6 +228,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           <SeverityChip :severity="shown.severity" />
           <IncidentStatusChip :status="shown.status" />
           <VerdictChip v-if="shown.verdict" :verdict="shown.verdict" />
+          <AiChip v-if="shown.ai" :ai="shown.ai" />
           <v-chip variant="outlined" :prepend-icon="Gauge" data-test="confidence-chip">
             {{ CONFIDENCE[shown.confidence_level] }} confidence
           </v-chip>
@@ -294,6 +324,14 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-blocked"
         />
       </HeroSurface>
+
+      <AiReading
+        :incident="shown"
+        :asking="asking"
+        :failure="aiFailure"
+        @ask="askTheAi"
+        @changed="refresh"
+      />
 
       <SectionCard
         title="What was done about it"

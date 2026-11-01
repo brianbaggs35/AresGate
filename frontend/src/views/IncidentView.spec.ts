@@ -3,7 +3,7 @@ import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import VerdictPanel from '@/components/VerdictPanel.vue'
 import { useSessionStore } from '@/stores/session'
-import { detail, incident, signal } from '@/test/incidents'
+import { detail, incident, reading, signal, triage } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { verdict } from '@/test/verdicts'
 import IncidentView from '@/views/IncidentView.vue'
@@ -24,6 +24,7 @@ async function open({ found = detail(), verdicts = [] }: Options = {}) {
   if (verdicts instanceof Error) fetchVerdicts.mockRejectedValue(verdicts)
   else fetchVerdicts.mockResolvedValue(verdicts)
   const setStatus = vi.spyOn(incidentsApi, 'setIncidentStatus')
+  const ask = vi.spyOn(incidentsApi, 'askAi').mockResolvedValue(triage())
   const mounted = await mountWithPlugins(IncidentView, {
     signedIn: 'admin',
     withApp: true,
@@ -32,7 +33,7 @@ async function open({ found = detail(), verdicts = [] }: Options = {}) {
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const text = (selector: string) => find(selector).text()
-  return { ...mounted, fetchIncident, fetchVerdicts, setStatus, find, text }
+  return { ...mounted, fetchIncident, fetchVerdicts, setStatus, ask, find, text }
 }
 
 describe('IncidentView', () => {
@@ -368,8 +369,11 @@ describe('IncidentView', () => {
     )
 
     it('changes the status when a change is chosen, with the sign-in’s security token', async () => {
-      const { find, setStatus, text } = await open()
+      const { find, setStatus, ask, text } = await open()
       setStatus.mockResolvedValue(detail({ status: 'investigating' }))
+      ask.mockResolvedValue(
+        triage({ incident: detail({ status: 'investigating', reading: reading() }) }),
+      )
 
       await find('action-investigating').trigger('click')
       await flushPromises()
@@ -449,6 +453,201 @@ describe('IncidentView', () => {
       await flushPromises()
 
       expect(useSessionStore(pinia).expired).toBe(true)
+    })
+  })
+
+  describe('the AI', () => {
+    it('says it has not read an incident, and offers to ask', async () => {
+      const { text, find } = await open()
+
+      expect(text('ai-unread')).toContain('The AI has not read this incident')
+      expect(find('ai-ask').exists()).toBe(true)
+      expect(find('ai-chip').exists()).toBe(false)
+    })
+
+    it('says what it made of an incident it has read, beside how serious it is', async () => {
+      const { text, wrapper } = await open({
+        found: detail({ reading: reading(), ai: { classification: 'probe', confidence: 91 } }),
+      })
+
+      expect(text('ai-headline')).toBe('An internet scanner tried ssh on one device')
+      expect(wrapper.find('.incident__chips [data-test="ai-chip"]').text()).toBe(
+        'AI: Probe, 91% sure',
+      )
+    })
+
+    it('asks when it is asked to, and shows what it made of the incident', async () => {
+      const { find, text, ask } = await open()
+
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      expect(ask).toHaveBeenCalledWith(1, 'a-security-token')
+      expect(text('ai-class')).toBe('Probe')
+      expect(find('ai-failure').exists()).toBe(false)
+      expect(find('ai-busy').exists()).toBe(false)
+    })
+
+    it('shows that the AI is reading it while it does', async () => {
+      const { find, ask } = await open()
+      ask.mockReturnValue(new Promise(() => {}))
+
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      expect(find('ai-busy').exists()).toBe(true)
+      expect(find('ai-ask').exists()).toBe(false)
+    })
+
+    it('says why the AI could not be asked, and the incident is as it was', async () => {
+      const { find, text, ask } = await open()
+      ask.mockResolvedValue(
+        triage({
+          ok: false,
+          reason: 'AI is turned off. Turn it on under Settings > AI to use it.',
+          incident: detail(),
+        }),
+      )
+
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      expect(text('ai-failure')).toContain('AI is turned off.')
+      expect(find('ai-reading').exists()).toBe(false)
+    })
+
+    it('says why when the request itself failed', async () => {
+      const { find, text, ask } = await open()
+      ask.mockRejectedValue(offline())
+
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      expect(text('ai-failure')).toContain("Can't reach AresGate.")
+    })
+
+    it('forgets why it could not be asked when it is asked again', async () => {
+      const { find, ask } = await open()
+      ask.mockRejectedValueOnce(offline())
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      await find('ai-ask').trigger('click')
+      await flushPromises()
+
+      expect(find('ai-failure').exists()).toBe(false)
+      expect(find('ai-reading').exists()).toBe(true)
+    })
+
+    it('reads an incident when you start investigating it', async () => {
+      const { find, setStatus, ask, text } = await open()
+      setStatus.mockResolvedValue(detail({ status: 'investigating' }))
+      ask.mockResolvedValue(
+        triage({ incident: detail({ status: 'investigating', reading: reading() }) }),
+      )
+
+      await find('action-investigating').trigger('click')
+      await flushPromises()
+
+      expect(ask).toHaveBeenCalledWith(1, 'a-security-token')
+      expect(text('notice')).toBe('Marked as investigating.')
+      expect(text('ai-class')).toBe('Probe')
+    })
+
+    it('says plainly that the AI is off when you start investigating without it', async () => {
+      const { find, setStatus, ask, text } = await open()
+      setStatus.mockResolvedValue(detail({ status: 'investigating' }))
+      ask.mockResolvedValue(
+        triage({
+          ok: false,
+          reason: 'AI is turned off.',
+          incident: detail({ status: 'investigating' }),
+        }),
+      )
+
+      await find('action-investigating').trigger('click')
+      await flushPromises()
+
+      expect(text('ai-failure')).toContain('AI is turned off.')
+      expect(text('incident-meaning')).toContain('Investigating')
+    })
+
+    it('does not read again an incident the AI has read in full', async () => {
+      const read = detail({ reading: reading({ signals_read: 3 }) })
+      const { find, setStatus, ask } = await open({ found: read })
+      setStatus.mockResolvedValue({ ...read, status: 'investigating' })
+
+      await find('action-investigating').trigger('click')
+      await flushPromises()
+
+      expect(ask).not.toHaveBeenCalled()
+    })
+
+    it('reads it again when signals came in after the AI read it', async () => {
+      const grown = detail({ signal_count: 9, reading: reading({ signals_read: 3 }) })
+      const { find, setStatus, ask } = await open({ found: grown })
+      setStatus.mockResolvedValue({ ...grown, status: 'investigating' })
+
+      await find('action-investigating').trigger('click')
+      await flushPromises()
+
+      expect(ask).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not ask the AI about a status that was not changed', async () => {
+      const { find, setStatus, ask } = await open()
+      setStatus.mockRejectedValue(offline())
+
+      await find('action-investigating').trigger('click')
+      await flushPromises()
+
+      expect(ask).not.toHaveBeenCalled()
+    })
+
+    it('does not ask the AI when it is resolved or dismissed', async () => {
+      const { find, setStatus, ask } = await open()
+      setStatus.mockResolvedValue(detail({ status: 'resolved' }))
+
+      await find('action-resolved').trigger('click')
+      await flushPromises()
+
+      expect(ask).not.toHaveBeenCalled()
+    })
+
+    it('asks for the incident and the verdicts again after the AI’s verdict is given', async () => {
+      const { find, fetchIncident, fetchVerdicts } = await open({
+        found: detail({ reading: reading() }),
+      })
+      vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue({
+        ...verdict({ id: 3 }),
+        replaced: null,
+      })
+
+      await find('ai-accept').trigger('click')
+      await flushPromises()
+
+      expect(fetchIncident).toHaveBeenCalledTimes(2)
+      expect(fetchVerdicts).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not let a refresh that was already on its way undo what the AI said', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      try {
+        const { find, text, fetchIncident, ask } = await open()
+        let settle: (value: incidentsApi.Triage) => void = () => {}
+        ask.mockReturnValue(new Promise((resolve) => (settle = resolve)))
+        await find('ai-ask').trigger('click')
+        fetchIncident.mockResolvedValue(detail())
+
+        vi.advanceTimersByTime(30_000)
+        await flushPromises()
+        settle(triage())
+        await flushPromises()
+
+        expect(text('ai-class')).toBe('Probe')
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import catalog, service, wire
 from app.ai.catalog import Kind, ProviderDef
+from app.ai.gateway import Context
 from app.ai.service import Submission
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.api.integrations import RecorderDep
@@ -42,6 +43,21 @@ def origins(request: Request) -> dict[str, str]:
     """Where hosted providers are when it isn't where they really are: only ever in the test
     server, which points them at stand-ins on its own machine."""
     return cast("dict[str, str]", request.app.state.ai_origins)
+
+
+def gateway_context(request: Request, settings: SettingsDep, recorder: RecorderDep) -> Context:
+    """What asking a provider needs besides the database, as the app was made with it."""
+    state = request.app.state
+    return Context(
+        settings=settings,
+        recorder=recorder,
+        hosted=cast("AddressPolicy", state.ai_policy),
+        local=cast("AddressPolicy", state.local_ai_policy),
+        origins=origins(request),
+    )
+
+
+AiContext = Annotated[Context, Depends(gateway_context)]
 
 
 class PriceOut(BaseModel):

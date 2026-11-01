@@ -803,6 +803,37 @@ AresGate works without it. A test sends only the words "Say OK."
   on your own network takes; left out, the level that is kept stays). Each change is in the
   activity log.
 
+- **What the AI makes of an incident.** The incident page has a card, *What the AI makes of it*,
+  and the incident list a chip beside the incident's other chips (*AI: Probe, 91% sure*). It is the
+  AI's opinion and is shown as one, with the provider and model that read it and when; it never
+  changes an incident, and nothing is done because it said so. It says what kind of thing it
+  thinks this is (*Possible compromise*, *Active attack*, *Probe*, *Harmless* or *Unclear*), how
+  sure it is, the story in two to four sentences, what to check for yourself and the verdict it
+  would give. Pressing *Mark ... as low priority* gives that verdict as you would (it is
+  remembered, and says in its note that the AI suggested it); the suggestion goes away once you
+  have said anything of the incident. An incident is read:
+  - when you ask (*Ask the AI*, or *Read again* after more signals came in), and when you press
+    *Start investigating* on one the AI hasn't read in full;
+  - by the worker, as incidents come in, as much as **how much AI is used without being asked**
+    allows (`ai_settings.usage_level`, *Medium* until the slider on Settings > AI arrives). *Very
+    low* reads nothing by itself. *Low* reads high and critical incidents, at most 6 an hour.
+    *Medium* reads medium and above, 20 an hour, and again when an incident has four times the
+    signals it had. *High* reads low and above, 60 an hour, again at twice the signals. *Maximum*
+    reads all, 150 an hour, again at one and a half times. No more than 5 are read in a minute,
+    the most serious first, and one that was read or failed in the last 15 minutes is left alone.
+    Incidents you called not suspicious or low priority, and ones that are resolved or dismissed,
+    are never read by themselves.
+  With AI off, or no provider chosen, nothing is read, and asking says so in words and links to
+  Settings > AI. What the AI sees of an incident is its title, severity, the confidence and
+  reasons AresGate computed, when it began and ended, which programs reported it, the kinds of
+  activity, ports, whether it was banned, what you said of its signals, the devices involved
+  (by stand-in and vendor) and up to 30 of its signals (the first 10 and the last 20, when there
+  are more); every address and name goes through the level you chose. The reading is kept in the
+  `ai_triage` table, one for each incident (the latest), with the request that made it in
+  `ai_calls`. `POST /api/incidents/{id}/triage` has the AI read an incident now (it can take up to
+  two minutes, and nginx waits for that), answers `{ok, reason, incident}` and is in the activity
+  log; `GET /api/incidents/{id}` carries `reading`, and the list `ai`.
+
 ## Signing in
 
 AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create
