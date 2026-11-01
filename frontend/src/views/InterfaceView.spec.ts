@@ -149,8 +149,8 @@ describe('InterfaceView', () => {
       const { wrapper } = await open()
 
       expect(
-        wrapper.findAll('[data-test="interface-sources"] [data-test="feed-name"]').length,
-      ).toBe(2)
+        wrapper.findAll('[data-test="interface-sources"] [data-test="feed-name"]'),
+      ).toHaveLength(2)
       expect(wrapper.findAllComponents(FeedMove)[0]!.props('canCreate')).toBe(false)
     })
 

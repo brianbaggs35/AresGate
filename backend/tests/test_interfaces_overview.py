@@ -238,8 +238,10 @@ class TestSpeed:
 
         first, second = overview.overview(session, WINDOW).stats
 
-        assert first.speed is not None and first.speed.received[1] == 8_000.0
-        assert second.speed is not None and second.speed.received[1] == 800.0
+        assert first.speed is not None
+        assert first.speed.received[1] == 8_000.0
+        assert second.speed is not None
+        assert second.speed.received[1] == 800.0
 
 
 class TestAlerts:

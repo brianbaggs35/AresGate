@@ -201,8 +201,8 @@ describe('InterfacesView', () => {
 
       expect(find('interfaces-unplaced').text()).toContain('2 feeds have not been placed')
       expect(
-        wrapper.findAll('[data-test="interfaces-unplaced"] [data-test="feed-name"]').length,
-      ).toBe(2)
+        wrapper.findAll('[data-test="interfaces-unplaced"] [data-test="feed-name"]'),
+      ).toHaveLength(2)
     })
 
     it('say it in the singular for one', async () => {
