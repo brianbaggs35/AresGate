@@ -64,10 +64,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_ai_calls")),
         if_not_exists=True,
     )
-    op.create_index(op.f("ix_ai_calls_occurred_at"), "ai_calls", ["occurred_at"], if_not_exists=True)
     op.create_index(
-        "ix_ai_calls_purpose_id", "ai_calls", ["purpose", "id"], if_not_exists=True
+        op.f("ix_ai_calls_occurred_at"), "ai_calls", ["occurred_at"], if_not_exists=True
     )
+    op.create_index("ix_ai_calls_purpose_id", "ai_calls", ["purpose", "id"], if_not_exists=True)
 
 
 def downgrade() -> None:
