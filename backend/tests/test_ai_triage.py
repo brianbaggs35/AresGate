@@ -397,27 +397,34 @@ class TestWhatTheAnswerMeans:
         high = triage.parse(json.dumps(reading(confidence=250.4)))
         long = triage.parse(json.dumps(reading(headline="h" * 500, story="s" * 5000)))
 
-        assert low and low.confidence == 0
-        assert high and high.confidence == 100
-        assert long and (len(long.headline), len(long.story)) == (160, 2000)
+        assert low is not None
+        assert low.confidence == 0
+        assert high is not None
+        assert high.confidence == 100
+        assert long is not None
+        assert (len(long.headline), len(long.story)) == (160, 2000)
 
     def test_a_verdict_it_may_not_give_is_left_out(self) -> None:
         for given in ("none", "banned", 7, None):
             said = triage.parse(json.dumps(reading(verdict=given, verdict_reason=None)))
-            assert said and said.verdict is None
+            assert said is not None
+            assert said.verdict is None
             assert said.verdict_reason is None
 
     def test_at_most_a_few_checks_each_a_line_of_text(self) -> None:
         many = triage.parse(json.dumps(reading(checks=["a", "", 5, "b", "c", "d", "e", "f"])))
         none = triage.parse(json.dumps(reading(checks="look")))
 
-        assert many and many.checks == ["a", "b", "c", "d"]
-        assert none and none.checks == []
+        assert many is not None
+        assert many.checks == ["a", "b", "c", "d"]
+        assert none is not None
+        assert none.checks == []
 
     def test_control_characters_in_words_are_spaces(self) -> None:
         said = triage.parse(json.dumps(reading(headline="two\nlines\x00here")))
 
-        assert said and said.headline == "two lines here"
+        assert said is not None
+        assert said.headline == "two lines here"
 
 
 class TestKeepingWhatItSaid:
