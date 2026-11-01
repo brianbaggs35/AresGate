@@ -81,7 +81,7 @@ describe('BottomNavigation', () => {
         [...(inSheet('more-sheet')?.querySelectorAll('a') ?? [])].map((place) =>
           place.textContent.trim(),
         ),
-      ).toEqual(['Integrations', 'Status', 'Settings'])
+      ).toEqual(['Integrations', 'Interfaces', 'Status', 'Settings'])
       expect(inSheet('nav-status')?.getAttribute('href')).toBe('/status')
     })
 

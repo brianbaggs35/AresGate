@@ -229,10 +229,11 @@ class Traffic:
     bytes: float
 
 
-def traffic(db: Session, win: Window) -> list[Traffic]:
-    """The speed of each of the firewall's interfaces, worked out from the byte counters it keeps:
-    the bytes that passed between the last readings of two buckets, over the seconds between them,
-    so a counter that went back to zero is a gap and not a speed of minus anything."""
+def traffic(db: Session, win: Window, source: str = TRAFFIC_SOURCE) -> list[Traffic]:
+    """The speed of each of a program's interfaces (the firewall's, unless another is asked for),
+    worked out from the byte counters it keeps: the bytes that passed between the last readings
+    of two buckets, over the seconds between them, so a counter that went back to zero is a gap
+    and not a speed of minus anything."""
     size = win.traffic_bucket
     bucket = _binned(win, MetricSample.sampled_at, size)
     interface = MetricSeries.labels["interface"].astext
@@ -246,7 +247,7 @@ def traffic(db: Session, win: Window) -> list[Traffic]:
         )
         .join(MetricSample, MetricSample.series_id == MetricSeries.id)
         .where(
-            MetricSeries.source == TRAFFIC_SOURCE,
+            MetricSeries.source == source,
             MetricSeries.name.in_((TRAFFIC_IN, TRAFFIC_OUT)),
             MetricSample.sampled_at >= win.start - size,
             MetricSample.sampled_at < win.end,

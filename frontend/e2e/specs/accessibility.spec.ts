@@ -911,6 +911,45 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the interfaces, their sheet and the page of one have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      interfaces,
+      shell,
+    }) => {
+      await harness.createFeeds([
+        { native_name: 'igc0', interface: 'Internet', role: 'internet' },
+        { native_name: 'guest' },
+        { native_name: 'igc7' },
+      ])
+      await harness.createActivity({ traffic: { igc0: 8 } })
+      await interfaces.goto()
+      await expect(interfaces.cards).toHaveCount(1)
+      await expect(interfaces.suggestions).toHaveCount(1)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // Where a feed can go, with the list open.
+      await interfaces.feed('igc7').getByTestId('feed-move').click()
+      await expect(page.getByRole('option').first()).toBeVisible()
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+
+      // The sheet that makes an interface, with a role chosen.
+      await interfaces.add.click()
+      await expect(interfaces.editor).toBeVisible()
+      await interfaces.chooseRole('Guests')
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+      await expect(interfaces.editor).toHaveCount(0)
+
+      // The page of one interface.
+      await interfaces.card('Internet').click()
+      await expect(page.getByTestId('interface-chart')).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('an integration, with its mistakes and its log, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

@@ -26,13 +26,14 @@ describe('navigation', () => {
     expect(more.length).toBeGreaterThan(0)
   })
 
-  it('keeps the Assistant in the menu, next to Incidents, and Logs after it', () => {
+  it('keeps the places in the order they are listed, the Assistant next to Incidents', () => {
     expect(navItems.map((item) => item.route)).toEqual([
       'home',
       'incidents',
       'assistant',
       'logs',
       'integrations',
+      'interfaces',
       'status',
       'settings',
     ])

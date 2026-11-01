@@ -171,8 +171,7 @@ devices there were.
 
 Each program calls its own ports something else (OPNsense `igc0`, ntopng `eno1`), so the data of
 different programs can't be read as one until the owner says which are the same part of the
-network. `app/interfaces` holds that, and the Interfaces page (a later change) is where it is
-done.
+network. `app/interfaces` holds that, and the Interfaces page is where it is done.
 
 - An **interface** (`interfaces`) is a name the owner chooses with a role (Internet, DMZ, Home,
   Guest, IoT, VPN, Management or Other; only Internet is outside), notes and its networks as CIDR
@@ -193,6 +192,20 @@ done.
   themselves, because a wrong guess about which port is the Internet would mislabel every threat
   that comes in on it: a name that says what it is for (`wan`, `guest`, `wg0`, `mgmt`), a name
   an interface already has, and the same name in more than one program.
+- **What each has been doing** is `overview.py`, behind `GET /api/interfaces/overview?window=24h|7d`:
+  for each interface the speed (bits a second, a bucket at a time, from the byte counters of the
+  ports placed on it), the alerts that came in on it in the window and the one before, the devices
+  with an address on its networks (none is counted without networks), and when its feeds last
+  reported. Speed comes from one program only, the firewall if it measured any of the ports
+  and otherwise ntopng, because both count the same traffic; two ports of one program on one
+  interface are added. An alert is counted on the interface its port (or, for a program that
+  names none, its whole connection) was placed on, so moving a feed moves its alerts.
+- **The page** is `InterfacesView` (a hero that says how much is left to decide, a *Needs you*
+  lane of suggestions with Confirm, Change and Ignore, a card for each interface, the feeds not
+  placed and the ones set aside) and `InterfaceView` (the traffic, the numbers and the data
+  sources of one). `interface-board.ts` holds every change the pages make; each says what it
+  did and how to take it back, and the page shows that as a notice with *Undo*. The editor
+  (`InterfaceEditor`) is a sheet from the side, and the screen above the bottom bar on a phone.
 - The API is `GET /api/interfaces`, `POST /api/interfaces`, `PATCH` and `DELETE
   /api/interfaces/{id}`, `PUT /api/interfaces/feeds/{id}` (an interface, or `ignored`),
   `POST /api/interfaces/discover` and `GET /api/interfaces/resolve`. Every change is in the audit
