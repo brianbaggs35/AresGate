@@ -136,6 +136,33 @@ test.describe('Settings > AI usage', () => {
     await expect(aiUsage.more).toHaveCount(0)
   })
 
+  test('lets the owner choose how much AI is used without being asked, before it was ever asked', async ({
+    page,
+    aiUsage,
+  }) => {
+    await aiUsage.goto()
+    await expect(aiUsage.never).toBeVisible()
+    await expect(aiUsage.levelName).toHaveText('Medium')
+    await expect(aiUsage.levelSummary).toContainText('rated medium or higher, up to 20 an hour')
+    await expect(aiUsage.levelSave).toBeDisabled()
+
+    await aiUsage.levelSlider.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(aiUsage.levelName).toHaveText('High')
+    await expect(aiUsage.levelSummary).toContainText('rated low or higher, up to 60 an hour')
+    await page.keyboard.press('Home')
+    await expect(aiUsage.levelName).toHaveText('Very low')
+    await expect(aiUsage.levelSummary).toContainText('Reads nothing by itself')
+    await aiUsage.levelSave.click()
+
+    await expect(aiUsage.levelSaved).toBeVisible()
+    await expect(aiUsage.levelSave).toBeDisabled()
+    // The level is kept, not just shown.
+    await page.reload()
+    await expect(aiUsage.levelName).toHaveText('Very low')
+    await expect(aiUsage.levelSlider).toHaveAttribute('aria-valuetext', 'Very low')
+  })
+
   test('keeps the spending limits, and shows how much of them has gone', async ({
     page,
     harness,

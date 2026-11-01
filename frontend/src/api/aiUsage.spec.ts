@@ -3,6 +3,7 @@ import {
   fetchUsage,
   fetchUsageCall,
   fetchUsageCalls,
+  saveLevel,
   saveLimits,
   timeZone,
   usageCsvUrl,
@@ -55,5 +56,13 @@ describe('AI usage API', () => {
     await saveLimits({ daily: '2.50', monthly: null }, 'a-token')
 
     expect(put).toHaveBeenCalledWith('/ai/limits', { daily: '2.50', monthly: null }, 'a-token')
+  })
+
+  it('keeps the level with the security token', async () => {
+    const put = vi.spyOn(client, 'apiPut').mockResolvedValue({ level: 'high' })
+
+    await expect(saveLevel('high', 'a-token')).resolves.toEqual({ level: 'high' })
+
+    expect(put).toHaveBeenCalledWith('/ai/level', { level: 'high' }, 'a-token')
   })
 })

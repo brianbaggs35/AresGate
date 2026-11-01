@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 
-from app.ai import catalog, limits, usage
+from app.ai import catalog, levels, limits, usage
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.models import AiCall, utcnow
@@ -101,6 +101,13 @@ class PricesOut(BaseModel):
     sources: list[SourceOut]
 
 
+class LevelOut(BaseModel):
+    key: str
+    label: str
+    summary: str
+    per_hour: int
+
+
 class UsageOut(BaseModel):
     range: Range
     start: AwareDatetime
@@ -116,6 +123,9 @@ class UsageOut(BaseModel):
     top: list[ConsumerOut]
     month: MonthOut
     limits: list[LimitOut]
+    # How much AI is used without being asked, and the levels to choose between.
+    level: str
+    levels: list[LevelOut]
     prices: PricesOut
     # Whether AI has ever been asked, so a page with nothing in this range can tell a new
     # install from a quiet week.
@@ -153,6 +163,10 @@ class CallDetail(CallOut):
 
     prompt: str
     answer: str | None
+
+
+class LevelIn(BaseModel):
+    level: levels.LevelKey
 
 
 class LimitsIn(BaseModel):
@@ -273,6 +287,11 @@ def get_usage(db: Db, range: Range = "30d", timezone: Zone = "UTC") -> UsageOut:
         top=[_consumer(c) for c in usage.top_consumers(db, window)],
         month=MonthOut.model_validate(usage.month(db, now), from_attributes=True),
         limits=[_limit(limit) for limit in limits.status(db, now)],
+        level=levels.current(db),
+        levels=[
+            LevelOut(key=item.key, label=item.label, summary=item.summary, per_hour=item.per_hour)
+            for item in levels.LEVELS
+        ],
         prices=_prices(),
         ever=db.scalar(select(AiCall.id).limit(1)) is not None,
     )
@@ -410,3 +429,22 @@ def set_limits(
     out = [_limit(limit) for limit in changed]
     db.commit()
     return out
+
+
+@router.put("/level")
+def set_level(
+    body: LevelIn, auth: Annotated[SignedIn, Depends(signed_in)], request: Request, db: Db
+) -> LevelIn:
+    """Sets how much AI is used without being asked. What the owner asks for is answered at
+    every level."""
+    before, after = levels.choose(db, body.level)
+    record_audit(
+        db,
+        request,
+        Action.AI_LEVEL_CHANGED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"from": before, "to": after},
+    )
+    db.commit()
+    return LevelIn(level=body.level)

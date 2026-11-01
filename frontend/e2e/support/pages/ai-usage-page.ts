@@ -77,4 +77,25 @@ export class AiUsagePage {
   get limitsSaved(): Locator {
     return this.page.getByTestId('limits-saved')
   }
+
+  /** The slider for how much AI is used without being asked, and what it says of the level. */
+  get levelSlider(): Locator {
+    return this.page.getByRole('slider', { name: 'How much AI is used without being asked' })
+  }
+
+  get levelName(): Locator {
+    return this.page.getByTestId('level-name')
+  }
+
+  get levelSummary(): Locator {
+    return this.page.getByTestId('level-summary')
+  }
+
+  get levelSave(): Locator {
+    return this.page.getByTestId('level-save')
+  }
+
+  get levelSaved(): Locator {
+    return this.page.getByTestId('level-saved')
+  }
 }
