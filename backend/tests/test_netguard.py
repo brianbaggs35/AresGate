@@ -629,7 +629,7 @@ def test_every_certificate_a_system_presents_can_be_looked_at(serve: Serve) -> N
     server = serve(ok, chain.full)
     origin = netguard.parse_origin(server.url, allow_http=False)
 
-    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin))
 
     assert len(found) == 2
     assert found[0] == chain.full.der
@@ -641,7 +641,7 @@ def test_a_system_that_sends_only_its_own_certificate_has_a_chain_of_one(serve: 
     server = serve(ok, chain.leaf)
     origin = netguard.parse_origin(server.url, allow_http=False)
 
-    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+    found = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin))
 
     assert found == [chain.leaf.der]
 
@@ -652,12 +652,14 @@ def test_looking_at_a_chain_respects_the_allowed_addresses_and_says_when_nothing
     server = serve(ok, make_certificate())
     origin = netguard.parse_origin(server.url, allow_http=False)
 
+    outside = netguard.look_up_chain(HOME_NETWORK, origin)
     with pytest.raises(Refused, match="isn't a private network address"):
-        asyncio.run(netguard.look_up_chain(HOME_NETWORK, origin, 5.0))
+        asyncio.run(outside)
 
     server.stop()
+    gone = netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin)
     with pytest.raises(Refused, match="Couldn't make a secure connection"):
-        asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+        asyncio.run(gone)
 
 
 def test_a_chain_that_is_not_there_is_refused(
@@ -671,8 +673,9 @@ def test_a_chain_that_is_not_there_is_refused(
 
     monkeypatch.setattr(ssl.SSLObject, "get_unverified_chain", none)
 
+    lookup = netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin)
     with pytest.raises(Refused, match="didn't present a certificate"):
-        asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin, 5.0))
+        asyncio.run(lookup)
 
 
 def test_a_certificate_without_names_is_described_without_them() -> None:

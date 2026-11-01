@@ -483,14 +483,12 @@ def describe_certificate(der: bytes) -> CertificateInfo:
     )
 
 
-async def _present(
-    policy: AddressPolicy, origin: Origin, timeout: float
-) -> httpcore2.AsyncNetworkStream:
+async def _present(policy: AddressPolicy, origin: Origin) -> httpcore2.AsyncNetworkStream:
     """A connection to the system, encrypted, with whatever certificate it presents accepted."""
     where = f"{origin.host}:{origin.port}"
     try:
-        stream = await GuardedBackend(policy).connect_tcp(origin.host, origin.port, timeout)
-        return await stream.start_tls(_unverified_context(), origin.host, timeout)
+        stream = await GuardedBackend(policy).connect_tcp(origin.host, origin.port, LOOKUP_TIMEOUT)
+        return await stream.start_tls(_unverified_context(), origin.host, LOOKUP_TIMEOUT)
     except httpcore2.ConnectTimeout as error:
         raise Refused(f"{where} didn't answer in time.") from error
     except httpcore2.ConnectError as error:
@@ -501,7 +499,7 @@ async def look_up_certificate(policy: AddressPolicy, origin: Origin) -> Certific
     """Connects, takes the certificate the system presents and hangs up, without sending
     anything. Whatever is presented is accepted, because this is how someone gets to see it and
     decide whether to trust it."""
-    secured = await _present(policy, origin, LOOKUP_TIMEOUT)
+    secured = await _present(policy, origin)
     try:
         der = peer_certificate(secured)
     finally:
@@ -511,11 +509,11 @@ async def look_up_certificate(policy: AddressPolicy, origin: Origin) -> Certific
     return describe_certificate(der)
 
 
-async def look_up_chain(policy: AddressPolicy, origin: Origin, timeout: float) -> list[bytes]:
+async def look_up_chain(policy: AddressPolicy, origin: Origin) -> list[bytes]:
     """Every certificate the system presents (DER), its own first, taken the way a certificate is
     looked up: nothing is sent, and whatever is presented is accepted, because this is for saying
     why a certificate wasn't trusted. Raises ``Refused`` if it can't be done."""
-    secured = await _present(policy, origin, timeout)
+    secured = await _present(policy, origin)
     try:
         ssl_object = secured.get_extra_info("ssl_object")
         chain = ssl_object.get_unverified_chain() if ssl_object else None
