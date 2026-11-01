@@ -15,12 +15,15 @@ import {
   isChanged,
   isReady,
   longPromptNote,
+  mayShowEverything,
   modelHint,
   modelItems,
   priceNote,
   problemsByField,
   providerFieldId,
+  REDACTION_LEVELS,
   settingsFrom,
+  shownLevel,
   useNote,
 } from '@/ai'
 import {
@@ -375,5 +378,35 @@ describe('what is said of the model and of AI', () => {
     expect(useNote({ enabled: true, provider: 'ollama', providers: [bare] })).toBe(
       'On · Ollama (on your computer)',
     )
+  })
+})
+
+describe('what the provider may see', () => {
+  it('offers the levels from the most careful to the least, each with what it shows', () => {
+    expect(REDACTION_LEVELS.map((level) => level.key)).toEqual(['strict', 'balanced', 'local'])
+    for (const level of REDACTION_LEVELS) {
+      expect(level.summary.length).toBeGreaterThan(20)
+      expect(level.example).toContain('probed by')
+    }
+    const [strict, balanced, local] = REDACTION_LEVELS.map((level) => level.example)
+    expect(strict).not.toContain('203.0.113.5')
+    expect(balanced).toContain('203.0.113.5')
+    expect(balanced).not.toContain('192.168')
+    expect(local).toContain('192.168.1.20')
+  })
+
+  it('shows Local only to a provider on your own network, and Balanced to the others', () => {
+    expect(shownLevel('local', ollama())).toBe('local')
+    expect(shownLevel('local', anthropic())).toBe('balanced')
+    expect(shownLevel('local', ollamaCloud())).toBe('balanced')
+    expect(shownLevel('strict', anthropic())).toBe('strict')
+    expect(shownLevel('local', undefined)).toBe('local')
+  })
+
+  it('lets Local be chosen with no provider, or one at home', () => {
+    expect(mayShowEverything(undefined)).toBe(true)
+    expect(mayShowEverything(ollama())).toBe(true)
+    expect(mayShowEverything(openai())).toBe(false)
+    expect(mayShowEverything(ollamaCloud())).toBe(false)
   })
 })

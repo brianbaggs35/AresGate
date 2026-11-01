@@ -24,6 +24,21 @@ export class AiSettingsPage {
     this.error = page.getByTestId('ai-error')
   }
 
+  /** The radio button of one level of what the provider is shown: strict, balanced or local. */
+  level(key: string): Locator {
+    return this.page.getByTestId(`privacy-${key}`).getByRole('radio')
+  }
+
+  /** What a provider would read of the same event at a level. */
+  example(key: string): Locator {
+    return this.page.getByTestId(`privacy-example-${key}`)
+  }
+
+  /** The line under the levels that says why one can't be chosen. */
+  get privacyNote(): Locator {
+    return this.page.getByTestId('privacy-note')
+  }
+
   /** The option of one provider in the choice at the top, by its key such as `anthropic` or
    * `ollama_cloud`. */
   option(key: string): Locator {

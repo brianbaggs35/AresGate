@@ -322,6 +322,53 @@ class TestStatusAndChoice:
             assert caught.value.problems == {"provider": message}
         assert session.get(AiSettings, 1) is None
 
+    def test_what_the_provider_is_shown_is_balanced_until_it_is_chosen_and_then_kept(
+        self, session: Session, settings: Settings
+    ) -> None:
+        saved(session, settings, catalog.ANTHROPIC)
+
+        first = service.choose(session, enabled=True, provider="anthropic", now=NOW)
+        assert first.redaction == "balanced"
+        strict = service.choose(
+            session, enabled=True, provider="anthropic", now=NOW, redaction="strict"
+        )
+        assert strict.redaction == "strict"
+        # Turning AI off, or asking another provider, doesn't forget it.
+        assert service.choose(session, enabled=False, provider=None, now=NOW).redaction == "strict"
+
+    def test_a_level_that_is_not_one_is_refused_and_nothing_changes(
+        self, session: Session, settings: Settings
+    ) -> None:
+        saved(session, settings, catalog.ANTHROPIC)
+
+        with pytest.raises(SettingsError) as caught:
+            service.choose(
+                session, enabled=True, provider="anthropic", now=NOW, redaction="everything"
+            )
+
+        assert caught.value.problems == {"redaction": "Choose strict, balanced or local."}
+        assert session.get(AiSettings, 1) is None
+
+    def test_only_a_provider_on_the_owners_network_is_shown_everything(
+        self, session: Session, settings: Settings
+    ) -> None:
+        saved(session, settings, catalog.ANTHROPIC)
+        saved(session, settings, catalog.OLLAMA, model="qwen3:8b")
+
+        with pytest.raises(SettingsError) as caught:
+            service.choose(session, enabled=True, provider="anthropic", now=NOW, redaction="local")
+        local = service.choose(session, enabled=True, provider="ollama", now=NOW, redaction="local")
+
+        assert list(caught.value.problems) == ["redaction"]
+        assert local.redaction == "local"
+        # With no provider chosen, nothing says it can't be.
+        assert (
+            service.choose(
+                session, enabled=False, provider=None, now=NOW, redaction="local"
+            ).redaction
+            == "local"
+        )
+
     def test_the_providers_that_are_set_up_are_listed_by_key(
         self, session: Session, settings: Settings
     ) -> None:

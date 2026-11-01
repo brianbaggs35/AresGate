@@ -9,6 +9,7 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.ai import retention as ai
 from app.config import Settings
 from app.events import retention as events
 from app.integrations import apilog
@@ -22,11 +23,13 @@ INTERVAL = timedelta(hours=6)
 
 
 def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
-    """Deletes the audit events, the API log entries and the integrations' events and samples
-    past their retention periods, and returns how many audit events there were."""
+    """Deletes the audit events, the API log entries, the record of AI requests and the
+    integrations' events and samples past their retention periods, and returns how many audit
+    events there were."""
     with new_session() as db:
         now = utcnow()
         apilog.purge_expired(db, settings, now)
+        ai.purge_expired(db, settings, now)
         purged = audit.purge_expired(db, settings, now)
         removed = events.purge_expired(db, settings, now)
         if removed.deleted or removed.partitions_dropped:

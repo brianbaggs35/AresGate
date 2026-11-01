@@ -170,4 +170,49 @@ describe('AiSettingsView', () => {
     expect(fetchIt).toHaveBeenCalledTimes(2)
     expect(find('ai-state').text()).toBe('Off')
   })
+
+  it('has a card on what the provider sees, which says it is replaced and recorded', async () => {
+    const { find } = await open()
+
+    expect(find('ai-privacy-card').find('h2').text()).toBe('What the provider sees')
+    expect(find('ai-privacy-card').text()).toContain('stand-ins that only AresGate can turn back')
+    expect(find('ai-privacy-card').text()).toContain('recorded exactly as it was sent')
+    expect(find('privacy-balanced').find('input').element).toHaveProperty('checked', true)
+  })
+
+  it('changes what is shown without changing the use of AI', async () => {
+    const { use, find } = await open(
+      ai({ enabled: true, provider: 'anthropic', providers: [ollama(), READY] }),
+    )
+    use.mockResolvedValue(
+      ai({
+        enabled: true,
+        provider: 'anthropic',
+        redaction: 'strict',
+        providers: [ollama(), READY],
+      }),
+    )
+
+    await find('privacy-strict').find('input').setValue(true)
+    await flushPromises()
+
+    expect(use).toHaveBeenCalledWith(
+      { enabled: true, provider: 'anthropic', redaction: 'strict' },
+      'a-security-token',
+    )
+    expect(find('privacy-strict').find('input').element).toHaveProperty('checked', true)
+  })
+
+  it('says why a level was refused and shows how things really are', async () => {
+    const { use, find, fetchIt } = await open()
+    use.mockRejectedValue(new ApiError(422, 'Choose strict, balanced or local.', 'invalid'))
+    fetchIt.mockClear()
+
+    await find('privacy-strict').find('input').setValue(true)
+    await flushPromises()
+
+    expect(find('privacy-failure').text()).toBe('Choose strict, balanced or local.')
+    expect(fetchIt).toHaveBeenCalledTimes(1)
+    expect(find('privacy-balanced').find('input').element).toHaveProperty('checked', true)
+  })
 })

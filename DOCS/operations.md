@@ -688,7 +688,8 @@ AresGate works without it. A test sends only the words "Say OK."
   (Anthropic's pricing and prompt caching pages, OpenAI's pricing and prompt caching pages) on
   the date the page shows, and are in `backend/app/ai/catalog.py`: check them there when a
   provider changes its prices. The estimate assumes about 3,000 tokens in, 1,500 of them the
-  same every time, and 600 out for one incident; the usage page shows what was really used.
+  same every time, and 600 out for one incident. Every request that is really made is recorded with
+  the tokens it counted and what that cost (see *What a provider sees* below).
 - **Caching.** The instructions that start every request are the same each time, so a provider
   can keep them and charge much less to read them again. AresGate ends them with a marker the
   provider understands, from the lengths each provider documents (512 tokens for Claude, 1,024
@@ -762,10 +763,45 @@ AresGate works without it. A test sends only the words "Say OK."
   metadata service, even if a name has been made to point there. Every call is in the API log.
 - **Use AI.** The switch and the choice of which provider to ask need a provider that is set up
   with a model (and a key, if it takes one). Removing the provider that is asked turns AI off.
+- **What a provider sees.** Everything AresGate asks a model goes through one place
+  (`backend/app/ai/gateway.py`), which is the only code besides the connection test that calls a
+  provider; a test fails if anything else does. A hosted provider reads what it is sent and keeps
+  it for a while, so **Settings > AI > What the provider sees** sets how much of your network it
+  is shown. Each level on the page shows the same event as a provider would read it:
+  - *Strict*: every address, hardware address and name is replaced, including the addresses of
+    attackers on the internet (`HOST_n` for a device on your network, `WAN_n` for your own address
+    on the internet, `EXT_n` for any other address, `MAC_n`, `NAME_n`, `USER_n`).
+  - *Balanced* (the default): your devices, their names and hardware addresses are replaced.
+    Attackers' addresses on the internet are shown, since that is what a provider can say
+    something about, and so are ports, signatures and times.
+  - *Local*: nothing is replaced. It is for a provider on your own network that nothing leaves
+    (an Ollama at home), and AresGate gives any other provider Balanced even if Local was chosen.
+  Passwords, API keys, tokens and private keys are taken out at every level. The same real value
+  is always the same stand-in (the number is a row of the `ai_aliases` table), so "`HOST_12`
+  scanned the camera" means the same device tomorrow; only this server can turn a stand-in back
+  into the real value, which it does with the answer before showing it to you. Text that came
+  from the network (log lines, signatures) is put between `<data>` tags that the instructions
+  say are evidence, never orders, so a line written by an attacker can't give the model
+  instructions. The whole prompt is gone over once more before it is sent, in case a stand-in
+  was missed.
+- **What was asked.** Every request is recorded in the `ai_calls` table: when, what for (triage,
+  chat), what it was about, the provider, the model, the level, the prompt exactly as the
+  provider read it (stand-ins and all), the answer exactly as it came, the tokens in and out,
+  those read from and written to the provider's cache, the thinking, what it cost (from the
+  prices in `backend/app/ai/catalog.py`; nothing on your own computer, and unknown for a model
+  the catalog has no price for), how long it took and, for a request that failed, why. It keeps
+  90 days; change that with `ARESGATE_AI_LOG_RETENTION_DAYS` (1 to 365) in `.env`, then `make up`
+  or `make restart`. The stand-ins are kept, so an answer from last month can still be read. A
+  request waits up to two minutes for an answer, since a model that thinks takes a while.
+- **If AI is off or not set up,** nothing is asked, and whatever wanted an answer says why: AI
+  is turned off, no provider is chosen, the provider has no model, or its key is missing.
 - **The API.** `GET /api/ai` lists the providers, their models and prices and how they are set
-  up; `PUT /api/ai/providers/{key}` keeps one, `DELETE` forgets it, `POST .../test` tests it and
-  `POST .../models` asks an Ollama for its models; `PUT /api/ai/use` turns AI on or off. Each
-  change is in the activity log.
+  up, and how much of your network the provider is shown (`redaction`); `PUT
+  /api/ai/providers/{key}` keeps one, `DELETE` forgets it, `POST .../test` tests it and `POST
+  .../models` asks an Ollama for its models; `PUT /api/ai/use` turns AI on or off, says which
+  provider to ask and sets `redaction` (`strict`, `balanced` or `local`, which only a provider
+  on your own network takes; left out, the level that is kept stays). Each change is in the
+  activity log.
 
 ## Signing in
 
@@ -785,7 +821,7 @@ it with the setup code from the log.
   deletes older events when it starts and every six hours after that.
 - **What an integration was asked.** Each integration's page has an API log of every request
   AresGate made to it, without secrets or query strings. It keeps 30 days; change that with
-  `ARESGATE_API_LOG_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`
+  `ARESGATE_API_LOG_RETENTION_DAYS` (1 to 365) in `.env`, then `make up` or `make restart`
   ([Integrations](integrations.md)).
 - **Adding the second step.** In Settings, on the Account page, Two-step verification, choose
   *Add an authenticator app*. Scan the QR code with the app (or open the link on the same device,

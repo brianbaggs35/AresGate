@@ -125,7 +125,11 @@ and left out by id when already shown) and, while the page is scrolled down, hol
 button rather than moving what is being read. `src/logs.ts` has the columns, the merging and the
 formatting, and the tests for it.
 
-Settings > AI (`AiSettingsView`) is one card, "AI provider". At the top is an `AiProviderPicker`:
+Settings > AI (`AiSettingsView`) is two cards. The second, "What the provider sees", is an
+`AiPrivacy`: three cards that are really radio buttons (Strict, Balanced, Local), each with a line
+that says what is replaced and the same event as a provider would read it at that level, so the
+choice needs no explaining; Local is disabled, with the reason in words, while the provider that is
+asked is hosted. The first is "AI provider". At the top is an `AiProviderPicker`:
 the four providers as cards that are really a group of radio buttons (the arrow keys move
 between them, one is heard as chosen, and the one AresGate asks says *In use*). Under it is an
 `AiProviderForm` for the provider that is chosen and no other, with the same things in the same
