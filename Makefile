@@ -22,7 +22,7 @@ TEST_DB := aresgate-test-db
 TEST_DB_PORT ?= 55432
 
 .DEFAULT_GOAL := help
-.PHONY: help up pull down restart rebuild logs ps shell psql backup secret-key rotate-secret-key two-factor-off \
+.PHONY: help up pull stop start down restart rebuild logs ps data shell psql backup secret-key rotate-secret-key two-factor-off \
 	cert cert-renew cert-reload \
 	dev dev-down dev-logs dev-api dev-web install test test-backend test-frontend \
 	e2e e2e-up e2e-down e2e-host e2e-coverage e2e-ui e2e-codegen e2e-report e2e-logs \
@@ -41,8 +41,20 @@ pull: ## Download and start the release in .env's ARESGATE_IMAGE and ARESGATE_VE
 	$(COMPOSE) up -d --no-build
 	@echo "AresGate is starting at https://$${ARESGATE_SERVER_NAME:-localhost}"
 
-down: ## Stop AresGate (your data is kept)
+stop: ## Stop AresGate, keeping its container and data; make start brings it back
+	@test -n "$$($(COMPOSE) ps --all --quiet)" || { echo "There is no AresGate container to stop." >&2; exit 1; }
+	$(COMPOSE) stop
+	@echo "AresGate is stopped. Your settings and data are kept, and so is the container: make start brings it back."
+
+start: ## Start AresGate again after make stop, as you left it
+	@test -n "$$($(COMPOSE) ps --all --quiet)" || { echo "There is no AresGate container to start. Run make up (or make pull) instead." >&2; exit 1; }
+	$(COMPOSE) start
+	@echo "AresGate is starting at https://$${ARESGATE_SERVER_NAME:-localhost}"
+
+down: ## Stop AresGate and remove its container, keeping the data volume (make data)
 	$(COMPOSE) down
+	@echo "The container is removed. Your settings and data are kept in a Docker volume (make data shows it), and make up or make pull starts AresGate on it again."
+	@echo "Docker's clean-up tools can delete a volume that no container uses, so start AresGate again before cleaning up Docker, or use make stop next time."
 
 restart: ## Restart AresGate (a renewed certificate needs only make cert-reload)
 	$(COMPOSE) restart
@@ -56,6 +68,18 @@ logs: ## Follow the logs
 
 ps: ## Show container status and health
 	$(COMPOSE) ps
+
+data: ## Show the Docker volume that holds your data, when it was made and what uses it
+	@volumes="$$(docker volume ls --quiet --filter label=com.docker.compose.project=aresgate --filter label=com.docker.compose.volume=aresgate-data)"; \
+	if [ -z "$$volumes" ]; then \
+		echo "There is no AresGate data volume on this Docker yet. The first start (make up or make pull) makes one." >&2; exit 1; \
+	fi; \
+	for volume in $$volumes; do \
+		docker volume inspect --format 'Data volume {{.Name}}, made {{.CreatedAt}}' "$$volume"; \
+		users="$$(docker ps --all --filter "volume=$$volume" --format '  used by {{.Names}} ({{.Status}})')"; \
+		if [ -n "$$users" ]; then echo "$$users"; \
+		else echo "  nothing uses it now. Docker's clean-up tools (docker volume prune --all, and the clean-up of unused volumes in Docker Desktop) can delete a volume nothing uses, so make up or make pull before cleaning up Docker, or use make stop instead of make down."; fi; \
+	done
 
 shell: ## Open a shell in the running container
 	$(COMPOSE) exec aresgate sh
@@ -181,6 +205,7 @@ lint-infra: ## hadolint, ShellCheck, actionlint and the early-exit check (Docker
 		.github/scripts/e2e-host.sh .github/scripts/trivy-report.sh \
 		.github/scripts/codeql-report.sh .github/scripts/release-version.sh \
 		.github/scripts/supplied-key-test.sh .github/scripts/sign-in-test.sh \
+		.github/scripts/keep-settings-test.sh \
 		.github/scripts/certificate-test.sh .github/scripts/certificate-script-test.sh \
 		.github/scripts/custom-name-test.sh .github/scripts/early-exit-check.sh \
 		.github/scripts/early-exit-check-test.sh

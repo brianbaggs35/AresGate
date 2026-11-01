@@ -43,8 +43,12 @@ chown nginx:nginx /run/nginx /var/cache/nginx
 # The database listens only on a unix socket and trusts the OS user via peer auth, so no
 # password exists to leak and nothing outside the container can connect. The builtin
 # C.UTF-8 collation doesn't depend on the operating system's locale data.
-if [ ! -s "$PGDATA/PG_VERSION" ]; then
-    log "initialising database"
+if [ -s "$PGDATA/PG_VERSION" ]; then
+    log "using the database already in the data volume (made $(date -r "$PGDATA/PG_VERSION" +%Y-%m-%d))"
+else
+    # The first start has no database. A later one that has none is on another volume than the
+    # one that held the settings, which this line is for anyone looking for them.
+    log "making a new database: the data volume has none (expected on the first start; if you saved settings before, this is not the volume you used then, and make data shows which one this is)"
     as_user postgres initdb -D "$PGDATA" --encoding=UTF8 --locale=C \
         --locale-provider=builtin --builtin-locale=C.UTF-8 \
         --auth-local=peer --auth-host=reject >/dev/null

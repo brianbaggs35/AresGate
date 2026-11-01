@@ -324,6 +324,12 @@ jobs:
           docker compose up --detach --no-build --wait --wait-timeout 180
           ./.github/scripts/smoke-test.sh
 
+      # What is saved in the app (an integration and an AI provider, each with a secret) is still
+      # there, sealed with the same key, after make stop and make start, make restart, and make
+      # down and then up; and make data names the volume that holds it.
+      - name: Keep settings through stopping and starting
+        run: ./.github/scripts/keep-settings-test.sh
+
       # The app secret key can be supplied instead of made, in the environment or in a file such
       # as a Docker secret, and a key that is too short has to stop the container.
       - name: Start with a secret key you supply

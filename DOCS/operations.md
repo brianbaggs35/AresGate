@@ -16,8 +16,39 @@ volume: `certs/` holds the certificate and key you use, and `acme/` what `make c
 renew them ([Certificates](#certificates)). `make backup` doesn't include either. A certificate from
 `make cert` is made again by running it; keep a copy of one you brought yourself.
 
-`make down` stops AresGate and keeps the volume. Deleting the volume (`docker volume rm`, or
-`docker compose down --volumes`) deletes all of it, so back it up first.
+Deleting the volume (`docker volume rm`, or `docker compose down --volumes`) deletes all of it,
+so back it up first. `make data` shows the volume and what uses it.
+
+## Stopping and starting
+
+Every setting you save, such as an integration's address and key or an AI provider and its key,
+is in the database, and the keys are sealed with the app secret key (see [Backups](#backups)).
+Both are in the data volume, so they last as long as the volume does.
+
+| Command | What it does | Settings and data |
+| --- | --- | --- |
+| `make stop`, then `make start` | Stops the container, then starts the same one again | Kept; the container stays, so the volume stays in use |
+| `make restart` | Restarts the container | Kept |
+| `make down`, then `make up` or `make pull` | Removes the container, then makes a new one from the image | Kept in the volume |
+| `docker compose down --volumes`, `docker volume rm` | Deletes the volume | **Deleted** |
+
+Prefer `make stop` to `make down` when you only want AresGate off for a while. After `make down`
+no container uses the volume, and Docker's clean-up tools can delete a volume that nothing uses:
+`docker volume prune --all`, and the clean-up of unused volumes in Docker Desktop. Start AresGate
+again (`make up`, or `make pull` for a release) before you clean up Docker.
+
+### If your settings are gone after a start
+
+- `make logs` shows how the start went. `using the database already in the data volume (made
+  2026-10-22)` means AresGate found its data. `making a new database: the data volume has none`
+  means it started on an empty volume: the first start does that, and so does any later one on
+  a volume that is not the one you used before.
+- `make data` shows the volume AresGate uses and when it was made. A volume made after you last
+  saved anything was made again, and what was in the old one is only in a backup (see
+  [Restoring](#restoring), which needs the old app secret key as well).
+- More than one Docker on a computer keep separate volumes, for example Docker Desktop and a Docker
+  installed inside WSL, or the contexts `docker context ls` shows. Run `make data` where you
+  started AresGate before, and start it from the same place.
 
 ## Backups
 

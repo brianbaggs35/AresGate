@@ -219,4 +219,7 @@ Your data lives in a Docker volume, so it is kept. Run `make backup` first
 
 ## Stop
 
-`make down` stops AresGate and keeps your data. `make logs` follows its logs.
+`make stop` stops AresGate and keeps its container and your data; `make start` starts it again with
+every setting as you left it. `make down` also removes the container (your data is kept in its
+Docker volume, which `make data` shows), and `make up` or `make pull` starts it again. See
+[Stopping and starting](operations.md#stopping-and-starting). `make logs` follows its logs.
