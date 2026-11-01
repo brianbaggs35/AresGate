@@ -1,6 +1,14 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
-from app.models.ai import AiAlias, AiCall, AiProvider, AiSettings
+from app.models.ai import (
+    CLASSES,
+    USAGE_LEVELS,
+    AiAlias,
+    AiCall,
+    AiProvider,
+    AiSettings,
+    AiTriage,
+)
 from app.models.audit import AuditEvent
 from app.models.auth import (
     LoginThrottle,
@@ -25,12 +33,15 @@ from app.models.system import SystemInfo
 from app.models.verdicts import VERDICTS, VerdictRule
 
 __all__ = [
+    "CLASSES",
     "INCIDENT_STATUSES",
+    "USAGE_LEVELS",
     "VERDICTS",
     "AiAlias",
     "AiCall",
     "AiProvider",
     "AiSettings",
+    "AiTriage",
     "ApiCall",
     "AuditEvent",
     "Base",

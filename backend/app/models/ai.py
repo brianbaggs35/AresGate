@@ -10,6 +10,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -18,6 +19,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
+
+# How much the owner lets AresGate use AI of its own accord, from none but what they ask for to
+# everything it can (app/ai/triage.py says what each does).
+USAGE_LEVELS = ("very_low", "low", "medium", "high", "maximum")
+# What an AI reading of an incident can make of it, and what it can suggest the owner say.
+CLASSES = ("compromise", "attack", "probe", "noise", "unclear")
 
 
 class AiProvider(Base):
@@ -56,6 +63,9 @@ class AiSettings(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="single_row"),
         CheckConstraint("redaction IN ('strict', 'balanced', 'local')", name="redaction"),
+        CheckConstraint(
+            "usage_level IN ('very_low', 'low', 'medium', 'high', 'maximum')", name="usage_level"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
@@ -63,6 +73,8 @@ class AiSettings(Base):
     # What a provider is allowed to see (app/ai/redaction.py): ``strict``, ``balanced`` or
     # ``local``, which only a provider on the owner's own network is given.
     redaction: Mapped[str] = mapped_column(String(8), default="balanced")
+    # How much AI is used without being asked (``medium`` until the owner says otherwise).
+    usage_level: Mapped[str] = mapped_column(String(10), default="medium")
     # Forgetting a provider turns it off here rather than leaving a dangling choice.
     provider: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("ai_providers.provider", ondelete="SET NULL"), default=None
@@ -120,3 +132,44 @@ class AiCall(Base):
     # Both with the stand-ins in them, exactly as the provider saw and said them.
     prompt: Mapped[str] = mapped_column(Text)
     answer: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class AiTriage(Base):
+    """What an AI provider made of an incident, the latest time it was asked: what kind of thing it
+    thinks it is, how sure it is, the story in plain words, what to check and what the owner
+    might say about it. It is the AI's opinion, kept as such, beside the incident and never
+    changing it. The request that made it is in ``ai_calls``."""
+
+    __tablename__ = "ai_triage"
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN ('compromise', 'attack', 'probe', 'noise', 'unclear')",
+            name="classification",
+        ),
+        CheckConstraint("confidence BETWEEN 0 AND 100", name="confidence"),
+        CheckConstraint(
+            "verdict IS NULL OR verdict IN ('not_suspicious', 'low_priority', 'threat')",
+            name="verdict",
+        ),
+    )
+
+    incident_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("incidents.id", ondelete="CASCADE"), primary_key=True
+    )
+    call_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("ai_calls.id", ondelete="SET NULL"), default=None
+    )
+    read_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    # How many signals the incident had when it was read, to tell when it has grown since.
+    signals_read: Mapped[int] = mapped_column(Integer)
+    classification: Mapped[str] = mapped_column(String(12))
+    # How sure the AI is that it is what it says, from 0 to 100.
+    confidence: Mapped[int] = mapped_column(SmallInteger)
+    headline: Mapped[str] = mapped_column(String(160))
+    story: Mapped[str] = mapped_column(Text)
+    checks: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # What it suggests the owner say about it, if anything, and why.
+    verdict: Mapped[str | None] = mapped_column(String(16), default=None)
+    verdict_reason: Mapped[str | None] = mapped_column(String(300), default=None)
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(128))

@@ -6,9 +6,11 @@ import type {
   IncidentDetail,
   IncidentDevice,
   IncidentPage,
+  Reading,
   Reason,
   Signal,
   SourceCount,
+  Triage,
 } from '@/api/incidents'
 
 const NOW = Date.now()
@@ -43,6 +45,7 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     port_count: 0,
     ports_capped: false,
     neighbours: 0,
+    ai: null,
     ...changes,
   }
 }
@@ -159,8 +162,32 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     ports: [22],
     devices: [device()],
     blocked: 12,
+    reading: null,
     ...changes,
   }
+}
+
+/** What the AI made of the incident: a scanner it is quite sure of, with a verdict to suggest. */
+export function reading(changes: Partial<Reading> = {}): Reading {
+  return {
+    classification: 'probe',
+    confidence: 91,
+    headline: 'An internet scanner tried ssh on one device',
+    story: 'It tried a few passwords and gave up. Nothing got in, and the address was banned.',
+    checks: ['Make sure ssh is not open to the internet'],
+    verdict: 'low_priority',
+    verdict_reason: 'Routine background scanning.',
+    read_at: new Date(NOW - 3 * MINUTE).toISOString(),
+    provider: 'Anthropic',
+    model: 'claude-haiku-5-5',
+    signals_read: 3,
+    ...changes,
+  }
+}
+
+/** What asking the AI came to: it read the incident, with whatever is given changed. */
+export function triage(changes: Partial<Triage> = {}): Triage {
+  return { ok: true, reason: null, incident: detail({ reading: reading() }), ...changes }
 }
 
 /** A page of incidents, counting each status, severity and source from the ones in it unless

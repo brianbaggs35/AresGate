@@ -24,6 +24,16 @@ Every release's notes are here, newest first. The format follows
   the tokens (cached, written and thinking counted separately), the cost from the catalog's
   prices, how long it took and why a request failed. It keeps 90 days
   (`ARESGATE_AI_LOG_RETENTION_DAYS`). The usage page that reads it comes next.
+- **The AI reads incidents.** The incident page has a new card, *What the AI makes of it*: what
+  kind of thing the AI thinks it is (a possible compromise, an active attack, a probe, harmless or
+  unclear), how sure it is, the story in plain words, what to check, and the verdict it would give
+  with one button to give it. It is shown as the AI's opinion, with who read it and when, and
+  changes nothing by itself. Pressing *Start investigating* now has the AI read the incident, and
+  says plainly when AI is off or no provider is chosen. The worker also reads new incidents as
+  they come in, as much as the usage level allows (*Medium* for now: medium and serious ones, at
+  most 20 an hour), and the incident list shows the AI's word beside the others. Nothing is asked
+  when AI is off, and everything the AI is asked is recorded. See
+  [DOCS/operations.md](DOCS/operations.md#ai-providers).
 
 ## 0.0.4
 

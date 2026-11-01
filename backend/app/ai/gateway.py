@@ -130,6 +130,9 @@ class Answer:
     reason: str | None
     call_id: int
     truncated: bool = False
+    # Who answered, as it is in the record.
+    provider: str = ""
+    model: str = ""
 
 
 def effective_level(definition: ProviderDef, chosen: str) -> Level:
@@ -293,6 +296,8 @@ def record(db: Session, prepared: Prepared, sent: Sent, now: datetime | None = N
         reason=None,
         call_id=call.id,
         truncated=completion.truncated,
+        provider=call.provider,
+        model=call.model,
     )
 
 

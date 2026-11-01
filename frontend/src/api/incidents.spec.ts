@@ -1,5 +1,6 @@
 import * as client from '@/api/client'
 import {
+  askAi,
   changeIncidents,
   fetchIncident,
   fetchIncidents,
@@ -83,6 +84,13 @@ describe('incidents', () => {
       status: 'resolved',
     })
     expect(patch).toHaveBeenCalledWith('/incidents/7', { status: 'resolved' }, 'a-token')
+  })
+
+  it('has the AI read one now, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ ok: true })
+
+    await expect(askAi(7, 'a-token')).resolves.toEqual({ ok: true })
+    expect(post).toHaveBeenCalledWith('/incidents/7/triage', undefined, 'a-token')
   })
 
   describe('changing many at once', () => {

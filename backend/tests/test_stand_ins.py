@@ -681,6 +681,57 @@ class TestAiProviders:
             == 404
         )
 
+    def test_anthropic_gives_a_reading_when_asked_for_one(self) -> None:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        schema: dict[str, object] = {
+            "format": {"type": "json_schema", "schema": {"properties": {"classification": {}}}}
+        }
+        asked: dict[str, object] = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 900,
+            "output_config": schema,
+            "messages": [{"role": "user", "content": "HOST_7 was scanned"}],
+        }
+
+        answer = self.anthropic(post("/v1/messages", asked, **good))
+
+        body = json.loads(answer.body)
+        said = json.loads(body["content"][0]["text"])
+        assert said["classification"] == "probe"
+        assert "HOST_7" in said["story"]
+        assert body["stop_reason"] == "end_turn"
+
+    def test_anthropic_gives_a_reading_naming_no_device_when_the_prompt_has_none(self) -> None:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        schema: dict[str, object] = {"format": {"schema": {"properties": {"classification": {}}}}}
+        no_device: list[list[dict[str, str]]] = [[{"role": "user", "content": "nothing"}], []]
+
+        for messages in no_device:
+            asked: dict[str, object] = {
+                "model": "claude-haiku-5-5",
+                "max_tokens": 900,
+                "output_config": schema,
+                "messages": messages,
+            }
+            said = json.loads(
+                json.loads(self.anthropic(post("/v1/messages", asked, **good)).body)["content"][0][
+                    "text"
+                ]
+            )
+            assert said["story"].startswith("It tried the ports of A device")
+
+    def test_anthropic_says_ok_to_a_schema_that_is_not_for_a_reading(self) -> None:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        asked: dict[str, object] = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 5,
+            "output_config": {"format": {"schema": {"properties": {"other": {}}}}},
+        }
+
+        body = json.loads(self.anthropic(post("/v1/messages", asked, **good)).body)
+
+        assert body["content"][0]["text"] == "OK"
+
     def test_openai_answers_only_the_responses_api_for_its_key_models_and_enough_tokens(
         self,
     ) -> None:

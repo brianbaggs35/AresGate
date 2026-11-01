@@ -8,6 +8,7 @@ the shape of the answers that AresGate relies on.
 
 import base64
 import json
+import re
 import ssl
 import tempfile
 import threading
@@ -1004,9 +1005,38 @@ def zenarmor(api_key: str) -> Handler:
     return handle
 
 
+def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
+    """What an analyst would answer to a request for a reading of an incident (one that asks for
+    a JSON schema with a ``classification``), naming the device by the stand-in the prompt used."""
+    config = cast("dict[str, Any]", asked.get("output_config") or {})
+    schema = cast(
+        "dict[str, Any]", cast("dict[str, Any]", config.get("format") or {}).get("schema")
+    )
+    properties = cast("dict[str, Any]", (schema or {}).get("properties") or {})
+    if "classification" not in properties:
+        return None
+    messages = cast("list[dict[str, Any]]", asked.get("messages") or [])
+    prompt = str(messages[0].get("content", "")) if messages else ""
+    found = re.search(r"HOST_\d+", prompt)
+    device = found.group(0) if found else "A device"
+    return json.dumps(
+        {
+            "classification": "probe",
+            "confidence": 90,
+            "headline": "An address on the internet scanned one device and got nowhere",
+            "story": f"It tried the ports of {device} one after another. Nothing answered, and "
+            "nothing on your network talked back to it.",
+            "checks": ["Make sure the ports it touched are not open to the internet"],
+            "verdict": "low_priority",
+            "verdict_reason": "Routine scanning that never got anywhere.",
+        }
+    )
+
+
 def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
     """Anthropic's Messages API: a key in ``x-api-key``, a version header, and an answer of one
-    text block with the tokens counted in ``usage``."""
+    text block with the tokens counted in ``usage``. Asked for a reading of an incident, it gives
+    one."""
 
     def handle(seen: Seen) -> Answer:
         if seen.path != "/v1/messages" or seen.method != "POST":
@@ -1016,15 +1046,16 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
         asked = json.loads(seen.body)
         if asked.get("model") not in models or not isinstance(asked.get("max_tokens"), int):
             return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
+        reading = _reading_of_an_incident(asked)
         return _json(
             {
                 "id": "msg_stand_in",
                 "type": "message",
                 "role": "assistant",
                 "model": asked["model"],
-                "content": [{"type": "text", "text": "OK"}],
-                "stop_reason": "max_tokens",
-                "usage": {"input_tokens": 14, "output_tokens": 1},
+                "content": [{"type": "text", "text": reading or "OK"}],
+                "stop_reason": "end_turn" if reading else "max_tokens",
+                "usage": {"input_tokens": 14, "output_tokens": 120 if reading else 1},
             }
         )
 

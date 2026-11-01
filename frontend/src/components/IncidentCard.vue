@@ -7,6 +7,7 @@ import { useDisplay } from 'vuetify'
 import { errorMessage } from '@/api/client'
 import { fetchIncident, type Incident } from '@/api/incidents'
 import { VERDICTS, giveVerdict, type VerdictKind } from '@/api/verdicts'
+import AiChip from '@/components/AiChip.vue'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import ResponseChip from '@/components/ResponseChip.vue'
@@ -130,6 +131,7 @@ async function give(kind: VerdictKind) {
           {{ ACTIVITY[activity].label }}
         </v-chip>
         <ResponseChip :response="incident.response" />
+        <AiChip v-if="incident.ai" :ai="incident.ai" />
         <span class="incident-card__when text-body-medium text-medium-emphasis">
           Last signal
           <time

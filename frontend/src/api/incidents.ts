@@ -18,6 +18,34 @@ export interface Program {
 /** What kind of activity its signals say it was: a scan of ports, or guessing at logins. */
 export type Activity = 'scan' | 'brute_force'
 
+/** What kind of thing an AI makes of an incident. */
+export const CLASSIFICATIONS = ['compromise', 'attack', 'probe', 'noise', 'unclear'] as const
+export type Classification = (typeof CLASSIFICATIONS)[number]
+
+/** What the AI made of an incident, in a word and how sure it was: for a list. */
+export interface Glance {
+  classification: Classification
+  /** How sure the AI is of it, 0 to 100. */
+  confidence: number
+}
+
+/** What an AI provider made of an incident: its opinion, kept as it was given. It never changes
+ * the incident, and the verdict it suggests is only given if the owner gives it. */
+export interface Reading extends Glance {
+  headline: string
+  story: string
+  /** Things to check for yourself, most useful first. */
+  checks: string[]
+  verdict: VerdictKind | null
+  verdict_reason: string | null
+  read_at: string
+  /** Who read it: the provider's name, and the model. */
+  provider: string
+  model: string
+  /** How many signals it had when it was read. */
+  signals_read: number
+}
+
 /** What was done about an incident, in a word: an address CrowdSec banned (`banned`, or `partly`
  * when only some of the addresses of a block were), a ban that has run out, an address the
  * firewall or Suricata turned away, nothing yet, or an incident about a rule, with no address to
@@ -98,6 +126,8 @@ export interface Incident {
   ports_capped: boolean
   /** How many other addresses of the subject's block (a /24 or /64) are grouped into it. */
   neighbours: number
+  /** What the AI made of it, if it has read it (`IncidentDetail.reading` has the rest). */
+  ai: Glance | null
 }
 
 /** One thing that makes AresGate as sure as it is: the points add up to the confidence. */
@@ -146,6 +176,7 @@ export interface IncidentDetail extends Incident {
   /** How many times the firewall turned the subject away around then, or null for an incident
    * about a rule rather than an address. */
   blocked: number | null
+  reading: Reading | null
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */
@@ -235,6 +266,21 @@ export function setIncidentStatus(
   csrfToken: string,
 ): Promise<IncidentDetail> {
   return apiPatch<IncidentDetail>(`/incidents/${id.toString()}`, { status }, csrfToken)
+}
+
+/** What came of asking the AI about an incident. When it could not be asked (AI is off, no
+ * provider is chosen, the provider failed) `ok` is false and `reason` says why in words; the
+ * incident is there either way. */
+export interface Triage {
+  ok: boolean
+  reason: string | null
+  incident: IncidentDetail
+}
+
+/** Has the AI read the incident now, and returns it with what the AI made of it. It can take a
+ * minute. */
+export function askAi(id: number, csrfToken: string): Promise<Triage> {
+  return apiPost<Triage>(`/incidents/${id.toString()}/triage`, undefined, csrfToken)
 }
 
 /** Which incidents a change is for: the ones that were picked, or all that a list of incidents

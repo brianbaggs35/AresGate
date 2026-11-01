@@ -14,7 +14,9 @@ from pydantic import (
 )
 from sqlalchemy import func, select
 
+from app.ai import catalog, triage
 from app.api import asking
+from app.api.ai import AiContext
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
@@ -22,13 +24,14 @@ from app.audit import Action, Outcome
 from app.events.event import Severity
 from app.incidents import bulk, engine, episode, queries, response, rules, search
 from app.incidents.queries import Order
-from app.models import Incident, IncidentSignal, utcnow
+from app.models import AiTriage, Incident, IncidentSignal, utcnow
 
 router = APIRouter(prefix="/incidents", tags=["incidents"], dependencies=[Depends(signed_in)])
 
 Status = Literal["open", "investigating", "resolved", "dismissed"]
 Verdict = Literal["not_suspicious", "low_priority", "threat"]
 Activity = Literal["scan", "brute_force"]
+Classification = Literal["compromise", "attack", "probe", "noise", "unclear"]
 # What to ask for to get the incidents nobody has given a verdict to.
 VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
@@ -80,6 +83,13 @@ class ResponseOut(BaseModel):
     unknown: list[str]
 
 
+class GlanceOut(BaseModel):
+    """What the AI made of an incident, in a word and how sure it was, for a list."""
+
+    classification: Classification
+    confidence: int
+
+
 class IncidentOut(BaseModel):
     id: int
     title: str
@@ -118,6 +128,8 @@ class IncidentOut(BaseModel):
     # How many other addresses of the subject's block are in it: a bot spread over a block is one
     # incident (see app/incidents/episode.py).
     neighbours: int
+    # What the AI made of it, if it has read it (``IncidentDetail.reading`` has the rest).
+    ai: GlanceOut | None
 
 
 class ReasonOut(BaseModel):
@@ -156,6 +168,26 @@ class DeviceOut(BaseModel):
     vendor: str | None
 
 
+class ReadingOut(BaseModel):
+    """What an AI provider made of an incident: its opinion, kept as it was given. It never
+    changes the incident, and the verdict it suggests is only given if the owner gives it."""
+
+    classification: Classification
+    confidence: int
+    headline: str
+    story: str
+    # Things the owner can check for themselves, most useful first.
+    checks: list[str]
+    verdict: Verdict | None
+    verdict_reason: str | None
+    read_at: AwareDatetime
+    # Who read it: the provider's name and the model.
+    provider: str
+    model: str
+    # How many signals the incident had when it was read, so a page can say that more came since.
+    signals_read: int
+
+
 class IncidentDetail(IncidentOut):
     # Why AresGate is as sure as it is: the reasons and their points add up to the confidence.
     reasons: list[ReasonOut]
@@ -169,6 +201,7 @@ class IncidentDetail(IncidentOut):
     # How many times the firewall turned the subject away around then (``response`` says more), or
     # None for an incident about a rule.
     blocked: int | None
+    reading: ReadingOut | None
 
 
 class TermOut(BaseModel):
@@ -334,7 +367,36 @@ def _response(done: response.Response) -> ResponseOut:
     )
 
 
-def _incident(incident: Incident, done: response.Response) -> IncidentOut:
+def _glance(read: AiTriage | None) -> GlanceOut | None:
+    if read is None:
+        return None
+    return GlanceOut(
+        classification=cast(Classification, read.classification), confidence=read.confidence
+    )
+
+
+def _reading(read: AiTriage | None) -> ReadingOut | None:
+    if read is None:
+        return None
+    known = catalog.provider(read.provider)
+    return ReadingOut(
+        classification=cast(Classification, read.classification),
+        confidence=read.confidence,
+        headline=read.headline,
+        story=read.story,
+        checks=read.checks,
+        verdict=cast(Verdict | None, read.verdict),
+        verdict_reason=read.verdict_reason,
+        read_at=read.read_at,
+        provider=known.label if known else read.provider,
+        model=read.model,
+        signals_read=read.signals_read,
+    )
+
+
+def _incident(
+    incident: Incident, done: response.Response, read: AiTriage | None = None
+) -> IncidentOut:
     return IncidentOut(
         id=incident.id,
         title=incident.title,
@@ -358,6 +420,7 @@ def _incident(incident: Incident, done: response.Response) -> IncidentOut:
         port_count=len(incident.ports),
         ports_capped=len(incident.ports) >= episode.MAX_PORTS,
         neighbours=episode.neighbours_of(incident.subject, incident.block, incident.addresses),
+        ai=_glance(read),
     )
 
 
@@ -382,8 +445,9 @@ def _signal(signal: IncidentSignal) -> SignalOut:
 
 def _detail(db: Db, incident: Incident) -> IncidentDetail:
     done = response.of(db, [incident])[incident.id]
+    read = db.get(AiTriage, incident.id)
     return IncidentDetail(
-        **_incident(incident, done).model_dump(),
+        **_incident(incident, done, read).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
             subject=incident.subject,
@@ -407,6 +471,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             for address, device in queries.devices(db, incident)
         ],
         blocked=None if done.state == "no_address" else done.tally.blocked,
+        reading=_reading(read),
     )
 
 
@@ -491,9 +556,18 @@ def list_incidents(
         )
         counts = queries.counts(db, list(verdict or []))
     done = response.of(db, page.incidents)
+    read = {
+        found.incident_id: found
+        for found in db.scalars(
+            select(AiTriage).where(AiTriage.incident_id.in_([i.id for i in page.incidents]))
+        )
+    }
     return IncidentPage(
         total=page.total,
-        items=[_incident(incident, done[incident.id]) for incident in page.incidents],
+        items=[
+            _incident(incident, done[incident.id], read.get(incident.id))
+            for incident in page.incidents
+        ],
         terms=[
             TermOut(
                 field=term.field,
@@ -666,3 +740,44 @@ def set_status(
         incident.status_changed_at = utcnow()
         db.commit()
     return _detail(db, incident)
+
+
+class TriageOut(BaseModel):
+    """What came of asking the AI about an incident. When it could not be asked (AI is off, no
+    provider is chosen, the provider failed) ``ok`` is false and ``reason`` says why in words for
+    whoever asked, and the incident is as it was."""
+
+    ok: bool
+    reason: str | None
+    incident: IncidentDetail
+
+
+@router.post("/{incident_id}/triage")
+def read_incident(
+    incident_id: IncidentId,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+    context: AiContext,
+) -> TriageOut:
+    """Has the AI read the incident now, and keeps what it made of it (one reading for each
+    incident, the latest). Asks the chosen provider, which sees what Settings > AI allows, and
+    changes nothing else about the incident. It can take a minute."""
+    incident = _found(db, incident_id)
+    outcome = triage.ask_now(db, context, incident)
+    read = outcome.triage if isinstance(outcome, triage.Read) else None
+    record_audit(
+        db,
+        request,
+        Action.INCIDENT_TRIAGED,
+        Outcome.SUCCESS if read else Outcome.FAILURE,
+        user=auth.user,
+        detail={"incident": incident.id}
+        | ({"classification": read.classification, "model": read.model} if read else {}),
+    )
+    db.commit()
+    return TriageOut(
+        ok=read is not None,
+        reason=None if read else cast(triage.NotRead, outcome).reason,
+        incident=_detail(db, incident),
+    )
