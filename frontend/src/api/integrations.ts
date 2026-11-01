@@ -30,6 +30,8 @@ export interface Field {
   only_if: { field: string; value: string } | null
   /** For a lookup: the button that asks the system for its list, such as `Fetch interfaces`. */
   action: string
+  /** For a lookup: more than one can be chosen, and are kept as values joined by commas. */
+  multiple: boolean
 }
 
 /** What a connection takes, from the integration's definition. */

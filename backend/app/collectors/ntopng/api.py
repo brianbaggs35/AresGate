@@ -8,15 +8,28 @@ from collections.abc import Mapping
 from http import HTTPStatus
 
 from app.collectors.base import CollectorFailed, Context
-from app.integrations import probes
+from app.integrations import probes, registry
 from app.integrations.client import CallFailed
 
 PRODUCT = "ntopng"
 
 
-def interface(context: Context) -> str:
-    """The interface the connection watches, as ntopng's ``ifid`` parameter."""
-    return str(context.target.options["interface_id"])
+def interfaces(context: Context) -> list[int]:
+    """The interfaces the connection reads, as ntopng's ``ifid`` parameter, lowest first."""
+    return registry.chosen_numbers(context.target.options["interface_id"])
+
+
+async def names(context: Context) -> dict[int, str]:
+    """What the metrics and events call each of ntopng's interfaces, by ``ifid``: the name the
+    system gives it (``eth0``). Asking is one request; an answer that can't be had leaves the
+    names empty, and what is stored is then without a port name, not lost."""
+    try:
+        listed = await probes.ntopng_interfaces(context.client, context.target)
+    except CallFailed:
+        return {}
+    if not isinstance(listed, list):
+        return {}
+    return {item.ifid: item.ifname for item in listed if item.ifname}
 
 
 async def read(context: Context, path: str, query: Mapping[str, str]) -> object:
@@ -27,7 +40,7 @@ async def read(context: Context, path: str, query: Mapping[str, str]) -> object:
     if 300 <= reply.status < 400:
         raise CollectorFailed(probes.NTOPNG_LOGIN_REFUSED)
     if reply.status == HTTPStatus.BAD_REQUEST:
-        raise CollectorFailed(await _refused(context))
+        raise CollectorFailed(await _refused(context, query.get("ifid", "")))
     if bad := probes.problem(reply, PRODUCT):
         raise CollectorFailed(bad.message)
     answer = probes.as_object(reply.json())
@@ -40,19 +53,18 @@ async def read(context: Context, path: str, query: Mapping[str, str]) -> object:
     return answer["rsp"]
 
 
-async def _refused(context: Context) -> str:
+async def _refused(context: Context, asked: str) -> str:
     """Why ntopng answered a request with 400, which it does for an interface it doesn't have: it
-    is asked which ones it has, so that the interface that was chosen can be named and the ones
-    to choose from listed."""
-    wanted = int(context.target.options["interface_id"])
+    is asked which ones it has, so that the interface that was asked about can be named and the
+    ones to choose from listed."""
     try:
         listed = await probes.ntopng_interfaces(context.client, context.target)
     except CallFailed:
         listed = None
-    if isinstance(listed, list) and wanted not in {item.ifid for item in listed}:
+    if isinstance(listed, list) and asked.isdigit() and int(asked) not in {i.ifid for i in listed}:
         return (
-            f"ntopng has no interface {wanted}, so it refused the request. It has: "
-            f"{probes.interface_names(listed)}. Choose one under Interface in the connection's "
-            "settings."
+            f"ntopng has no interface {asked}, so it refused the request. It has: "
+            f"{probes.interface_names(listed)}. Choose the interfaces to read under Interfaces "
+            "in the connection's settings."
         )
     return f"{PRODUCT} refused the request (HTTP 400)."

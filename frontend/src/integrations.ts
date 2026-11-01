@@ -203,19 +203,39 @@ export interface LookupItem {
   props: { subtitle: string }
 }
 
+/** What a lookup field holds as the values chosen: one value, or several joined by commas. */
+export function chosenValues(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+}
+
+/** The values chosen, as a lookup field keeps them: each once, in order of their numbers, joined by
+ * commas, so the same choice is always saved the same way. */
+export function joinValues(values: readonly string[]): string {
+  const sorted = [...new Set(values)].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  )
+  return sorted.join(',')
+}
+
 /** The choices a system listed, each with its identifier and what else is known of it. What is
  * chosen now is among them even when the system doesn't list it (it was saved earlier, or the
  * list hasn't been asked for), so the select never shows an empty box, and says why it is there. */
-export function lookupItems(entries: readonly LookupEntry[], chosen: string): LookupItem[] {
+export function lookupItems(
+  entries: readonly LookupEntry[],
+  chosen: readonly string[],
+): LookupItem[] {
   const items = entries.map((entry) => ({
     value: entry.value,
     title: entry.label,
     props: { subtitle: [`ID ${entry.value}`, entry.detail].filter(Boolean).join(' · ') },
   }))
-  if (chosen !== '' && !items.some((item) => item.value === chosen)) {
-    const subtitle =
-      entries.length > 0 ? 'Saved, but not in the list it gave now' : 'Not looked up yet'
-    items.unshift({ value: chosen, title: `ID ${chosen}`, props: { subtitle } })
-  }
-  return items
+  const subtitle =
+    entries.length > 0 ? 'Saved, but not in the list it gave now' : 'Not looked up yet'
+  const kept = chosen
+    .filter((value) => !items.some((item) => item.value === value))
+    .map((value) => ({ value, title: `ID ${value}`, props: { subtitle } }))
+  return [...kept, ...items]
 }

@@ -68,7 +68,7 @@ test.describe('integrations', () => {
       'Open user management',
       'Add a user for AresGate',
       "Generate the user's token",
-      'Connect and choose the interface',
+      'Connect and choose the interfaces',
     ])
     // The pages it comes from are linked, and open in a tab of their own.
     await expect(integration.guideSources.first()).toHaveAttribute(
@@ -242,10 +242,13 @@ test.describe('integrations', () => {
       )
       await expect(options.nth(1)).toContainText('LAN (eth1)')
       await expect(options.nth(1)).toContainText('ID 1 · live packet capture · no traffic seen yet')
+      // More than one can be chosen: LAN joins eth0, and is said to have seen nothing.
       await options.nth(1).click()
+      await page.keyboard.press('Escape')
+      await expect(integration.lookupSelect('api')).toContainText('eth0')
       await expect(integration.lookupSelect('api')).toContainText('LAN (eth1)')
-      await expect(integration.lookupQuiet('api')).toContainText(
-        "LAN (eth1) hasn't seen any traffic yet",
+      await expect(integration.lookupQuiet('api')).toHaveText(
+        "LAN (eth1) hasn't seen any traffic yet, so nothing will come in from it until it does.",
       )
       // Nothing was saved by asking, and the requests are in the log.
       await expect(integration.status).toHaveText('Not connected')
@@ -256,25 +259,28 @@ test.describe('integrations', () => {
 
       await expect(integration.report).toContainText('The test passed')
       await expect(integration.report).toContainText(
-        "ntopng answered. Interface 1 is LAN (eth1), but it hasn't seen any traffic yet",
+        "ntopng answered. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen. Interface 1 is LAN (eth1) and hasn't seen any traffic yet.",
       )
       await expect(integration.status).toHaveText('Connected')
 
-      // The next visit names the interfaces at once, and the one kept is still the quiet one.
+      // The next visit names the interfaces at once, and both are still chosen.
       await page.reload()
       await expect(integration.lookupMessage('api')).toHaveText('ntopng lists 2 interfaces.')
+      await expect(integration.lookupSelect('api')).toContainText('eth0')
       await expect(integration.lookupSelect('api')).toContainText('LAN (eth1)')
       await expect(integration.lookupQuiet('api')).toBeVisible()
 
-      // Choosing the busy one is saved and tested like any other setting.
+      // Taking the quiet one off is saved and tested like any other setting.
       await integration.lookupSelect('api').click()
-      await page.getByRole('option').nth(0).click()
+      await page.getByRole('option').nth(1).click()
+      await page.keyboard.press('Escape')
       await expect(integration.lookupQuiet('api')).toHaveCount(0)
       await integration.save.click()
       await expect(integration.report).toContainText('Interface 0 is eth0: 41 hosts')
+      await expect(integration.report).not.toContainText('Interface 1')
     })
 
-    test('starts on the first interface that has seen traffic when the default is not there', async ({
+    test('starts on the interfaces that have seen traffic when the default is not there', async ({
       page,
       harness,
       integration,
@@ -287,10 +293,11 @@ test.describe('integrations', () => {
         route.fulfill({
           json: {
             ok: true,
-            message: 'ntopng lists 2 interfaces.',
+            message: 'ntopng lists 3 interfaces.',
             entries: [
               { value: '5', label: 'quiet', detail: 'no traffic seen yet', quiet: true },
               { value: '6', label: 'busy', detail: '3 hosts', quiet: false },
+              { value: '7', label: 'busier', detail: '9 hosts', quiet: false },
             ],
           },
         }),
@@ -299,6 +306,8 @@ test.describe('integrations', () => {
       await integration.lookupFetch('api').click()
 
       await expect(integration.lookupSelect('api')).toContainText('busy')
+      await expect(integration.lookupSelect('api')).toContainText('busier')
+      await expect(integration.lookupSelect('api')).not.toContainText('quiet')
       await expect(integration.lookupQuiet('api')).toHaveCount(0)
     })
 
@@ -396,9 +405,10 @@ test.describe('integrations', () => {
       await expect(integration.collectorErrors).toHaveCount(0)
       // The collectors' requests are in the log with the ones made from this page: the check
       // (the interfaces, then what the chosen one has seen, from the page and again from the
-      // collector), and for every other collector, its own.
+      // collector), and for every other collector, its own. The alerts collector also asks for
+      // the interfaces' names, which it keeps with each alert.
       await integration.logRefresh.click()
-      await expect(integration.logCalls).toHaveCount(8)
+      await expect(integration.logCalls).toHaveCount(9)
     })
 
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({

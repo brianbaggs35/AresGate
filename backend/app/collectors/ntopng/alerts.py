@@ -12,7 +12,8 @@ alert has the client (``cli_ip.value``) and server (``srv_ip.value``) with their
 (``cli_port.value``, ``srv_port.value``) and the protocol (``proto.label``). A host alert has the
 host (``ip.value``) and, if it is one, its ``role.value`` (``attacker`` or ``victim``).
 
-Each run asks for the alerts of the last half hour. That overlaps the runs before it, which is
+Each run asks for the alerts of the last half hour, for each interface that was chosen, and each
+alert says the interface it came in on. That overlaps the runs before it, which is
 harmless: an alert is stored once, by what it says and when it began. An alert is dated by when it
 began, so one that is still engaged is the same event every run.
 
@@ -27,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
-from app.collectors.ntopng.api import PRODUCT, interface, read
+from app.collectors.ntopng.api import PRODUCT, interfaces, names, read
 from app.events.event import NewEvent, Severity
 from app.integrations import probes
 
@@ -53,18 +54,24 @@ class Alerts(Collector):
     connection = CONNECTION
 
     async def collect(self, context: Context) -> Outcome:
-        flows = await _records(context, FLOWS)
-        hosts = await _records(context, HOSTS)
-        events = parse("flow", flows) + parse("host", hosts)
-        if (flows or hosts) and not events:
-            raise CollectorFailed("It answered, but the alerts aren't in a form AresGate reads.")
+        ports = await names(context)
+        events: list[NewEvent] = []
+        for ifid in interfaces(context):
+            flows = await _records(context, FLOWS, ifid)
+            hosts = await _records(context, HOSTS, ifid)
+            found = parse("flow", flows, ports.get(ifid)) + parse("host", hosts, ports.get(ifid))
+            if (flows or hosts) and not found:
+                raise CollectorFailed(
+                    "It answered, but the alerts aren't in a form AresGate reads."
+                )
+            events.extend(found)
         return Outcome(items=await context.record(events))
 
 
-async def _records(context: Context, path: str) -> list[object]:
+async def _records(context: Context, path: str, ifid: int) -> list[object]:
     begin = int((context.now - WINDOW).timestamp())
     query = {
-        "ifid": interface(context),
+        "ifid": str(ifid),
         "status": "any",
         "epoch_begin": str(begin),
         "epoch_end": str(int(context.now.timestamp())),
@@ -79,14 +86,15 @@ async def _records(context: Context, path: str) -> list[object]:
     return records
 
 
-def parse(family: str, records: list[object]) -> list[NewEvent]:
+def parse(family: str, records: list[object], port: str | None = None) -> list[NewEvent]:
     """The alerts of one family (``flow`` or ``host``) that can be read as events, in the order
-    given. A record that isn't an object, or has no time, is left out."""
+    given, each saying the ``port`` it came in on. A record that isn't an object, or has no time,
+    is left out."""
     seen = traffic.Occurrences()
     events: list[NewEvent] = []
     for record in records:
         alert = probes.as_object(record)
-        if alert is not None and (event := _event(family, alert, seen)) is not None:
+        if alert is not None and (event := _event(family, alert, seen, port)) is not None:
             events.append(event)
     return events
 
@@ -105,7 +113,9 @@ def _whole(alert: Mapping[str, object], key: str) -> int | None:
     return traffic.number(_part(alert, key), "value")
 
 
-def _event(family: str, alert: Mapping[str, object], seen: traffic.Occurrences) -> NewEvent | None:
+def _event(
+    family: str, alert: Mapping[str, object], seen: traffic.Occurrences, port: str | None
+) -> NewEvent | None:
     began = _whole(alert, "tstamp")
     if began is None:
         return None
@@ -146,6 +156,7 @@ def _event(family: str, alert: Mapping[str, object], seen: traffic.Occurrences) 
         dst_address=destination or None,
         dst_port=srv_port if flow else None,
         protocol=traffic.text(_part(alert, "proto"), "label").lower() or None,
+        iface=port,
         raw=dict(alert),
     )
 

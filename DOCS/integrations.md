@@ -230,7 +230,7 @@ Pi, a server) is the separate **CrowdSec** integration below.
 1. In ntopng, edit the user AresGate will use and generate its **User Authentication Token**.
 2. Choose **Authentication token** and paste it, or choose **Username and password** to use HTTP
    basic authentication instead.
-3. Press **Fetch interfaces** and choose the **Interface** AresGate reads. The list is asked of
+3. Press **Fetch interfaces** and choose the **Interfaces** AresGate reads, one or several. The list is asked of
    ntopng with the address and sign-in as they are filled in, before anything is saved, and a
    connection that is saved asks as the page opens. Each interface is named as ntopng names it
    (`LAN (eth1)` when ntopng shows a name other than the system's), with its ID, what it takes its
@@ -238,20 +238,28 @@ Pi, a server) is the separate **CrowdSec** integration below.
    since ntopng started: its hosts, flows and bytes, or "no traffic seen yet". ntopng's list
    gives no speed or address for an interface, so none is shown.
 
-A connection that isn't saved yet starts on the first interface that has seen traffic if the
-default isn't among the ones listed. A saved choice that has gone from the list is kept and
-flagged, never swapped silently. ntopng answers an `ifid` it doesn't have with HTTP 400
-(`INVALID_INTERFACE`), which the collectors report as "ntopng has no interface 3, so it refused
-the request. It has: ID 0: eth0, ID 1: LAN (eth1)" instead of the bare status. An interface that
-has seen nothing is reported in words by the test and by the *Interface traffic* collector, so
-"nothing comes in" has a reason on the page. Asking for the list makes one request for the list
-and one for each of the first 20 interfaces, and each is in the API log.
+Up to 16 can be chosen, and they are kept as their IDs joined by commas, lowest first (`0,1`);
+a connection saved with one ID before several could be chosen reads as that one. Every
+collector below reads each chosen interface in turn: the interface's traffic is kept for each,
+labelled with the interface's name; hosts and alerts from all of them are read together, and an
+alert says which interface it came in on, so it can later be placed on a part of the network
+([Interfaces](development.md#interfaces-the-parts-of-the-network)). An interface that has seen
+nothing is skipped by the *Interface traffic* collector, unless every chosen interface is quiet.
+
+A connection that isn't saved yet starts on every interface that has seen traffic (or the first,
+if none has) when the default isn't among the ones listed. A saved choice that has gone from the
+list is kept and flagged, never swapped silently. ntopng answers an `ifid` it doesn't have with
+HTTP 400 (`INVALID_INTERFACE`), which the collectors report as "ntopng has no interface 3, so it
+refused the request. It has: ID 0: eth0, ID 1: LAN (eth1)" instead of the bare status. An
+interface that has seen nothing is reported in words by the test and by the *Interface traffic*
+collector, so "nothing comes in" has a reason on the page. Asking for the list makes one request
+for the list and one for each of the first 20 interfaces, and each is in the API log.
 
 ntopng answers a login it refuses by redirecting to its login page. AresGate doesn't follow
 redirects (see below), so a refused token shows up as "redirected to its login page".
 
 The user must be allowed to see alerts, which ntopng treats as a capability of its own, and
-AresGate only reads. Everything below is read from the **Interface** chosen above, every minute.
+AresGate only reads. Everything below is read from the **Interfaces** chosen above, every minute.
 
 ### Hosts and the devices among them
 

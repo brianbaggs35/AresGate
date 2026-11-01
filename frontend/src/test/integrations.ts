@@ -24,6 +24,7 @@ export const field = (
   maximum: 65535,
   only_if: null,
   action: '',
+  multiple: false,
   ...overrides,
 })
 
@@ -159,12 +160,13 @@ export function ntopngApi(overrides: Partial<Connection> = {}): Connection {
         }),
         field({
           key: 'interface_id',
-          label: 'Interface',
+          label: 'Interfaces',
           kind: 'lookup',
           default: 0,
-          help: 'The interface ntopng watches that AresGate reads.',
+          help: 'The interfaces ntopng watches that AresGate reads (their ifid).',
           maximum: 999,
           action: 'Fetch interfaces',
+          multiple: true,
         }),
       ],
     },

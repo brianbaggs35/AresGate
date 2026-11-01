@@ -545,7 +545,7 @@ class TestDiscovering:
         settings: Settings,
         serve: Serve,
     ) -> None:
-        connect(session, settings, serve(ntopng(TOKEN)).url)
+        connect(session, settings, serve(ntopng(TOKEN)).url, interface_id="0,1")
 
         response = self.discover(client, csrf_token)
 
@@ -564,7 +564,12 @@ class TestDiscovering:
         serve: Serve,
     ) -> None:
         listing = {"rc": 0, "rsp": [{"ifid": 3, "ifname": "", "name": "Lab"}]}
-        connect(session, settings, serve(lambda seen: Answer(body=json.dumps(listing))).url)
+        connect(
+            session,
+            settings,
+            serve(lambda seen: Answer(body=json.dumps(listing))).url,
+            interface_id=3,
+        )
 
         self.discover(client, csrf_token)
 

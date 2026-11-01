@@ -6,11 +6,13 @@ import {
   STATUS,
   WHOLE,
   activeFields,
+  chosenValues,
   connectionLabels,
   draftFrom,
   fieldId,
   integrationIcon,
   isPlainHttp,
+  joinValues,
   lookupItems,
   settingsFrom,
   sameFingerprint,
@@ -253,14 +255,14 @@ describe('lookupItems', () => {
   ]
 
   it('names each choice, with its ID and what else is known of it', () => {
-    expect(lookupItems(entries, '0')).toEqual([
+    expect(lookupItems(entries, ['0'])).toEqual([
       { value: '0', title: 'eth0', props: { subtitle: 'ID 0 · live packet capture' } },
       { value: '1', title: 'LAN (eth1)', props: { subtitle: 'ID 1' } },
     ])
   })
 
   it('still offers a choice that was kept but is not on the list now, and says why', () => {
-    expect(lookupItems(entries, '7')[0]).toEqual({
+    expect(lookupItems(entries, ['7'])[0]).toEqual({
       value: '7',
       title: 'ID 7',
       props: { subtitle: 'Saved, but not in the list it gave now' },
@@ -268,12 +270,34 @@ describe('lookupItems', () => {
   })
 
   it('offers the choice that was kept before anything has been listed', () => {
-    expect(lookupItems([], '3')).toEqual([
+    expect(lookupItems([], ['3'])).toEqual([
       { value: '3', title: 'ID 3', props: { subtitle: 'Not looked up yet' } },
     ])
   })
 
   it('offers nothing when nothing was chosen and nothing is listed', () => {
-    expect(lookupItems([], '')).toEqual([])
+    expect(lookupItems([], [])).toEqual([])
+  })
+
+  it('offers each choice that was kept and has gone, ahead of the list', () => {
+    expect(lookupItems(entries, ['1', '7', '9']).map(({ value }) => value)).toEqual([
+      '7',
+      '9',
+      '0',
+      '1',
+    ])
+  })
+})
+
+describe('chosenValues and joinValues', () => {
+  it('reads the values a lookup field holds, one or several joined by commas', () => {
+    expect(chosenValues('')).toEqual([])
+    expect(chosenValues('3')).toEqual(['3'])
+    expect(chosenValues('0, 1,,10 ')).toEqual(['0', '1', '10'])
+  })
+
+  it('keeps them once each, in order of their numbers, so a choice is always saved the same way', () => {
+    expect(joinValues(['10', '2', '0', '2'])).toBe('0,2,10')
+    expect(joinValues([])).toBe('')
   })
 })
