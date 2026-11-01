@@ -67,6 +67,9 @@ class Event(Base):
     dst_port: Mapped[int | None] = mapped_column(Integer, default=None)
     # Lowercase, such as tcp or udp.
     protocol: Mapped[str | None] = mapped_column(String(16), default=None)
+    # The port of the source it came in on, as the program names it (igc0 for OPNsense). Which
+    # interface of the owner's that is, is worked out when it is read (see app/interfaces).
+    iface: Mapped[str | None] = mapped_column(String(64), default=None)
     # A hash of what makes it this event at the source, to tell one read twice from two events.
     fingerprint: Mapped[str] = mapped_column(String(64))
     # The program's own record of it, as it gave it (cut down if it was very large).

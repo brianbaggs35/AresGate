@@ -80,6 +80,7 @@ class TestTheRow:
             dst_address="2001:db8::1",
             dst_port=22,
             protocol="TCP",
+            iface="igc0",
             raw={"rule": {"id": 5710}},
         )
 
@@ -97,6 +98,7 @@ class TestTheRow:
             "dst_address": IPv6Address("2001:db8::1"),
             "dst_port": 22,
             "protocol": "tcp",
+            "iface": "igc0",
             "fingerprint": new_event().fingerprint,
             "raw": {"rule": {"id": 5710}},
         }
@@ -107,6 +109,7 @@ class TestTheRow:
         for column in ("signature", "src_address", "src_port", "dst_address", "dst_port"):
             assert result[column] is None
         assert result["protocol"] is None
+        assert result["iface"] is None
         assert result["raw"] is None
 
 
@@ -124,6 +127,11 @@ class TestTextFromAProgram:
 
     def test_text_that_isnt_valid_is_replaced(self) -> None:
         assert row(summary="bad \ud800 text")["summary"] == "bad ? text"
+
+    def test_the_port_name_is_kept_as_the_program_wrote_it_and_cut_to_fit(self) -> None:
+        assert row(iface="igc0.20")["iface"] == "igc0.20"
+        assert row(iface="x" * 80)["iface"] == "x" * 64
+        assert row(iface="  ")["iface"] is None
 
     def test_the_protocol_is_lowercase_and_short(self) -> None:
         assert row(protocol="ICMPv6")["protocol"] == "icmpv6"

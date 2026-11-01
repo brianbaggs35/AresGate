@@ -208,9 +208,10 @@ the web app. They share the database and nothing else.
 What the collectors read from the integrations (a firewall block, an alert, a failed login) is
 kept as events, in one shape whatever program reported them: when it happened, which integration
 and connection, what kind it is, how serious, the addresses and ports, the rule that fired, a
-one-line summary and the program's own record of it. Reading the same thing twice, which
-overlapping requests do, stores it once. So far the collectors that store events are
-OPNsense's [firewall log](integrations.md#the-firewall-log) and
+one-line summary, the port it came in on when the program says (`igc0`), and the program's own
+record of it. Reading the same thing twice, which overlapping requests do, stores it once. So far
+the collectors that store events are OPNsense's
+[firewall log](integrations.md#the-firewall-log) and
 [Suricata alerts](integrations.md#suricata-alerts), CrowdSec's [bans](integrations.md#bans) (and
 the [bans and alerts](integrations.md#crowdsec-on-opnsense) of its OPNsense plugin), Wazuh's
 [alerts](integrations.md#alerts) and [silent agents](integrations.md#agents), and ntopng's

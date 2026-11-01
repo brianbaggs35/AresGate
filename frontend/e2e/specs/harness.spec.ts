@@ -77,6 +77,27 @@ test.describe('test harness', () => {
     expect((await harness.rowCounts()).collector_health).toBe(0)
   })
 
+  test('makes feeds, and the interfaces they are placed on, to order', async ({ harness }) => {
+    expect(await harness.rowCounts()).toMatchObject({ interfaces: 0, interface_feeds: 0 })
+
+    const made = await harness.createFeeds([
+      { native_name: 'igc0', interface: 'Internet', role: 'internet' },
+      { integration: 'ntopng', native_name: 'eth0', interface: 'Internet' },
+      { native_name: 'igc1', label: 'LAN' },
+      { native_name: 'lo0', ignored: true },
+    ])
+
+    expect(made).toEqual({ feeds: 4 })
+    expect(await harness.rowCounts()).toMatchObject({ interfaces: 1, interface_feeds: 4 })
+  })
+
+  test('stores events with the port they came in on', async ({ harness }) => {
+    const made = await harness.createEvents([{ iface: 'igc0' }, { iface: 'igc1', repeat: 2 }])
+
+    expect(made).toEqual({ events: 3 })
+    expect((await harness.rowCounts()).events).toBe(3)
+  })
+
   test('never touches the migration history', async ({ harness }) => {
     const { tables_emptied: emptied } = await harness.clean()
 

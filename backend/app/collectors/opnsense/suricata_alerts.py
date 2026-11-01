@@ -132,6 +132,7 @@ def _event(
         dst_address=destination or None,
         dst_port=destination_port,
         protocol=protocol or None,
+        iface=traffic.text(entry, "in_iface") or None,
         raw={key: value for key, value in entry.items() if key not in _LEFT_OUT},
     )
 

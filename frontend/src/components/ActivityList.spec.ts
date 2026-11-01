@@ -82,6 +82,10 @@ describe('ActivityList', () => {
       'verdict.given',
       'verdict.changed',
       'verdict.removed',
+      'interface.created',
+      'interface.changed',
+      'interface.removed',
+      'interface.feed_placed',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -124,6 +128,10 @@ describe('ActivityList', () => {
       'A verdict was given',
       'A verdict was changed',
       'A verdict was taken back',
+      'An interface was added',
+      'An interface was changed',
+      'An interface was removed',
+      'A source was placed on an interface, or set aside',
     ])
   })
 
