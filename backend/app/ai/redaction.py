@@ -122,11 +122,11 @@ _KEY_NAMES = (
     r"|token|secret|password|passwd|pwd"
 )
 _PEM = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)", re.S
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----(?:.*?-----END [A-Z ]*PRIVATE KEY-----|.*)", re.S
 )
 _VALUE = r"(?!\[secret removed\])[^\s\"',;&)}\]]+"
 _ASSIGNED = re.compile(rf"(?<![A-Za-z])((?:{_KEY_NAMES})[\"']?\s*[:=]\s*[\"']?){_VALUE}", re.I)
-_SCHEME = re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}", re.I)
+_SCHEME = re.compile(r"\b(Bearer|Basic)\s+[A-Z0-9._~+/=-]{8,}", re.I)
 _TOKEN_SHAPES = re.compile(
     r"\bsk-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}"
     r"|\bxox[baprs]-[A-Za-z0-9-]{10,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
@@ -328,8 +328,8 @@ class Redactor:
         if not self.replacing:
             return text
         text = _MAC.sub(lambda match: self._mac_in_text(match.group(0)), text)
-        text = _V6.sub(lambda match: self._v6_in_text(match.group(0)), text)
-        text = _V4.sub(lambda match: self._v4_in_text(match.group(0)), text)
+        text = _V6.sub(lambda match: self._address_in_text(match.group(0)), text)
+        text = _V4.sub(lambda match: self._address_in_text(match.group(0)), text)
         names = self._name_pattern()
         if names is not None:
             text = names.sub(self._named_in_text, text)
@@ -342,11 +342,7 @@ class Redactor:
         found = read_mac(text)
         return text if found is None else self._mac(found, text)
 
-    def _v6_in_text(self, text: str) -> str:
-        found = read_address(text)
-        return text if found is None else self._address(found, text)
-
-    def _v4_in_text(self, text: str) -> str:
+    def _address_in_text(self, text: str) -> str:
         found = read_address(text)
         return text if found is None else self._address(found, text)
 

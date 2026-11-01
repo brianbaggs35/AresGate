@@ -321,7 +321,11 @@ class TestWhatIsKept:
         self, session: Session, settings: Settings, serve: Serve
     ) -> None:
         written = {"text": ""}
-        server = serve(lambda seen: anthropic_says(written["text"])(seen))
+
+        def says(seen: Seen) -> Reply:
+            return anthropic_says(written["text"])(seen)
+
+        server = serve(says)
         saved(session, settings, catalog.ANTHROPIC)
         turned_on(session, "anthropic")
         where = context(settings, Log(), server.url)
@@ -334,7 +338,9 @@ class TestWhatIsKept:
 
         assert isinstance(answer, Answer)
         assert answer.text == f"{DEVICE} is Sam's. {ATTACKER} did it."
-        assert answer.ok and answer.reason is None and not answer.truncated
+        assert answer.ok
+        assert answer.reason is None
+        assert not answer.truncated
         assert session.scalars(select(AiCall)).one().answer.startswith("HOST_")  # type: ignore[union-attr]
 
     def test_the_providers_status_follows_the_real_requests(
