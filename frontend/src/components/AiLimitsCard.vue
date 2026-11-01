@@ -145,9 +145,9 @@ async function save() {
     >
       {{ failure }}
     </v-alert>
-    <p v-else-if="saved" class="text-body-medium mt-4" role="status" data-test="limits-saved">
+    <output v-else-if="saved" class="d-block text-body-medium mt-4" data-test="limits-saved">
       The limits are saved.
-    </p>
+    </output>
   </SectionCard>
 </template>
 
