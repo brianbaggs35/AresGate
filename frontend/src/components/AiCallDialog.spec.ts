@@ -155,6 +155,25 @@ describe('AiCallDialog', () => {
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([false])
   })
 
+  it('fills the screen on a phone, and is a card on a wider one', async () => {
+    vi.spyOn(usageApi, 'fetchUsageCall').mockResolvedValue(callDetail())
+    const phone = await mountWithPlugins(AiCallDialog, {
+      signedIn: 'admin',
+      width: 500,
+      props: { callId: 7, modelValue: true },
+    })
+    await flushPromises()
+    expect(phone.wrapper.findComponent(VDialog).props('fullscreen')).toBe(true)
+
+    const desktop = await mountWithPlugins(AiCallDialog, {
+      signedIn: 'admin',
+      width: 1400,
+      props: { callId: 7, modelValue: true },
+    })
+    await flushPromises()
+    expect(desktop.wrapper.findComponent(VDialog).props('fullscreen')).toBe(false)
+  })
+
   it('closes when the dialog is dismissed', async () => {
     vi.spyOn(usageApi, 'fetchUsageCall').mockResolvedValue(callDetail())
     const { wrapper } = await mountWithPlugins(AiCallDialog, {

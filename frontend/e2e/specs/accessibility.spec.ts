@@ -403,6 +403,39 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the assistant, empty, with an answer and what it was based on, and a request opened, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiSettings,
+      assistant,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'high',
+          programs: ['wazuh', 'opnsense'],
+          signals: 4,
+          device_name: 'nas',
+        },
+      ])
+      await turnOnAi(harness, aiSettings)
+      await assistant.goto()
+      await expect(assistant.empty).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await assistant.ask('What needs my attention right now?')
+      await expect(assistant.answers).toContainText('Start with incident')
+      await expect(assistant.busy).toHaveCount(0)
+      await expectAccessible(page)
+
+      await assistant.calls.last().click()
+      await expect(assistant.callDialog).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the account settings page has no WCAG 2.2 AA problems', async ({
       page,
       security,

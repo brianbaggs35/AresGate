@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RefreshCw, Sparkles } from '@lucide/vue'
+import { MessagesSquare, RefreshCw, Sparkles } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -74,8 +74,9 @@ async function accept() {
     description="An AI provider reads the incident and says what it thinks. It is an opinion: it never changes anything by itself."
     data-test="ai-card"
   >
-    <template v-if="reading && !asking" #actions>
+    <template #actions>
       <v-btn
+        v-if="reading && !asking"
         variant="text"
         size="small"
         :prepend-icon="RefreshCw"
@@ -83,6 +84,15 @@ async function accept() {
         @click="emit('ask')"
       >
         Read again
+      </v-btn>
+      <v-btn
+        variant="text"
+        size="small"
+        :prepend-icon="MessagesSquare"
+        :to="{ name: 'assistant', query: { about: `incident:${incident.id}` } }"
+        data-test="ai-chat"
+      >
+        Ask the assistant
       </v-btn>
     </template>
 
