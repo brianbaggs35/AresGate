@@ -84,6 +84,24 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // The list, and a page for each interface. Both belong to the one place in the menu.
+    path: '/interfaces',
+    children: [
+      {
+        path: '',
+        name: 'interfaces',
+        component: () => import('@/views/InterfacesView.vue'),
+        meta: { title: 'Interfaces' },
+      },
+      {
+        path: String.raw`:id(\d+)`,
+        name: 'interface',
+        component: () => import('@/views/InterfaceView.vue'),
+        meta: { title: 'Interfaces' },
+      },
+    ],
+  },
+  {
     path: '/status',
     name: 'status',
     component: () => import('@/views/StatusView.vue'),

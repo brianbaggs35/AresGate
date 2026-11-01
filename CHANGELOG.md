@@ -87,6 +87,15 @@ Every release's notes are here, newest first. The format follows
   stored before. Changes are in the audit log. The page for all this comes next
   ([DOCS/development.md](DOCS/development.md#interfaces-the-parts-of-the-network)).
 
+- **The Interfaces page**: a new place in the menu for the parts of your network. It says how
+  many feeds are left to decide, offers AresGate's guesses (a port called `wan` is the Internet,
+  `guest` is Guests) to confirm, change or ignore, shows a card for each interface with its traffic
+  of the last day, its alerts and its devices, and lists the feeds that are not placed yet with a
+  control to place each one. Each interface has a page with its traffic chart, its numbers and its
+  data sources; moving a feed says what moved and offers **Undo**. The sheet that names an
+  interface and chooses its role from cards fills the screen above the bottom bar on a phone.
+  Alerts are counted on the interface their port was placed on (`GET /api/interfaces/overview`)
+  ([DOCS/development.md](DOCS/development.md#interfaces-the-parts-of-the-network)).
 - **ntopng can be read on several interfaces**: the **Interface** list is now **Interfaces**, and
   one or more can be chosen (up to 16). The interface traffic, hosts and alerts collectors read
   each in turn, the connection test says what each has seen, and an alert keeps the interface it

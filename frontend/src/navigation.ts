@@ -1,4 +1,13 @@
-import { Bot, HeartPulse, LayoutDashboard, Plug, ScrollText, Settings, Siren } from '@lucide/vue'
+import {
+  Bot,
+  HeartPulse,
+  LayoutDashboard,
+  Network,
+  Plug,
+  ScrollText,
+  Settings,
+  Siren,
+} from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 /** A place in the menu. */
@@ -19,6 +28,7 @@ export const navItems: readonly NavItem[] = [
   { route: 'assistant', title: 'Assistant', icon: Bot },
   { route: 'logs', title: 'Logs', icon: ScrollText },
   { route: 'integrations', title: 'Integrations', icon: Plug },
+  { route: 'interfaces', title: 'Interfaces', icon: Network },
   { route: 'status', title: 'Status', icon: HeartPulse },
   { route: 'settings', title: 'Settings', icon: Settings },
 ]

@@ -6,6 +6,9 @@
 @layer aresgate-base {
   :root {
     font-feature-settings: 'cv11', 'ss01';
+    // How tall the bar along the bottom of a phone is (Vuetify's bottom navigation is 56px), for
+    // what is drawn above it.
+    --bottom-bar-height: 56px;
   }
 
   html,

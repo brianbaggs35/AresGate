@@ -11,6 +11,7 @@ import { DataPage } from './pages/data-page'
 import { IncidentPage } from './pages/incident-page'
 import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
+import { InterfacesPage } from './pages/interfaces-page'
 import { IntegrationsPage } from './pages/integrations-page'
 import { LogsPage } from './pages/logs-page'
 import { DashboardPage } from './pages/dashboard-page'
@@ -34,6 +35,8 @@ export interface AresGateFixtures {
   logs: LogsPage
   integrations: IntegrationsPage
   integration: IntegrationPage
+  /** The parts of the network, and the page of one. */
+  interfaces: InterfacesPage
   signIn: SignInPage
   setup: SetupPage
   /** The account settings page: the password, passkeys and two-step verification. */
@@ -127,6 +130,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   integration: async ({ page }, use) => {
     await use(new IntegrationPage(page))
+  },
+
+  interfaces: async ({ page }, use) => {
+    await use(new InterfacesPage(page))
   },
 
   signIn: async ({ page }, use) => {

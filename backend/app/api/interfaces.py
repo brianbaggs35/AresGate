@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Res
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
+from app import dashboard
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.api.integrations import PolicyDep, RecorderDep
 from app.audit import Action, Outcome
 from app.incidents import rules
 from app.integrations import registry, service
-from app.interfaces import discovery, scope, suggest
+from app.interfaces import discovery, overview, scope, suggest
 from app.interfaces import service as interfaces
 from app.models import Interface, InterfaceFeed, utcnow
 
@@ -72,6 +73,34 @@ class InterfacesOut(BaseModel):
     ignored: list[FeedOut]
     suggestions: list[SuggestionOut]
     max_interfaces: int
+
+
+class SpeedOut(BaseModel):
+    """How fast data went through an interface, in bits a second for each bucket of ``times``,
+    and the program that measured it."""
+
+    source: str
+    source_name: str
+    received: list[float | None]
+    sent: list[float | None]
+
+
+class StatsOut(BaseModel):
+    interface_id: int
+    speed: SpeedOut | None
+    # Alerts that came in on it in the window and in the one before it.
+    alerts: int
+    alerts_previous: int
+    # Devices with an address on its networks; null when it has no networks to look in.
+    devices: int | None
+    last_seen_at: AwareDatetime | None
+
+
+class OverviewOut(BaseModel):
+    window: Literal["24h", "7d"]
+    # When each bucket of the speeds starts.
+    times: list[AwareDatetime]
+    stats: list[StatsOut]
 
 
 class InterfaceIn(BaseModel):
@@ -198,6 +227,39 @@ def list_interfaces(db: Db) -> InterfacesOut:
     """Every interface with the feeds on it, the feeds not placed yet or set aside, and where the
     feeds that aren't placed could go."""
     return _listing(db)
+
+
+@router.get("/overview")
+def interfaces_overview(
+    db: Db,
+    window: Annotated[Literal["24h", "7d"], Query(description="How far back to look.")] = "24h",
+) -> OverviewOut:
+    """What each interface has been doing: its speed, its alerts and its devices."""
+    taken = overview.overview(db, dashboard.window(window, utcnow()))
+    return OverviewOut(
+        window=window,
+        times=taken.times,
+        stats=[
+            StatsOut(
+                interface_id=item.interface_id,
+                speed=(
+                    SpeedOut(
+                        source=item.speed.source,
+                        source_name=rules.name_of(item.speed.source),
+                        received=item.speed.received,
+                        sent=item.speed.sent,
+                    )
+                    if item.speed
+                    else None
+                ),
+                alerts=item.alerts,
+                alerts_previous=item.alerts_previous,
+                devices=item.devices,
+                last_seen_at=item.last_seen_at,
+            )
+            for item in taken.stats
+        ],
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
