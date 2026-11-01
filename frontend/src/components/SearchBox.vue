@@ -36,10 +36,21 @@ const helpId = useId()
 const field = ref<{ focus: () => void } | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined
 
+// What was applied and has not come back yet. The page answers a moment later (the address is
+// changed), and by then the next search may be half typed: the answer is not news, so it must
+// not put the earlier search back in the box.
+const awaiting: string[] = []
+
 // A search that arrives from outside (the back button, a link) is what is in the box.
 watch(
   () => props.modelValue,
   (text) => {
+    const answered = awaiting.indexOf(text)
+    if (answered !== -1) {
+      awaiting.splice(0, answered + 1)
+      return
+    }
+    awaiting.length = 0
     if (text !== typed.value.trim()) typed.value = text
   },
 )
@@ -47,7 +58,10 @@ watch(
 function apply(text: string) {
   clearTimeout(timer)
   timer = undefined
-  if (text.trim() !== props.modelValue) emit('update:modelValue', text.trim())
+  if (text.trim() !== props.modelValue) {
+    awaiting.push(text.trim())
+    emit('update:modelValue', text.trim())
+  }
 }
 
 function type(text: string | null) {

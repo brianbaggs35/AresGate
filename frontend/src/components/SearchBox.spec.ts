@@ -147,6 +147,42 @@ describe('SearchBox', () => {
       await wrapper.setProps({ modelValue: 'ssh' })
       expect(box().element.value).toBe('ssh ')
     })
+
+    it('does not put back a search it applied itself when the next is already being typed', async () => {
+      const { wrapper, box, emitted } = await open()
+
+      await box().setValue('port:22')
+      await box().trigger('keydown.enter')
+      // The page answers a moment later, after the next search has been started.
+      await box().setValue('source:wazuh')
+      await wrapper.setProps({ modelValue: 'port:22' })
+      expect(box().element.value).toBe('source:wazuh')
+
+      await box().trigger('keydown.enter')
+      expect(emitted()).toEqual([['port:22'], ['source:wazuh']])
+      expect(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')).toEqual([
+        'source:wazuh',
+        'port:22',
+      ])
+    })
+
+    it('waits out the answers to several searches, and then shows what arrives from outside again', async () => {
+      const { wrapper, box } = await open()
+
+      await box().setValue('port:22')
+      await box().trigger('keydown.enter')
+      await box().setValue('source:wazuh')
+      await box().trigger('keydown.enter')
+      await box().setValue('ssh')
+
+      await wrapper.setProps({ modelValue: 'port:22' })
+      await wrapper.setProps({ modelValue: 'source:wazuh' })
+      expect(box().element.value).toBe('ssh')
+
+      // Both answers are in, so a search that comes from outside is shown, even one applied before.
+      await wrapper.setProps({ modelValue: 'port:22' })
+      expect(box().element.value).toBe('port:22')
+    })
   })
 
   describe('the terms', () => {
