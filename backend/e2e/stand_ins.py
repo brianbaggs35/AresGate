@@ -24,7 +24,7 @@ from uuid import uuid4
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import AuthorityInformationAccessOID, NameOID
 
 from app.integrations.netguard import fingerprint_of
 from app.integrations.registry import OPNSENSE_MODULES
@@ -98,6 +98,120 @@ def make_certificate(name: str = "localhost", days: int = 30) -> Certificate:
             serialization.NoEncryption(),
         ).decode(),
         der=certificate.public_bytes(serialization.Encoding.DER),
+    )
+
+
+@dataclass(frozen=True)
+class Chain:
+    """A certificate authority, an intermediate authority it signed and a certificate that one
+    signed, as a public authority such as Let's Encrypt issues them. ``leaf`` serves the
+    certificate alone (a ``cert.pem``), which leaves out the intermediate; ``full`` serves it
+    followed by the intermediate (a ``fullchain.pem``)."""
+
+    root_pem: str
+    intermediate_pem: str
+    leaf: Certificate
+    full: Certificate
+
+
+def make_chain(
+    name: str = "localhost",
+    *,
+    dns_names: Sequence[str] = ("localhost",),
+    address: bool = True,
+    begins_days_ago: int = 1,
+    lasts_days: int = 30,
+    issuer_url: str | None = None,
+) -> Chain:
+    """A root, an intermediate and a certificate for ``dns_names`` (and 127.0.0.1 if ``address``)
+    that the intermediate signed, valid from ``begins_days_ago`` days ago for ``lasts_days`` days
+    from now. The certificate says where to get the intermediate if ``issuer_url`` is given."""
+    now = datetime.now(UTC)
+
+    def sign(
+        subject: str,
+        signer_name: str,
+        public: ec.EllipticCurvePublicKey,
+        signer: ec.EllipticCurvePrivateKey,
+        signer_public: ec.EllipticCurvePublicKey,
+        *,
+        authority: bool,
+        extra: Sequence[x509.ExtensionType] = (),
+    ) -> x509.Certificate:
+        builder = (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject)]))
+            .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, signer_name)]))
+            .public_key(public)
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=begins_days_ago))
+            .not_valid_after(now + timedelta(days=lasts_days))
+            .add_extension(x509.BasicConstraints(ca=authority, path_length=None), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(public), critical=False)
+            .add_extension(
+                x509.AuthorityKeyIdentifier.from_issuer_public_key(signer_public), critical=False
+            )
+        )
+        if authority:
+            builder = builder.add_extension(
+                x509.KeyUsage(False, False, False, False, False, True, True, False, False),
+                critical=True,
+            )
+        for extension in extra:
+            builder = builder.add_extension(extension, critical=False)
+        return builder.sign(signer, hashes.SHA256())
+
+    root_key, intermediate_key, leaf_key = (ec.generate_private_key(ec.SECP256R1()) for _ in "123")
+    # A root's certificate is signed by itself.
+    root = sign(
+        "Test Root",
+        "Test Root",
+        root_key.public_key(),
+        root_key,
+        root_key.public_key(),
+        authority=True,
+    )
+    intermediate = sign(
+        "Test Intermediate",
+        "Test Root",
+        intermediate_key.public_key(),
+        root_key,
+        root_key.public_key(),
+        authority=True,
+    )
+    names: list[x509.GeneralName] = [x509.DNSName(dns) for dns in dns_names]
+    if address:
+        names.append(x509.IPAddress(ip_address("127.0.0.1")))
+    extras: list[x509.ExtensionType] = [x509.SubjectAlternativeName(names)]
+    if issuer_url:
+        access = x509.AccessDescription(
+            AuthorityInformationAccessOID.CA_ISSUERS, x509.UniformResourceIdentifier(issuer_url)
+        )
+        extras.append(x509.AuthorityInformationAccess([access]))
+    leaf = sign(
+        name,
+        "Test Intermediate",
+        leaf_key.public_key(),
+        intermediate_key,
+        intermediate_key.public_key(),
+        authority=False,
+        extra=extras,
+    )
+
+    def pem(certificate: x509.Certificate) -> str:
+        return certificate.public_bytes(serialization.Encoding.PEM).decode()
+
+    key_pem = leaf_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    der = leaf.public_bytes(serialization.Encoding.DER)
+    return Chain(
+        root_pem=pem(root),
+        intermediate_pem=pem(intermediate),
+        leaf=Certificate(pem=pem(leaf), key_pem=key_pem, der=der),
+        full=Certificate(pem=pem(leaf) + pem(intermediate), key_pem=key_pem, der=der),
     )
 
 

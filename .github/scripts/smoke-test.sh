@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for a running AresGate container: TLS 1.3, the API and database, the web app, the
-# HTTP redirect and the security headers. The certificate is self-signed in CI.
+# HTTP redirect, the security headers and the certificate authorities it trusts. The certificate is
+# self-signed in CI.
 set -euo pipefail
 
 https_port="${ARESGATE_HTTPS_PORT:-443}"
@@ -40,6 +41,12 @@ echo "The end-to-end test harness is not in this image"
 code="$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' --request POST \
     "$base/api/__test__/database/clean")"
 [[ "$code" = 404 ]] || fail "the test harness answered $code, but only the e2e image has it"
+
+echo "The image trusts certificate authorities"
+# An integration with a certificate from a public authority (Let's Encrypt, say) can only be checked
+# against these. An empty store would make every one of them fail with a message about the issuer.
+docker compose exec -T -w /app/backend aresgate python -m app.cli trust-store ||
+    fail "the image has no certificate authorities for checking an integration's certificate"
 
 echo "TLS 1.3 only"
 curl --silent --show-error --fail --insecure --tlsv1.3 --tls-max 1.3 --output /dev/null "$base/" ||

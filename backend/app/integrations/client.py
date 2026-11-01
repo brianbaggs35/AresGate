@@ -26,7 +26,7 @@ from typing import Self
 import httpx2
 
 from app import __version__, audit
-from app.integrations import netguard
+from app.integrations import certdiag, netguard
 from app.integrations.netguard import AddressPolicy, GuardedBackend, GuardedTransport, Origin
 from app.models import utcnow
 
@@ -39,6 +39,8 @@ MAX_BODY = 2 * 1024 * 1024
 DEADLINE = 20.0
 MAX_PATH = 256
 MAX_ERROR = 500
+# How long, in seconds, looking again at a certificate that wasn't trusted may take.
+CERTIFICATE_LOOKUP = 5.0
 HIDDEN = "***"
 
 
@@ -159,7 +161,7 @@ class ApiClient:
             text = text.replace(value, HIDDEN)
         return (audit.clean(text, MAX_ERROR) or "")[:MAX_ERROR]
 
-    def _explain(self, error: BaseException) -> str:
+    async def _explain(self, error: BaseException) -> str:
         """What went wrong with a request that got no answer, in words for whoever set it up."""
         where = f"{self._target.origin.host}:{self._target.origin.port}"
         if isinstance(error, CallFailed):
@@ -167,11 +169,7 @@ class ApiClient:
         if refusal := in_chain(error, netguard.Refused):
             return str(refusal)
         if untrusted := in_chain(error, ssl.SSLCertVerificationError):
-            return (
-                f"The certificate isn't trusted ({untrusted.verify_message}). If it is the "
-                "right system, paste the certificate authority that signed it or pin the "
-                "certificate's fingerprint, under Certificate."
-            )
+            return await self._explain_certificate(untrusted)
         if failed := in_chain(error, ssl.SSLError):
             return f"The secure connection to {where} failed ({failed.reason or 'TLS error'})."
         if isinstance(error, TimeoutError | httpx2.TimeoutException):
@@ -182,6 +180,19 @@ class ApiClient:
             return f"The connection to {where} broke, or it isn't a web server."
         logger.error("A request to %s failed in an unexpected way", where, exc_info=error)
         return "The request failed in a way AresGate didn't expect."
+
+    async def _explain_certificate(self, untrusted: ssl.SSLCertVerificationError) -> str:
+        """Why the system's certificate wasn't trusted. OpenSSL's own words are the same for a
+        certificate sent without the one that signed it and one signed by an unknown authority,
+        so the certificates the system presents are looked at again to tell which it is."""
+        target = self._target
+        try:
+            der = await netguard.look_up_chain(self._policy, target.origin, CERTIFICATE_LOOKUP)
+        except netguard.Refused, OSError:
+            der = []
+        return certdiag.explain(
+            untrusted, certdiag.read_chain(der), target.tls_mode, target.origin.host
+        )
 
     async def request(
         self,
@@ -208,7 +219,7 @@ class ApiClient:
                 error = _phrase(status)
             return reply
         except Exception as problem:
-            error = self._scrub(self._explain(problem))
+            error = self._scrub(await self._explain(problem))
             raise CallFailed(error) from None
         finally:
             await self._log(
