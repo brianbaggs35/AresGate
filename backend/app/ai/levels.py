@@ -60,14 +60,12 @@ def _describe(policy: Policy) -> str:
     return f"Reads {which}, up to {policy.per_hour} an hour. {again}"
 
 
-def _build() -> tuple[Level, ...]:
+def listing() -> tuple[Level, ...]:
+    """The five levels, from the least AI to the most, worded from what the worker does."""
     return tuple(
         Level(key, LABELS[key], _describe(policy), policy.per_hour)
         for key, policy in POLICIES.items()
     )
-
-
-LEVELS: Final = _build()
 
 
 def current(db: Session) -> str:
