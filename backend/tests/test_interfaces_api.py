@@ -364,7 +364,9 @@ class TestRemovingOne:
         assert event.detail == {"interface_id": made["id"], "name": "Internet", "role": "internet"}
 
     def test_one_that_is_not_there_is_not_found(self, client: TestClient, csrf_token: str) -> None:
-        assert client.delete(f"{BASE}/999", headers=headers(csrf_token)).status_code == 404
+        response = client.delete(f"{BASE}/999", headers=headers(csrf_token))
+
+        assert response.status_code == 404
 
 
 class TestPlacingAFeed:

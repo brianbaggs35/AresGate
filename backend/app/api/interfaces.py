@@ -80,11 +80,9 @@ class InterfaceIn(BaseModel):
     name: Name
     role: Role
     notes: Notes = ""
-    networks: list[Network] = Field(
-        default_factory=lambda: list[str](), max_length=interfaces.MAX_NETWORKS
-    )
+    networks: list[Network] = Field(default_factory=list, max_length=interfaces.MAX_NETWORKS)
     # Feeds to place on it as it is made.
-    feeds: list[FeedId] = Field(default_factory=lambda: list[int](), max_length=200)
+    feeds: list[FeedId] = Field(default_factory=list[FeedId], max_length=200)
 
 
 class InterfaceChange(BaseModel):
