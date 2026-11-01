@@ -34,6 +34,12 @@ Every release's notes are here, newest first. The format follows
   most 20 an hour), and the incident list shows the AI's word beside the others. Nothing is asked
   when AI is off, and everything the AI is asked is recorded. See
   [DOCS/operations.md](DOCS/operations.md#ai-providers).
+- **How much AI is used without being asked.** **Settings > AI usage** has a slider from *Very low*
+  to *Maximum* that sets what the worker reads by itself: which incidents, how many an hour and
+  when it reads one again, in words made from what the worker really does. *Very low* reads
+  nothing by itself. It only decides what is done without being asked: asking the AI about an
+  incident, and your questions to the assistant, are answered at every level. Changing it is in the
+  activity log.
 - **What AI took and cost, and spending limits.** The new **Settings > AI usage** page adds up
   every request to an AI provider: the cost, tokens and requests for the last 7, 30 or 90 days
   against the stretch before, the month so far and where it is heading, the days as stacked bars by

@@ -815,7 +815,7 @@ AresGate works without it. A test sends only the words "Say OK."
   - when you ask (*Ask the AI*, or *Read again* after more signals came in), and when you press
     *Start investigating* on one the AI hasn't read in full;
   - by the worker, as incidents come in, as much as **how much AI is used without being asked**
-    allows (`ai_settings.usage_level`, *Medium* until the slider on Settings > AI arrives). *Very
+    allows (`ai_settings.usage_level`, *Medium* until you move the slider on Settings > AI usage). *Very
     low* reads nothing by itself. *Low* reads high and critical incidents, at most 6 an hour.
     *Medium* reads medium and above, 20 an hour, and again when an incident has four times the
     signals it had. *High* reads low and above, 60 an hour, again at twice the signals. *Maximum*
@@ -850,6 +850,14 @@ AresGate works without it. A test sends only the words "Say OK."
   *Download as a spreadsheet* saves the range's requests as a CSV file (when, what for, about,
   provider, model, level, tokens, estimated cost, seconds and any error; never what was sent or
   said).
+- **How much AI is used without being asked.** The top of **Settings > AI usage** has a slider
+  with five stops, *Very low* to *Maximum*, and says in words what each does (the words are made
+  from the policy the worker follows, so they can't promise anything else): which incidents it
+  reads by itself, how many an hour, and when it reads one again. It works before AI has ever been
+  asked. A level only decides what is done without being asked: *Start investigating*, *Ask the AI*
+  and your questions in the Assistant are answered at every level, and so are the spending limits
+  held at every level. The slider is kept with *Save* (`PUT /api/ai/level`, `{"level": "high"}`,
+  in the activity log); `GET /api/ai/usage` carries `level` and `levels`.
 - **Spending limits.** On the same page you can set what may be spent in the last 24 hours and in
   the calendar month. Past 80% the meter turns to a warning. When a limit is used up, AresGate
   stops asking providers that charge by the token (Anthropic and OpenAI), including what the
