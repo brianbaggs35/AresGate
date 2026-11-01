@@ -171,8 +171,10 @@ class TestAnswering:
         [call] = session.scalars(select(AiCall)).all()
         assert (call.purpose, call.about) == ("chat", f"chat {row.id}")
         assert history[1].call_ids == [call.id]
-        assert history[1].lookups == [] and history[1].cites == []
-        assert found.id and row.updated_at == NOW
+        assert history[1].lookups == []
+        assert history[1].cites == []
+        assert found.id
+        assert row.updated_at == NOW
 
     def test_the_overview_says_when_nothing_needs_anyone_and_what_is_failing(
         self, session: Session, settings: Settings, serve: Serve
