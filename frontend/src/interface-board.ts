@@ -26,8 +26,20 @@ export interface Done {
   undo: (() => Promise<void>) | null
 }
 
+/** A change that can always be taken back. */
+type Undoable = Done & { undo: () => Promise<void> }
+
 /** Not placed anywhere, and not set aside: where a feed is before anyone decides. */
 export const NOT_PLACED: Placement = { interface_id: null, ignored: false }
+
+/** Runs a step for each item one after the other, because each needs the one before it to be
+ * done (or to have failed, which stops the rest). */
+async function inOrder<T>(items: readonly T[], step: (item: T) => Promise<void>): Promise<void> {
+  await items.reduce(async (before, item) => {
+    await before
+    await step(item)
+  }, Promise.resolve())
+}
 
 const feeds = (count: number) => `${formatCount(count)} ${count === 1 ? 'feed' : 'feeds'}`
 
@@ -96,21 +108,24 @@ export function useInterfaceBoard() {
   }
 
   /** Puts feeds where they are asked to go. The way back puts each where it was. */
-  async function putAll(which: readonly Feed[], placement: Placement, text: string): Promise<Done> {
+  async function putAll(
+    which: readonly Feed[],
+    placement: Placement,
+    text: string,
+  ): Promise<Undoable> {
     const before = which.map((feed) => ({
       id: feed.id,
       placement: { interface_id: feed.interface_id, ignored: feed.ignored },
     }))
-    for (const feed of which) {
+    await inOrder(which, async (feed) => {
       await session.change((token) => placeFeed(feed.id, placement, token))
-    }
+    })
     return {
       text,
-      undo: async () => {
-        for (const { id, placement: back } of before) {
+      undo: () =>
+        inOrder(before, async ({ id, placement: back }) => {
           await session.change((token) => placeFeed(id, back, token))
-        }
-      },
+        }),
     }
   }
 
@@ -126,7 +141,7 @@ export function useInterfaceBoard() {
 
   /** Does what a suggestion says: the feeds join the interface of that name, which is made if
    * it isn't there. Taking it back moves the feeds off, and removes an interface it made. */
-  async function applySuggestion(suggestion: Suggestion): Promise<Done> {
+  async function applySuggestion(suggestion: Suggestion): Promise<Undoable> {
     const text = `${feeds(suggestion.feed_ids.length)} placed on ${suggestion.name}.`
     if (suggestion.interface_id !== null) {
       const target = suggestion.interface_id
@@ -151,18 +166,17 @@ export function useInterfaceBoard() {
   /** Confirms them all; taking it back takes back each, last first. */
   function confirmAll(suggestions: readonly Suggestion[]) {
     return act(async () => {
+      /** What takes each back, the last one first, which is the order they are taken back in. */
       const undos: (() => Promise<void>)[] = []
       let placed = 0
-      for (const suggestion of suggestions) {
+      await inOrder(suggestions, async (suggestion) => {
         const done = await applySuggestion(suggestion)
         placed += suggestion.feed_ids.length
-        if (done.undo) undos.push(done.undo)
-      }
+        undos.unshift(done.undo)
+      })
       return {
         text: `${feeds(placed)} placed on ${suggestions.length} ${suggestions.length === 1 ? 'interface' : 'interfaces'}.`,
-        undo: async () => {
-          for (const undo of undos.reverse()) await undo()
-        },
+        undo: () => inOrder(undos, (undo) => undo()),
       }
     })
   }

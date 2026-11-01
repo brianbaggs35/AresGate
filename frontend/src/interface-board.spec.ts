@@ -220,6 +220,14 @@ describe('useInterfaceBoard', () => {
       expect(done?.text).toBe('2 feeds set aside.')
     })
 
+    it('does not look for feeds before the page has read any', async () => {
+      const { board, place } = start()
+
+      await board.dismiss(suggestion({ feed_ids: [1] }))
+
+      expect(place).not.toHaveBeenCalled()
+    })
+
     it('does not look for feeds that the page does not have', async () => {
       const { board, place } = start()
       await board.load()
