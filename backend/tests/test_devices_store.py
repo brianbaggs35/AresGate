@@ -258,8 +258,10 @@ class TestWhoListedTheDevice:
         assert (row.first_seen_at, row.last_seen_at) == (NOW, later)
 
     def test_a_way_nobody_knows_is_a_mistake_in_the_collector(self, session: Session) -> None:
+        sightings = [seen()]
+
         with pytest.raises(ValueError, match="No device is listed 'telepathy'"):
-            record(session, [seen()], NOW, via="telepathy")
+            record(session, sightings, NOW, via="telepathy")
 
         assert devices(session) == {}
 
@@ -373,10 +375,12 @@ class TestMachinesWithNoHardwareAddress:
         assert machines(session) == {}
 
     def test_a_way_nobody_knows_is_a_mistake_in_the_collector(self, session: Session) -> None:
+        listed = [machine()]
+
         with pytest.raises(ValueError, match="No device is listed 'telepathy'"):
             store.record_hosts(
                 session,
-                [machine()],
+                listed,
                 NOW,
                 source="wazuh",
                 connection="manager",

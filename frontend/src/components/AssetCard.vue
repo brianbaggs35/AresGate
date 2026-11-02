@@ -28,7 +28,7 @@ const mac = computed(() => (props.asset.name === props.asset.mac ? null : props.
 const kind = computed(() =>
   props.asset.listings
     .map(({ source_name, via_label, state }) =>
-      [`${source_name} ${via_label.toLowerCase()}`, state].filter((part) => part).join(' · '),
+      [`${source_name} ${via_label.toLowerCase()}`, state].filter(Boolean).join(' · '),
     )
     .join(', '),
 )
