@@ -263,9 +263,8 @@ def test_destination(
         detail={"destination": row.name},
     )
     db.commit()
-    message = (
-        "The test message was sent. Look for it in the channel."
-        if ok
-        else (sent if isinstance(sent, str) else sent.problem) or "The message didn't get through."
-    )
+    message = "The test message was sent. Look for it in the channel."
+    if not ok:
+        problem = sent if isinstance(sent, str) else sent.problem
+        message = problem or "The message didn't get through."
     return TestOut(ok=ok, message=message, destination=_one(db, row))

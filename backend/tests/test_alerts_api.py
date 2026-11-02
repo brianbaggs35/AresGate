@@ -75,7 +75,8 @@ def test_a_change_from_another_website_is_refused(client: TestClient, csrf_token
 def test_a_change_without_the_security_token_is_refused(
     client: TestClient, csrf_token: str
 ) -> None:
-    assert client.post(BASE, json={"name": "x", "url": ADDRESS}).status_code == 403
+    response = client.post(BASE, json={"name": "x", "url": ADDRESS})
+    assert response.status_code == 403
 
 
 class TestAddingOne:
@@ -365,7 +366,9 @@ class TestRemovingOne:
     def test_there_is_no_removing_what_is_not_there(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.delete(f"{BASE}/99", headers=headers(csrf_token)).status_code == 404
+        response = client.delete(f"{BASE}/99", headers=headers(csrf_token))
+
+        assert response.status_code == 404
 
 
 class TestTheTestMessage:
@@ -544,4 +547,6 @@ class TestTheTestMessage:
     def test_there_is_no_testing_what_is_not_there(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.post(f"{BASE}/99/test", headers=headers(csrf_token)).status_code == 404
+        response = client.post(f"{BASE}/99/test", headers=headers(csrf_token))
+
+        assert response.status_code == 404
