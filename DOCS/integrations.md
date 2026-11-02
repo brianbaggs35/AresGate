@@ -333,9 +333,11 @@ yet.
 Wazuh has two connections, each with its own address and sign-in:
 
 - **Manager API** (port 55000): create an API user for AresGate in the dashboard (Server
-  management, Security, Users) with a read-only role, rather than using the administrator.
-- **Indexer** (port 9200): create a user that may read the `wazuh-alerts-*` indices, rather than
-  using `admin`.
+  management, Security, Users) and link the `agents_readonly` role to it, rather than using the
+  administrator.
+- **Indexer** (port 9200): create an internal user, and a role with the index permission `read`
+  on `wazuh-alerts-*` and no cluster permission, mapped to that user, rather than using `admin`.
+  The indexer's users are separate from the manager API's.
 
 Both use HTTPS with a self-signed certificate in a default install, so see the next section.
 
@@ -357,8 +359,18 @@ alert is stored once however often it is read, by its document's id in the index
   SSH login failed from. Its destination is the one the line names (`dstip`), or else the host
   that raised it, so an alert can be matched with the firewall's and Suricata's events about that
   host.
-- **What the user needs.** Read access to the `wazuh-alerts-*` indices and nothing else. The
-  manager's API doesn't give alerts, so this is the only place AresGate reads them.
+- **What the user needs.** Read access to the `wazuh-alerts-*` indices and nothing else: the
+  index permission `read`, and no cluster permission. The manager's API doesn't give alerts, so
+  this is the only place AresGate reads them. The connection test makes the same search as the
+  collector (asking for no alerts), so a test that passes means the collector is allowed what it
+  does. It doesn't ask the indexer's root page for the version, which needs the cluster
+  permission `cluster:monitor/main` and would refuse a user that can read every alert.
+- **When the test says no.** A wrong user name or password is HTTP 401: the indexer's own users
+  are under Indexer management, Security, Internal users. A user that signed in but isn't allowed
+  is HTTP 403, and the indexer's reply names the permission, such as
+  `indices:data/read/search`; the test passes on that name and nothing else the indexer said.
+  The usual causes are a user that isn't mapped to its role (Mapped users) and an index pattern
+  that doesn't match `wazuh-alerts-*`.
 - **A gap.** An alert that reaches the indexer more than half an hour after it was raised, such
   as after the indexer was down, is not read. A manager that raises more than 500 alerts in half
   an hour is read from the newest.
@@ -372,7 +384,10 @@ info event (`agent`, "laptop (192.168.1.41) stopped reporting to Wazuh"), dated 
 manager last heard from it, since a host that stops reporting is the first thing an intruder with
 the run of it may do. It is stored once; an agent that reports again and goes quiet again is a
 new event. The manager itself, which the API lists as agent `000`, is not counted. The user needs
-a role that may read agents.
+a role that may read agents, such as `agents_readonly`. A user without one signs in without
+trouble, and the API answers 200 with an empty list instead of refusing, so the manager's own
+agent `000` missing from the list is how the connection test and the Agents collector tell, and
+say so, rather than counting zero agents every minute.
 
 ### Where this comes from, and what isn't tried
 
@@ -390,9 +405,25 @@ Taken from Wazuh's documentation, not guessed:
   [`wazuh-alerts-*` index template](https://github.com/wazuh/wazuh/blob/v4.14.1/extensions/elasticsearch/7.x/wazuh-template.json).
 - The levels are in
   [Rules classification](https://documentation.wazuh.com/current/user-manual/ruleset/rules/rules-classification.html).
+- What the indexer's user may do is OpenSearch's security plugin: the permission
+  `cluster:monitor/main` is listed under
+  [Permissions](https://docs.opensearch.org/latest/security/access-control/permissions/), the
+  action groups `read` and `cluster_monitor` under
+  [Default action groups](https://docs.opensearch.org/latest/security/access-control/default-action-groups/),
+  and the name `cluster:monitor/main` is the `NAME` of `MainAction` in OpenSearch's source. The
+  pages don't say that the root page (`GET /`) is the request that needs it; that was tried.
 
-Not tried against a live Wazuh: the answers are tested against a stand-in built from those pages.
-If your version answers differently, the Collection card says so and the API log shows the answer.
+Tried against a real OpenSearch 2.19.1 with its security plugin, which the Wazuh indexer is built
+on, and a real Wazuh 4.14.1 manager, both in Docker (not against Wazuh's own indexer build, or
+other versions): a user with the index permission `read` on `wazuh-alerts-*` and no cluster
+permission can make AresGate's search, including when no alert index exists yet, and gets 403 for
+`GET /`, with the same result for Wazuh's own read-only example role (`cluster_composite_ops_ro`
+and `read` on every index). A wrong password is 401, and a user with no role is 403 naming
+`indices:data/read/search`. On the manager, a user with no role gets 200 and an empty list from
+`GET /agents`, and one with `agents_readonly` linked to it (through `POST
+/security/users/{user_id}/roles`) also gets agent `000`. Everything else is tested against a
+stand-in built from the pages above. If your version answers differently, the Collection card says
+so and the API log shows the answer.
 What was worked out rather than read: that `data.srcip`, `data.dstip` and `data.srcport` are
 where the decoders put an address (they vary by decoder, so an alert without them is kept without
 an address), and that an agent's `lastKeepAlive` always carries a zone, as the specification's
@@ -496,8 +527,10 @@ The ones to know about:
   come from ntopng's user form and source, not from its guide. An administrator can make the token
   for another user with `create/ntopng/api_token.lua`, which the window shows.
 - **Wazuh.** The pages found describe creating a user through the API and the `agents_readonly`
-  role, but not the dashboard's Users tab, and the indexer role is narrowed from Wazuh's
-  read-only example to `wazuh-alerts-*`. If the indexer's test is refused, add `cluster_monitor`.
+  role, but not the dashboard's Users tab or which button links the role to the user (the API
+  call that does was tried). The indexer role is narrowed from Wazuh's read-only example to
+  `read` on `wazuh-alerts-*` with no cluster permission, which was tried on OpenSearch, not on
+  Wazuh's build of it.
 - **CrowdSec.** The configuration page gives `api.server.listen_uri` as `host:port` but no
   default; `127.0.0.1:8080` is from other pages' examples.
 
