@@ -450,10 +450,18 @@ WAZUH = Guide(
                         "installing."
                     ),
                     fills=(Fill(label="Role", value="agents_readonly"),),
+                    watch=(
+                        "A user with no role can sign in, and the API then lists no agents to "
+                        "it, not even the manager, instead of refusing. The connection test says "
+                        "so, and the Agents collector reports the same, but a user that is "
+                        "missing its role looks like a working one until then."
+                    ),
                     inferred=(
                         "The pages found don't show which button links a role to a user. The "
-                        "role itself is in Wazuh's source. If a call is refused, the connection "
-                        "test says so."
+                        "role itself is in Wazuh's source. Linking it through the API, with POST "
+                        "/security/users/{user_id}/roles?role_ids=... (GET /security/roles lists "
+                        "the role ids), was tried on a Wazuh 4.14.1 manager: the user then "
+                        "listed the manager's agent. The dashboard's buttons were not tried."
                     ),
                 ),
                 Step(
@@ -490,19 +498,31 @@ WAZUH = Guide(
                 ),
                 Step(
                     title="Create a read-only role",
-                    detail="Click Create role, or open one that already only reads.",
+                    detail=(
+                        "Click Create role and give it a name, such as aresgate_alerts. Add one "
+                        "index permission: the index pattern wazuh-alerts-* with the read "
+                        "permission. Leave Cluster permissions empty: AresGate only searches "
+                        "the alerts."
+                    ),
                     menu=(INDEXER, "Security", "Roles"),
                     fills=(
-                        Fill(label="Cluster permissions", value="cluster_composite_ops_ro"),
                         Fill(label="Index", value="wazuh-alerts-*"),
                         Fill(label="Index permissions", value="read"),
                     ),
+                    watch=(
+                        "Wazuh's example of a read-only role reads every index (*) and adds the "
+                        "cluster permission cluster_composite_ops_ro and a Dashboard tenant. "
+                        "That works too, but it gives more than AresGate uses. Either way the "
+                        "user can't ask the indexer's root page, which needs the cluster "
+                        "permission cluster:monitor/main (part of cluster_monitor). AresGate "
+                        "doesn't ask it."
+                    ),
                     inferred=(
-                        "Wazuh's example read-only role reads every index (*). Narrowing it to "
-                        "wazuh-alerts-* is an assumption about what AresGate needs. The test "
-                        "asks the indexer's root page, which OpenSearch may only allow with "
-                        "monitor permission: if the test says forbidden, add cluster_monitor to "
-                        "Cluster permissions."
+                        "Wazuh's page shows the example role, not this narrower one. That a "
+                        "user with only read on wazuh-alerts-* can search those indices, "
+                        "including when none exist yet, and gets 403 for the root page, was "
+                        "tried on OpenSearch 2.19.1 with its security plugin, which the Wazuh "
+                        "indexer is built on. It was not tried on Wazuh's own build."
                     ),
                 ),
                 Step(
@@ -512,6 +532,12 @@ WAZUH = Guide(
                         "user and click Map."
                     ),
                     menu=(INDEXER, "Security", "Roles", "Mapped users"),
+                    watch=(
+                        "A user who isn't mapped to a role can sign in and is then refused every "
+                        "search: the test says the user has no permission for "
+                        "indices:data/read/search. A wrong user name or password is a different "
+                        "message, a refused sign-in (HTTP 401)."
+                    ),
                 ),
                 Step(
                     title="Enter the address and the sign-in",
@@ -544,6 +570,14 @@ WAZUH = Guide(
                 "https://github.com/wazuh/wazuh/blob/v4.14.1/framework/wazuh/rbac/default/"
                 "roles.yaml"
             ),
+        ),
+        Source(
+            title="OpenSearch: permissions (cluster:monitor/main and the index permissions)",
+            url="https://docs.opensearch.org/latest/security/access-control/permissions/",
+        ),
+        Source(
+            title="OpenSearch: default action groups (read, cluster_monitor)",
+            url="https://docs.opensearch.org/latest/security/access-control/default-action-groups/",
         ),
     ),
 )
