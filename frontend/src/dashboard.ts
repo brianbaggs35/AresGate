@@ -1,9 +1,13 @@
-import type { AlertCounts, DashboardWindow, IncidentMark } from '@/api/dashboard'
+import type { AlertCounts, Attention, DashboardWindow, IncidentMark } from '@/api/dashboard'
 import type { CollectorsReport } from '@/api/collectors'
+import type { IncidentQuery } from '@/api/incidents'
+import type { RouteLocationRaw } from 'vue-router'
 import { severityColor } from '@/charts/palette'
 import type { ChartMark } from '@/charts/types'
 import { formatCount, formatDateTime } from '@/format'
-import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
+
+import { NO_FILTERS, queryOf } from '@/incidents'
+import { SEVERITIES, SEVERITY } from '@/severity'
 
 /** How a number has changed, as the stat tile shows it. */
 export interface Change {
@@ -98,12 +102,15 @@ export interface Posture {
 }
 
 /**
- * What to tell someone first. Until the analyst has learned what is normal on this network it
- * goes by how serious the alerts are, and it never says all is quiet while the collectors that
+ * What to tell someone first. It goes by the incidents that need the owner, and not by how many
+ * alerts there were: a busy network files thousands of alerts into a few incidents, and most of
+ * those are not sure enough, or already called quiet. It asks for attention only for an incident
+ * that AresGate is highly confident of, and it never says all is quiet while the collectors that
  * would raise the alarm aren't working.
  */
 export function postureOf(
   alerts: AlertCounts,
+  attention: Attention,
   collection: Collection,
   window: DashboardWindow,
 ): Posture {
@@ -116,39 +123,103 @@ export function postureOf(
         'Connect OPNsense or another integration and AresGate starts collecting what happens on your network.',
     }
   }
-  const count = (severity: Severity) =>
-    alerts.by_severity[severity].reduce((total, number) => total + number, 0)
   const blind = collection.trouble
     ? ` ${collection.trouble}, so a quiet network may not be a safe one.`
     : ''
-  const serious = count('high') + count('critical')
-  if (serious > 0) {
+  const { urgent, needs_you: needing } = attention
+  if (urgent > 0) {
+    const sure =
+      urgent === 1
+        ? 'incident that AresGate is confident is real'
+        : 'incidents that AresGate is confident are real'
+    const more = needing > urgent ? `, and ${formatCount(needing - urgent)} more worth a look` : ''
     return {
       state: 'attention',
       title: 'Needs your attention',
-      detail: `${plural(serious, 'serious alert', 'serious alerts')} in ${last} (high or critical).${blind}`,
+      detail: `${formatCount(urgent)} ${sure} in ${last}${more}.${blind}`,
     }
   }
-  const medium = count('medium')
-  if (medium > 0) {
+  if (needing > 0) {
     return {
       state: 'watch',
       title: 'Worth a look',
-      detail: `${plural(medium, 'medium alert', 'medium alerts')} in ${last}, none serious.${blind}`,
+      detail: `${plural(needing, 'incident', 'incidents')} to look at in ${last}, none that AresGate is confident is a real attack.${blind}`,
     }
   }
-  const minor =
+  const quiet =
     alerts.total === 0
       ? `No alerts in ${last}.`
-      : `${plural(alerts.total, 'minor alert', 'minor alerts')} in ${last}.`
+      : `${plural(alerts.total, 'alert', 'alerts')} in ${last}, and none of them needs you.`
   if (collection.trouble) {
-    return { state: 'watch', title: "Some sources aren't reporting", detail: `${minor}${blind}` }
+    return { state: 'watch', title: "Some sources aren't reporting", detail: `${quiet}${blind}` }
   }
+  return { state: 'calm', title: 'All quiet', detail: quiet }
+}
+
+/** One reason incidents were filtered out, with where to see them. */
+export interface FilteredOut {
+  key: 'unsure' | 'muted' | 'handled'
+  count: number
+  /** What to call them after the count: "not sure enough". */
+  label: string
+  to: RouteLocationRaw
+}
+
+/**
+ * The incidents the dashboard left out, by reason, each as a link to the Incidents page showing
+ * exactly those (what is hidden stays one click away). Reasons with none are left out.
+ */
+export function filteredOut(attention: Attention, since: string): FilteredOut[] {
+  const going = `since:${since}`
+  const reasons: FilteredOut[] = [
+    {
+      key: 'unsure',
+      count: attention.unsure,
+      label: 'not sure enough',
+      to: { name: 'incidents', query: { q: `${going} confidence<${attention.floor.toString()}` } },
+    },
+    {
+      key: 'muted',
+      count: attention.muted,
+      label: 'called not suspicious or low priority',
+      to: {
+        name: 'incidents',
+        query: { quieted: '1', q: `${going} verdict:not_suspicious,low_priority` },
+      },
+    },
+    {
+      key: 'handled',
+      count: attention.handled,
+      label: 'already handled',
+      to: {
+        name: 'incidents',
+        query: { view: 'all', quieted: '1', q: `${going} status:resolved,dismissed` },
+      },
+    },
+  ]
+  return reasons.filter(({ count }) => count > 0)
+}
+
+/** What it takes to be going on in the window and to need the owner, as the words of a search. */
+function needing(attention: Attention, since: string): string {
+  return `since:${since} confidence>=${attention.floor.toString()}`
+}
+
+/**
+ * The search for the incidents that need the owner, which the banner counts and the lane lists:
+ * still active, not called quiet, going on in the window and at least as sure as the floor, the
+ * most serious and surest first.
+ */
+export function needsYouQuery(attention: Attention, since: string, limit: number): IncidentQuery {
   return {
-    state: 'calm',
-    title: 'All quiet',
-    detail: alerts.total === 0 ? minor : `${minor} Nothing that needs you.`,
+    ...queryOf({ ...NO_FILTERS, q: `since:${since}`, confidence: attention.floor }, limit),
+    order: 'priority',
   }
+}
+
+/** Where the incidents that need the owner are listed in full: what the lane and the banner count. */
+export function needsYouLink(attention: Attention, since: string): RouteLocationRaw {
+  return { name: 'incidents', query: { q: needing(attention, since) } }
 }
 
 /** The label of a bucket on a chart: the hour for a day, the day and hour for a week. */

@@ -29,6 +29,12 @@ export class DashboardPage {
   readonly needsYou: Locator
   readonly needsYouCards: Locator
   readonly needsYouAll: Locator
+  /** What was filtered out: the sentence that counts the incidents, and a link for each reason. */
+  readonly filtered: Locator
+  readonly filteredSummary: Locator
+  readonly filteredUnsure: Locator
+  readonly filteredMuted: Locator
+  readonly filteredHandled: Locator
   /** Where the alerts come from: the card, what it says in a sentence, the alerts it lists and
    * the buttons of each. */
   readonly noise: Locator
@@ -73,6 +79,11 @@ export class DashboardPage {
     this.needsYou = page.getByTestId('needs-you')
     this.needsYouCards = this.needsYou.getByTestId('incident-card')
     this.needsYouAll = page.getByTestId('needs-you-all')
+    this.filtered = page.getByTestId('filtered')
+    this.filteredSummary = page.getByTestId('filtered-summary')
+    this.filteredUnsure = page.getByTestId('filtered-unsure')
+    this.filteredMuted = page.getByTestId('filtered-muted')
+    this.filteredHandled = page.getByTestId('filtered-handled')
     this.noise = page.getByTestId('noise-card')
     this.noiseSummary = page.getByTestId('noise-summary')
     this.noiseItems = this.noise.getByTestId('noise-item')

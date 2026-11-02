@@ -16,13 +16,17 @@ something they don't do, change the part (or add a new one) rather than styling 
 | `StatTile` | One number that matters with its name and a line of context, how it has changed (`delta`) and a small trend line (`trend`). It leads to where the number comes from when given `to`. |
 | `FactList` | Facts as labelled values (the versions on the Status page): the label beside its value where there is room, and above it on a phone. |
 | `UsageMeter` | How much of something is used: a bar that turns amber from 75% and red from 90%, with the figures in words so the meaning never rests on colour. |
+| `FilteredNote` | The incidents the dashboard left out, by reason (not sure enough, called quiet by a verdict, already handled), each a link to the Incidents page showing exactly those. |
 | `NoiseCard` | Where the alerts come from and the ones reported most often, each with its share as a bar (decoration: the figures say the same), and *Quiet this*, which gives a low priority verdict through the same path as the incident cards so the page can offer *Undo*. |
 
 ## The dashboard
 
 The first page is built from the parts above and the charts below, in this order, and a page
 that grows beside it should keep the order: what needs attention (`StatusHero`, a `HeroSurface`, with the
-numbers that back it up, the `StatTile`s, inside it), what needs a decision (`NeedsYouLane`), then
+numbers that back it up, the `StatTile`s, inside it), what was filtered out (`FilteredNote`: how many
+incidents need you and how many were left out, each reason a link to the incidents it left out, so a
+headline that counts only what survives the filters keeps the rest one click away), what needs a
+decision (`NeedsYouLane`, which lists the incidents the sentence counted), then
 charts, then what is making the noise (`NoiseCard`), then lists. The hero is never only a color: each of its four states has its own icon,
 label and words, it announces a change politely (it is an `output`), and it never says all is
 quiet while the collectors that would raise an alarm are not working. Its ring, glow and sweep

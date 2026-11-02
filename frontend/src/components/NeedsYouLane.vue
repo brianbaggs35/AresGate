@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight } from '@lucide/vue'
 import { computed } from 'vue'
+import type { RouteLocationRaw } from 'vue-router'
 
 import type { Incident } from '@/api/incidents'
 import IncidentCard from '@/components/IncidentCard.vue'
@@ -17,6 +18,8 @@ const props = defineProps<{
   incidents: readonly Incident[]
   /** How many there are in all, which is more than are shown when the lane is only the first few. */
   total: number
+  /** The list that has all of them, for the link to it; the page of incidents as it opens if not given. */
+  to?: RouteLocationRaw
 }>()
 defineEmits<{ judged: [Judged] }>()
 
@@ -29,14 +32,15 @@ const more = computed(() => props.total > props.incidents.length)
       <div>
         <h2 id="needs-you-title" class="text-title-large">Needs you</h2>
         <p class="text-body-medium text-medium-emphasis" data-test="needs-you-description">
-          {{ formatCount(total) }} open {{ total === 1 ? 'incident' : 'incidents' }}, the most
-          serious and surest first. Say what you think of one and AresGate remembers it.
+          {{ formatCount(total) }} {{ total === 1 ? 'incident' : 'incidents' }} AresGate is sure
+          enough of to ask, the most serious and surest first. Say what you think of one and
+          AresGate remembers it.
         </p>
       </div>
       <v-btn
         variant="text"
         :append-icon="ArrowRight"
-        :to="{ name: 'incidents' }"
+        :to="to ?? { name: 'incidents' }"
         data-test="needs-you-all"
       >
         {{ more ? `See all ${formatCount(total)}` : 'Open Incidents' }}

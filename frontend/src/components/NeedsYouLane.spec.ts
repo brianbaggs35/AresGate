@@ -1,3 +1,5 @@
+import type { RouteLocationRaw } from 'vue-router'
+
 import IncidentCard from '@/components/IncidentCard.vue'
 import NeedsYouLane from '@/components/NeedsYouLane.vue'
 import { incident } from '@/test/incidents'
@@ -10,7 +12,9 @@ const three = [
   incident({ id: 1, title: 'Beacon (192.0.2.44)', severity: 'medium' }),
 ]
 
-async function open(props: { incidents?: typeof three; total?: number } = {}) {
+async function open(
+  props: { incidents?: typeof three; total?: number; to?: RouteLocationRaw } = {},
+) {
   const mounted = await mountWithPlugins(NeedsYouLane, {
     signedIn: 'admin',
     withApp: true,
@@ -33,14 +37,14 @@ describe('NeedsYouLane', () => {
     const { wrapper, text } = await open()
 
     expect(wrapper.find('h2').text()).toBe('Needs you')
-    expect(text('needs-you-description')).toContain('3 open incidents')
+    expect(text('needs-you-description')).toContain('3 incidents AresGate is sure enough of')
     expect(wrapper.find('section').attributes('aria-labelledby')).toBe('needs-you-title')
   })
 
   it('says it in the singular for one', async () => {
     const { text } = await open({ incidents: [three[0]!], total: 1 })
 
-    expect(text('needs-you-description')).toContain('1 open incident,')
+    expect(text('needs-you-description')).toContain('1 incident AresGate is sure enough of')
   })
 
   it('leads to every incident when that is all of them', async () => {
@@ -55,6 +59,12 @@ describe('NeedsYouLane', () => {
 
     expect(text('needs-you-all')).toBe('See all 12')
     expect(find('needs-you-all').attributes('href')).toBe('/incidents')
+  })
+
+  it('leads to the list it is given, when it is given one', async () => {
+    const { find } = await open({ total: 12, to: { name: 'incidents', query: { q: 'since:6h' } } })
+
+    expect(find('needs-you-all').attributes('href')).toBe('/incidents?q=since:6h')
   })
 
   it('passes on what a card was told', async () => {

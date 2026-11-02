@@ -737,7 +737,13 @@ test.describe('layout on a phone', () => {
     await harness.createIncidents([
       { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], minutes_ago: 10 },
       { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], minutes_ago: 20 },
-      { address: '1.1.1.1', severity: 'medium', programs: ['wazuh'], minutes_ago: 30 },
+      {
+        address: '1.1.1.1',
+        severity: 'medium',
+        programs: ['wazuh', 'opnsense'],
+        signals: 2,
+        minutes_ago: 30,
+      },
     ])
 
     await dashboard.goto()
@@ -764,6 +770,43 @@ test.describe('layout on a phone', () => {
     const third = await dashboard.needsYouCards.nth(2).boundingBox()
     expect(third?.x ?? -1).toBeGreaterThanOrEqual(0)
     expect((third?.x ?? 0) + (third?.width ?? 0)).toBeLessThanOrEqual(width)
+  })
+
+  test('keeps the note on what was filtered out within the screen, with links a finger can hit', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'] })
+    await harness.createIncidents([
+      { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], minutes_ago: 10 },
+      { address: '8.8.8.8', severity: 'low', programs: ['opnsense'], signals: 1, minutes_ago: 20 },
+      {
+        address: '1.1.1.1',
+        severity: 'low',
+        programs: ['opnsense'],
+        signals: 1,
+        minutes_ago: 30,
+        status: 'resolved',
+      },
+    ])
+
+    await dashboard.goto()
+    await expect(dashboard.filteredSummary).toHaveText(
+      '3 incidents in the last 24 hours: 1 needs you, 2 filtered out.',
+    )
+
+    const width = page.viewportSize()?.width ?? 0
+    for (const link of [dashboard.filteredUnsure, dashboard.filteredHandled]) {
+      const box = await link.boundingBox()
+      expect(box?.x ?? -1).toBeGreaterThanOrEqual(0)
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(24)
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 
   test('keeps the buttons of the dashboard big enough for a finger', async ({

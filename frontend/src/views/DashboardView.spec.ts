@@ -5,7 +5,14 @@ import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
-import { alert, dashboard, incidentMark, noisySignature, sourceAlerts } from '@/test/dashboard'
+import {
+  alert,
+  attention,
+  dashboard,
+  incidentMark,
+  noisySignature,
+  sourceAlerts,
+} from '@/test/dashboard'
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
@@ -14,7 +21,8 @@ import DashboardView from '@/views/DashboardView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
 
-/** A dashboard where something happened: nine alerts, four of them serious. */
+/** A dashboard where something happened: nine alerts, four of them serious, filed into twelve
+ * incidents, three of which need the owner and one of those AresGate is confident of. */
 function busy() {
   const base = dashboard()
   const none = base.alerts.by_severity.info
@@ -53,6 +61,14 @@ function busy() {
       },
     ],
     devices: { total: 14, new: 2 },
+    attention: attention({
+      incidents: 12,
+      handled: 2,
+      muted: 3,
+      unsure: 4,
+      needs_you: 3,
+      urgent: 1,
+    }),
     noise: {
       sources: [
         sourceAlerts({ total: 7, serious: 4 }),
@@ -112,12 +128,31 @@ describe('DashboardView', () => {
   })
 
   describe('the banner', () => {
-    it('asks for attention when there is a serious alert', async () => {
+    it('asks for attention when an incident is one AresGate is confident of', async () => {
       const { find, text } = await open()
       expect(find('posture').attributes('data-state')).toBe('attention')
       expect(text('posture-title')).toBe('Needs your attention')
-      expect(text('posture-detail')).toContain('4 serious alerts in the last 24 hours')
+      expect(text('posture-detail')).toContain(
+        '1 incident that AresGate is confident is real in the last 24 hours, and 2 more worth a look.',
+      )
       expect(find('posture-action').exists()).toBe(false)
+    })
+
+    it('is worth a look when incidents need you but none is a confident one', async () => {
+      const shown = { ...busy(), attention: attention({ incidents: 5, needs_you: 2, unsure: 3 }) }
+      const { find, text } = await open({ dashboard: shown })
+      expect(find('posture').attributes('data-state')).toBe('watch')
+      expect(text('posture-title')).toBe('Worth a look')
+    })
+
+    it('stays quiet about serious alerts that no incident needs you for', async () => {
+      const shown = { ...busy(), attention: attention({ incidents: 5, muted: 2, unsure: 3 }) }
+      const { find, text } = await open({ dashboard: shown })
+      expect(find('posture').attributes('data-state')).toBe('calm')
+      expect(text('posture-title')).toBe('All quiet')
+      expect(text('posture-detail')).toBe(
+        '9 alerts in the last 24 hours, and none of them needs you.',
+      )
     })
 
     it('is quiet when nothing happened and the collectors work', async () => {
@@ -179,25 +214,61 @@ describe('DashboardView', () => {
     })
 
     it.each([
-      ['no alerts at all', dashboard(), 'text-success'],
+      ['nothing needs you', attention({ incidents: 4, unsure: 4 }), 'text-success'],
+      ['an incident needs you', attention({ incidents: 4, needs_you: 1 }), 'text-warning'],
       [
-        'a serious alert',
-        dashboard({ alerts: { ...dashboard().alerts, total: 1, highest: 'high' } }),
+        'a confident incident needs you',
+        attention({ incidents: 4, needs_you: 1, urgent: 1 }),
         'text-error',
       ],
-      [
-        'a medium alert',
-        dashboard({ alerts: { ...dashboard().alerts, total: 1, highest: 'medium' } }),
-        'text-warning',
-      ],
-      [
-        'only a low alert',
-        dashboard({ alerts: { ...dashboard().alerts, total: 1, highest: 'low' } }),
-        'text-primary',
-      ],
-    ])('color the alerts by the worst there were: %s', async (_name, shown, color) => {
-      const { find } = await open({ dashboard: shown })
-      expect(find('tile-alerts').find('.v-icon').classes()).toContain(color)
+    ])(
+      'color the alerts by what needs you and not by the worst there were: %s',
+      async (_name, counted, color) => {
+        const shown = { ...busy(), attention: counted }
+        const { find } = await open({ dashboard: shown })
+        expect(find('tile-alerts').find('.v-icon').classes()).toContain(color)
+      },
+    )
+  })
+
+  describe('the note on what was filtered out', () => {
+    it('says how many incidents there were, how many need you and how many were left out', async () => {
+      const { text } = await open()
+      expect(text('filtered-summary')).toBe(
+        '12 incidents in the last 24 hours: 3 need you, 9 filtered out.',
+      )
+    })
+
+    it('links each reason to the incidents it left out', async () => {
+      const { find, text } = await open()
+      const since = busy().window.start
+
+      expect(text('filtered-unsure')).toBe('4 not sure enough')
+      expect(text('filtered-muted')).toBe('3 called not suspicious or low priority')
+      expect(text('filtered-handled')).toBe('2 already handled')
+      const unsure = new URL(find('filtered-unsure').attributes('href') ?? '', 'https://x')
+      expect(unsure.pathname).toBe('/incidents')
+      expect(unsure.searchParams.get('q')).toBe(`since:${since} confidence<35`)
+      const handled = new URL(find('filtered-handled').attributes('href') ?? '', 'https://x')
+      expect(handled.searchParams.get('view')).toBe('all')
+      expect(handled.searchParams.get('quieted')).toBe('1')
+    })
+
+    it('comes under the banner and before the lane', async () => {
+      const { find } = await open({
+        incidents: page([incident({ id: 3, title: 'Port scan (198.51.100.7)' })], { total: 3 }),
+      })
+      expect(find('posture').element.compareDocumentPosition(find('filtered').element)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+      expect(find('filtered').element.compareDocumentPosition(find('needs-you').element)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    })
+
+    it('is left out when there were no incidents', async () => {
+      const { find } = await open({ dashboard: dashboard() })
+      expect(find('filtered').exists()).toBe(false)
     })
   })
 
@@ -211,16 +282,33 @@ describe('DashboardView', () => {
         { total: 5 },
       )
 
-    it('asks for the three open incidents that are most serious and surest', async () => {
+    it('asks for the three incidents the banner counted, the most serious and surest first', async () => {
       const { fetchIncidents } = await open()
 
       expect(fetchIncidents).toHaveBeenCalledWith({
         statuses: ['open', 'investigating'],
-        minConfidence: 0,
+        minConfidence: 35,
+        q: `since:${busy().window.start}`,
+        tz: expect.any(String) as string,
         verdicts: ['none', 'threat'],
         limit: 3,
         order: 'priority',
       })
+    })
+
+    it('does not ask when nothing needs the owner', async () => {
+      const { fetchIncidents, find } = await open({ dashboard: dashboard() })
+
+      expect(fetchIncidents).not.toHaveBeenCalled()
+      expect(find('needs-you').exists()).toBe(false)
+    })
+
+    it('lists the incidents on the Incidents page by the same floor and window', async () => {
+      const { find } = await open({ incidents: waiting() })
+
+      const link = new URL(find('needs-you-all').attributes('href') ?? '', 'https://x')
+      expect(link.pathname).toBe('/incidents')
+      expect(link.searchParams.get('q')).toBe(`since:${busy().window.start} confidence>=35`)
     })
 
     it('shows a card for each, under the banner, and says how many there are in all', async () => {
@@ -230,7 +318,7 @@ describe('DashboardView', () => {
         'Port scan (198.51.100.7)',
         'Brute force on ssh (203.0.113.9)',
       ])
-      expect(text('needs-you-description')).toContain('5 open incidents')
+      expect(text('needs-you-description')).toContain('5 incidents AresGate is sure enough of')
       expect(text('needs-you-all')).toBe('See all 5')
       expect(find('posture').element.compareDocumentPosition(find('needs-you').element)).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -290,7 +378,9 @@ describe('DashboardView', () => {
         )
         expect(fetchDashboard).toHaveBeenCalledTimes(2)
         expect(fetchIncidents).toHaveBeenCalledTimes(2)
-        expect(find('needs-you-description').text()).toContain('1 open incident,')
+        expect(find('needs-you-description').text()).toContain(
+          '1 incident AresGate is sure enough of',
+        )
       })
 
       it('goes when the last one has been judged', async () => {

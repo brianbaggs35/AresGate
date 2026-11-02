@@ -1,7 +1,17 @@
 import type { Collector, CollectorsReport } from '@/api/collectors'
 import type { AlertCounts } from '@/api/dashboard'
-import { bucketLabel, changeOf, collectionOf, marksOf, postureOf, sumBuckets } from '@/dashboard'
-import { incidentMark } from '@/test/dashboard'
+import {
+  bucketLabel,
+  changeOf,
+  collectionOf,
+  filteredOut,
+  marksOf,
+  needsYouLink,
+  needsYouQuery,
+  postureOf,
+  sumBuckets,
+} from '@/dashboard'
+import { attention, incidentMark } from '@/test/dashboard'
 
 const BEFORE = 'the day before'
 
@@ -140,67 +150,171 @@ describe('collectionOf', () => {
 describe('postureOf', () => {
   const well = collectionOf(report(['ok']))
   const failing = collectionOf(report(['problem']))
+  const none = attention()
 
   it('asks for something to be connected before anything else', () => {
-    const posture = postureOf(alertsOf({ critical: [1, 0, 0] }), collectionOf(report([])), '24h')
+    const posture = postureOf(
+      alertsOf({ critical: [1, 0, 0] }),
+      attention({ incidents: 1, needs_you: 1, urgent: 1 }),
+      collectionOf(report([])),
+      '24h',
+    )
     expect(posture.state).toBe('setup')
     expect(posture.title).toBe('Nothing is watching yet')
   })
 
-  it('needs attention for a high or critical alert, whatever else there is', () => {
-    expect(postureOf(alertsOf({ high: [1, 1, 0] }), well, '24h')).toEqual({
+  it('needs attention for incidents it is confident of, and says how many more are worth a look', () => {
+    expect(
+      postureOf(
+        alertsOf({ high: [1, 1, 0] }),
+        attention({ incidents: 3, needs_you: 1, urgent: 1 }),
+        well,
+        '24h',
+      ),
+    ).toEqual({
       state: 'attention',
       title: 'Needs your attention',
-      detail: '2 serious alerts in the last 24 hours (high or critical).',
+      detail: '1 incident that AresGate is confident is real in the last 24 hours.',
     })
-    expect(postureOf(alertsOf({ critical: [0, 0, 1], medium: [3, 0, 0] }), well, '7d').detail).toBe(
-      '1 serious alert in the last 7 days (high or critical).',
+    expect(
+      postureOf(
+        alertsOf({ high: [1, 1, 0] }),
+        attention({ incidents: 9, needs_you: 5, urgent: 2 }),
+        well,
+        '7d',
+      ).detail,
+    ).toBe(
+      '2 incidents that AresGate is confident are real in the last 7 days, and 3 more worth a look.',
     )
+  })
+
+  it('goes by the incidents and not by how many alerts there were', () => {
+    const thousands = alertsOf({ high: [3000, 642, 0] })
+    expect(postureOf(thousands, none, well, '24h')).toEqual({
+      state: 'calm',
+      title: 'All quiet',
+      detail: '3,642 alerts in the last 24 hours, and none of them needs you.',
+    })
   })
 
   it('adds that collectors are down to an alarm', () => {
-    expect(postureOf(alertsOf({ high: [1, 0, 0] }), failing, '24h').detail).toBe(
-      '1 serious alert in the last 24 hours (high or critical). 1 collector is not working, so a quiet network may not be a safe one.',
+    expect(
+      postureOf(alertsOf({}), attention({ incidents: 1, needs_you: 1, urgent: 1 }), failing, '24h')
+        .detail,
+    ).toBe(
+      '1 incident that AresGate is confident is real in the last 24 hours. 1 collector is not working, so a quiet network may not be a safe one.',
     )
   })
 
-  it('is worth a look for medium alerts and says none were serious', () => {
-    expect(postureOf(alertsOf({ medium: [2, 0, 0] }), well, '24h')).toEqual({
-      state: 'watch',
-      title: 'Worth a look',
-      detail: '2 medium alerts in the last 24 hours, none serious.',
-    })
-    expect(postureOf(alertsOf({ medium: [1, 0, 0] }), failing, '24h').detail).toContain(
-      '1 medium alert in the last 24 hours, none serious. 1 collector is not working',
+  it('is worth a look for incidents it is not sure are attacks', () => {
+    expect(postureOf(alertsOf({}), attention({ incidents: 2, needs_you: 2 }), well, '24h')).toEqual(
+      {
+        state: 'watch',
+        title: 'Worth a look',
+        detail:
+          '2 incidents to look at in the last 24 hours, none that AresGate is confident is a real attack.',
+      },
+    )
+    expect(
+      postureOf(alertsOf({}), attention({ incidents: 1, needs_you: 1 }), failing, '7d').detail,
+    ).toBe(
+      '1 incident to look at in the last 7 days, none that AresGate is confident is a real attack. 1 collector is not working, so a quiet network may not be a safe one.',
     )
   })
 
   it("never says it is quiet while collectors aren't working", () => {
-    expect(postureOf(alertsOf({}), failing, '24h')).toEqual({
+    expect(postureOf(alertsOf({}), none, failing, '24h')).toEqual({
       state: 'watch',
       title: "Some sources aren't reporting",
       detail:
         'No alerts in the last 24 hours. 1 collector is not working, so a quiet network may not be a safe one.',
     })
-    expect(postureOf(alertsOf({ low: [2, 0, 0] }), failing, '24h').detail).toMatch(
-      /^2 minor alerts in the last 24 hours\. 1 collector/,
+    expect(postureOf(alertsOf({ low: [2, 0, 0] }), none, failing, '24h').detail).toMatch(
+      /^2 alerts in the last 24 hours, and none of them needs you\. 1 collector/,
     )
   })
 
-  it('is quiet when there is nothing, and when there is only little', () => {
-    expect(postureOf(alertsOf({}), well, '24h')).toEqual({
+  it('is quiet when there is nothing, and when there is nothing that needs you', () => {
+    expect(postureOf(alertsOf({}), none, well, '24h')).toEqual({
       state: 'calm',
       title: 'All quiet',
       detail: 'No alerts in the last 24 hours.',
     })
-    expect(postureOf(alertsOf({ info: [1, 0, 0], low: [0, 1, 0] }), well, '7d')).toEqual({
+    expect(
+      postureOf(
+        alertsOf({ info: [1, 0, 0], low: [0, 1, 0] }),
+        attention({ incidents: 4, handled: 1, muted: 1, unsure: 2 }),
+        well,
+        '7d',
+      ),
+    ).toEqual({
       state: 'calm',
       title: 'All quiet',
-      detail: '2 minor alerts in the last 7 days. Nothing that needs you.',
+      detail: '2 alerts in the last 7 days, and none of them needs you.',
     })
-    expect(postureOf(alertsOf({ low: [1, 0, 0] }), well, '24h').detail).toBe(
-      '1 minor alert in the last 24 hours. Nothing that needs you.',
+    expect(postureOf(alertsOf({ low: [1, 0, 0] }), none, well, '24h').detail).toBe(
+      '1 alert in the last 24 hours, and none of them needs you.',
     )
+  })
+})
+
+describe('filteredOut', () => {
+  const since = '2026-11-01T10:00:00Z'
+
+  it('lists the reasons there are incidents for, each as a link to those incidents', () => {
+    const reasons = filteredOut(
+      attention({ incidents: 12, unsure: 7, muted: 3, handled: 2 }),
+      since,
+    )
+    expect(reasons.map(({ key, count, label }) => [key, count, label])).toEqual([
+      ['unsure', 7, 'not sure enough'],
+      ['muted', 3, 'called not suspicious or low priority'],
+      ['handled', 2, 'already handled'],
+    ])
+    expect(reasons.map(({ to }) => to)).toEqual([
+      { name: 'incidents', query: { q: `since:${since} confidence<35` } },
+      {
+        name: 'incidents',
+        query: { quieted: '1', q: `since:${since} verdict:not_suspicious,low_priority` },
+      },
+      {
+        name: 'incidents',
+        query: { view: 'all', quieted: '1', q: `since:${since} status:resolved,dismissed` },
+      },
+    ])
+  })
+
+  it('leaves out the reasons nothing was filtered for, and uses the floor it was given', () => {
+    const reasons = filteredOut(attention({ incidents: 4, unsure: 4, floor: 50 }), since)
+    expect(reasons).toHaveLength(1)
+    expect(reasons[0]?.to).toEqual({
+      name: 'incidents',
+      query: { q: `since:${since} confidence<50` },
+    })
+    expect(filteredOut(attention(), since)).toEqual([])
+  })
+})
+
+describe('needsYou', () => {
+  const since = '2026-11-01T10:00:00Z'
+
+  it('asks for what the banner counts: active, not called quiet, sure enough, in the window', () => {
+    expect(needsYouQuery(attention({ floor: 40 }), since, 3)).toEqual({
+      statuses: ['open', 'investigating'],
+      minConfidence: 40,
+      q: `since:${since}`,
+      tz: expect.any(String) as string,
+      verdicts: ['none', 'threat'],
+      limit: 3,
+      order: 'priority',
+    })
+  })
+
+  it('links to the same incidents on the Incidents page', () => {
+    expect(needsYouLink(attention(), since)).toEqual({
+      name: 'incidents',
+      query: { q: `since:${since} confidence>=35` },
+    })
   })
 })
 

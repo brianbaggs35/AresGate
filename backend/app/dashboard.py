@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
+from app.incidents.attention import NEEDS_YOU_FROM, Standing, clauses, urgent_clause
 from app.incidents.verdicts import MUTING
 from app.models import Device, Event, Incident, MetricSample, MetricSeries
 from app.models.base import UTCDateTime
@@ -311,6 +312,47 @@ def marked_incidents(db: Session, win: Window, limit: int = MARKED_INCIDENTS) ->
         .limit(limit)
     )
     return sorted(db.scalars(chosen), key=lambda incident: (incident.first_seen_at, incident.id))
+
+
+@dataclass(frozen=True)
+class Attention:
+    """What the incidents that were going on in a window come to for the owner, and why the rest
+    are not asked about. Each incident is counted once, for the first of these that is true."""
+
+    # How many incidents were going on in the window.
+    incidents: int
+    # The confidence an incident needs to be asked about.
+    floor: int
+    # Already dealt with: resolved, or dismissed.
+    handled: int
+    # Called not suspicious or low priority by a verdict, so they never raise an alarm.
+    muted: int
+    # Not sure enough: AresGate's confidence in them is below the floor.
+    unsure: int
+    # What is left: they need the owner. How many of those AresGate is highly confident of.
+    needs_you: int
+    urgent: int
+
+
+def attention(db: Session, win: Window, floor: int = NEEDS_YOU_FROM) -> Attention:
+    """How many of the incidents that were going on in a window need the owner, and how many were
+    filtered out, by the reason. The Needs you lane and the Incidents page ask for the same ones
+    (open or investigating, no quiet verdict, at least the floor in confidence, going on since the
+    window began), so the number on the banner is the number they list."""
+    going = and_(Incident.first_seen_at < win.end, Incident.last_seen_at >= win.start)
+    by = clauses(floor)
+    row = db.execute(
+        select(
+            func.count(),
+            func.count().filter(by[Standing.HANDLED]),
+            func.count().filter(by[Standing.MUTED]),
+            func.count().filter(by[Standing.UNSURE]),
+            func.count().filter(by[Standing.NEEDS_YOU]),
+            func.count().filter(urgent_clause(floor)),
+        ).where(going)
+    ).one()
+    total, handled, muted, unsure, needs_you, urgent = row
+    return Attention(total, floor, handled, muted, unsure, needs_you, urgent)
 
 
 @dataclass(frozen=True)
