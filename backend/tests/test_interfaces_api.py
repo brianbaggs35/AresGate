@@ -555,6 +555,34 @@ class TestDiscovering:
         assert (eth0.label, eth0.detail) == ("", "live packet capture")
         assert (eth1.label, eth1.detail) == ("LAN", "live packet capture")
 
+    def test_with_no_interface_chosen_ntopng_is_asked_for_every_one_but_the_loopback(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+    ) -> None:
+        listing = {
+            "rc": 0,
+            "rsp": [
+                {"ifid": 1, "ifname": "igc0", "name": "WAN"},
+                {"ifid": 3, "ifname": "lo0", "name": "lo0"},
+                {"ifid": 6, "ifname": "ovpns1", "name": "ovpns1"},
+            ],
+        }
+        connect(
+            session,
+            settings,
+            serve(lambda seen: Answer(body=json.dumps(listing))).url,
+            interface_id="",
+        )
+
+        response = self.discover(client, csrf_token)
+
+        assert response.json() == {"new": 2, "complete": True, "notes": []}
+        assert {name for _, _, name in self.feeds(session)} == {"igc0", "ovpns1"}
+
     def test_an_interface_that_has_no_system_name_is_known_by_its_number(
         self,
         client: TestClient,

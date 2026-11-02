@@ -1,6 +1,7 @@
 import { Plug } from '@lucide/vue'
 
 import type { Problem } from '@/api/client'
+import type { LookupEntry } from '@/api/integrations'
 import {
   MODULE_STATE,
   STATUS,
@@ -17,6 +18,7 @@ import {
   settingsFrom,
   sameFingerprint,
   sortProblems,
+  suggestedEntries,
   usesTls,
 } from '@/integrations'
 import { module, ntopngApi, opnsense } from '@/test/integrations'
@@ -60,7 +62,7 @@ describe('draftFrom', () => {
       tlsMode: 'system',
       tlsCaPem: '',
       tlsFingerprint: '',
-      options: { auth: 'token', username: '', interface_id: '0' },
+      options: { auth: 'token', username: '', interface_id: '' },
       secrets: {},
       disabledModules: [],
     })
@@ -146,7 +148,7 @@ describe('settingsFrom', () => {
       tls_mode: 'system',
       tls_ca_pem: null,
       tls_fingerprint: null,
-      options: { auth: 'token', interface_id: '0' },
+      options: { auth: 'token', interface_id: '' },
       disabled_modules: [],
       secrets: { token: 'a-token' },
     })
@@ -250,8 +252,8 @@ describe('connectionLabels', () => {
 
 describe('lookupItems', () => {
   const entries = [
-    { value: '0', label: 'eth0', detail: 'live packet capture', quiet: false },
-    { value: '1', label: 'LAN (eth1)', detail: '', quiet: true },
+    { value: '0', label: 'eth0', detail: 'live packet capture', quiet: false, loopback: false },
+    { value: '1', label: 'LAN (eth1)', detail: '', quiet: true, loopback: false },
   ]
 
   it('names each choice, with its ID and what else is known of it', () => {
@@ -299,5 +301,46 @@ describe('chosenValues and joinValues', () => {
   it('keeps them once each, in order of their numbers, so a choice is always saved the same way', () => {
     expect(joinValues(['10', '2', '0', '2'])).toBe('0,2,10')
     expect(joinValues([])).toBe('')
+  })
+})
+
+describe('suggestedEntries', () => {
+  const entry = (value: string, changes: Partial<LookupEntry> = {}): LookupEntry => ({
+    value,
+    label: `if${value}`,
+    detail: '',
+    quiet: false,
+    loopback: false,
+    ...changes,
+  })
+  const values = (found: LookupEntry[]) => found.map(({ value }) => value)
+
+  it('suggests every one but a loopback, quiet or not, where several can be chosen', () => {
+    const listed = [entry('1'), entry('2', { quiet: true }), entry('3', { loopback: true })]
+    expect(values(suggestedEntries(listed, true, 16))).toEqual(['1', '2'])
+  })
+
+  it('suggests no more than can be chosen', () => {
+    const listed = [entry('1'), entry('2'), entry('3')]
+    expect(values(suggestedEntries(listed, true, 2))).toEqual(['1', '2'])
+  })
+
+  it('suggests the loopback when it is all there is', () => {
+    const listed = [entry('3', { loopback: true })]
+    expect(values(suggestedEntries(listed, true, 16))).toEqual(['3'])
+  })
+
+  it('suggests the first that has seen traffic where one can be chosen, or else the first', () => {
+    const quiet = entry('1', { quiet: true })
+    expect(values(suggestedEntries([quiet, entry('2'), entry('4')], false, 16))).toEqual(['2'])
+    expect(values(suggestedEntries([quiet, entry('2', { quiet: true })], false, 16))).toEqual(['1'])
+    expect(values(suggestedEntries([entry('3', { loopback: true }), quiet], false, 16))).toEqual([
+      '1',
+    ])
+  })
+
+  it('suggests nothing when nothing is listed', () => {
+    expect(suggestedEntries([], true, 16)).toEqual([])
+    expect(suggestedEntries([], false, 16)).toEqual([])
   })
 })

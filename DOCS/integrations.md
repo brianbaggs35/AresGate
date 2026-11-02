@@ -243,21 +243,33 @@ Pi, a server) is the separate **CrowdSec** integration below.
    gives no speed or address for an interface, so none is shown.
 
 Up to 16 can be chosen, and they are kept as their IDs joined by commas, lowest first (`0,1`);
-a connection saved with one ID before several could be chosen reads as that one. Every
-collector below reads each chosen interface in turn: the interface's traffic is kept for each,
-labelled with the interface's name; hosts and alerts from all of them are read together, and an
-alert says which interface it came in on, so it can later be placed on a part of the network
-([Interfaces](development.md#interfaces-the-parts-of-the-network)). An interface that has seen
-nothing is skipped by the *Interface traffic* collector, unless every chosen interface is quiet.
+a connection saved with one ID before several could be chosen reads as that one. **No number is
+assumed**: ntopng gives its interfaces IDs itself, with gaps and not always from 0 (an OPNsense
+firewall's might be 1, 2, 3 and 6), so choosing none is allowed, and then every interface ntopng
+lists is read except the loopback (`lo`, `lo0`), which only carries the machine's traffic to
+itself. Which they are is asked of ntopng each time a collector runs, so a renumbered ntopng
+needs no change here, and the test says which it reads. If only a loopback is listed, it is
+read. Every collector below reads each chosen interface in turn: the interface's traffic is kept
+for each, labelled with the interface's name; hosts and alerts from all of them are read
+together, and an alert says which interface it came in on, so it can later be placed on a part
+of the network ([Interfaces](development.md#interfaces-the-parts-of-the-network)). An interface
+that has seen nothing is skipped by the *Interface traffic* collector, unless every chosen
+interface is quiet.
 
 A connection that isn't saved yet starts on every interface that has seen traffic (or the first,
-if none has) when the default isn't among the ones listed. A saved choice that has gone from the
-list is kept and flagged, never swapped silently. ntopng answers an `ifid` it doesn't have with
-HTTP 400 (`INVALID_INTERFACE`), which the collectors report as "ntopng has no interface 3, so it
-refused the request. It has: ID 0: eth0, ID 1: LAN (eth1)" instead of the bare status. An
-interface that has seen nothing is reported in words by the test and by the *Interface traffic*
-collector, so "nothing comes in" has a reason on the page. Asking for the list makes one request
-for the list and one for each of the first 20 interfaces, and each is in the API log.
+if none has), leaving out the loopback, when Fetch interfaces is pressed. A saved choice that has
+gone from the list is kept and flagged, never swapped silently: the test says "ntopng answered,
+but has no interface with ID 0. It has: ID 1: WAN (igc0), ID 2: LAN (igc1), ID 3: lo0
+(loopback), ID 6: ovpns1" and suggests the IDs to choose (all but the loopback), and the field
+under Interfaces offers a button that chooses them in one click. The list is asked again after
+every test, so the button is there without pressing Fetch interfaces. A loopback can still be
+chosen, and the test then says it normally has nothing worth reading. ntopng answers an `ifid`
+it doesn't have with HTTP 400 (`INVALID_INTERFACE`), which the collectors report as "ntopng has
+no interface 3, so it refused the request. It has: ID 0: eth0, ID 1: LAN (eth1)" instead of the
+bare status. An interface that has seen nothing is reported in words by the test and by the
+*Interface traffic* collector, so "nothing comes in" has a reason on the page. Asking for the
+list makes one request for the list and one for each of the first 20 interfaces, and each is in
+the API log.
 
 ntopng answers a login it refuses by redirecting to its login page. AresGate doesn't follow
 redirects (see below), so a refused token shows up as "redirected to its login page".

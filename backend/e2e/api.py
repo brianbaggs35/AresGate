@@ -513,6 +513,9 @@ class StandInRequest(BaseModel):
     # Discord: the `id/token` of the one webhook it knows. Alerts are sent to it instead of to
     # Discord while it runs.
     webhook: str = ""
+    # ntopng only: it numbers its interfaces the way one on an OPNsense firewall does (WAN 1, LAN 2,
+    # the loopback 3, a VPN 6), not from 0.
+    firewall: bool = False
 
 
 class StandInRecord(BaseModel):
@@ -538,6 +541,7 @@ def start_stand_in(body: StandInRequest, request: Request) -> StandInRecord:
         models=body.models,
         paid=body.paid,
         webhook=body.webhook,
+        firewall=body.firewall,
     )
     if body.provider is not None:
         request.app.state.ai_origins[body.provider] = running.url

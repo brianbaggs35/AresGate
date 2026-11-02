@@ -239,3 +239,19 @@ export function lookupItems(
     .map((value) => ({ value, title: `ID ${value}`, props: { subtitle } }))
   return [...kept, ...items]
 }
+
+/** What is chosen for someone who hasn't chosen: every entry but a loopback (the machine's traffic
+ * to itself, which normally has nothing worth reading), as many as can be chosen, or the loopback
+ * if that is all there is. Where only one can be chosen, the first that has seen traffic (or else
+ * the first). This is what a system reads when nothing is chosen, and what the buttons offer. */
+export function suggestedEntries(
+  entries: readonly LookupEntry[],
+  multiple: boolean,
+  most: number,
+): LookupEntry[] {
+  const usual = entries.filter((entry) => !entry.loopback)
+  const pool = usual.length > 0 ? usual : [...entries]
+  if (multiple) return pool.slice(0, most)
+  const chosen = pool.find((entry) => !entry.quiet) ?? pool[0]
+  return chosen ? [chosen] : []
+}

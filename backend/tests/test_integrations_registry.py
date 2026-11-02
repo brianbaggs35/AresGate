@@ -160,7 +160,15 @@ def test_a_module_is_present_if_it_was_found(state: ModuleState, present: bool) 
 
 
 def test_defaults_fill_in_what_is_missing() -> None:
-    assert clean_options(NTOPNG, {}) == {"auth": "token", "interface_id": "0"}
+    assert clean_options(NTOPNG, {}) == {"auth": "token", "interface_id": ""}
+
+
+def test_no_ntopng_interface_is_assumed_because_ntopng_numbers_them_itself() -> None:
+    field = next(item for item in NTOPNG.fields if item.key == "interface_id")
+
+    assert field.default == ""
+    for blank in ("", "  ", " , ", None):
+        assert clean_options(NTOPNG, {"interface_id": blank})["interface_id"] == ""
 
 
 def test_only_the_fields_that_apply_are_kept() -> None:

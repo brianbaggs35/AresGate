@@ -378,11 +378,11 @@ def test_ntopng_without_the_chosen_interface_lists_the_ones_it_has(serve: Serve)
     )
 
     assert not result.ok
-    assert (
-        result.message
-        == "ntopng answered, but has no interface with ID 7. It has: ID 0: wan, ID 1: lan."
+    assert result.message == (
+        "ntopng answered, but has no interface with ID 7. It has: ID 0: wan, ID 1: lan. "
+        "Choose the ones to read under Interfaces. Suggested: IDs 0 and 1."
     )
-    assert empty.message.endswith("It has: none.")
+    assert empty.message == "ntopng answered, but lists no interfaces, so there is nothing to read."
     assert len(server.seen) == 1
 
 
@@ -454,9 +454,172 @@ def test_ntopng_without_some_of_the_interfaces_chosen_names_them(serve: Serve) -
 
     assert not result.ok
     assert result.message == (
-        "ntopng answered, but has no interfaces with IDs 3, 7. It has: ID 0: wan."
+        "ntopng answered, but has no interfaces with IDs 3, 7. It has: ID 0: wan. "
+        "Choose the ones to read under Interfaces. Suggested: ID 0."
     )
-    assert one.message == "ntopng answered, but has no interface with ID 3. It has: ID 0: wan."
+    assert one.message == (
+        "ntopng answered, but has no interface with ID 3. It has: ID 0: wan. "
+        "Choose the ones to read under Interfaces. Suggested: ID 0."
+    )
+
+
+# An OPNsense firewall's ntopng: its interfaces are numbered from 1, with gaps, and the loopback
+# is among them.
+FIREWALL = [
+    {"ifid": 1, "ifname": "igc0", "name": "WAN", "is_packet_interface": True},
+    {"ifid": 2, "ifname": "igc1", "name": "LAN", "is_packet_interface": True},
+    {"ifid": 3, "ifname": "lo0", "name": "lo0", "is_packet_interface": True},
+    {"ifid": 6, "ifname": "ovpns1", "name": "ovpns1", "is_packet_interface": True},
+]
+FIREWALL_TRAFFIC: dict[int, object] = {1: BUSY, 2: BUSY, 3: QUIET, 6: QUIET}
+FIREWALL_LIST = "ID 1: WAN (igc0), ID 2: LAN (igc1), ID 3: lo0 (loopback), ID 6: ovpns1"
+
+
+def test_ntopng_that_numbers_its_interfaces_from_one_says_which_to_choose_instead_of_0(
+    serve: Serve,
+) -> None:
+    result, server, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(FIREWALL, FIREWALL_TRAFFIC),
+        options={"auth": "token", "interface_id": 0},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert not result.ok
+    assert result.message == (
+        f"ntopng answered, but has no interface with ID 0. It has: {FIREWALL_LIST}. "
+        "Choose the ones to read under Interfaces. Suggested: IDs 1, 2 and 6. "
+        "lo0 is the loopback, which normally has nothing worth reading."
+    )
+    assert [seen.path for seen in server.seen] == [INTERFACES]
+
+
+def test_ntopng_with_no_interface_chosen_reads_all_but_the_loopback(serve: Serve) -> None:
+    result, server, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(FIREWALL, FIREWALL_TRAFFIC),
+        options={"auth": "token", "interface_id": ""},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert result.message == (
+        "ntopng answered. No interface is chosen, so AresGate reads every one ntopng lists but "
+        "the loopback. Interface 1 is WAN (igc0): 41 hosts (18 local), 212 flows, 1.0 GB seen. "
+        "Interface 2 is LAN (igc1): 41 hosts (18 local), 212 flows, 1.0 GB seen. "
+        "Interface 6 is ovpns1 and hasn't seen any traffic yet. "
+        "Nothing comes in from an interface until it has seen traffic."
+    )
+    asked = [seen.target.partition("ifid=")[2] for seen in server.seen[1:]]
+    assert asked == ["1", "2", "6"]
+
+
+def test_ntopng_with_no_interface_chosen_and_only_one_listed_reads_that_one(
+    serve: Serve,
+) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router([{"ifid": 4, "ifname": "eth0"}], {4: BUSY}),
+        options={"auth": "token", "interface_id": ""},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result == Verdict(
+        True,
+        "ntopng answered. No interface is chosen, so AresGate reads every one ntopng lists. "
+        "Interface 4 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen.",
+    )
+
+
+def test_ntopng_with_no_interface_chosen_and_only_a_loopback_reads_it_and_says_why_not_to(
+    serve: Serve,
+) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router([{"ifid": 0, "ifname": "lo"}], {0: BUSY}),
+        options={"auth": "token", "interface_id": ""},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert result.message.endswith(
+        "Interface 0 is lo: 41 hosts (18 local), 212 flows, 1.0 GB seen. "
+        "lo is the loopback, which normally has nothing worth reading."
+    )
+
+
+def test_ntopng_with_no_interface_chosen_reads_no_more_than_can_be_chosen(serve: Serve) -> None:
+    many = [{"ifid": number, "ifname": f"eth{number}"} for number in range(20)]
+
+    result, server, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(many, {number: BUSY for number in range(20)}),
+        options={"auth": "token", "interface_id": ""},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert "so AresGate reads the first 16 of the 20 ntopng lists." in result.message
+    assert len(server.seen) == 1 + 16
+
+
+@pytest.mark.parametrize(
+    ("chosen", "ending"),
+    [
+        (3, "lo0 is the loopback, which normally has nothing worth reading."),
+        ("0,3", "lo0 is the loopback, which normally has nothing worth reading."),
+        ("3,4", "lo0 and lo1 are loopbacks, which normally have nothing worth reading."),
+    ],
+)
+def test_ntopng_with_a_loopback_chosen_says_it_is_not_normally_worth_reading(
+    serve: Serve, chosen: str | int, ending: str
+) -> None:
+    listing = [
+        {"ifid": 0, "ifname": "igc0"},
+        {"ifid": 3, "ifname": "lo0"},
+        {"ifid": 4, "ifname": "lo1"},
+    ]
+
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        ntopng_router(listing, {0: BUSY, 3: BUSY, 4: BUSY}),
+        options={"auth": "token", "interface_id": chosen},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert result.ok
+    assert result.message.endswith(ending)
+
+
+@pytest.mark.parametrize(
+    ("name", "loopback"),
+    [
+        ("lo", True),
+        ("lo0", True),
+        ("lo12", True),
+        ("igc0", False),
+        ("wlo1", False),
+        ("lo0.5", False),
+        ("br-lo", False),
+        ("", False),
+    ],
+)
+def test_the_loopback_is_told_by_the_name_the_system_gives_the_interface(
+    name: str, loopback: bool
+) -> None:
+    assert probes.NtopngInterface(1, name, name, "").loopback is loopback
 
 
 def test_ntopng_that_refuses_a_login_redirects_to_its_login_page(serve: Serve) -> None:
@@ -541,8 +704,31 @@ def test_ntopng_lists_each_interface_with_what_it_takes_traffic_from_and_has_see
         ("2", "eth2", "from a capture file · no traffic seen yet", True),
         ("3", "br0", "", False),
     ]
+    assert not any(entry.loopback for entry in result.entries)
     assert server.seen[0].headers["authorization"] == "Token tok-abcdef"
     assert len(log.calls) == 5
+
+
+def test_ntopng_lists_the_loopback_as_normally_not_useful(serve: Serve) -> None:
+    result, _, _ = lookup(
+        serve,
+        NTOPNG_KEY,
+        ntopng_router(FIREWALL, FIREWALL_TRAFFIC),
+        options=NTOPNG_OPTIONS,
+        secrets=NTOPNG_SECRETS,
+    )
+
+    assert [(entry.value, entry.loopback) for entry in result.entries] == [
+        ("1", False),
+        ("2", False),
+        ("3", True),
+        ("6", False),
+    ]
+    loopback = result.entries[2]
+    assert loopback.label == "lo0"
+    assert loopback.detail == (
+        "loopback, normally not useful · live packet capture · no traffic seen yet"
+    )
 
 
 def test_ntopng_asks_about_what_only_the_first_interfaces_hold(serve: Serve) -> None:

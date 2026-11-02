@@ -324,6 +324,7 @@ onMounted(load)
           :integration="integration.key"
           :connection="connection"
           :problems="problems[connection.definition.key] ?? {}"
+          :refresh="tests"
           @asked="requests += 1"
           @trusted="trusted(integration, $event)"
         />

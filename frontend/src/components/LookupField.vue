@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ListRestart, Square, SquareCheck, TriangleAlert } from '@lucide/vue'
+import { ChevronDown, Check, ListRestart, Square, SquareCheck, TriangleAlert } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
@@ -15,6 +15,7 @@ import {
   joinValues,
   lookupItems,
   settingsFrom,
+  suggestedEntries,
   type ConnectionDraft,
 } from '@/integrations'
 import { useSessionStore } from '@/stores/session'
@@ -24,8 +25,11 @@ import { useSessionStore } from '@/stores/session'
  * asks the system (with the address and sign-in as they are filled in, so before anything is
  * saved), and a list then names each one, so nobody has to guess which number is which. Where
  * more than one can be chosen they are chips in the box, kept as their values joined by commas.
- * A saved connection asks once the page opens. A failed ask says why in words and leaves the
- * choice as it was.
+ * A saved connection asks once the page opens, and again whenever `refresh` changes (it counts the
+ * tests, which find out what the system has now). Nothing chosen is allowed: the system reads
+ * every one but a loopback, which the field says. A saved choice that the system no longer has is
+ * flagged, with a button that takes it off or chooses what the system lists instead, so one click
+ * mends it. A failed ask says why in words and leaves the choice as it was.
  */
 const props = defineProps<{
   integration: string
@@ -36,6 +40,9 @@ const props = defineProps<{
   id: string
   /** Whether the connection is saved, which is when a choice that has gone is not replaced. */
   saved: boolean
+  /** Changes when the system should be asked again, such as after a test that passed. Nothing
+   * (or 0) is not a reason to ask. */
+  refresh?: number
   errorMessages?: string
 }>()
 const value = defineModel<string>({ required: true })
@@ -62,6 +69,21 @@ const missing = computed(() =>
     : values.value.filter((each) => !entries.value.some((entry) => entry.value === each)),
 )
 const quiet = computed(() => picked.value.filter((entry) => entry.quiet))
+const loopbacks = computed(() => picked.value.filter((entry) => entry.loopback))
+/** What is read for someone who chose none, or chooses what the list suggests. */
+const suggested = computed(() => suggestedEntries(entries.value, props.field.multiple, MOST))
+/** What a saved choice that has gone is replaced by: what is still on the list of what was chosen,
+ * or else what the list suggests. */
+const remaining = computed(() => values.value.filter((each) => !missing.value.includes(each)))
+const mend = computed(() =>
+  remaining.value.length > 0 ? remaining.value : suggested.value.map((entry) => entry.value),
+)
+const mendLabel = computed(() => {
+  if (remaining.value.length > 0) {
+    return missing.value.length > 1 ? 'Take them off' : 'Take it off'
+  }
+  return `Use ${formatList(suggested.value.map((entry) => entry.label))}`
+})
 
 // What was listed belongs to the address it was listed at.
 watch(
@@ -83,6 +105,22 @@ const goneText = computed(() => {
   return `${several ? 'The saved choices (IDs' : 'The saved choice (ID'} ${ids}) ${several ? "aren't" : "isn't"} on the list ${props.definition.label} gave now. Take ${several ? 'them' : 'it'} off, or choose from the list.`
 })
 
+/** The words about loopbacks: they only carry the machine's traffic to itself. */
+function loopbackText(found: readonly LookupEntry[]): string {
+  const names = formatList(found.map(({ label }) => label))
+  return found.length > 1
+    ? `${names} are loopbacks, which normally have nothing worth reading.`
+    : `${names} is the loopback, which normally has nothing worth reading.`
+}
+
+/** Says what is read when nothing is chosen, from what the list holds. */
+const defaultText = computed(() => {
+  const names = formatList(suggested.value.map(({ label }) => label))
+  const left = entries.value.filter((entry) => entry.loopback && !suggested.value.includes(entry))
+  const aside = left.length > 0 ? ` ${loopbackText(left)}` : ''
+  return `Nothing is chosen, so AresGate reads ${names}.${aside}`
+})
+
 /** The words about a choice that has seen nothing. */
 const quietText = computed(() => {
   const names = formatList(quiet.value.map(({ label }) => label))
@@ -94,25 +132,18 @@ const quietText = computed(() => {
   return `${names} ${several ? "haven't" : "hasn't"} seen any traffic yet, so nothing will come in from ${several ? 'them' : 'it'} until ${several ? 'they do' : 'it does'}.${all ? " If that isn't what you mean, choose another." : ''}`
 })
 
-/** A choice that isn't on the list is replaced, for a connection that wasn't saved yet, by the
- * one that has seen something (the first, or every such one where several can be chosen): the
- * choice a person looking at the list would make. */
+/** Nothing chosen, or a choice that isn't on the list, is replaced, for a connection that wasn't
+ * saved yet, by what the list suggests (every one but a loopback, or the first that has seen
+ * traffic where only one can be chosen): the choice a person looking at the list would make. */
 function preselect(found: readonly LookupEntry[]) {
-  const [first] = found
-  if (
-    props.saved ||
-    first === undefined ||
-    found.some((entry) => values.value.includes(entry.value))
-  ) {
-    return
-  }
-  const seen = found.filter((entry) => !entry.quiet)
-  if (props.field.multiple) {
-    const wanted = seen.length > 0 ? seen : [first]
-    value.value = joinValues(wanted.slice(0, MOST).map((entry) => entry.value))
-    return
-  }
-  value.value = (seen[0] ?? first).value
+  if (props.saved || found.length === 0) return
+  if (found.some((entry) => values.value.includes(entry.value))) return
+  value.value = joinValues(suggestedEntries(found, props.field.multiple, MOST).map((e) => e.value))
+}
+
+/** Mends a saved choice that has gone, in one click. */
+function mendChoice() {
+  value.value = joinValues(mend.value)
 }
 
 /** A choice from the select, kept as the field holds it. */
@@ -147,6 +178,15 @@ async function ask() {
     emit('asked')
   }
 }
+
+// A test that passed has found out what the system has now, so the list is asked again to match
+// it.
+watch(
+  () => props.refresh,
+  (next) => {
+    if (next && props.saved && ready.value && !working.value) void ask()
+  },
+)
 
 onMounted(() => {
   if (props.saved && ready.value) void ask()
@@ -222,6 +262,26 @@ onMounted(() => {
       data-test="lookup-gone"
     >
       {{ goneText }}
+      <template v-if="mend.length > 0" #append>
+        <v-btn
+          variant="tonal"
+          size="small"
+          :prepend-icon="Check"
+          data-test="lookup-mend"
+          @click="mendChoice"
+        >
+          {{ mendLabel }}
+        </v-btn>
+      </template>
+    </v-alert>
+    <v-alert
+      v-else-if="field.multiple && values.length === 0 && suggested.length > 0"
+      type="info"
+      variant="tonal"
+      density="compact"
+      data-test="lookup-default"
+    >
+      {{ defaultText }}
     </v-alert>
     <v-alert
       v-else-if="quiet.length > 0"
@@ -232,6 +292,15 @@ onMounted(() => {
       data-test="lookup-quiet"
     >
       {{ quietText }}
+    </v-alert>
+    <v-alert
+      v-if="loopbacks.length > 0"
+      type="info"
+      variant="tonal"
+      density="compact"
+      data-test="lookup-loopback"
+    >
+      {{ loopbackText(loopbacks) }}
     </v-alert>
   </div>
 </template>

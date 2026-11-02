@@ -180,9 +180,28 @@ export class IntegrationPage {
     return this.connection(connection).getByTestId('lookup-error')
   }
 
-  /** ... and the warning that the choice has seen nothing. */
+  /** ... and the warning that the choice has seen nothing ... */
   lookupQuiet(connection: string): Locator {
     return this.connection(connection).getByTestId('lookup-quiet')
+  }
+
+  /** ... what is read when nothing is chosen ... */
+  lookupDefault(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-default')
+  }
+
+  /** ... that a loopback is chosen ... */
+  lookupLoopback(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-loopback')
+  }
+
+  /** ... that a saved choice is not among the ones listed now, and the button that mends it. */
+  lookupGone(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-gone')
+  }
+
+  lookupMend(connection: string): Locator {
+    return this.connection(connection).getByTestId('lookup-mend')
   }
 
   lastError(connection: string): Locator {

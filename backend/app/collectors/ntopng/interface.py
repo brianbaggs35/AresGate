@@ -61,7 +61,7 @@ class InterfaceTraffic(Collector):
     async def collect(self, context: Context) -> Outcome:
         readings = Readings(context)
         quiet: list[str] = []
-        for ifid in interfaces(context):
+        for ifid in await interfaces(context):
             data = probes.as_object(await read(context, PATH, {"ifid": str(ifid)}))
             if data is None:
                 raise CollectorFailed(probes.unexpected(PRODUCT).message)

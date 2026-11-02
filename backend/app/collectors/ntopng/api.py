@@ -14,9 +14,18 @@ from app.integrations.client import CallFailed
 PRODUCT = "ntopng"
 
 
-def interfaces(context: Context) -> list[int]:
-    """The interfaces the connection reads, as ntopng's ``ifid`` parameter, lowest first."""
-    return registry.chosen_numbers(context.target.options["interface_id"])
+async def interfaces(context: Context) -> list[int]:
+    """The interfaces the connection reads, as ntopng's ``ifid`` parameter, lowest first. Where
+    none is chosen, ntopng is asked which it has, and every one but the loopback is read."""
+    chosen = registry.chosen_numbers(context.target.options["interface_id"])
+    if chosen:
+        return chosen
+    listed = await probes.ntopng_interfaces(context.client, context.target)
+    if isinstance(listed, probes.Verdict):
+        raise CollectorFailed(listed.message)
+    if not listed:
+        raise CollectorFailed("ntopng lists no interfaces, so there is nothing to read.")
+    return [item.ifid for item in probes.default_interfaces(listed)]
 
 
 async def names(context: Context) -> dict[int, str]:
