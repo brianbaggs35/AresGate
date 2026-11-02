@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session
 from app.collectors import registry
 from app.collectors.base import Collector
 from app.config import Settings
-from app.devices.sighting import NewSighting
+from app.devices.sighting import NewHost, NewSighting
 from app.devices.store import record as record_devices
+from app.devices.store import record_hosts
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.incidents import engine as incident_engine
@@ -130,7 +131,7 @@ def activity(
     sightings = [_sighting(number, now) for number in range(devices)]
     record_events(session, settings, [*events, *refused], now)
     record_samples(session, settings, samples, now)
-    record_devices(session, sightings, now)
+    record_devices(session, sightings, now, source="opnsense", via="arp")
     jobs = _FIREWALL_JOBS[: len(collectors)]
     rows = [_collector(job, state, now) for job, state in zip(jobs, collectors, strict=True)]
     session.add_all(rows)
@@ -314,7 +315,7 @@ def incidents(
             )
     # Stored a minute ago, so that the engine reads them as settled.
     record_events(session, settings, events, now - timedelta(minutes=1))
-    record_devices(session, sightings, now)
+    record_devices(session, sightings, now, source="opnsense", via="arp")
     session.flush()
     incident_engine.correlate(session, now)
     session.flush()
@@ -622,3 +623,110 @@ def feeds(session: Session, specs: Sequence[FeedSpec]) -> int:
         )
     session.flush()
     return len(specs)
+
+
+class Listed(NamedTuple):
+    """One way a program listed a device, as `assets` makes it."""
+
+    source: str = "opnsense"
+    via: str = "arp"
+    minutes_ago: float = 1
+
+
+class AssetSpec(NamedTuple):
+    """A device for `assets` to make, as the programs listed it."""
+
+    hostname: str | None = None
+    # Made up, from the order it comes in, when left out.
+    mac: str | None = None
+    vendor: str | None = None
+    # The addresses it has now; and the ones it had when it was first listed and has not had since.
+    addresses: tuple[str, ...] = ()
+    earlier: tuple[str, ...] = ()
+    listed: tuple[Listed, ...] = (Listed(),)
+    # How long ago it was first listed.
+    first_seen_hours: float = 24 * 30
+
+
+class HostSpec(NamedTuple):
+    """A machine with no hardware address for `assets` to make, such as a Wazuh agent."""
+
+    key: str
+    hostname: str | None = None
+    address: str | None = None
+    state: str = "active"
+    online: bool = True
+    minutes_ago: float = 0
+    source: str = "wazuh"
+    connection: str = "manager"
+    via: str = "agent"
+
+
+class AssetsRecorded(NamedTuple):
+    devices: int
+    hosts: int
+
+
+def _seen(
+    spec: AssetSpec, mac: str, now: datetime, minutes_ago: float, addresses: Sequence[str]
+) -> list[NewSighting]:
+    """A device listed at a moment, once for each address it has."""
+    found = [
+        NewSighting.of(
+            mac,
+            now - timedelta(minutes=minutes_ago),
+            address=address,
+            hostname=spec.hostname,
+            vendor=spec.vendor,
+        )
+        for address in addresses or (None,)
+    ]
+    return [item for item in found if item is not None]
+
+
+def assets(
+    session: Session, now: datetime, devices: Sequence[AssetSpec], hosts: Sequence[HostSpec]
+) -> AssetsRecorded:
+    """Stores devices as the integrations that list them leave them: each listed by the ways it
+    names at the times it names, with the addresses it has now, and the machines the Assets page
+    merges into them or lists beside them."""
+    for number, spec in enumerate(devices):
+        mac = spec.mac or f"00:e2:00:00:{number // 256:02x}:{number % 256:02x}"
+        # It is first listed the way it is listed first, long ago.
+        way = spec.listed[0] if spec.listed else Listed()
+        record_devices(
+            session,
+            _seen(spec, mac, now, spec.first_seen_hours * 60, (*spec.earlier, *spec.addresses)),
+            now,
+            source=way.source,
+            via=way.via,
+        )
+        for listed in spec.listed:
+            record_devices(
+                session,
+                _seen(spec, mac, now, listed.minutes_ago, spec.addresses),
+                now,
+                source=listed.source,
+                via=listed.via,
+            )
+    for host in hosts:
+        found = NewHost.of(
+            host.key,
+            now - timedelta(minutes=host.minutes_ago),
+            state=host.state,
+            online=host.online,
+            address=host.address,
+            hostname=host.hostname,
+        )
+        if found is not None:
+            record_hosts(
+                session,
+                [found],
+                now,
+                source=host.source,
+                connection=host.connection,
+                via=host.via,
+                complete=False,
+            )
+    session.flush()
+    return AssetsRecorded(len(devices), len(hosts))

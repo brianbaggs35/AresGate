@@ -8,11 +8,11 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from app.collectors import registry as collectors
-from app.collectors.wazuh.agents import LIMIT, Agents, samples, silent
+from app.collectors.wazuh.agents import LIMIT, Agents, hosts, samples, silent
 from app.config import Settings
 from app.events.event import Severity
 from app.integrations import probes
-from app.models import Event, MetricSample, MetricSeries
+from app.models import Event, HostListing, MetricSample, MetricSeries
 from e2e.stand_ins import sample_wazuh_agents, wazuh
 from tests.opnsense import answering, collect, health
 from tests.stubs import Answer, Certificate, Seen, Serve, StubServer, make_certificate
@@ -120,6 +120,37 @@ class TestAgentsThatWentQuiet:
         assert event.occurred_at == datetime(2026, 10, 26, 10, 0, tzinfo=UTC)
 
 
+class TestAgentsAsMachines:
+    def test_an_active_agent_was_heard_from_now_and_is_in_touch(self) -> None:
+        [host] = hosts([agent(status="active", lastKeepAlive="2026-10-26T11:59:50+00:00")], NOW)
+
+        assert (host.key, host.hostname, str(host.address)) == ("002", "laptop", "192.168.1.41")
+        assert (host.state, host.online, host.seen_at) == ("active", True, NOW)
+
+    def test_a_disconnected_agent_was_heard_from_when_it_last_reported_in(self) -> None:
+        [host] = hosts([agent()], NOW)
+
+        assert (host.state, host.online) == ("disconnected", False)
+        assert host.seen_at == datetime(2026, 10, 26, 10, 0, tzinfo=UTC)
+
+    @pytest.mark.parametrize("status", ["pending", "never_connected", None])
+    def test_one_that_never_reported_in_is_not_on_the_network_as_far_as_wazuh_knows(
+        self, status: str | None
+    ) -> None:
+        assert hosts([agent(status=status, lastKeepAlive=None)], NOW) == []
+
+    def test_a_time_with_no_zone_is_not_a_time_to_go_by(self) -> None:
+        assert hosts([agent(lastKeepAlive="2026-10-26T10:00:00")], NOW) == []
+
+    def test_an_address_wazuh_has_no_address_for_is_left_out(self) -> None:
+        [host] = hosts([agent(ip="any")], NOW)
+
+        assert host.address is None
+
+    def test_an_agent_with_no_number_is_left_out(self) -> None:
+        assert hosts([agent(id="")], NOW) == []
+
+
 def test_it_reads_from_the_manager_and_is_one_of_the_collectors() -> None:
     assert Agents.reads("wazuh", "manager")
     assert not Agents.reads("wazuh", "indexer")
@@ -188,6 +219,39 @@ class TestRunningAgainstWazuh:
         assert health(session).last_items == 0
         assert len(stored_events(session)) == 1
         assert len(stored_counts(session)) == 2
+
+    def test_it_keeps_the_agents_as_machines_and_forgets_the_ones_wazuh_dropped(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        started, certificate = server(serve, sample_wazuh_agents(datetime.now(UTC)))
+        connect(session, settings, started.url, certificate)
+        session.add(
+            HostListing(
+                source="wazuh",
+                connection="manager",
+                via="agent",
+                key="099",
+                state="active",
+                online=True,
+                first_seen_at=NOW,
+                last_seen_at=NOW,
+            )
+        )
+        session.commit()
+
+        collect(settings, engine, Agents())
+
+        session.expire_all()
+        found = {
+            row.key: (row.hostname, row.state, row.online)
+            for row in session.scalars(select(HostListing))
+        }
+        # The manager itself and the agent that never connected are not machines on the network.
+        assert found == {
+            "001": ("web1", "active", True),
+            "002": ("laptop", "disconnected", False),
+            "004": ("nas", "active", True),
+        }
 
     def test_it_signs_in_for_a_token_and_asks_for_the_agents_with_it(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve

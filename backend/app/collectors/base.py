@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.devices import store as devices
-from app.devices.sighting import NewSighting
+from app.devices.sighting import NewHost, NewSighting
 from app.events import store as events
 from app.events.event import NewEvent
 from app.integrations.client import ApiClient, Target
@@ -70,11 +70,34 @@ class Context:
         samples, is skipped, so reading the same moment twice is harmless."""
         return await self.save(lambda db: metrics.record(db, self.settings, samples, utcnow()))
 
-    async def record_devices(self, sightings: Sequence[NewSighting]) -> int:
+    async def record_devices(self, sightings: Sequence[NewSighting], via: str) -> int:
         """Remembers the devices a run saw, in a session of its own, and returns how many
-        different ones there were. A device seen before is updated, so reading the same list
-        twice is harmless."""
-        return await self.save(lambda db: devices.record(db, sightings, utcnow()))
+        different ones there were. ``via`` is how the integration listed them, a key of
+        ``app.devices.ways``; the integration is the connection's own. A device seen before is
+        updated, so reading the same list twice is harmless."""
+        source = self.target.integration
+        return await self.save(
+            lambda db: devices.record(db, sightings, utcnow(), source=source, via=via)
+        )
+
+    async def record_hosts(
+        self, hosts: Sequence[NewHost], via: str, *, complete: bool = False
+    ) -> int:
+        """Remembers the machines a run saw that have no hardware address, in a session of its
+        own, and returns how many there were. ``complete`` says the list is everything the
+        connection has, so a machine it no longer lists is forgotten."""
+        target = self.target
+        return await self.save(
+            lambda db: devices.record_hosts(
+                db,
+                hosts,
+                utcnow(),
+                source=target.integration,
+                connection=target.connection,
+                via=via,
+                complete=complete,
+            )
+        )
 
     async def save[T](self, work: Callable[[Session], T]) -> T:
         """Runs ``work`` with a session of its own, off the event loop, and commits it."""

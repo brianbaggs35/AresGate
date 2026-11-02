@@ -8,6 +8,7 @@ from app.api import (
     ai_chat,
     ai_usage,
     alerts,
+    assets,
     audit,
     auth,
     collectors,
@@ -40,6 +41,7 @@ api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(interfaces.router)
+api_router.include_router(assets.router)
 api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)
 api_router.include_router(ai_usage.router)

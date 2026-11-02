@@ -13,7 +13,7 @@ from app.collectors.opnsense.arp_table import ArpTable, sightings
 from app.collectors.opnsense.dnsmasq_leases import DnsmasqLeases
 from app.collectors.opnsense.kea_leases import KeaLeases, holds
 from app.config import Settings
-from app.models import CollectorHealth, Device, DeviceAddress, utcnow
+from app.models import CollectorHealth, Device, DeviceAddress, DeviceSource, utcnow
 from e2e import stand_ins
 from e2e.stand_ins import opnsense
 from tests.opnsense import KEY, SECRET, answering, collect, run
@@ -46,6 +46,12 @@ def known(session: Session) -> dict[str, tuple[str | None, str | None]]:
     return {
         device.mac: (device.hostname, device.vendor) for device in session.scalars(select(Device))
     }
+
+
+def listed_by(session: Session) -> set[tuple[str, str]]:
+    """The integrations that listed the devices, and how."""
+    session.expire_all()
+    return {(row.source, row.via) for row in session.scalars(select(DeviceSource))}
 
 
 def addresses(session: Session) -> dict[str, set[str]]:
@@ -150,6 +156,7 @@ class TestTheArpTableRun:
             assert before <= device.first_seen_at == device.last_seen_at <= utcnow()
         record = record_of(session, ArpTable())
         assert (record.consecutive_failures, record.last_items) == (0, 3)
+        assert listed_by(session) == {("opnsense", "arp")}
 
     def test_reading_it_again_finds_the_same_devices(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
@@ -235,6 +242,8 @@ class TestTheDnsmasqLeasesRun:
         assert addresses(session) == {LAPTOP: {"192.168.1.20"}, PRINTER: {"192.168.1.30"}}
         record = record_of(session, DnsmasqLeases())
         assert (record.consecutive_failures, record.last_items) == (0, 2)
+        # A lease says the address was given out, which is not the same as being there.
+        assert listed_by(session) == {("opnsense", "dhcp")}
 
     def test_a_device_of_the_arp_table_is_given_its_name_by_the_lease(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
@@ -302,6 +311,7 @@ class TestTheKeaLeasesRun:
         assert addresses(session) == {CAMERA: {"192.168.1.40"}}
         record = record_of(session, KeaLeases())
         assert (record.consecutive_failures, record.last_items) == (0, 1)
+        assert listed_by(session) == {("opnsense", "dhcp")}
 
     def test_a_firewall_without_kea_is_reported(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve

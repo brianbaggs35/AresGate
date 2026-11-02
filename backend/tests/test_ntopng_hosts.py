@@ -13,7 +13,7 @@ from app.collectors.ntopng import hosts
 from app.collectors.ntopng.hosts import Hosts, measure, sightings
 from app.config import Settings
 from app.integrations import probes
-from app.models import Device, DeviceAddress, MetricSample, MetricSeries
+from app.models import Device, DeviceAddress, DeviceSource, MetricSample, MetricSeries
 from e2e.stand_ins import Answer, Seen, ntopng, sample_ntopng_hosts
 from tests.ntopng import TOKEN, connect
 from tests.opnsense import collect, health
@@ -159,6 +159,10 @@ class TestRunningAgainstNtopng:
 
         assert health(session).last_items == 3
         assert len(session.scalars(select(Device)).all()) == 2
+        # Each is listed by ntopng as one of its active hosts.
+        assert {(row.source, row.via) for row in session.scalars(select(DeviceSource))} == {
+            ("ntopng", "hosts")
+        }
         assert len(series_values(session)[("host.bytes_sent", "192.168.1.20")]) == 2
 
     def test_it_asks_for_the_local_hosts_of_the_interface_all_at_once_with_the_token(

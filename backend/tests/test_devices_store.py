@@ -1,16 +1,29 @@
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
+from typing import Any
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.devices.sighting import NewSighting
-from app.devices.store import record
-from app.models import Device, DeviceAddress
+from app.devices import store
+from app.devices.sighting import NewHost, NewSighting
+from app.models import Device, DeviceAddress, DeviceSource, HostListing
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 LAPTOP = "00:11:22:0a:0b:0c"
 PHONE = "ac:de:48:00:00:02"
+
+
+def record(
+    session: Session,
+    sightings: list[NewSighting],
+    now: datetime,
+    *,
+    source: str = "opnsense",
+    via: str = "arp",
+) -> int:
+    return store.record(session, sightings, now, source=source, via=via)
 
 
 def seen(mac: str = LAPTOP, at: datetime = NOW, **changes: str | None) -> NewSighting:
@@ -198,3 +211,175 @@ def test_a_device_goes_with_its_addresses(session: Session) -> None:
     session.commit()
 
     assert addresses(session) == {}
+
+
+def listings(session: Session) -> dict[tuple[str, str, str], DeviceSource]:
+    """What lists each device, by its hardware address, the integration and how."""
+    session.expire_all()
+    rows = session.execute(
+        select(Device.mac, DeviceSource).join(DeviceSource, DeviceSource.device_id == Device.id)
+    )
+    return {(mac, row.source, row.via): row for mac, row in rows}
+
+
+class TestWhoListedTheDevice:
+    def test_the_integration_and_the_way_are_kept_with_the_time(self, session: Session) -> None:
+        record(session, [seen(address="192.168.1.20")], NOW, source="opnsense", via="arp")
+
+        (row,) = listings(session).values()
+        assert (row.source, row.via) == ("opnsense", "arp")
+        assert (row.first_seen_at, row.last_seen_at) == (NOW, NOW)
+
+    def test_each_way_a_device_is_listed_is_kept_apart(self, session: Session) -> None:
+        later = NOW + timedelta(minutes=5)
+        record(session, [seen()], NOW, source="opnsense", via="arp")
+        record(session, [seen(at=later)], later, source="opnsense", via="dhcp")
+        record(session, [seen(at=later)], later, source="ntopng", via="hosts")
+
+        found = listings(session)
+
+        assert set(found) == {
+            (LAPTOP, "opnsense", "arp"),
+            (LAPTOP, "opnsense", "dhcp"),
+            (LAPTOP, "ntopng", "hosts"),
+        }
+        assert found[(LAPTOP, "opnsense", "arp")].last_seen_at == NOW
+        assert found[(LAPTOP, "ntopng", "hosts")].last_seen_at == later
+
+    def test_listing_a_device_again_moves_the_time_forward_and_never_back(
+        self, session: Session
+    ) -> None:
+        later = NOW + timedelta(minutes=5)
+        record(session, [seen()], NOW)
+        record(session, [seen(at=later)], later)
+        record(session, [seen(at=NOW)], later)
+
+        (row,) = listings(session).values()
+        assert (row.first_seen_at, row.last_seen_at) == (NOW, later)
+
+    def test_a_way_nobody_knows_is_a_mistake_in_the_collector(self, session: Session) -> None:
+        with pytest.raises(ValueError, match="No device is listed 'telepathy'"):
+            record(session, [seen()], NOW, via="telepathy")
+
+        assert devices(session) == {}
+
+
+def machine(key: str = "002", at: datetime = NOW, **changes: Any) -> NewHost:
+    fields: dict[str, Any] = {"state": "active", "online": True} | changes
+    host = NewHost.of(key, at, **fields)
+    assert host is not None
+    return host
+
+
+def machines(session: Session) -> dict[str, HostListing]:
+    session.expire_all()
+    return {row.key: row for row in session.scalars(select(HostListing))}
+
+
+def record_machines(
+    session: Session, hosts: list[NewHost], now: datetime = NOW, *, complete: bool = False
+) -> int:
+    return store.record_hosts(
+        session, hosts, now, source="wazuh", connection="manager", via="agent", complete=complete
+    )
+
+
+class TestMachinesWithNoHardwareAddress:
+    def test_a_machine_is_stored_with_what_was_said_of_it(self, session: Session) -> None:
+        found = machine(hostname="server", address="192.168.1.41")
+
+        assert record_machines(session, [found]) == 1
+
+        (row,) = machines(session).values()
+        assert (row.source, row.connection, row.via, row.key) == (
+            "wazuh",
+            "manager",
+            "agent",
+            "002",
+        )
+        assert (row.hostname, str(row.address), row.state, row.online) == (
+            "server",
+            "192.168.1.41",
+            "active",
+            True,
+        )
+        assert (row.first_seen_at, row.last_seen_at) == (NOW, NOW)
+
+    def test_listing_it_again_updates_it_and_keeps_when_it_was_first_listed(
+        self, session: Session
+    ) -> None:
+        later = NOW + timedelta(minutes=5)
+        record_machines(session, [machine(hostname="server", address="192.168.1.41")])
+        record_machines(
+            session,
+            [machine(at=later, state="disconnected", online=False, hostname="server2")],
+            later,
+        )
+
+        (row,) = machines(session).values()
+        assert (row.hostname, row.state, row.online) == ("server2", "disconnected", False)
+        # A listing that left out the address leaves the one kept.
+        assert str(row.address) == "192.168.1.41"
+        assert (row.first_seen_at, row.last_seen_at) == (NOW, later)
+
+    def test_a_time_ahead_of_now_is_taken_as_now(self, session: Session) -> None:
+        record_machines(session, [machine(at=NOW + timedelta(hours=1))])
+
+        (row,) = machines(session).values()
+        assert row.last_seen_at == NOW
+
+    def test_the_same_key_in_one_call_is_one_machine(self, session: Session) -> None:
+        assert record_machines(session, [machine(), machine(hostname="last")]) == 1
+
+        assert machines(session)["002"].hostname == "last"
+
+    def test_a_machine_a_complete_list_leaves_out_is_forgotten(self, session: Session) -> None:
+        record_machines(session, [machine("001"), machine("002")])
+
+        record_machines(session, [machine("002")], complete=True)
+
+        assert set(machines(session)) == {"002"}
+
+    def test_only_the_connection_that_listed_a_machine_can_make_it_forgotten(
+        self, session: Session
+    ) -> None:
+        record_machines(session, [machine("001")])
+        store.record_hosts(
+            session,
+            [machine("001")],
+            NOW,
+            source="elsewhere",
+            connection="manager",
+            via="agent",
+            complete=True,
+        )
+
+        session.expire_all()
+        found = {(row.source, row.key) for row in session.scalars(select(HostListing))}
+        assert found == {("wazuh", "001"), ("elsewhere", "001")}
+
+    def test_a_list_that_is_not_complete_forgets_nothing(self, session: Session) -> None:
+        record_machines(session, [machine("001"), machine("002")])
+
+        record_machines(session, [machine("002")], complete=False)
+
+        assert set(machines(session)) == {"001", "002"}
+
+    def test_a_complete_list_of_nothing_forgets_them_all(self, session: Session) -> None:
+        record_machines(session, [machine("001")])
+
+        assert record_machines(session, [], complete=True) == 0
+
+        assert machines(session) == {}
+
+    def test_a_way_nobody_knows_is_a_mistake_in_the_collector(self, session: Session) -> None:
+        with pytest.raises(ValueError, match="No device is listed 'telepathy'"):
+            store.record_hosts(
+                session,
+                [machine()],
+                NOW,
+                source="wazuh",
+                connection="manager",
+                via="telepathy",
+                complete=False,
+            )

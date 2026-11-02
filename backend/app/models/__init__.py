@@ -24,7 +24,7 @@ from app.models.auth import (
 from app.models.base import Base, UTCDateTime, utcnow
 from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
-from app.models.devices import Device, DeviceAddress
+from app.models.devices import Device, DeviceAddress, DeviceSource, HostListing
 from app.models.events import Event, EventRetention
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
 from app.models.incidents import Incident, IncidentSignal
@@ -59,8 +59,10 @@ __all__ = [
     "CollectorHealth",
     "Device",
     "DeviceAddress",
+    "DeviceSource",
     "Event",
     "EventRetention",
+    "HostListing",
     "Incident",
     "IncidentSignal",
     "IntegrationConnection",
