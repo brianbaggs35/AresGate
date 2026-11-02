@@ -11,8 +11,14 @@ manager's own API doesn't give alerts, so this is the only place to read them.
 Read from Wazuh's documentation: the ``wazuh-alerts-*`` indices and their fields (Indexer
 indices and the alerts index template, in the Wazuh repository's ``extensions/elasticsearch``),
 the level table (Ruleset > Rules classification) and the search API (OpenSearch's ``_search`` with
-a ``range`` query and ``sort``). Not tried against a live Wazuh: the exact shape of ``data``
-differs by decoder, so only the address, port and protocol fields common to them are read.
+a ``range`` query and ``sort``). The exact shape of ``data`` differs by decoder, so only the
+address, port and protocol fields common to them are read.
+
+Tried against OpenSearch 2.19.1 with its security plugin, which the Wazuh indexer is built on (not
+against Wazuh's own build): a user with only the index permission ``read`` on ``wazuh-alerts-*``
+can make this search, and gets 403 for the root page (``GET /``, which needs the cluster
+permission ``cluster:monitor/main``), so nothing here may ask for more than the search. A user
+the indexer doesn't know is a 401, and one without the permission a 403 whose body names it.
 
 Each run asks for the newest alerts of the last half hour. That overlaps the runs before it,
 which is harmless: an alert is stored once, by its document's id and time, and one that reached
@@ -26,8 +32,7 @@ from app.collectors.base import Collector, CollectorFailed, Context, Outcome
 from app.events.event import NewEvent, Severity
 from app.integrations import probes
 
-PATH = "/wazuh-alerts-*/_search"
-PRODUCT = "The Wazuh indexer"
+PRODUCT = probes.WAZUH_INDEXER
 SOURCE = "wazuh"
 CONNECTION = "indexer"
 # How far back each read looks, and how many of the newest alerts it keeps. A home network
@@ -66,13 +71,8 @@ def _query(now: datetime) -> dict[str, object]:
 
 
 async def _hits(context: Context) -> list[object]:
-    reply = await context.client.request(
-        "POST",
-        PATH,
-        json_body=_query(context.now),
-        auth=(str(context.target.options["username"]), context.target.secrets["password"]),
-    )
-    if bad := probes.problem(reply, PRODUCT):
+    reply = await probes.wazuh_alerts_search(context.client, context.target, _query(context.now))
+    if bad := probes.indexer_problem(reply):
         raise CollectorFailed(bad.message)
     answer = probes.as_object(reply.json())
     found = probes.as_object(answer.get("hits")) if answer else None

@@ -1423,7 +1423,12 @@ def _wazuh_search(seen: Seen, alerts: Sequence[Mapping[str, object]]) -> Answer:
         {
             "took": 1,
             "timed_out": False,
-            "hits": {"max_score": None, "hits": found[: int(asked.get("size", 10))]},
+            # As OpenSearch gives it: how many matched, whatever number of them are returned.
+            "hits": {
+                "total": {"value": len(found), "relation": "eq"},
+                "max_score": None,
+                "hits": found[: int(asked.get("size", 10))],
+            },
         }
     )
 

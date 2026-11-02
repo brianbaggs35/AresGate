@@ -10,6 +10,7 @@ from app.collectors import registry as collectors
 from app.collectors.wazuh.alerts import LIMIT, WINDOW, Alerts, parse
 from app.config import Settings
 from app.events.event import Severity
+from app.integrations import probes
 from app.models import Event, utcnow
 from e2e.stand_ins import sample_wazuh_agents, sample_wazuh_alerts, wazuh
 from tests.opnsense import answering, collect, health
@@ -347,6 +348,33 @@ class TestRunningAgainstWazuh:
         assert record.consecutive_failures == 1
         assert record.last_error is not None
         assert "didn't accept the credentials" in record.last_error
+
+    def test_a_wrong_password_is_reported_as_a_refused_sign_in(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        certificate = make_certificate()
+        refusing = serve(lambda seen: Answer(status=401, body="Unauthorized"), certificate)
+        connect(session, settings, refusing.url, certificate)
+
+        collect(settings, engine, Alerts())
+
+        assert health(session).last_error == probes.INDEXER_REFUSED
+
+    def test_a_user_who_may_not_search_is_told_which_permission_is_missing(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        reason = "no permissions for [indices:data/read/search] and User [name=aresgate]"
+        refused = {"error": {"reason": reason, "type": "security_exception"}, "status": 403}
+        certificate = make_certificate()
+        forbidding = serve(lambda seen: Answer(status=403, body=json.dumps(refused)), certificate)
+        connect(session, settings, forbidding.url, certificate)
+
+        collect(settings, engine, Alerts())
+
+        error = health(session).last_error or ""
+        assert "accepted the sign-in, but the user isn't allowed to read the alerts" in error
+        assert "no permission for indices:data/read/search" in error
+        assert "read on wazuh-alerts-*" in error
 
     def test_a_failure_of_the_indexer_is_reported_with_its_status(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
