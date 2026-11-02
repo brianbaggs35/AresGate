@@ -40,12 +40,12 @@ export const COMMANDS: readonly Command[] = [
   ...navItems
     // Settings opens its first page, which is listed by name below.
     .filter(({ route }) => route !== 'settings')
-    .map(({ route, title, icon }): Command => ({
+    .map(({ route, title, icon, keywords = '' }): Command => ({
       id: `go-${route}`,
       group: 'Go to',
       title,
       icon,
-      keywords: '',
+      keywords,
       action: { kind: 'go', to: { name: route } },
     })),
   ...settingsSections.map(({ key, route, title, icon }): Command => ({

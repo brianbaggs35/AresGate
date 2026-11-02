@@ -1,5 +1,6 @@
 import {
   Bot,
+  ChartColumn,
   HeartPulse,
   LayoutDashboard,
   Network,
@@ -16,6 +17,8 @@ export interface NavItem {
   route: string
   title: string
   icon: NonNullable<IconProps['icon']>
+  /** More words that find it in the command palette, which are not shown. */
+  keywords?: string
 }
 
 /** A phone's bottom bar has room for this many destinations before it gets cramped. */
@@ -29,6 +32,12 @@ export const navItems: readonly NavItem[] = [
   { route: 'logs', title: 'Logs', icon: ScrollText },
   { route: 'integrations', title: 'Integrations', icon: Plug },
   { route: 'interfaces', title: 'Interfaces', icon: Network },
+  {
+    route: 'ai-usage',
+    title: 'AI usage',
+    icon: ChartColumn,
+    keywords: 'spending cost money tokens limit budget level',
+  },
   { route: 'status', title: 'Status', icon: HeartPulse },
   { route: 'settings', title: 'Settings', icon: Settings },
 ]

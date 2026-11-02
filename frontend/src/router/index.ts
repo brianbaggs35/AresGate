@@ -102,6 +102,12 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/ai-usage',
+    name: 'ai-usage',
+    component: () => import('@/views/AiUsageView.vue'),
+    meta: { title: 'AI usage' },
+  },
+  {
     path: '/status',
     name: 'status',
     component: () => import('@/views/StatusView.vue'),
@@ -141,11 +147,6 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AiSettingsView.vue'),
       },
       {
-        path: 'ai-usage',
-        name: 'settings-ai-usage',
-        component: () => import('@/views/AiUsageView.vue'),
-      },
-      {
         path: 'data',
         name: 'settings-data',
         component: () => import('@/views/DataView.vue'),
@@ -154,6 +155,8 @@ export const routes: RouteRecordRaw[] = [
   },
   // The Security page became the Settings area's Account page.
   { path: '/security', redirect: { name: 'settings-account' } },
+  // AI usage was a page of Settings before it became a place in the menu.
+  { path: '/settings/ai-usage', redirect: { name: 'ai-usage' } },
   {
     path: '/setup',
     name: 'setup',

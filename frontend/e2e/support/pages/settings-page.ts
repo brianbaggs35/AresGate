@@ -9,7 +9,6 @@ export class SettingsPage {
   readonly activityLink: Locator
   readonly verdictsLink: Locator
   readonly aiLink: Locator
-  readonly aiUsageLink: Locator
   readonly dataLink: Locator
 
   constructor(private readonly page: Page) {
@@ -20,7 +19,6 @@ export class SettingsPage {
     this.activityLink = page.getByTestId('settings-nav-activity')
     this.verdictsLink = page.getByTestId('settings-nav-verdicts')
     this.aiLink = page.getByTestId('settings-nav-ai')
-    this.aiUsageLink = page.getByTestId('settings-nav-ai-usage')
     this.dataLink = page.getByTestId('settings-nav-data')
   }
 

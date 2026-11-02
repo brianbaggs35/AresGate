@@ -847,8 +847,8 @@ AresGate works without it. A test sends only the words "Say OK."
   - when you ask (*Ask the AI*, or *Read again* after more signals came in), and when you press
     *Start investigating* on one the AI hasn't read in full;
   - by the worker, as incidents come in, as much as **how much AI is used without being asked**
-    allows (`ai_settings.usage_level`, *Medium* until you move the slider on Settings > AI usage). *Very
-    low* reads nothing by itself. *Low* reads high and critical incidents, at most 6 an hour.
+    allows (`ai_settings.usage_level`, *Medium* until you move the slider on the AI usage page).
+    *Very low* reads nothing by itself. *Low* reads high and critical incidents, at most 6 an hour.
     *Medium* reads medium and above, 20 an hour, and again when an incident has four times the
     signals it had. *High* reads low and above, 60 an hour, again at twice the signals. *Maximum*
     reads all, 150 an hour, again at one and a half times. No more than 5 are read in a minute,
@@ -866,8 +866,9 @@ AresGate works without it. A test sends only the words "Say OK."
   two minutes, and nginx waits for that), answers `{ok, reason, incident}` and is in the activity
   log; `GET /api/incidents/{id}` carries `reading`, and the list `ai`.
 
-- **What AI took and cost.** **Settings > AI usage** adds up every request in the `ai_calls`
-  record: for the last 7, 30 or 90 days (days are counted in the time zone of your browser) the
+- **What AI took and cost.** **AI usage** in the menu (it was a page of Settings until it got a
+  place of its own, and the old `/settings/ai-usage` address still leads there) adds up every
+  request in the `ai_calls` record: for the last 7, 30 or 90 days (days are counted in the time zone of your browser) the
   cost, the tokens (what was sent and what came back, and how much of what was sent was already
   cached), the number of requests and how many failed, each compared with the stretch before; the
   calendar month so far with where it is heading at this pace (UTC, as providers bill it; nothing
@@ -882,7 +883,7 @@ AresGate works without it. A test sends only the words "Say OK."
   *Download as a spreadsheet* saves the range's requests as a CSV file (when, what for, about,
   provider, model, level, tokens, estimated cost, seconds and any error; never what was sent or
   said).
-- **How much AI is used without being asked.** The top of **Settings > AI usage** has a slider
+- **How much AI is used without being asked.** The top of the **AI usage** page has a slider
   with five stops, *Very low* to *Maximum*, and says in words what each does (the words are made
   from the policy the worker follows, so they can't promise anything else): which incidents it
   reads by itself, how many an hour, and when it reads one again. It works before AI has ever been

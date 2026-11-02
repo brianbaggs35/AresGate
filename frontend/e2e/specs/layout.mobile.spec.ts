@@ -373,6 +373,7 @@ test.describe('layout on a phone', () => {
       expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
     }
     await expect(shell.integrationsLink).toHaveCount(0)
+    await expect(shell.aiUsageLink).toHaveCount(0)
     await expect(shell.statusLink).toHaveCount(0)
 
     await shell.moreButton.click()
@@ -380,6 +381,7 @@ test.describe('layout on a phone', () => {
     await expect(shell.moreSheet).toBeVisible()
     await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'true')
     await expect(shell.integrationsLink).toBeVisible()
+    await expect(shell.aiUsageLink).toBeVisible()
     await expect(shell.statusLink).toBeVisible()
     await expect(shell.settingsLink).toBeVisible()
     await shell.statusLink.click()
@@ -572,17 +574,11 @@ test.describe('layout on a phone', () => {
     activity,
     verdicts,
     aiSettings,
-    aiUsage,
     harness,
     data,
   }) => {
     await harness.createVerdicts([
       { verdict: 'not_suspicious', address: '93.184.216.34', note: 'a long reason '.repeat(8) },
-    ])
-    await harness.createAiCalls([
-      { about: 'incident 3', hours_ago: 2, cost_micros: 2_500, repeat: 3 },
-      { purpose: 'chat', model: 'a-model-nobody-priced', cost_micros: null, hours_ago: 7 },
-      { about: 'incident 5', ok: false, error: 'A long reason '.repeat(10), hours_ago: 50 },
     ])
     for (const [name, show, ready] of [
       ['account', () => security.goto(), security.twoFactorOff],
@@ -597,7 +593,6 @@ test.describe('layout on a phone', () => {
         },
         aiSettings.card('ollama_cloud'),
       ],
-      ['ai-usage', () => aiUsage.goto(), aiUsage.requests.first()],
       ['data', () => data.goto(), data.eventsCard.getByTestId('retention-source').first()],
     ] as const) {
       await show()
@@ -609,6 +604,32 @@ test.describe('layout on a phone', () => {
 
       expect(overflow, name).toBeLessThanOrEqual(0)
     }
+  })
+
+  test('the AI usage page fits the screen without scrolling sideways, with its range and Refresh within it', async ({
+    page,
+    aiUsage,
+    harness,
+  }) => {
+    await harness.createAiCalls([
+      { about: 'incident 3', hours_ago: 2, cost_micros: 2_500, repeat: 3 },
+      { purpose: 'chat', model: 'a-model-nobody-priced', cost_micros: null, hours_ago: 7 },
+      { about: 'incident 5', ok: false, error: 'A long reason '.repeat(10), hours_ago: 50 },
+    ])
+
+    await aiUsage.goto()
+
+    await expect(aiUsage.requests.first()).toBeVisible()
+    const viewport = page.viewportSize()?.width ?? 0
+    for (const control of [aiUsage.range('30d'), aiUsage.refresh]) {
+      const box = await control.boundingBox()
+      expect(box?.x ?? -1).toBeGreaterThanOrEqual(0)
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewport)
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 
   test('draws a chart within the card, and keeps what a tap reads on the screen', async ({

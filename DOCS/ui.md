@@ -162,9 +162,14 @@ investigating* can follow the status change with a reading of an incident the AI
 full. The chip in the list and in the page header is `AiChip`; looks and wording are in
 `src/triage.ts`.
 
-The AI usage page (Settings > AI usage) is the reference for a page of numbers inside the Settings
-area. It leads with four `StatTile`s (the month so far with where it is heading, the cost of the
-range, the tokens, the requests) that each compare themselves with the stretch before in words. The
+The AI usage page is the reference for a page of numbers. It is a place in the menu of its own
+(after Interfaces, so a phone has it behind *More*), not a page of Settings: Settings > AI is where
+a provider is chosen and set up, and this page is where what it took, what it cost, how much of it
+is allowed and how much is used without being asked are read and set. `/settings/ai-usage` still
+leads here, so a bookmark from before keeps working. The title, the range (7, 30 or 90 days) and
+*Refresh* are the page header's, and the title is not repeated by a card. It leads with four
+`StatTile`s (the month so far with where it is heading, the cost of the range, the tokens, the
+requests) that each compare themselves with the stretch before in words. The
 level card under them is the one slider in the app: five stops with the level's name and what it
 reads an hour above, the words for the stop it is on below it (in a live region, so moving it is
 read out), and a *Save* that is enabled only when it has moved; it is shown before AI has ever been
@@ -292,7 +297,8 @@ somewhere without finding the link: every page in the menu, every page of Settin
 incidents, the theme, and, for a whole IP address typed in, *Find incidents about* it. The list
 comes from `commands.ts`, which reads `navItems` and `settingsSections`, so **a page that adds
 itself to the menu or to Settings is in the palette without anyone touching it**; add a command
-there only for something that is not a page.
+there only for something that is not a page. A place in the menu can carry `keywords`, words that
+find it though they are not shown (AI usage: *spending*, *tokens*, *budget*).
 
 It is a dialog with a text field and plain links and buttons, not a custom widget: Enter takes the
 first result, ArrowDown and ArrowUp walk the rows (up from the first goes back to the field), and

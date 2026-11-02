@@ -24,6 +24,16 @@ Every release's notes are here, newest first. The format follows
   restart was tested for the account, and `down` and `up` only for health.
   See [DOCS/operations.md](DOCS/operations.md#stopping-and-starting).
 
+### Changed
+
+- **AI usage is a place in the menu of its own.** It was a page of Settings. **AI usage** is now
+  in the menu, after Interfaces (behind **More** on a phone), with the range and **Refresh** beside
+  its title, and the command palette finds it by name or by *spending*, *tokens* or *budget*. The
+  spending limits and the usage level slider are on it as before. Which AI provider and model to
+  use is still chosen in **Settings > AI**. The old `/settings/ai-usage` address leads to the new
+  page, so a bookmark keeps working. The message that says a spending limit is used up now points
+  to the AI usage page.
+
 ## 0.0.5
 
 ### Added

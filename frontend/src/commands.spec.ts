@@ -46,6 +46,13 @@ describe('commandsFor', () => {
     expect(ids('mode')).toEqual(['theme-light', 'theme-dark', 'theme-system'])
   })
 
+  it('finds the AI usage page by what it is for, though it is not a page of Settings', () => {
+    for (const search of ['spending', 'tokens', 'budget', 'ai usage']) {
+      expect(ids(search)).toContain('go-ai-usage')
+    }
+    expect(ids('ai usage')).not.toContain('go-settings-ai-usage')
+  })
+
   it('puts a title that starts with the search first, then one that has it, then the rest', () => {
     // "Incidents" starts with it, and "Show … incidents" only has it.
     const found = ids('incidents')
