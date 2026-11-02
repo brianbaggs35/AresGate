@@ -17,9 +17,11 @@ def ok(seen: object) -> Answer:
     return Answer(body="ok")
 
 
-def look(server: StubServer, **choice: Any) -> review.Review:
+def look(
+    server: StubServer, policy: netguard.AddressPolicy = HOME_NETWORK_AND_LOOPBACK, **choice: Any
+) -> review.Review:
     origin = netguard.parse_origin(server.url, allow_http=False)
-    return asyncio.run(review.review(HOME_NETWORK_AND_LOOPBACK, origin, **choice))
+    return asyncio.run(review.review(policy, origin, **choice))
 
 
 class TestACertificateThatVouchesForItself:
@@ -150,24 +152,21 @@ class TestACertificateAnAuthorityIssued:
 class TestWhenItCannotBeLookedAt:
     def test_an_address_that_is_not_allowed_is_refused(self, serve: Serve) -> None:
         server = serve(ok, make_certificate())
-        origin = netguard.parse_origin(server.url, allow_http=False)
 
         with pytest.raises(Refused, match="isn't a private network address"):
-            asyncio.run(review.review(HOME_NETWORK, origin))
+            look(server, HOME_NETWORK)
 
     def test_a_system_that_does_not_answer_is_said_so(self, serve: Serve) -> None:
         server = serve(ok, make_certificate())
-        origin = netguard.parse_origin(server.url, allow_http=False)
         server.stop()
 
         with pytest.raises(Refused, match="Couldn't make a secure connection"):
-            asyncio.run(review.review(HOME_NETWORK_AND_LOOPBACK, origin))
+            look(server)
 
     def test_a_certificate_that_cannot_be_read_is_refused(
         self, serve: Serve, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         server = serve(ok, make_certificate())
-        origin = netguard.parse_origin(server.url, allow_http=False)
 
         async def junk(*_: object) -> list[bytes]:
             return [b"not a certificate"]
@@ -175,14 +174,13 @@ class TestWhenItCannotBeLookedAt:
         monkeypatch.setattr(netguard, "look_up_chain", junk)
 
         with pytest.raises(Refused, match="presented a certificate AresGate can't read"):
-            asyncio.run(review.review(HOME_NETWORK_AND_LOOPBACK, origin))
+            look(server)
 
     def test_a_failure_that_is_not_about_the_certificate_is_passed_on_in_words(
         self, serve: Serve, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         certificate: Certificate = make_certificate()
         server = serve(ok, certificate)
-        origin = netguard.parse_origin(server.url, allow_http=False)
         present = netguard.present
 
         async def present_or_fail(policy: Any, where: Origin, context: Any = None) -> Any:
@@ -192,7 +190,7 @@ class TestWhenItCannotBeLookedAt:
 
         monkeypatch.setattr(netguard, "present", present_or_fail)
 
-        found = asyncio.run(review.review(HOME_NETWORK_AND_LOOPBACK, origin))
+        found = look(server)
 
         assert not found.accepted
         assert found.verdict == "Couldn't make a secure connection to somewhere."
