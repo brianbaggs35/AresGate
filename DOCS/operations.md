@@ -500,15 +500,31 @@ please [report it](../SECURITY.md).
 The first page of the web app, for the last 24 hours or the last 7 days (the buttons at the top
 right), each compared with the same length of time before it. From the top:
 
-- **A sentence on whether anything needs you.** *Needs your attention* when there was a high or
-  critical alert, *Worth a look* for medium alerts, and *All quiet* otherwise. It never says
-  quiet while collectors are failing or the worker has stopped, because a network nobody is
-  watching is quiet too: it says *Some sources aren't reporting* and links to the Status page.
-  With nothing connected at all it asks you to connect an integration. Until AresGate has
-  learned what is normal on your network this goes by how serious the alerts are.
+- **A sentence on whether anything needs you.** It goes by the *incidents* going on in that time
+  and not by how many alerts there were, because a busy network files thousands of alerts into a
+  few incidents and most of those are not worth waking anyone for. An incident **needs you** when
+  it is still open or being investigated, you have not called it not suspicious or low priority,
+  and AresGate is at least as sure of it as the floor (medium confidence, 35 out of 100). *Needs
+  your attention* is for the ones it is highly confident of (65 and up), *Worth a look* for the
+  ones that need you but are not that sure, and *All quiet* otherwise, with how many alerts there
+  were and that none of them needs you. It never says quiet while collectors are failing or the
+  worker has stopped, because a network nobody is watching is quiet too: it says *Some sources
+  aren't reporting* and links to the Status page. With nothing connected at all it asks you to
+  connect an integration.
+- **What was filtered out.** Under the sentence, one line counts the incidents: how many there were,
+  how many need you and how many were filtered out, with a link for each reason (**not sure
+  enough**, **called not suspicious or low priority**, **already handled**) that opens the
+  Incidents page on exactly those. Every incident is in one reason or in *needs you*, in that
+  order: handled first, then your verdicts, then confidence. Nothing is hidden for good, and the
+  **Needs you** lane below lists the same incidents the sentence counted, so the two always agree.
+  They are `attention` in the dashboard's answer (`app/dashboard.attention`); the rule itself is
+  `standing` in `app/incidents/attention.py`, so the analyst's tools and notifications can ask the
+  same question.
 - **Four numbers**: alerts, connections the firewall refused, devices first seen in that time
   (out of all it knows), and how the collectors are doing. The first two show how they changed
-  and a small line of how they went through the day or week.
+  and a small line of how they went through the day or week. The alerts number is colored by what
+  needs you (red for a confident incident, amber for one that is worth a look, green for none) and
+  not by the worst alert there was.
 - **Network traffic** of one OPNsense interface (the busiest first, the others in a menu), in
   bits a second received and sent. It is worked out from the bytes the firewall counts, over
   15 minutes (or an hour for the week). Where the firewall wasn't read, or restarted and began

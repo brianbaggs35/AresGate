@@ -578,9 +578,12 @@ for (const theme of ['light', 'dark'] as const) {
       ])
       await dashboard.goto()
       await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
+      // What was left out, and the way to it, are there for the owner to see.
+      await expect(dashboard.filteredUnsure).toHaveText('1 not sure enough')
       // The list of latest alerts is as long as it gets, with the incidents' alerts among them.
       await expect(dashboard.alertRows).toHaveCount(8)
-      await expect(dashboard.needsYouCards).toHaveCount(2)
+      // The quiet scan is not sure enough to ask about, so only the attack is in the lane.
+      await expect(dashboard.needsYouCards).toHaveCount(1)
       await expect(dashboard.noiseItems.first()).toBeVisible()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)

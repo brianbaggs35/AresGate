@@ -1,5 +1,10 @@
+import type { Page } from '@playwright/test'
+
 import type { IncidentRequest } from '../support'
 import { expect, test } from '../support'
+
+/** The cards of the Incidents page, which a link from the dashboard opens. */
+const incidentsPageCards = (page: Page) => page.getByTestId('incident-card')
 
 /** What the dashboard is shown in most of these: two serious alerts among five, seven refused
  * connections, two interfaces and two new devices. */
@@ -12,9 +17,11 @@ const BUSY = {
 }
 
 const ATTACKER = '93.184.216.34'
+const MIDDLING = '203.0.113.50'
 
-/** Two open incidents: a quiet scan that was heard from a moment ago, and a serious attack that
- * two programs saw and CrowdSec banned, half an hour ago. */
+/** Three open incidents: a quiet scan that was heard from a moment ago and that AresGate is not
+ * sure of, a serious attack that two programs saw and CrowdSec banned, half an hour ago, and a
+ * medium one that two programs saw, which is sure enough to ask about and not to raise an alarm. */
 const WAITING: IncidentRequest[] = [
   { address: '8.8.8.8', severity: 'low', programs: ['opnsense'], signals: 1, minutes_ago: 3 },
   {
@@ -24,6 +31,13 @@ const WAITING: IncidentRequest[] = [
     signals: 4,
     ban: true,
     minutes_ago: 30,
+  },
+  {
+    address: MIDDLING,
+    severity: 'medium',
+    programs: ['wazuh', 'opnsense'],
+    signals: 2,
+    minutes_ago: 10,
   },
 ]
 
@@ -91,15 +105,79 @@ test.describe('dashboard', () => {
     await dashboard.goto()
 
     await expect(dashboard.needsYou.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+    // The quiet scan is not sure enough to ask about, so it is not here.
     await expect(dashboard.needsYouCards.getByTestId('incident-title')).toHaveText([
       `Brute force on ssh (${ATTACKER})`,
-      'Brute force on ssh (8.8.8.8)',
+      `Brute force on ssh (${MIDDLING})`,
     ])
     await expect(dashboard.needsYouAll).toHaveText('Open Incidents')
 
     await dashboard.needsYouAll.click()
 
-    await expect(page).toHaveURL('/incidents')
+    await expect(page).toHaveURL(/\/incidents\?q=since/)
+    await expect(incidentsPageCards(page)).toHaveCount(2)
+  })
+
+  test('asks for attention for the incident it is confident of, and says how many more to look at', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents(WAITING)
+
+    await dashboard.goto()
+
+    await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
+    await expect(dashboard.bannerTitle).toHaveText('Needs your attention')
+    await expect(dashboard.bannerDetail).toHaveText(
+      '1 incident that AresGate is confident is real in the last 24 hours, and 1 more worth a look.',
+    )
+  })
+
+  test('counts what was filtered out, and shows it when asked', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents(WAITING)
+
+    await dashboard.goto()
+
+    await expect(dashboard.filteredSummary).toHaveText(
+      '3 incidents in the last 24 hours: 2 need you, 1 filtered out.',
+    )
+    await expect(dashboard.filteredUnsure).toHaveText('1 not sure enough')
+    await expect(dashboard.filteredMuted).toBeHidden()
+    await expect(dashboard.filteredHandled).toBeHidden()
+
+    await dashboard.filteredUnsure.click()
+
+    await expect(page).toHaveURL(/\/incidents\?q=since/)
+    const cards = incidentsPageCards(page)
+    await expect(cards).toHaveCount(1)
+    await expect(cards.getByTestId('incident-title')).toHaveText('Brute force on ssh (8.8.8.8)')
+  })
+
+  test('counts what the verdicts and the owner have filtered out too', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity(BUSY)
+    await harness.createIncidents([
+      ...WAITING,
+      { ...(WAITING[0] as IncidentRequest), address: '1.1.1.1', status: 'resolved' },
+    ])
+    await dashboard.goto()
+    await expect(dashboard.filteredHandled).toHaveText('1 already handled')
+
+    await dashboard.quick('not_suspicious').click()
+
+    await expect(dashboard.judged).toHaveText(`Remembered: ${ATTACKER} is not suspicious.`)
+    await expect(dashboard.filteredMuted).toHaveText('1 called not suspicious or low priority')
+    await expect(dashboard.filteredSummary).toHaveText(
+      '4 incidents in the last 24 hours: 1 needs you, 3 filtered out.',
+    )
   })
 
   test('says what was remembered when a verdict is given from the lane, and takes it back', async ({
@@ -115,7 +193,7 @@ test.describe('dashboard', () => {
     await expect(dashboard.judged).toHaveText(`Remembered: ${ATTACKER} is not suspicious.`)
     await expect(dashboard.needsYouCards).toHaveCount(1)
     await expect(dashboard.needsYouCards.getByTestId('incident-title')).toHaveText(
-      'Brute force on ssh (8.8.8.8)',
+      `Brute force on ssh (${MIDDLING})`,
     )
 
     await dashboard.undo.click()
@@ -238,7 +316,7 @@ test.describe('dashboard', () => {
     await expect(page).toHaveURL('/status')
   })
 
-  test('asks for attention when there are serious alerts, and counts what happened', async ({
+  test('stays quiet about serious alerts that no incident needs you for, and counts what happened', async ({
     harness,
     dashboard,
   }) => {
@@ -246,11 +324,12 @@ test.describe('dashboard', () => {
 
     await dashboard.goto()
 
-    await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
-    await expect(dashboard.bannerTitle).toHaveText('Needs your attention')
+    await expect(dashboard.banner).toHaveAttribute('data-state', 'calm')
+    await expect(dashboard.bannerTitle).toHaveText('All quiet')
     await expect(dashboard.bannerDetail).toHaveText(
-      '2 serious alerts in the last 24 hours (high or critical).',
+      '5 alerts in the last 24 hours, and none of them needs you.',
     )
+    await expect(dashboard.filtered).toBeHidden()
     await expect(dashboard.alertsTile.getByTestId('stat-value')).toHaveText('5')
     await expect(dashboard.alertsTile).toContainText('Up from none the day before')
     await expect(dashboard.blockedTile.getByTestId('stat-value')).toHaveText('7')
@@ -347,7 +426,7 @@ test.describe('dashboard', () => {
     dashboard,
   }) => {
     await harness.createActivity(BUSY)
-    await harness.createIncidents(WAITING)
+    await harness.createIncidents([WAITING[0] as IncidentRequest, WAITING[1] as IncidentRequest])
 
     await dashboard.goto()
 
@@ -467,11 +546,12 @@ test.describe('dashboard', () => {
     await dashboard.goto()
     await expect(dashboard.banner).toHaveAttribute('data-state', 'calm')
     await harness.createActivity({ ...BUSY, collectors: [] })
+    await harness.createIncidents([WAITING[1] as IncidentRequest])
 
     await page.clock.runFor(31_000)
 
     await expect(dashboard.banner).toHaveAttribute('data-state', 'attention')
-    await expect(dashboard.alertsTile.getByTestId('stat-value')).toHaveText('5')
+    await expect(dashboard.needsYouCards).toHaveCount(1)
   })
 
   test('says so when it cannot be loaded, and loads when asked to try again', async ({

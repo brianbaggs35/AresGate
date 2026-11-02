@@ -18,8 +18,22 @@ Every release's notes are here, newest first. The format follows
   page on that alert in the same window. An alert that names no rule can be looked at but not
   quieted, since there is nothing to judge it by. The numbers come from `noise` in
   `GET /api/dashboard`, worked out by `alerts_by_source` and `noisy_signatures` in
-  `app/dashboard.py`, so the analyst's tools can ask the same question. The banner and the Alerts
-  tile still count every alert; making them count what needs you is the next change.
+  `app/dashboard.py`, so the analyst's tools can ask the same question.
+- **The dashboard's sentence and the Needs you lane go by what needs you.** *Needs your attention*
+  used to count every high or critical alert, so a network full of chatty rules said "3,642
+  serious alerts" while nothing was wrong. It now counts incidents: those still open or being
+  investigated, not called quiet by your verdicts, and at least as sure as the floor (35, medium
+  confidence). *Needs your attention* is for the ones AresGate is highly confident of (65 and up),
+  *Worth a look* for the others that need you, and *All quiet* says how many alerts there were and
+  that none of them needs you. A line under it counts the incidents (how many, how many need you,
+  how many were filtered out), with a link for each reason (not sure enough, called not suspicious
+  or low priority, already handled) to the Incidents page on exactly those. The Needs you lane
+  lists the same incidents the sentence counted, and *See all* opens the Incidents page on them.
+  The Alerts tile is colored by what needs you and not by the worst alert. The numbers are
+  `attention` in `GET /api/dashboard`, worked out by `attention` in `app/dashboard.py`. What
+  decides whether one incident needs you lives in one place, `app/incidents/attention.py`
+  (`standing`, with the same rule as SQL in `clauses`), for the dashboard, the lane and anything
+  that later has to choose what is worth a message.
 
 ## 0.0.5
 

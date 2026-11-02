@@ -117,9 +117,29 @@ export interface Noise {
   signatures: NoisySignature[]
 }
 
+/** What the incidents that were going on in the window come to for the owner: how many need
+ * them, and why each of the others was filtered out. Every incident is in exactly one of the
+ * four counts. */
+export interface Attention {
+  incidents: number
+  /** The confidence an incident needs, at least, to be asked about. */
+  floor: number
+  /** Resolved or dismissed already. */
+  handled: number
+  /** Called not suspicious or low priority by a verdict. */
+  muted: number
+  /** AresGate's confidence in them is below the floor. */
+  unsure: number
+  /** The rest: they need the owner. */
+  needs_you: number
+  /** How many of those AresGate is highly confident of. */
+  urgent: number
+}
+
 export interface Dashboard {
   window: WindowInfo
   alerts: AlertCounts
+  attention: Attention
   noise: Noise
   recent_alerts: DashboardAlert[]
   blocked: BlockedCounts
