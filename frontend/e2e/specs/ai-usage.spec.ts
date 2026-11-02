@@ -34,7 +34,11 @@ test.describe('Settings > AI usage', () => {
     await expect(aiUsage.costTile).toContainText('$0.01')
     await expect(aiUsage.tokensTile).toContainText('10.5K')
     await expect(aiUsage.requestsTile).toContainText('1 failed')
-    await expect(aiUsage.monthTile).toContainText('Too early in the month')
+    // Where the month is heading is only worked out once a day of it has passed, so which words
+    // it uses depends on the day this runs; the page's own tests have each.
+    await expect(aiUsage.monthTile).toContainText(
+      /Too early in the month to say where it is heading|On course for about \$/,
+    )
     // Every request is listed, newest first.
     await expect(aiUsage.requests).toHaveCount(7)
     await expect(aiUsage.requests.first()).toContainText('Reading incidents, incident 3')
