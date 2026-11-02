@@ -167,7 +167,8 @@ The AI usage page is the reference for a page of numbers. It is a place in the m
 a provider is chosen and set up, and this page is where what it took, what it cost, how much of it
 is allowed and how much is used without being asked are read and set. `/settings/ai-usage` still
 leads here, so a bookmark from before keeps working. The title, the range (7, 30 or 90 days) and
-*Refresh* are the page header's, and the title is not repeated by a card. It leads with four
+*Refresh* are the page header's (the range, and the toggles of the charts, are `ChoiceToggle`: one
+of a row of buttons is always chosen), and the title is not repeated by a card. It leads with four
 `StatTile`s (the month so far with where it is heading, the cost of the range, the tokens, the
 requests) that each compare themselves with the stretch before in words. The
 level card under them is the one slider in the app: five stops with the level's name and what it

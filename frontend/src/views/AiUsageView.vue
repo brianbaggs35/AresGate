@@ -30,6 +30,7 @@ import AiLevelCard from '@/components/AiLevelCard.vue'
 import AiLimitsCard from '@/components/AiLimitsCard.vue'
 import AiCallsTable from '@/components/AiCallsTable.vue'
 import AppPage from '@/components/AppPage.vue'
+import ChoiceToggle from '@/components/ChoiceToggle.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -139,26 +140,13 @@ onMounted(load)
       description="What AI has been asked to do, how much that took and what it cost. The costs are estimates."
     >
       <template v-if="usage" #actions>
-        <v-btn-toggle
+        <ChoiceToggle
           :model-value="range"
-          mandatory
-          divided
-          density="comfortable"
-          variant="outlined"
-          color="primary"
-          aria-label="Time range"
-          data-test="range"
+          :options="RANGES"
+          label="Time range"
+          name="range"
           @update:model-value="pick"
-        >
-          <v-btn
-            v-for="option in RANGES"
-            :key="option.key"
-            :value="option.key"
-            :data-test="`range-${option.key}`"
-          >
-            {{ option.label }}
-          </v-btn>
-        </v-btn-toggle>
+        />
         <v-btn
           variant="text"
           :prepend-icon="RefreshCw"
@@ -258,25 +246,7 @@ onMounted(load)
           data-test="daily-card"
         >
           <template #actions>
-            <v-btn-toggle
-              v-model="metric"
-              mandatory
-              divided
-              density="comfortable"
-              variant="outlined"
-              color="primary"
-              aria-label="What to show"
-              data-test="metric"
-            >
-              <v-btn
-                v-for="option in METRICS"
-                :key="option.key"
-                :value="option.key"
-                :data-test="`metric-${option.key}`"
-              >
-                {{ option.label }}
-              </v-btn>
-            </v-btn-toggle>
+            <ChoiceToggle v-model="metric" :options="METRICS" label="What to show" name="metric" />
           </template>
           <BarChart
             :title="`${metricName} by day`"
@@ -301,25 +271,12 @@ onMounted(load)
           data-test="groups-card"
         >
           <template #actions>
-            <v-btn-toggle
+            <ChoiceToggle
               v-model="grouping"
-              mandatory
-              divided
-              density="comfortable"
-              variant="outlined"
-              color="primary"
-              aria-label="Group by"
-              data-test="grouping"
-            >
-              <v-btn
-                v-for="option in GROUPINGS"
-                :key="option.key"
-                :value="option.key"
-                :data-test="`grouping-${option.key}`"
-              >
-                {{ option.label }}
-              </v-btn>
-            </v-btn-toggle>
+              :options="GROUPINGS"
+              label="Group by"
+              name="grouping"
+            />
           </template>
           <BarChart
             :title="`${metricName} by ${grouping}`"
