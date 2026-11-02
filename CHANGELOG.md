@@ -24,6 +24,27 @@ Every release's notes are here, newest first. The format follows
   restart was tested for the account, and `down` and `up` only for health.
   See [DOCS/operations.md](DOCS/operations.md#stopping-and-starting).
 
+### Fixed
+
+- **A certificate authority made by OpenSSL can be pasted**: under **Certificate**, **A certificate
+  authority I paste** refused every authority whose certificate has no key usage extension, with
+  "CA cert does not include key usage extension". That is how OpenSSL's own `req -x509` makes an
+  authority, and how Wazuh's certificate tool makes `root-ca.pem`, so the cure the test gave for
+  the Wazuh indexer ("paste the authority") could not work. Python 3.13 turned on its strict
+  RFC 5280 checks for every connection; they stay on for the certificates the computer trusts and
+  are off for an authority you pasted yourself. The signatures, the dates and the name are still
+  checked.
+- **The test says whose certificate it is, and Wazuh's page says why Let's Encrypt isn't it**:
+  Wazuh's instructions for Let's Encrypt are for the dashboard only. The manager's API (port
+  55000) and the indexer (port 9200) answer with the certificates Wazuh made for them, so choosing
+  **The certificates this computer trusts** failed on both however valid the dashboard's
+  certificate is. A system that sends only its own certificate, issued by an authority that gives
+  no address to fetch it from, is now called what it looks like (an authority of the system's own,
+  named, rather than a public one missing from the chain) and a certificate with no names says to
+  pin it. The Wazuh connections show a note beside **Certificate** saying which certificate answers
+  there and what to choose, and the setup instructions say how to compare the API's fingerprint.
+  ([DOCS/integrations.md](DOCS/integrations.md#wazuh)).
+
 ## 0.0.5
 
 ### Added

@@ -473,6 +473,18 @@ test.describe('layout on a phone', () => {
       expect(await overflow(page)).toBeLessThanOrEqual(0)
     })
 
+    test('a page with a note beside the certificate fits the screen', async ({
+      page,
+      integration,
+    }) => {
+      await integration.goto('wazuh')
+      await expect(integration.certificateNote('indexer')).toBeVisible()
+      await integration.tlsMode('indexer', 'ca').check()
+      await expect(integration.authority('indexer')).toBeVisible()
+
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+    })
+
     test('keeps the buttons and the end of the page clear of the bottom bar', async ({
       shell,
       integration,

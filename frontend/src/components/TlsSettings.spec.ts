@@ -20,17 +20,23 @@ async function open({
   mode = 'system',
   url = 'https://192.168.1.1',
   problems = {},
-}: { mode?: TlsMode; url?: string; problems?: Record<string, string> } = {}) {
+  note,
+}: {
+  mode?: TlsMode
+  url?: string
+  problems?: Record<string, string>
+  note?: string
+} = {}) {
   const chosen = ref(mode)
   const authority = ref('')
   const fingerprint = ref('')
   const address = ref(url)
   const host = defineComponent({
     components: { TlsSettings },
-    setup: () => ({ chosen, authority, fingerprint, address, problems }),
+    setup: () => ({ chosen, authority, fingerprint, address, problems, note }),
     template: `<TlsSettings v-model:mode="chosen" v-model:authority="authority"
       v-model:fingerprint="fingerprint" integration="opnsense" :url="address" id-prefix="api"
-      :problems="problems" />`,
+      :problems="problems" :note="note" />`,
   })
   const mounted = await mountWithPlugins(host, { signedIn: 'admin' })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -50,6 +56,18 @@ describe('TlsSettings', () => {
     expect(find('tls-pinned').find<HTMLInputElement>('input').element.checked).toBe(false)
     expect(find('tls-ca-pem').exists()).toBe(false)
     expect(find('tls-fingerprint').exists()).toBe(false)
+  })
+
+  it('says nothing more unless the product has something to add', async () => {
+    const { find } = await open()
+    expect(find('tls-note').exists()).toBe(false)
+  })
+
+  it('shows what the product adds about its certificate beside the choice', async () => {
+    const { find } = await open({
+      note: 'Its Let’s Encrypt certificate is for the dashboard only.',
+    })
+    expect(find('tls-note').text()).toBe('Its Let’s Encrypt certificate is for the dashboard only.')
   })
 
   it('takes a certificate authority that is pasted, and says what is wrong with it', async () => {

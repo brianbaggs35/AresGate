@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SearchCheck, ShieldCheck, TriangleAlert } from '@lucide/vue'
+import { Info, SearchCheck, ShieldCheck, TriangleAlert } from '@lucide/vue'
 import { ref, watch } from 'vue'
 
 import { ApiError, errorMessage } from '@/api/client'
@@ -22,6 +22,8 @@ const props = defineProps<{
   idPrefix: string
   /** What is wrong, by field name. */
   problems: Readonly<Record<string, string>>
+  /** What this product's documentation adds about its certificate, if anything. */
+  note?: string
 }>()
 const mode = defineModel<TlsMode>('mode', { required: true })
 const authority = defineModel<string>('authority', { required: true })
@@ -74,6 +76,17 @@ const expired = (certificate: Certificate) => new Date(certificate.not_after) < 
       How AresGate knows this is the right device. OPNsense, Wazuh and many others make their own
       certificate until you replace it: pin that one, or paste the authority that signed it.
     </p>
+    <v-alert
+      v-if="note"
+      type="info"
+      variant="tonal"
+      density="compact"
+      :icon="Info"
+      class="mb-3"
+      data-test="tls-note"
+    >
+      {{ note }}
+    </v-alert>
     <v-radio-group
       v-model="mode"
       :error-messages="problems.tls_mode"

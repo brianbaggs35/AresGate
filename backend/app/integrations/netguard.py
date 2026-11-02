@@ -327,6 +327,14 @@ def tls_context(mode: str, ca_pem: str | None) -> ssl.SSLContext:
         return _unverified_context()
     context = ssl.create_default_context(cadata=ca_pem if mode == "ca" else None)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
+    if mode == "ca":
+        # Python 3.13 made every default context strict about RFC 5280 (VERIFY_X509_STRICT),
+        # which refuses an authority whose certificate has no key usage extension ("CA cert does
+        # not include key usage extension"). OpenSSL's own `req -x509` makes one like that, and
+        # Wazuh's certificate tool makes its root-ca.pem with it, so pasting that authority was
+        # refused. The person chose this authority themselves, and curl and browsers accept it.
+        # The signatures, the dates and the name are still all checked.
+        context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     return context
 
 

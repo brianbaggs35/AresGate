@@ -105,6 +105,24 @@ def test_an_integration_describes_what_it_takes_to_connect(
     assert (api["url"], api["tls_mode"], api["secrets_set"]) == (None, "system", [])
 
 
+def test_wazuh_says_its_lets_encrypt_certificate_is_not_the_one_its_other_parts_use(
+    client: TestClient, csrf_token: str
+) -> None:
+    body = client.get(f"{BASE}/wazuh").json()
+
+    manager, indexer = (connection["definition"] for connection in body["connections"])
+    assert "dashboard only" in manager["certificate_note"]
+    assert "self-signed" in manager["certificate_note"]
+    assert "dashboard only" in indexer["certificate_note"]
+    assert "root-ca.pem" in indexer["certificate_note"]
+    others = [
+        connection["definition"]["certificate_note"]
+        for key in ("opnsense", "ntopng", "crowdsec")
+        for connection in client.get(f"{BASE}/{key}").json()["connections"]
+    ]
+    assert others == [""] * len(others)
+
+
 def test_an_integration_that_does_not_exist_is_not_found(
     client: TestClient, csrf_token: str
 ) -> None:

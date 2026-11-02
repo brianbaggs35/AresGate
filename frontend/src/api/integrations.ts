@@ -45,6 +45,11 @@ export interface ConnectionDefinition {
   fields: Field[]
   /** Not everyone has it, such as Zenarmor on OPNsense. */
   optional: boolean
+  /**
+   * What the product's documentation adds about its certificate, shown beside the choice of how
+   * to trust it. Empty when there is nothing.
+   */
+  certificate_note: string
 }
 
 /** A service that runs on the system, and whether AresGate reads it. */

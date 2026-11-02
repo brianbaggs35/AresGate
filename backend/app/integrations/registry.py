@@ -130,6 +130,10 @@ class ConnectionDef(BaseModel):
     # Left out when the integration doesn't use it (not everyone runs Zenarmor).
     optional: bool = False
     modules: tuple[ModuleDef, ...] = ()
+    # What the product's documentation says about this connection's certificate that someone
+    # choosing how to trust it needs to know, shown beside that choice. Left empty when the
+    # usual advice is all there is.
+    certificate_note: str = ""
 
 
 class IntegrationDef(BaseModel):
@@ -326,6 +330,21 @@ NTOPNG = IntegrationDef(
     ),
 )
 
+# Wazuh's page on Let's Encrypt covers the dashboard alone, and its pages call the API's default
+# certificate self-signed and name root-ca.pem as the authority that signs the others, so a
+# certificate from Let's Encrypt on the dashboard is not what these two answer with.
+WAZUH_API_CERTIFICATE = (
+    "Wazuh's instructions for Let's Encrypt are for the dashboard only. The manager's API has a "
+    "certificate of its own, self-signed unless you replaced it, so a Let's Encrypt certificate "
+    "on the dashboard isn't what answers here. Pin the API's certificate."
+)
+WAZUH_INDEXER_CERTIFICATE = (
+    "Wazuh's instructions for Let's Encrypt are for the dashboard only. The indexer answers with "
+    "a certificate that Wazuh's certificate tool made, signed by its own authority (root-ca.pem), "
+    "unless you replaced it, so a Let's Encrypt certificate on the dashboard isn't what answers "
+    "here. Paste root-ca.pem as the authority, or pin the certificate."
+)
+
 WAZUH = IntegrationDef(
     key="wazuh",
     name="Wazuh",
@@ -344,6 +363,7 @@ WAZUH = IntegrationDef(
                 FieldDef(key="username", label="Username", kind=FieldKind.TEXT),
                 FieldDef(key="password", label="Password", kind=FieldKind.SECRET),
             ),
+            certificate_note=WAZUH_API_CERTIFICATE,
         ),
         ConnectionDef(
             key="indexer",
@@ -355,6 +375,7 @@ WAZUH = IntegrationDef(
                 FieldDef(key="username", label="Username", kind=FieldKind.TEXT),
                 FieldDef(key="password", label="Password", kind=FieldKind.SECRET),
             ),
+            certificate_note=WAZUH_INDEXER_CERTIFICATE,
         ),
     ),
 )

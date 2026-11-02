@@ -210,6 +210,7 @@ function secret(key: string): string {
         :url="draft.url"
         :id-prefix="definition.key"
         :problems="problems"
+        :note="definition.certificate_note"
         class="connection__section"
       />
 

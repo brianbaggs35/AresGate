@@ -123,10 +123,13 @@ def make_chain(
     begins_days_ago: int = 1,
     lasts_days: int = 30,
     issuer_url: str | None = None,
+    authority_key_usage: bool = True,
 ) -> Chain:
     """A root, an intermediate and a certificate for ``dns_names`` (and 127.0.0.1 if ``address``)
     that the intermediate signed, valid from ``begins_days_ago`` days ago for ``lasts_days`` days
-    from now. The certificate says where to get the intermediate if ``issuer_url`` is given."""
+    from now. The certificate says where to get the intermediate if ``issuer_url`` is given. The
+    authorities have no key usage extension if ``authority_key_usage`` is false, as the ones
+    OpenSSL's ``req -x509`` makes (Wazuh's root-ca.pem is one)."""
     now = datetime.now(UTC)
 
     def sign(
@@ -153,7 +156,7 @@ def make_chain(
                 x509.AuthorityKeyIdentifier.from_issuer_public_key(signer_public), critical=False
             )
         )
-        if authority:
+        if authority and authority_key_usage:
             builder = builder.add_extension(
                 x509.KeyUsage(False, False, False, False, False, True, True, False, False),
                 critical=True,

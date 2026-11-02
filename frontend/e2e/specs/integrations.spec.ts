@@ -746,6 +746,21 @@ test.describe('integrations', () => {
   })
 
   test.describe('Wazuh', () => {
+    test('says beside the certificate that its Let’s Encrypt page is for the dashboard only', async ({
+      integration,
+    }) => {
+      await integration.goto('wazuh')
+
+      await expect(integration.certificateNote('manager')).toContainText('dashboard only')
+      await expect(integration.certificateNote('manager')).toContainText('self-signed')
+      await expect(integration.certificateNote('indexer')).toContainText('root-ca.pem')
+
+      // A product with nothing to add says nothing.
+      await integration.goto('opnsense')
+      await expect(integration.connection('api')).toBeVisible()
+      await expect(integration.certificateNote('api')).toHaveCount(0)
+    })
+
     test('reads its alerts from the indexer and its agents from the manager', async ({
       harness,
       integration,

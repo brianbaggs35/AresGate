@@ -418,6 +418,19 @@ def test_the_tls_modes_check_the_certificate_in_their_own_way() -> None:
     )
 
 
+def test_only_a_pasted_authority_is_let_off_the_strict_checks_of_a_public_one() -> None:
+    chain = make_chain()
+
+    system = netguard.tls_context("system", None)
+    authority = netguard.tls_context("ca", chain.root_pem)
+
+    # What Python checks a public authority's certificates for stays on; an authority the person
+    # pasted is accepted as OpenSSL's own tools make it.
+    assert system.verify_flags & ssl.VERIFY_X509_STRICT
+    assert not authority.verify_flags & ssl.VERIFY_X509_STRICT
+    assert authority.verify_flags & ssl.VERIFY_X509_PARTIAL_CHAIN
+
+
 def fetch(
     server: StubServer,
     *,
