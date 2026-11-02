@@ -29,6 +29,13 @@ grep --quiet '<div id="app">' <<<"$index" || fail "the web app's index page did 
 # A page the router handles falls back to the index, so refreshing it works.
 curl --silent --show-error --fail --insecure --output /dev/null "$base/integrations" ||
     fail "a page of the web app did not fall back to the index"
+# Vite's files are in /static. A folder named after a page (the Assets page is /assets, and the page
+# of one asset is /assets/device-1) would be answered by nginx as files, with a 404 for the page.
+for page in /assets /assets/device-1; do
+    body="$(curl --silent --show-error --fail --insecure "$base$page")" ||
+        fail "$page was not answered with the web app"
+    grep --quiet '<div id="app">' <<<"$body" || fail "$page did not fall back to the web app's index"
+done
 
 echo "The AI API is passed on without a redirect"
 # A path that is also the start of a proxied location with a slash (/api/ai/) is redirected to it by

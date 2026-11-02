@@ -366,6 +366,11 @@ the keyboard are not in it yet.
   the keyboard to where it begins (`SectionCard` has `focusTitle()`).
 - **Untrusted text.** Anything another system wrote (a log line, an alert's signature, a host
   name) is shown as plain text, never as HTML.
+- **Addresses.** The built files are in `/static` (Vite's `assetsDir`), not `/assets`, which is the
+  Assets page: nginx answers a folder that is named like a page with files only, and the page
+  would be a 404 in the container (the host test run, which falls back to the index for any
+  address, does not show it). Before giving a page an address, check there is no folder of that
+  name in the built app; `smoke-test.sh` checks the address of the Assets page.
 - **Test ids.** `data-test="…"` on what tests look for. The shared parts have fixed ones
   (`page-heading`, `page-description`, `section-title`, `load-error-message`, `confirm-accept`,
   `confirm-cancel`) so the same page object code works for every page.

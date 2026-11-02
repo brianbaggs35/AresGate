@@ -26,6 +26,9 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
+    // Not the default `assets`: that is the address of the Assets page, and nginx serves a folder
+    // of that name as files only, so the page (and the page of each asset) would answer 404.
+    assetsDir: 'static',
   },
   test: {
     environment: 'jsdom',
