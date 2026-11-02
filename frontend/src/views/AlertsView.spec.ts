@@ -2,7 +2,8 @@ import * as alertsApi from '@/api/alerts'
 import { ApiError } from '@/api/client'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DestinationDialog from '@/components/DestinationDialog.vue'
-import { destination, destinations, failing, working } from '@/test/alerts'
+import RulesDialog from '@/components/RulesDialog.vue'
+import { destination, destinations, failing, preview, rules, working } from '@/test/alerts'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AlertsView from '@/views/AlertsView.vue'
 
@@ -16,6 +17,8 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
   const change = vi.spyOn(alertsApi, 'changeDestination')
   const remove = vi.spyOn(alertsApi, 'removeDestination').mockResolvedValue(undefined)
   const test = vi.spyOn(alertsApi, 'testDestination')
+  const changeIt = vi.spyOn(alertsApi, 'changeRules')
+  const previewIt = vi.spyOn(alertsApi, 'previewRules').mockResolvedValue(preview())
   const mounted = await mountWithPlugins(AlertsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -25,6 +28,7 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
   const editing = () => mounted.wrapper.findComponent(DestinationDialog).props('modelValue')
   const confirming = () => mounted.wrapper.findComponent(ConfirmDialog).props('modelValue')
+  const ruling = () => mounted.wrapper.findComponent(RulesDialog)
   const press = async (card: number, name: string) => {
     await cards()[card]?.find(`[data-test="destination-${name}"]`).trigger('click')
     await flushPromises()
@@ -46,12 +50,15 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     change,
     remove,
     test,
+    changeIt,
+    previewIt,
     find,
     text,
     cards,
     inDialog,
     editing,
     confirming,
+    ruling,
     press,
     write,
     save,
@@ -280,6 +287,93 @@ describe('AlertsView', () => {
       await press(0, 'test')
 
       expect(text('alerts-failure')).toContain("Can't reach AresGate.")
+    })
+  })
+
+  describe('setting what one is told', () => {
+    it('opens the rules of the one that was asked for', async () => {
+      const { press, ruling } = await open(
+        destinations([destination(), destination({ id: 2, name: 'Phone' })]),
+      )
+
+      expect(ruling().exists()).toBe(false)
+      await press(1, 'rules-edit')
+
+      expect(ruling().props('modelValue')).toBe(true)
+      expect(ruling().props('destination')).toMatchObject({ id: 2, name: 'Phone' })
+    })
+
+    it('shows what they would have done the first time they are opened', async () => {
+      const { press, previewIt, inDialog } = await open()
+
+      await press(0, 'rules-edit')
+
+      expect(previewIt).toHaveBeenCalledTimes(1)
+      expect(previewIt).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ min_severity: 2 }),
+        'a-security-token',
+      )
+      expect(inDialog('preview-summary')!.textContent).toContain('would have sent 2 messages')
+    })
+
+    it('keeps them, and says so', async () => {
+      const { changeIt, press, ruling, text, cards } = await open()
+      const chosen = rules({ max_per_hour: 3 })
+      changeIt.mockResolvedValue(destination({ rules: chosen }))
+
+      await press(0, 'rules-edit')
+      ruling().vm.$emit('save', chosen)
+      await flushPromises()
+
+      expect(changeIt).toHaveBeenCalledWith(1, chosen, 'a-security-token')
+      expect(ruling().props('modelValue')).toBe(false)
+      expect(text('alerts-notice')).toBe('Saved what Security channel is told.')
+      expect(cards()[0]?.find('[data-test="destination-rules"]').text()).toContain('3')
+    })
+
+    it('shows what was wrong with a rule and stays open', async () => {
+      const { changeIt, press, ruling, find } = await open()
+      changeIt.mockRejectedValue(
+        new ApiError(422, "AresGate couldn't use that.", 'invalid', [
+          { path: ['quiet_from'], message: 'Quiet hours need a start.' },
+        ]),
+      )
+
+      await press(0, 'rules-edit')
+      ruling().vm.$emit('save', rules({ max_per_hour: 3 }))
+      await flushPromises()
+
+      expect(ruling().props('modelValue')).toBe(true)
+      expect(ruling().props('problems')).toEqual({ quiet_from: 'Quiet hours need a start.' })
+      expect(find('alerts-notice').exists()).toBe(false)
+    })
+
+    it('shows a failure that is not about a rule in the sheet', async () => {
+      const { changeIt, press, ruling } = await open()
+      changeIt.mockRejectedValue(offline())
+
+      await press(0, 'rules-edit')
+      ruling().vm.$emit('save', rules({ max_per_hour: 3 }))
+      await flushPromises()
+
+      expect(ruling().props('modelValue')).toBe(true)
+      expect(ruling().props('failure')).toBe("Can't reach AresGate.")
+    })
+
+    it('forgets an earlier failure when the sheet is opened again', async () => {
+      const { changeIt, press, ruling } = await open()
+      changeIt.mockRejectedValue(offline())
+      await press(0, 'rules-edit')
+      ruling().vm.$emit('save', rules({ max_per_hour: 3 }))
+      await flushPromises()
+      ruling().vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      await press(0, 'rules-edit')
+
+      expect(ruling().props('failure')).toBeNull()
+      expect(ruling().props('problems')).toEqual({})
     })
   })
 

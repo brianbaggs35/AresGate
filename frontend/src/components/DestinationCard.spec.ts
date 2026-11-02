@@ -1,11 +1,11 @@
 import type { Destination } from '@/api/alerts'
 import DestinationCard from '@/components/DestinationCard.vue'
-import { destination, failing, working } from '@/test/alerts'
+import { choices, destination, failing, rules, working } from '@/test/alerts'
 import { mountWithPlugins } from '@/test/mount'
 
 async function show(item: Destination = destination(), props: Record<string, unknown> = {}) {
   const mounted = await mountWithPlugins(DestinationCard, {
-    props: { destination: item, ...props },
+    props: { destination: item, choices: choices(), ...props },
   })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const text = (selector: string) => find(selector).text()
@@ -66,14 +66,29 @@ describe('DestinationCard', () => {
     expect(find('destination-result').text()).toBe('Its webhook address is gone.')
   })
 
-  it('asks to test, change and remove it', async () => {
+  it('says in words what it is told about', async () => {
+    const { text } = await show()
+    expect(text('destination-rules')).toBe(
+      'Tells you about incidents that are medium or worse, when AresGate is at least 65% sure. From any program. At most 6 messages an hour.',
+    )
+
+    const chosen = await show(
+      destination({ rules: rules({ sources: ['wazuh'], quiet_hours: true }) }),
+    )
+    expect(chosen.text('destination-rules')).toContain('Only from Wazuh.')
+    expect(chosen.text('destination-rules')).toContain('Quiet from 22:00 to 07:00 (UTC)')
+  })
+
+  it('asks to test, set the rules of, change and remove it', async () => {
     const { find, wrapper } = await show()
 
     await find('destination-test').trigger('click')
+    await find('destination-rules-edit').trigger('click')
     await find('destination-edit').trigger('click')
     await find('destination-remove').trigger('click')
 
     expect(wrapper.emitted('test')).toHaveLength(1)
+    expect(wrapper.emitted('rules')).toHaveLength(1)
     expect(wrapper.emitted('edit')).toHaveLength(1)
     expect(wrapper.emitted('remove')).toHaveLength(1)
   })
@@ -91,7 +106,7 @@ describe('DestinationCard', () => {
   it('waits while something is being done to it', async () => {
     const { find } = await show(destination(), { busy: true })
 
-    for (const name of ['test', 'edit', 'remove']) {
+    for (const name of ['test', 'rules-edit', 'edit', 'remove']) {
       expect(find(`destination-${name}`).attributes('disabled')).toBeDefined()
     }
     expect(find('destination-enabled').find('input').attributes('disabled')).toBeDefined()

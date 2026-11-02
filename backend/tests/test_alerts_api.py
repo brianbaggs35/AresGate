@@ -1,5 +1,7 @@
+from datetime import timedelta
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -9,7 +11,15 @@ from app.alerts import destinations
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.integrations import netguard
-from app.models import AlertDestination, ApiCall, AuditEvent, StoredCredential, User, utcnow
+from app.models import (
+    AlertDestination,
+    ApiCall,
+    AuditEvent,
+    Incident,
+    StoredCredential,
+    User,
+    utcnow,
+)
 from app.security import credential_store
 from app.security.credential_store import Kind
 from e2e.stand_ins import discord as discord_stand_in
@@ -58,6 +68,8 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("patch", f"{BASE}/1"),
         ("delete", f"{BASE}/1"),
         ("post", f"{BASE}/1/test"),
+        ("put", f"{BASE}/1/rules"),
+        ("post", f"{BASE}/1/preview"),
     ):
         assert client.request(method, path).status_code == 401, (method, path)
 
@@ -83,11 +95,12 @@ class TestAddingOne:
     def test_an_install_with_none_has_an_empty_list(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.get(BASE).json() == {
-            "items": [],
-            "max_destinations": 10,
-            "hosts": ["discord.com", "discordapp.com"],
-        }
+        body = client.get(BASE).json()
+
+        assert body["items"] == []
+        assert body["max_destinations"] == 10
+        assert body["hosts"] == ["discord.com", "discordapp.com"]
+        assert set(body["choices"]) == {"sources", "activities"}
 
     def test_it_is_kept_and_shown_without_its_address(
         self, client: TestClient, csrf_token: str
@@ -107,6 +120,7 @@ class TestAddingOne:
             "last_attempt_at": None,
             "last_success_at": None,
             "last_error": None,
+            "rules": NEW_RULES,
             "created_at": "",
             "updated_at": "",
         }
@@ -550,3 +564,286 @@ class TestTheTestMessage:
         response = client.post(f"{BASE}/99/test", headers=headers(csrf_token))
 
         assert response.status_code == 404
+
+
+# What a new destination is told about, and the page's whole set of rules with changes.
+NEW_RULES: dict[str, Any] = {
+    "min_severity": 2,
+    "min_confidence": 65,
+    "sources": [],
+    "activities": [],
+    "quiet_hours": False,
+    "quiet_from": 1320,
+    "quiet_until": 420,
+    "quiet_critical": True,
+    "time_zone": "UTC",
+    "max_per_hour": 6,
+    "detail": "standard",
+    "again_when_worse": True,
+}
+
+
+def rules(**changes: Any) -> dict[str, Any]:
+    return {**NEW_RULES, **changes}
+
+
+def incident(session: Session, **changes: Any) -> Incident:
+    now = utcnow()
+    fields: dict[str, Any] = {
+        "subject": "203.0.113.5",
+        "title": "Scan from 203.0.113.5",
+        "severity": 3,
+        "confidence": 70,
+        "status": "open",
+        "first_seen_at": now - timedelta(hours=2),
+        "last_seen_at": now - timedelta(hours=1),
+        "signal_count": 3,
+        "sources": ["opnsense", "wazuh"],
+        "addresses": [],
+        "ports": [],
+        "activities": ["scan"],
+        "top_source": "wazuh",
+        "top_summary": "An alert",
+        "banned": False,
+        "verdict": None,
+        "waves": 1,
+        **changes,
+    }
+    found = Incident(**fields)
+    session.add(found)
+    session.commit()
+    return found
+
+
+class TestTheRules:
+    def test_a_new_destination_is_told_only_of_what_is_serious_and_sure(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        body = add(client, csrf_token).json()
+
+        assert body["rules"] == NEW_RULES
+        assert client.get(BASE).json()["items"][0]["rules"] == NEW_RULES
+
+    def test_the_page_is_told_what_the_rules_can_name(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        choices = client.get(BASE).json()["choices"]
+
+        assert {"key": "wazuh", "name": "Wazuh"} in choices["sources"]
+        assert {"key": "opnsense", "name": "OPNsense"} in choices["sources"]
+        assert choices["activities"] == [
+            {"key": "scan", "name": "scanning"},
+            {"key": "brute_force", "name": "brute force"},
+        ]
+
+    def test_they_are_replaced_whole_and_kept(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        wanted = rules(
+            min_severity=3,
+            min_confidence=35,
+            sources=["wazuh", "crowdsec"],
+            activities=["brute_force", "scan"],
+            quiet_hours=True,
+            quiet_from=23 * 60,
+            quiet_until=6 * 60,
+            quiet_critical=False,
+            time_zone="Europe/Berlin",
+            max_per_hour=2,
+            detail="brief",
+            again_when_worse=False,
+        )
+
+        response = client.put(
+            f"{BASE}/{destination['id']}/rules", json=wanted, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 200
+        # Sources and kinds are kept in order, once each.
+        assert response.json()["rules"] == {
+            **wanted,
+            "sources": ["crowdsec", "wazuh"],
+            "activities": ["brute_force", "scan"],
+        }
+        assert client.get(BASE).json()["items"][0]["rules"] == response.json()["rules"]
+        row = session.get(AlertDestination, destination["id"])
+        assert row is not None
+        assert (row.min_severity, row.detail, row.quiet_hours) == (3, "brief", True)
+
+    def test_a_source_listed_twice_is_kept_once(self, client: TestClient, csrf_token: str) -> None:
+        destination = add(client, csrf_token).json()
+
+        response = client.put(
+            f"{BASE}/{destination['id']}/rules",
+            json=rules(sources=["wazuh", "wazuh"]),
+            headers=headers(csrf_token),
+        )
+
+        assert response.json()["rules"]["sources"] == ["wazuh"]
+
+    def test_the_change_is_recorded_without_saying_what_was_chosen(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+
+        client.put(f"{BASE}/{destination['id']}/rules", json=rules(), headers=headers(csrf_token))
+
+        [event] = audited(session, Action.ALERT_RULES_CHANGED)
+        assert event.outcome == Outcome.SUCCESS.value
+        assert event.detail == {"destination": "Security"}
+
+    @pytest.mark.parametrize(
+        ("changes", "field"),
+        [
+            ({"sources": ["nothing-of-the-kind"]}, "sources"),
+            ({"time_zone": "Nowhere/Land"}, "time_zone"),
+            ({"quiet_hours": True, "quiet_from": 600, "quiet_until": 600}, "quiet_until"),
+        ],
+    )
+    def test_rules_that_make_no_sense_are_refused_on_the_field(
+        self, client: TestClient, csrf_token: str, changes: dict[str, Any], field: str
+    ) -> None:
+        destination = add(client, csrf_token).json()
+
+        response = client.put(
+            f"{BASE}/{destination['id']}/rules", json=rules(**changes), headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", field]
+        assert client.get(BASE).json()["items"][0]["rules"] == NEW_RULES
+
+    def test_equal_quiet_times_are_fine_while_quiet_hours_are_off(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        destination = add(client, csrf_token).json()
+
+        response = client.put(
+            f"{BASE}/{destination['id']}/rules",
+            json=rules(quiet_from=600, quiet_until=600),
+            headers=headers(csrf_token),
+        )
+
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"min_severity": 0},
+            {"min_severity": 5},
+            {"min_confidence": 101},
+            {"max_per_hour": 0},
+            {"max_per_hour": 61},
+            {"quiet_from": 1440},
+            {"quiet_until": -1},
+            {"detail": "everything"},
+            {"activities": ["scan", "scan", "scan"]},
+            {"activities": ["dancing"]},
+            {"time_zone": ""},
+        ],
+    )
+    def test_numbers_and_words_outside_what_is_allowed_are_refused(
+        self, client: TestClient, csrf_token: str, changes: dict[str, Any]
+    ) -> None:
+        destination = add(client, csrf_token).json()
+
+        response = client.put(
+            f"{BASE}/{destination['id']}/rules", json=rules(**changes), headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 422
+
+    def test_something_left_out_or_added_is_refused(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        missing: dict[str, Any] = {k: v for k, v in NEW_RULES.items() if k != "detail"}
+        bodies: list[dict[str, Any]] = [missing, {**NEW_RULES, "address": "x"}]
+
+        for body in bodies:
+            response = client.put(
+                f"{BASE}/{destination['id']}/rules", json=body, headers=headers(csrf_token)
+            )
+            assert response.status_code == 422
+
+    def test_there_is_no_rules_for_a_destination_that_is_not_there(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        response = client.put(f"{BASE}/99/rules", json=rules(), headers=headers(csrf_token))
+
+        assert response.status_code == 404
+
+
+class TestThePreview:
+    def preview(self, client: TestClient, csrf_token: str, destination: int, **changes: Any) -> Any:
+        return client.post(
+            f"{BASE}/{destination}/preview", json=rules(**changes), headers=headers(csrf_token)
+        )
+
+    def test_it_says_what_the_rules_would_have_sent_in_the_last_day(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        sure = incident(session, title="Sure", severity=4, confidence=90)
+        incident(session, title="Unsure", confidence=40)
+        incident(session, title="Quiet", verdict="not_suspicious")
+        incident(session, title="Old", last_seen_at=utcnow() - timedelta(hours=30))
+
+        response = self.preview(client, csrf_token, destination["id"])
+
+        assert response.status_code == 200
+        body = response.json()
+        assert (body["hours"], body["considered"], body["would_send"], body["held"]) == (
+            24,
+            3,
+            1,
+            0,
+        )
+        assert body["left_out"] == [
+            {"reason": "muted", "text": "You called it not suspicious or low priority", "count": 1},
+            {"reason": "confidence", "text": "AresGate is less than 65% sure", "count": 1},
+        ]
+        [example] = body["examples"]
+        assert (example["id"], example["title"], example["severity"], example["confidence"]) == (
+            sure.id,
+            "Sure",
+            "critical",
+            90,
+        )
+        assert body["truncated"] is False
+
+    def test_it_follows_the_rules_it_was_sent_and_not_the_ones_kept(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        incident(session, confidence=40)
+
+        kept = self.preview(client, csrf_token, destination["id"])
+        looser = self.preview(client, csrf_token, destination["id"], min_confidence=30)
+
+        assert (kept.json()["would_send"], looser.json()["would_send"]) == (0, 1)
+        assert client.get(BASE).json()["items"][0]["rules"] == NEW_RULES
+
+    def test_it_changes_and_sends_nothing(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        incident(session)
+
+        self.preview(client, csrf_token, destination["id"])
+
+        assert audited(session, Action.ALERT_RULES_CHANGED) == []
+        assert session.scalar(select(func.count()).select_from(ApiCall)) == 0
+
+    def test_it_refuses_rules_that_make_no_sense(self, client: TestClient, csrf_token: str) -> None:
+        destination = add(client, csrf_token).json()
+
+        response = self.preview(client, csrf_token, destination["id"], time_zone="Nowhere/Land")
+
+        assert response.status_code == 422
+
+    def test_it_needs_a_destination_that_is_there(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        assert self.preview(client, csrf_token, 99).status_code == 404

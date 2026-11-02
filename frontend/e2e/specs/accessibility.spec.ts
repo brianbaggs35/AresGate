@@ -1003,6 +1003,60 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the rules of a destination, with a preview, quiet hours and a mistake, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      alerts,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'critical',
+          programs: ['wazuh', 'opnsense'],
+          signals: 6,
+          minutes_ago: 4,
+        },
+        { address: '8.8.8.8', severity: 'high', programs: ['opnsense'], signals: 3 },
+        { address: '9.9.9.9', severity: 'low', programs: ['opnsense'], status: 'resolved' },
+      ])
+      await alerts.goto()
+      await alerts.addDestination(
+        'Security channel',
+        'https://discord.com/api/webhooks/1234567890123456789/Zk3-_abcdefghijklmnopqrstuvwxyz',
+      )
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expect(alerts.destination('Security channel')).toBeVisible()
+      await expectAccessible(page)
+
+      // The sheet, with what the rules would have done and what was left out.
+      await alerts.openRules('Security channel')
+      await expect(alerts.previewSummary).toContainText('would have sent')
+      await expect(alerts.previewLeftOut).toBeVisible()
+      await expectAccessible(page)
+
+      // With quiet hours on, and a start that is also the end, which can't be saved.
+      await alerts.quiet.check()
+      await alerts.quietFrom.fill('22:00')
+      await alerts.quietUntil.fill('22:00')
+      await expect(alerts.rulesSave).toBeDisabled()
+      await expectAccessible(page)
+
+      // With a menu open.
+      await alerts.severity.locator('.v-field').click()
+      await expect(page.getByRole('option').first()).toBeVisible()
+      await expectAccessible(page)
+      await page.keyboard.press('Escape')
+
+      // With the page it could not reach.
+      await page.route('**/api/alerts/destinations/*/rules', (route) => route.abort())
+      await alerts.quietUntil.fill('07:00')
+      await alerts.rulesSave.click()
+      await expect(alerts.rulesFailure).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('an integration, with its mistakes and its log, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

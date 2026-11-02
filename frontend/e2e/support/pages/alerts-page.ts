@@ -29,6 +29,28 @@ export class AlertsPage {
   readonly confirmTitle: Locator
   readonly confirm: Locator
   readonly confirmCancel: Locator
+  /** The sheet that sets what a destination is told about, and when. */
+  readonly rules: Locator
+  readonly rulesTitle: Locator
+  readonly rulesSave: Locator
+  readonly rulesCancel: Locator
+  readonly rulesClose: Locator
+  readonly rulesFailure: Locator
+  readonly severity: Locator
+  readonly confidence: Locator
+  readonly sources: Locator
+  readonly activities: Locator
+  readonly quiet: Locator
+  readonly quietFrom: Locator
+  readonly quietUntil: Locator
+  readonly quietCritical: Locator
+  readonly rate: Locator
+  readonly again: Locator
+  /** What the rules in the sheet would have done in the last day. */
+  readonly previewSummary: Locator
+  readonly previewLeftOut: Locator
+  readonly previewExamples: Locator
+  readonly previewFailure: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -53,6 +75,26 @@ export class AlertsPage {
     this.confirmTitle = page.getByTestId('confirm-title')
     this.confirm = page.getByTestId('confirm-accept')
     this.confirmCancel = page.getByTestId('confirm-cancel')
+    this.rules = page.getByTestId('rules-dialog')
+    this.rulesTitle = page.getByTestId('rules-title')
+    this.rulesSave = page.getByTestId('rules-save')
+    this.rulesCancel = page.getByTestId('rules-cancel')
+    this.rulesClose = page.getByTestId('rules-close')
+    this.rulesFailure = page.getByTestId('rules-failure')
+    this.severity = page.getByTestId('rules-severity')
+    this.confidence = page.getByTestId('rules-confidence')
+    this.sources = page.getByTestId('rules-sources')
+    this.activities = page.getByTestId('rules-activities')
+    this.quiet = page.getByTestId('rules-quiet').getByRole('checkbox')
+    this.quietFrom = page.getByTestId('rules-from').locator('input')
+    this.quietUntil = page.getByTestId('rules-until').locator('input')
+    this.quietCritical = page.getByTestId('rules-critical').getByRole('checkbox')
+    this.rate = page.getByTestId('rules-rate')
+    this.again = page.getByTestId('rules-again').getByRole('checkbox')
+    this.previewSummary = page.getByTestId('preview-summary')
+    this.previewLeftOut = page.getByTestId('preview-left-out')
+    this.previewExamples = page.getByTestId('preview-examples')
+    this.previewFailure = page.getByTestId('preview-failure')
   }
 
   async goto(): Promise<void> {
@@ -69,6 +111,23 @@ export class AlertsPage {
   /** The switch on a card that turns sending to it on or off. */
   switchOf(card: Locator): Locator {
     return card.getByTestId('destination-enabled').getByRole('checkbox')
+  }
+
+  /** Opens the rules of the destination with this name. */
+  async openRules(name: string): Promise<void> {
+    await this.destination(name).getByTestId('destination-rules-edit').click()
+    await this.rules.waitFor()
+  }
+
+  /** Chooses from one of the menus in the rules sheet, by what the choice is called. */
+  async choose(menu: Locator, label: string): Promise<void> {
+    await menu.locator('.v-field').click()
+    await this.page.getByRole('option', { name: label }).click()
+  }
+
+  /** Picks how much a message says. */
+  detail(label: string): Locator {
+    return this.page.getByRole('radio', { name: new RegExp(`^${label}`) })
   }
 
   /** Adds a destination through the dialog. */

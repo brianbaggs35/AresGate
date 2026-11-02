@@ -10,7 +10,7 @@ This page is built in slices. What works today, and what comes next:
 | | |
 | --- | --- |
 | Destinations: add, rename, turn off, remove, send a test message | Works |
-| Rules for what is sent (only confident threats, filters, quiet hours, a rate limit) | Next |
+| Rules for what is sent (only confident threats, filters, quiet hours, a rate limit), with a preview | Works |
 | The sender, with de-duplication, retries and a delivery log | After that |
 | A daily digest | Last |
 
@@ -32,6 +32,38 @@ This page is built in slices. What works today, and what comes next:
 A destination can be **turned off** without losing its address, **renamed**, given a **new
 address**, or **removed**. Removing it forgets the address in AresGate. The webhook itself stays
 in Discord until you delete it there.
+
+## What a destination is told about
+
+Each destination has its own rules, set from its card with **Rules**. A new destination starts with
+the strictest sensible ones, because the point of an alert is that it is worth being woken for:
+**medium or worse**, and only what AresGate is **at least 65% sure** of (the "high" band of the
+Incidents page).
+
+| Rule | What it does |
+| --- | --- |
+| How serious | The most serious thing in the incident: low, medium, high or critical. Info is never worth a message. |
+| How sure AresGate is | High (65% or more), medium (35% or more) or any. |
+| Reported by | Only incidents one of the chosen programs saw part of. Empty means any. |
+| Kind of activity | Only incidents that include one of the chosen kinds (scanning, brute force). Empty means any. |
+| Quiet hours | A start, an end (over midnight if the end is earlier), a time zone, and whether critical threats still get through. What came in during quiet hours is **held**, not dropped, and is sent when they end. |
+| Limit | The most messages an hour. When more would come in, the rest are said in one summary. |
+| Tell me again if it gets worse | A new message when an incident already sent becomes more serious or more certain. |
+| What a message says | **Brief** (what happened, with a link, no addresses), **Standard** (adds the address on the internet and the programs that saw it) or **Full** (also names your devices; Discord keeps what is posted there, so only for a channel only you can read). |
+
+**What no rule can change.** An incident you called *not suspicious* or *low priority* is never
+sent, and neither is one you resolved or dismissed. An incident you called a *real threat* skips
+the severity and confidence floors, since you have already decided, but still has to be from the
+programs and of the kinds the rules name.
+
+**The preview.** While the rules are open, the sheet shows what they would have done with the
+last 24 hours: how many messages, how many would have waited for quiet hours or been put in a
+summary by the limit, what was left out and why (each reason with its count), and the newest few
+incidents that would have been sent, each linking to its page. It asks the server, which runs the
+same function the sender uses, so the preview and what is sent cannot differ. The count of what a
+limit would have summarised is rough: it goes by when each incident began, not by when it first met
+the rules. It looks at the newest 2,000 incidents and says so when there were more. Nothing is sent
+or saved by a preview.
 
 ## The address is a secret
 
@@ -93,7 +125,10 @@ enough for a webhook, which has no bot. The test message is how you find out on 
 - `backend/app/alerts/discord.py` checks the address, builds messages and sends them;
   `backend/app/alerts/destinations.py` keeps destinations and their sealed addresses (credential
   kind `destination`, name `destination-<id>`); `backend/app/api/alerts.py` is the API under
-  `/api/alerts/destinations`.
+  `/api/alerts/destinations`. `backend/app/alerts/rules.py` holds the rules and `decide()`, the one
+  function that says whether an incident is sent to a destination, and the preview built on it;
+  `PUT .../rules` replaces a destination's rules and `POST .../preview` previews a set of rules
+  without saving them. The rules are columns of `alert_destinations` (migration 0025).
 - The Playwright tests point alerts at a Discord stand-in (`kind: "discord"` in the harness) with
   `app.state.alert_origin`; the product never does. The stand-in answers `204` for the one
   webhook it knows, `404 Unknown Webhook` for any other, and `403` to a request without Discord's
