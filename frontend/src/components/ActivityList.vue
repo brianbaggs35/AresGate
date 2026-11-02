@@ -45,6 +45,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'verdict.given': 'A verdict was given',
   'verdict.changed': 'A verdict was changed',
   'verdict.removed': 'A verdict was taken back',
+  'noise.filters_changed': 'The noise filters were changed',
   'interface.created': 'An interface was added',
   'interface.changed': 'An interface was changed',
   'interface.removed': 'An interface was removed',

@@ -116,6 +116,10 @@ export interface Incident {
    * priority are listed and counted in `signal_count`, but leave everything else about the
    * incident to the signals that are not. */
   verdict_counts: Partial<Record<VerdictKind, number>>
+  /** How many of its signals your noise filters set aside (Settings, Noise filters). Like the
+   * ones a verdict leaves out they are listed and counted in `signal_count`, and count for
+   * nothing else. */
+  filtered_count: number
   /** What its signals say it was, where they say. */
   activities: Activity[]
   /** How many bursts they came in, with a quarter of an hour of quiet between them: a bot that
@@ -137,6 +141,10 @@ export interface Reason {
   text: string
 }
 
+/** Why a noise filter set a signal aside: it was between two addresses on your network, or under
+ * the severity that its program has to reach to count. */
+export type FilteredBy = 'inside' | 'severity'
+
 export interface Signal {
   occurred_at: string
   source: string
@@ -153,6 +161,8 @@ export interface Signal {
   /** What the owner's verdicts said of it, and the verdict that said it while that exists. */
   verdict: VerdictKind | null
   verdict_rule_id: number | null
+  /** Which of your noise filters set it aside, if one did and no verdict was about it. */
+  filtered_by: FilteredBy | null
 }
 
 /** A device on the network that one of the incident's addresses belongs to. */

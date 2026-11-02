@@ -68,6 +68,7 @@ class Action(StrEnum):
     VERDICT_GIVEN = "verdict.given"
     VERDICT_CHANGED = "verdict.changed"
     VERDICT_REMOVED = "verdict.removed"
+    NOISE_FILTERS_CHANGED = "noise.filters_changed"
     INTERFACE_CREATED = "interface.created"
     INTERFACE_CHANGED = "interface.changed"
     INTERFACE_REMOVED = "interface.removed"

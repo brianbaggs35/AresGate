@@ -56,6 +56,27 @@ describe('IncidentTimeline', () => {
     expect(rows().map((row) => row.classes('timeline__item--quiet'))).toEqual([false, true, false])
   })
 
+  it('says which noise filter set a signal aside, and draws it as one that does not count', async () => {
+    const { rows } = await show([
+      signal({ occurred_at: new Date(AT).toISOString() }),
+      signal({ occurred_at: new Date(AT + 60_000).toISOString(), filtered_by: 'inside' }),
+      signal({ occurred_at: new Date(AT + 120_000).toISOString(), filtered_by: 'severity' }),
+    ])
+
+    expect(rows().map((row) => row.find('[data-test="signal-filtered"]').exists())).toEqual([
+      false,
+      true,
+      true,
+    ])
+    expect(rows()[1]?.find('[data-test="signal-filtered"]').text()).toBe(
+      'Set aside: inside your network',
+    )
+    expect(rows()[2]?.find('[data-test="signal-filtered"]').text()).toBe(
+      "Set aside: under this program's severity",
+    )
+    expect(rows().map((row) => row.classes('timeline__item--quiet'))).toEqual([false, true, true])
+  })
+
   it('gives the time down to the second, machine-readable', async () => {
     const { rows } = await show()
 

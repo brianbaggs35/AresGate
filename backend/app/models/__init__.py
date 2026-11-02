@@ -27,7 +27,7 @@ from app.models.credentials import StoredCredential
 from app.models.devices import Device, DeviceAddress, DeviceSource, HostListing
 from app.models.events import Event, EventRetention
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
-from app.models.incidents import Incident, IncidentSignal
+from app.models.incidents import Incident, IncidentSignal, NoiseSettings
 from app.models.integrations import ApiCall, IntegrationConnection
 from app.models.interfaces import ROLES as INTERFACE_ROLES
 from app.models.interfaces import Interface, InterfaceFeed
@@ -72,6 +72,7 @@ __all__ = [
     "MetricRetention",
     "MetricSample",
     "MetricSeries",
+    "NoiseSettings",
     "Passkey",
     "PasskeyChallenge",
     "RecoveryCode",

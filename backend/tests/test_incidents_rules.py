@@ -176,6 +176,48 @@ class TestVerdicts:
         assert [reason.rule for reason in assessment.reasons] == ["strongest", "muted", "threat"]
 
 
+class TestNoiseFilters:
+    def test_an_incident_of_signals_all_set_aside_is_sure_of_nothing(self) -> None:
+        assessment = rules.assess(facts(signal_count=0, filtered=3, severity=Severity.CRITICAL))
+
+        assert assessment.confidence == 0
+        assert [reason.rule for reason in assessment.reasons] == ["filtered"]
+        assert assessment.reasons[0].text == (
+            "Every signal in it was set aside by your noise filters (Settings, Noise filters), "
+            "so none of them counts."
+        )
+
+    def test_it_says_so_when_verdicts_and_filters_left_out_the_signals_between_them(self) -> None:
+        assessment = rules.assess(facts(signal_count=0, muted=2, filtered=3))
+
+        assert assessment.confidence == 0
+        assert [reason.rule for reason in assessment.reasons] == ["filtered"]
+        assert assessment.reasons[0].text == (
+            "Every signal in it was left out, so none of them counts: 2 match a verdict you "
+            "gave and 3 were set aside by your noise filters."
+        )
+
+    def test_signals_set_aside_are_left_out_of_the_rest(self) -> None:
+        assessment = rules.assess(facts(signal_count=1, filtered=4))
+
+        assert assessment.confidence == 25
+        assert points(assessment) == {"strongest": 25, "filtered": 0}
+        assert assessment.reasons[-1].text == (
+            "Left out: 4 of its 5 signals were set aside by your noise filters "
+            "(Settings, Noise filters)."
+        )
+
+    def test_the_total_counts_the_signals_of_both_kinds_that_were_left_out(self) -> None:
+        assessment = rules.assess(facts(signal_count=1, muted=2, filtered=3))
+
+        assert [reason.text for reason in assessment.reasons[-2:]] == [
+            "Left out: 2 of its 6 signals match a verdict you gave "
+            "(not suspicious or low priority).",
+            "Left out: 3 of its 6 signals were set aside by your noise filters "
+            "(Settings, Noise filters).",
+        ]
+
+
 def test_an_integration_this_version_doesnt_know_is_called_by_its_key() -> None:
     assert rules.name_of("wazuh") == "Wazuh"
     assert rules.name_of("zeek") == "zeek"

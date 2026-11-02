@@ -41,7 +41,7 @@ describe('mutedIn', () => {
 })
 
 describe('standing', () => {
-  const base = { verdict: null, verdict_counts: {}, signal_count: 4 } as const
+  const base = { verdict: null, verdict_counts: {}, signal_count: 4, filtered_count: 0 } as const
 
   it('says nothing was said', () => {
     expect(standing(base)).toBe("You haven't said anything about it yet.")
@@ -50,6 +50,27 @@ describe('standing', () => {
   it('says how many signals are left out when some are', () => {
     expect(standing({ ...base, verdict_counts: { low_priority: 1 } })).toBe(
       '1 of its 4 signals match a verdict you gave and are not counted.',
+    )
+  })
+
+  it('says how many signals the noise filters set aside', () => {
+    expect(standing({ ...base, filtered_count: 3 })).toBe(
+      '3 of its 4 signals were set aside by your noise filters and are not counted.',
+    )
+  })
+
+  it('says both when verdicts and noise filters left some out', () => {
+    expect(standing({ ...base, verdict_counts: { not_suspicious: 1 }, filtered_count: 2 })).toBe(
+      '1 of its 4 signals match a verdict you gave and 2 were set aside by your noise filters, so none of those are counted.',
+    )
+  })
+
+  it('says it raises no alarm when the noise filters, or them and verdicts, left every signal out', () => {
+    const none = 'sure of nothing and will not raise an alarm'
+
+    expect(standing({ ...base, filtered_count: 4 })).toContain(none)
+    expect(standing({ ...base, verdict_counts: { low_priority: 1 }, filtered_count: 3 })).toBe(
+      'Every signal in it was left out by a verdict you gave or your noise filters, so AresGate is sure of nothing and will not raise an alarm for it.',
     )
   })
 

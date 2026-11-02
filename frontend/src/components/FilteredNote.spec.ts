@@ -53,6 +53,15 @@ describe('FilteredNote', () => {
     expect(find('filtered-handled').exists()).toBe(false)
   })
 
+  it('links to the settings that decide what is filtered', async () => {
+    const { find } = await open()
+    expect(find('filtered-settings').attributes('href')).toBe('/settings/noise-filters')
+
+    // Also when nothing was filtered for a reason that has a link of its own.
+    const none = await open(attention({ incidents: 1, needs_you: 1 }))
+    expect(none.find('filtered-settings').text()).toBe('Change what is filtered')
+  })
+
   it('is a named region', async () => {
     const { wrapper } = await open()
 

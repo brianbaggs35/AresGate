@@ -68,6 +68,8 @@ class Facts:
     # How many addresses besides the subject the signals name.
     others: int
     muted: int = 0
+    # How many the owner's noise filters set aside, which they did without a verdict.
+    filtered: int = 0
     # How many signals the owner said are a real threat.
     threats: int = 0
     # The block of addresses the incident is about, where it names more than one address of it.
@@ -110,20 +112,34 @@ def _list(names: Sequence[str]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
+def _nothing_counts(facts: Facts) -> Reason:
+    """Why an incident that has signals is sure of nothing: all of them were left out."""
+    if not facts.filtered:
+        return Reason(
+            "muted",
+            0,
+            "Every signal in it matches a verdict you gave, so none of them counts: "
+            "you said they are not suspicious or low priority.",
+        )
+    if not facts.muted:
+        return Reason(
+            "filtered",
+            0,
+            "Every signal in it was set aside by your noise filters (Settings, Noise filters), "
+            "so none of them counts.",
+        )
+    return Reason(
+        "filtered",
+        0,
+        f"Every signal in it was left out, so none of them counts: {facts.muted} match a "
+        f"verdict you gave and {facts.filtered} were set aside by your noise filters.",
+    )
+
+
 def assess(facts: Facts) -> Assessment:
     """The reasons for an incident's confidence, and the confidence they add up to."""
     if facts.signal_count == 0:
-        return Assessment(
-            0,
-            [
-                Reason(
-                    "muted",
-                    0,
-                    "Every signal in it matches a verdict you gave, so none of them counts: "
-                    "you said they are not suspicious or low priority.",
-                )
-            ],
-        )
+        return Assessment(0, [_nothing_counts(facts)])
 
     reasons: list[Reason] = []
     reasons.append(
@@ -161,13 +177,24 @@ def assess(facts: Facts) -> Assessment:
             Reason("spread", SPREAD_POINTS, f"{facts.others} other addresses are involved.")
         )
 
+    total = facts.signal_count + facts.muted + facts.filtered
     if facts.muted:
         reasons.append(
             Reason(
                 "muted",
                 0,
-                f"Left out: {facts.muted} of its {facts.signal_count + facts.muted} signals "
+                f"Left out: {facts.muted} of its {total} signals "
                 "match a verdict you gave (not suspicious or low priority).",
+            )
+        )
+
+    if facts.filtered:
+        reasons.append(
+            Reason(
+                "filtered",
+                0,
+                f"Left out: {facts.filtered} of its {total} signals were set aside by your "
+                "noise filters (Settings, Noise filters).",
             )
         )
 

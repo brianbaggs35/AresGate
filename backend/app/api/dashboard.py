@@ -9,7 +9,7 @@ from pydantic import AwareDatetime, BaseModel
 from app import dashboard
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
-from app.incidents import verdicts
+from app.incidents import filters, verdicts
 from app.integrations import registry
 from app.models import Event, Incident, utcnow
 
@@ -248,7 +248,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
     found = dashboard.alerts(db, win)
     refused = dashboard.blocked(db, win)
     people = dashboard.devices(db, win)
-    needing = dashboard.attention(db, win)
+    needing = dashboard.attention(db, win, filters.load(db).confidence_floor)
     return DashboardOut(
         window=WindowOut(
             key=win.key,
