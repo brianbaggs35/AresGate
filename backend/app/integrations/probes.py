@@ -398,6 +398,8 @@ async def ntopng_interface_lookup(client: ApiClient, target: Target) -> Lookup:
 
 
 WAZUH_MANAGER = "The Wazuh manager"
+# The same, as a sentence puts it ("doesn't look like the Wazuh manager's").
+THE_MANAGER = "the Wazuh manager"
 WAZUH_AGENTS = "/agents"
 
 
@@ -414,7 +416,7 @@ async def wazuh_sign_in(client: ApiClient, target: Target) -> str | Verdict:
         return bad
     token = signed_in.text.strip()
     if not token or len(token) > 4096 or any(character.isspace() for character in token):
-        return unexpected("the Wazuh manager")
+        return unexpected(THE_MANAGER)
     client.hide(token)
     return token
 
@@ -448,7 +450,7 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
     data = as_object(reply.json())
     info = as_object(data.get("data")) if data else None
     if info is None or "api_version" not in info:
-        return unexpected("the Wazuh manager")
+        return unexpected(THE_MANAGER)
     listed = await client.request(
         "GET", WAZUH_AGENTS, query={"limit": "1", "select": "id"}, headers=bearer
     )
@@ -456,7 +458,7 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
         return bad
     agents = wazuh_agent_rows(listed)
     if agents is None:
-        return unexpected("the Wazuh manager")
+        return unexpected(THE_MANAGER)
     if not agents:
         return Verdict(False, NO_AGENTS_LISTED)
     return Verdict(
@@ -467,6 +469,7 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
 
 
 WAZUH_INDEXER = "The Wazuh indexer"
+THE_INDEXER = "the Wazuh indexer"
 WAZUH_ALERTS = "/wazuh-alerts-*/_search"
 INDEXER_REFUSED = (
     f"{WAZUH_INDEXER} didn't accept the credentials (HTTP 401). It has its own users, apart "
@@ -556,7 +559,7 @@ async def wazuh_indexer(client: ApiClient, target: Target) -> Verdict:
     answer = as_object(reply.json())
     found = as_object(answer.get("hits")) if answer else None
     if found is None or as_array(found.get("hits")) is None:
-        return unexpected("the Wazuh indexer")
+        return unexpected(THE_INDEXER)
     return Verdict(
         True,
         f"{WAZUH_INDEXER} answered, and the user can search the alerts."
