@@ -13,6 +13,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import NeedsYouLane from '@/components/NeedsYouLane.vue'
+import NoiseCard from '@/components/NoiseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RecentAlerts from '@/components/RecentAlerts.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -345,6 +346,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           />
         </v-card>
       </div>
+
+      <NoiseCard
+        v-if="data.noise.signatures.length"
+        :noise="data.noise"
+        :total="data.alerts.total"
+        :window="data.window.key"
+        :last-words="lastWords"
+        @judged="judged"
+      />
 
       <div class="dashboard__lists">
         <v-card class="pa-5 pa-sm-6" data-test="sources-card">

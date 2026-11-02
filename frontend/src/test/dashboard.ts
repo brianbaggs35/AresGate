@@ -1,4 +1,11 @@
-import type { Dashboard, DashboardAlert, DashboardWindow, IncidentMark } from '@/api/dashboard'
+import type {
+  Dashboard,
+  DashboardAlert,
+  DashboardWindow,
+  IncidentMark,
+  NoisySignature,
+  SourceAlerts,
+} from '@/api/dashboard'
 
 const HOUR = 3_600_000
 const END = Date.parse('2026-10-26T19:00:00Z')
@@ -41,6 +48,7 @@ export function dashboard(
         critical: none(buckets),
       },
     },
+    noise: { sources: [], signatures: [] },
     recent_alerts: [],
     blocked: { total: 0, previous: 0, per_bucket: none(buckets), top_sources: [] },
     traffic: [],
@@ -78,6 +86,38 @@ export function incidentMark(changes: Partial<IncidentMark> = {}): IncidentMark 
     first_seen_at: '2026-10-26T14:15:00Z',
     last_seen_at: '2026-10-26T14:40:00Z',
     banned: false,
+    ...changes,
+  }
+}
+
+/** What one program reported as alerts: 120, 80 of them serious, and none between two addresses
+ * on the network, unless it says otherwise. */
+export function sourceAlerts(changes: Partial<SourceAlerts> = {}): SourceAlerts {
+  return {
+    source: 'ntopng',
+    source_name: 'ntopng',
+    total: 120,
+    serious: 80,
+    inside: 0,
+    ...changes,
+  }
+}
+
+/** An alert that ntopng reported 120 times in the window from 3 addresses to 9, and nobody has
+ * said anything of. */
+export function noisySignature(changes: Partial<NoisySignature> = {}): NoisySignature {
+  return {
+    source: 'ntopng',
+    source_name: 'ntopng',
+    signature: 'Blacklisted flow',
+    severity: 'high',
+    count: 120,
+    from_addresses: 3,
+    to_addresses: 9,
+    first_at: new Date(END - 20 * HOUR).toISOString(),
+    last_at: new Date(END - 5 * 60_000).toISOString(),
+    verdict: null,
+    verdict_rule_id: null,
     ...changes,
   }
 }
