@@ -23,6 +23,18 @@ Every release's notes are here, newest first. The format follows
   in the database are the same bytes and the app secret key is the same file. Before, only a
   restart was tested for the account, and `down` and `up` only for health.
   See [DOCS/operations.md](DOCS/operations.md#stopping-and-starting).
+- **What is making the noise, on the dashboard.** A card under the charts says which program
+  reported most of the alerts (and how many of those were high or critical, and how many were
+  between two addresses on your own network), then lists the alerts that were reported most often:
+  how many times and what share of all of them, how serious the worst was, from how many addresses
+  to how many, and over what time. **Quiet this** gives a low priority verdict for that alert from
+  that program (the same verdict the incident cards give, so it has a note, an *Undo* for ten
+  seconds and a place in Settings > Verdicts to take it back), and **See in logs** opens the Logs
+  page on that alert in the same window. An alert that names no rule can be looked at but not
+  quieted, since there is nothing to judge it by. The numbers come from `noise` in
+  `GET /api/dashboard`, worked out by `alerts_by_source` and `noisy_signatures` in
+  `app/dashboard.py`, so the analyst's tools can ask the same question. The banner and the Alerts
+  tile still count every alert; making them count what needs you is the next change.
 
 ## 0.0.5
 

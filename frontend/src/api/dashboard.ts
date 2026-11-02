@@ -1,5 +1,6 @@
 import { apiGet } from '@/api/client'
 import type { IncidentStatus } from '@/api/incidents'
+import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
 /** How far back the dashboard looks. */
@@ -80,9 +81,46 @@ export interface IncidentMark {
   banned: boolean
 }
 
+/** What one program reported as alerts in the window: how many, how many of them were high or
+ * critical, and how many were between two addresses that are both on the network. */
+export interface SourceAlerts {
+  source: string
+  source_name: string
+  total: number
+  serious: number
+  inside: number
+}
+
+/** One alert (a rule, a signature) that a program reported often, and what the owner has said of
+ * every alert like it. */
+export interface NoisySignature {
+  source: string
+  source_name: string
+  /** Null when the alerts do not say which rule raised them. */
+  signature: string | null
+  /** The most serious it was. */
+  severity: Severity
+  count: number
+  from_addresses: number
+  to_addresses: number
+  first_at: string
+  last_at: string
+  /** What the owner said of every alert like it, whichever address it came from, and the rule
+   * that says so: both null when they have said nothing. */
+  verdict: VerdictKind | null
+  verdict_rule_id: number | null
+}
+
+/** Where the alerts of the window come from: by program, and the ones reported most. */
+export interface Noise {
+  sources: SourceAlerts[]
+  signatures: NoisySignature[]
+}
+
 export interface Dashboard {
   window: WindowInfo
   alerts: AlertCounts
+  noise: Noise
   recent_alerts: DashboardAlert[]
   blocked: BlockedCounts
   traffic: InterfaceTraffic[]

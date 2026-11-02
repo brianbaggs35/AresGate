@@ -1,7 +1,7 @@
 """What the dashboard shows. For someone signed in."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel
@@ -9,12 +9,14 @@ from pydantic import AwareDatetime, BaseModel
 from app import dashboard
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
+from app.incidents import verdicts
 from app.integrations import registry
 from app.models import Event, Incident, utcnow
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(signed_in)])
 
 SeverityName = Literal["info", "low", "medium", "high", "critical"]
+VerdictName = Literal["not_suspicious", "low_priority", "threat"]
 # The words the web app uses for each severity.
 SEVERITY_NAMES: dict[Severity, SeverityName] = {
     Severity.INFO: "info",
@@ -104,9 +106,47 @@ class IncidentMarkOut(BaseModel):
     banned: bool
 
 
+class SourceAlertsOut(BaseModel):
+    """What one program reported as alerts: how many, how many serious, and how many were between
+    two addresses on the network."""
+
+    source: str
+    source_name: str
+    total: int
+    serious: int
+    inside: int
+
+
+class NoisySignatureOut(BaseModel):
+    """One alert that a program reported often, and what the owner has said of it."""
+
+    source: str
+    source_name: str
+    # None when the alerts do not say which rule raised them.
+    signature: str | None
+    severity: SeverityName
+    count: int
+    from_addresses: int
+    to_addresses: int
+    first_at: AwareDatetime
+    last_at: AwareDatetime
+    # What the owner said of every alert like it, whichever address it came from, and the rule
+    # that says so: both None when they have said nothing.
+    verdict: VerdictName | None
+    verdict_rule_id: int | None
+
+
+class NoiseOut(BaseModel):
+    """Where the alerts come from: by program, and the alerts that were reported most."""
+
+    sources: list[SourceAlertsOut]
+    signatures: list[NoisySignatureOut]
+
+
 class DashboardOut(BaseModel):
     window: WindowOut
     alerts: AlertsOut
+    noise: NoiseOut
     recent_alerts: list[AlertOut]
     blocked: BlockedOut
     traffic: list[InterfaceOut]
@@ -144,6 +184,46 @@ def _alert(event: Event) -> AlertOut:
     )
 
 
+def _name(source: str) -> str:
+    integration = registry.INTEGRATIONS.get(source)
+    return integration.name if integration else source
+
+
+def _noise(db: Db, win: dashboard.Window) -> NoiseOut:
+    rules = verdicts.load(db)
+    signatures: list[NoisySignatureOut] = []
+    for item in dashboard.noisy_signatures(db, win):
+        rule = verdicts.standing(rules, item.source, item.signature)
+        signatures.append(
+            NoisySignatureOut(
+                source=item.source,
+                source_name=_name(item.source),
+                signature=item.signature,
+                severity=SEVERITY_NAMES[item.severity],
+                count=item.count,
+                from_addresses=item.from_addresses,
+                to_addresses=item.to_addresses,
+                first_at=item.first_at,
+                last_at=item.last_at,
+                verdict=cast(VerdictName, rule.verdict) if rule else None,
+                verdict_rule_id=rule.id if rule else None,
+            )
+        )
+    return NoiseOut(
+        sources=[
+            SourceAlertsOut(
+                source=item.source,
+                source_name=_name(item.source),
+                total=item.total,
+                serious=item.serious,
+                inside=item.inside,
+            )
+            for item in dashboard.alerts_by_source(db, win)
+        ],
+        signatures=signatures,
+    )
+
+
 def build(db: Db, key: str, now: datetime) -> DashboardOut:
     win = dashboard.window(key, now)
     found = dashboard.alerts(db, win)
@@ -165,6 +245,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
                 SEVERITY_NAMES[level]: counts for level, counts in found.by_severity.items()
             },
         ),
+        noise=_noise(db, win),
         recent_alerts=[_alert(event) for event in dashboard.recent_alerts(db, win)],
         blocked=BlockedOut(
             total=refused.total,

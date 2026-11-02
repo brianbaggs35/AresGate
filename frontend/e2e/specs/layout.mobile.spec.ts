@@ -677,6 +677,36 @@ test.describe('layout on a phone', () => {
     await expect(page.getByTestId('page-heading')).toContainText('93.184.216.34')
   })
 
+  test('keeps what is making the noise within the screen, with the buttons of each reachable', async ({
+    page,
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({
+      collectors: ['ok'],
+      alerts: { critical: 1, high: 3, medium: 2 },
+    })
+
+    await dashboard.goto()
+    await dashboard.noise.scrollIntoViewIfNeeded()
+
+    const width = page.viewportSize()?.width ?? 0
+    const [card, item, quiet] = await Promise.all([
+      dashboard.noise.boundingBox(),
+      dashboard.noiseItems.first().boundingBox(),
+      dashboard.noiseQuiet.first().boundingBox(),
+    ])
+    expect(card?.x ?? -1).toBeGreaterThanOrEqual(0)
+    expect((card?.x ?? 0) + (card?.width ?? 0)).toBeLessThanOrEqual(width)
+    expect((item?.x ?? 0) + (item?.width ?? 0)).toBeLessThanOrEqual(width)
+    // A finger can hit it.
+    expect(quiet?.height ?? 0).toBeGreaterThanOrEqual(44)
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
   test('swipes through the incidents that need a decision, with the next one showing', async ({
     page,
     harness,

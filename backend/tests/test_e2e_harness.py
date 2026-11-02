@@ -764,6 +764,40 @@ def test_what_the_dashboard_shows_can_be_made_to_order(e2e: TestClient) -> None:
     assert all(item["integration"] == "opnsense" for item in listed)
 
 
+def test_an_alert_that_keeps_coming_can_be_made_to_order(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/activity",
+        json={
+            "alerts": {"low": 1},
+            "repeated": [
+                {
+                    "source": "ntopng",
+                    "signature": "Blacklisted flow",
+                    "severity": "high",
+                    "count": 7,
+                }
+            ],
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json()["alerts"] == 8
+    e2e.post(
+        "/api/auth/login",
+        json={"username": BASELINE_ACCOUNT.username, "password": BASELINE_ACCOUNT.password},
+    )
+    noise = e2e.get("/api/dashboard").json()["noise"]
+    [first, *_] = noise["signatures"]
+    assert (first["source"], first["signature"], first["severity"], first["count"]) == (
+        "ntopng",
+        "Blacklisted flow",
+        "high",
+        7,
+    )
+    assert (first["from_addresses"], first["to_addresses"]) == (3, 5)
+
+
 @pytest.mark.parametrize("state", ["waiting", "ok", "problem", "late"])
 def test_a_collector_can_be_made_to_be_in_any_state(e2e: TestClient, state: str) -> None:
     e2e.post("/api/__test__/database/clean")

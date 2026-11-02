@@ -160,6 +160,174 @@ class TestAlerts:
         assert len(dashboard.recent_alerts(session, win, limit=3)) == 3
 
 
+class TestAlertsBySource:
+    def test_they_are_counted_for_each_program_with_the_serious_and_inside_ones(
+        self, session: Session, settings: Settings
+    ) -> None:
+        win = dashboard.window("24h", NOW)
+        store(
+            session,
+            settings,
+            alert(Severity.CRITICAL, NOW - timedelta(minutes=5), "a", source="ntopng"),
+            alert(Severity.HIGH, NOW - timedelta(minutes=6), "b", source="ntopng"),
+            alert(
+                Severity.HIGH,
+                NOW - timedelta(minutes=7),
+                "c",
+                source="ntopng",
+                src_address="192.168.1.20",
+                dst_address="10.0.0.5",
+            ),
+            alert(
+                Severity.LOW,
+                NOW - timedelta(minutes=8),
+                "d",
+                source="ntopng",
+                src_address="192.168.1.20",
+                dst_address="93.184.216.34",
+            ),
+            alert(Severity.MEDIUM, NOW - timedelta(minutes=9), "e", source="wazuh"),
+            # Not in the window, and not an alert.
+            alert(Severity.HIGH, NOW - timedelta(days=3), "f", source="wazuh"),
+            blocked_event("203.0.113.9", NOW - timedelta(minutes=10), "g"),
+        )
+
+        found = dashboard.alerts_by_source(session, win)
+
+        assert found == [
+            dashboard.SourceAlerts("ntopng", total=4, serious=3, inside=1),
+            dashboard.SourceAlerts("wazuh", total=1, serious=0, inside=0),
+        ]
+
+    def test_the_addresses_that_are_inside_are_the_ones_a_network_can_have(
+        self, session: Session, settings: Settings
+    ) -> None:
+        pairs = [
+            ("192.168.1.20", "172.16.0.1"),
+            ("100.64.0.1", "169.254.1.1"),
+            ("fd00::1", "fe80::2"),
+            ("172.32.0.1", "10.0.0.1"),
+            ("93.184.216.34", "10.0.0.1"),
+            ("2606:2800:220:1::1", "fd00::1"),
+        ]
+        store(
+            session,
+            settings,
+            *(
+                alert(
+                    Severity.LOW,
+                    NOW - timedelta(minutes=number + 1),
+                    str(number),
+                    src_address=src,
+                    dst_address=dst,
+                )
+                for number, (src, dst) in enumerate(pairs)
+            ),
+        )
+
+        [found] = dashboard.alerts_by_source(session, dashboard.window("24h", NOW))
+
+        assert (found.total, found.inside) == (6, 3)
+
+    def test_there_is_nothing_when_there_were_no_alerts(self, session: Session) -> None:
+        assert dashboard.alerts_by_source(session, dashboard.window("24h", NOW)) == []
+
+
+class TestNoisySignatures:
+    def test_the_alerts_reported_most_come_first_with_what_they_say_of_themselves(
+        self, session: Session, settings: Settings
+    ) -> None:
+        win = dashboard.window("24h", NOW)
+        early, late = NOW - timedelta(hours=3), NOW - timedelta(minutes=5)
+        store(
+            session,
+            settings,
+            *(
+                alert(
+                    Severity.HIGH if number == 0 else Severity.MEDIUM,
+                    early + timedelta(minutes=number * 10),
+                    f"flow-{number}",
+                    source="ntopng",
+                    signature="Blacklisted flow",
+                    src_address=f"192.168.1.{number % 2 + 10}",
+                    dst_address=f"203.0.113.{number}",
+                )
+                for number in range(5)
+            ),
+            alert(
+                Severity.LOW,
+                late,
+                "scan",
+                source="wazuh",
+                signature="Port scan",
+                src_address="198.51.100.4",
+            ),
+            alert(Severity.LOW, late, "scan-2", source="wazuh", signature="Port scan"),
+        )
+
+        found = dashboard.noisy_signatures(session, win)
+
+        assert found == [
+            dashboard.NoisySignature(
+                "ntopng",
+                "Blacklisted flow",
+                Severity.HIGH,
+                5,
+                2,
+                5,
+                early,
+                early + timedelta(minutes=40),
+            ),
+            dashboard.NoisySignature("wazuh", "Port scan", Severity.LOW, 2, 1, 0, late, late),
+        ]
+
+    def test_alerts_that_name_no_rule_are_one_group_and_equal_counts_go_by_name(
+        self, session: Session, settings: Settings
+    ) -> None:
+        at = NOW - timedelta(minutes=5)
+        store(
+            session,
+            settings,
+            alert(Severity.LOW, at, "a", source="wazuh", signature=None),
+            alert(Severity.LOW, at, "b", source="wazuh", signature=None),
+            alert(Severity.LOW, at, "c", source="wazuh", signature="B rule"),
+            alert(Severity.LOW, at, "d", source="wazuh", signature="A rule"),
+            alert(Severity.LOW, at, "e", source="ntopng", signature="A rule"),
+        )
+
+        found = dashboard.noisy_signatures(session, dashboard.window("24h", NOW))
+
+        assert [(item.source, item.signature, item.count) for item in found] == [
+            ("wazuh", None, 2),
+            ("ntopng", "A rule", 1),
+            ("wazuh", "A rule", 1),
+            ("wazuh", "B rule", 1),
+        ]
+
+    def test_there_are_only_as_many_as_asked_for_and_none_from_outside_the_window(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            *(
+                alert(
+                    Severity.LOW,
+                    NOW - timedelta(minutes=number + 1),
+                    str(number),
+                    signature=f"Rule {number}",
+                )
+                for number in range(4)
+            ),
+            alert(Severity.LOW, NOW - timedelta(days=2), "old", signature="Old rule"),
+        )
+
+        found = dashboard.noisy_signatures(session, dashboard.window("24h", NOW), limit=3)
+
+        assert len(found) == 3
+        assert all(item.signature != "Old rule" for item in found)
+
+
 class TestBlocked:
     def test_only_what_the_firewall_refused_counts(
         self, session: Session, settings: Settings

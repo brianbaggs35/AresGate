@@ -8,7 +8,7 @@ from app.api.dashboard import build
 from app.config import Settings
 from app.events.event import Severity
 from app.events.store import record as record_events
-from app.models import User, utcnow
+from app.models import User, VerdictRule, utcnow
 from tests.helpers import new_event
 from tests.test_dashboard import NOW, alert, blocked_event, incident
 
@@ -32,6 +32,7 @@ def test_an_install_with_nothing_stored_still_has_a_dashboard(
     assert body["alerts"]["total"] == 0
     assert body["alerts"]["highest"] is None
     assert set(body["alerts"]["by_severity"]) == {"info", "low", "medium", "high", "critical"}
+    assert body["noise"] == {"sources": [], "signatures": []}
     assert body["recent_alerts"] == []
     assert body["blocked"] == {"total": 0, "previous": 0, "per_bucket": [0] * 24, "top_sources": []}
     assert body["traffic"] == []
@@ -152,3 +153,63 @@ class TestBuild:
         assert (mark.severity, mark.confidence, mark.status) == ("critical", 85, "investigating")
         assert (mark.first_seen_at, mark.last_seen_at) == (began, NOW - timedelta(hours=2))
         assert mark.banned is True
+
+
+def test_where_the_alerts_come_from_is_told_with_what_the_owner_said_of_each(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    now = utcnow()
+    flow = {"source": "ntopng", "connection": "api", "signature": "Blacklisted flow"}
+    record_events(
+        session,
+        settings,
+        [
+            new_event(severity=Severity.HIGH, occurred_at=now, identity=(str(number),), **flow)
+            for number in range(3)
+        ]
+        + [
+            new_event(
+                severity=Severity.LOW,
+                occurred_at=now,
+                identity=("scan",),
+                signature="Port scan",
+                src_address="192.168.1.20",
+                dst_address="10.0.0.5",
+            ),
+            new_event(
+                severity=Severity.LOW, occurred_at=now, identity=("unnamed",), source="unheard-of"
+            ),
+        ],
+        now,
+    )
+    session.add(VerdictRule(verdict="low_priority", signature="Blacklisted flow"))
+    session.commit()
+
+    noise = client.get(BASE).json()["noise"]
+
+    assert noise["sources"] == [
+        {"source": "ntopng", "source_name": "ntopng", "total": 3, "serious": 3, "inside": 0},
+        {
+            "source": "unheard-of",
+            "source_name": "unheard-of",
+            "total": 1,
+            "serious": 0,
+            "inside": 0,
+        },
+        {"source": "wazuh", "source_name": "Wazuh", "total": 1, "serious": 0, "inside": 1},
+    ]
+    first, *rest = noise["signatures"]
+    assert first["source"] == "ntopng"
+    assert first["signature"] == "Blacklisted flow"
+    assert first["severity"] == "high"
+    assert first["count"] == 3
+    assert first["verdict"] == "low_priority"
+    assert isinstance(first["verdict_rule_id"], int)
+    scan = next(item for item in rest if item["signature"] == "Port scan")
+    assert scan["source_name"] == "Wazuh"
+    assert (scan["from_addresses"], scan["to_addresses"]) == (1, 1)
+    assert scan["verdict"] is None
+    assert scan["verdict_rule_id"] is None
+    unnamed = next(item for item in rest if item["source"] == "unheard-of")
+    assert unnamed["signature"] is None
+    assert unnamed["source_name"] == "unheard-of"

@@ -29,6 +29,13 @@ export class DashboardPage {
   readonly needsYou: Locator
   readonly needsYouCards: Locator
   readonly needsYouAll: Locator
+  /** Where the alerts come from: the card, what it says in a sentence, the alerts it lists and
+   * the buttons of each. */
+  readonly noise: Locator
+  readonly noiseSummary: Locator
+  readonly noiseItems: Locator
+  readonly noiseQuiet: Locator
+  readonly noiseLogs: Locator
   /** What the page says after a verdict was given from a card, and the button to take it back. */
   readonly judged: Locator
   readonly undo: Locator
@@ -66,6 +73,11 @@ export class DashboardPage {
     this.needsYou = page.getByTestId('needs-you')
     this.needsYouCards = this.needsYou.getByTestId('incident-card')
     this.needsYouAll = page.getByTestId('needs-you-all')
+    this.noise = page.getByTestId('noise-card')
+    this.noiseSummary = page.getByTestId('noise-summary')
+    this.noiseItems = this.noise.getByTestId('noise-item')
+    this.noiseQuiet = this.noise.getByTestId('noise-quiet')
+    this.noiseLogs = this.noise.getByTestId('noise-logs')
     this.judged = page.getByTestId('judged-text')
     this.undo = page.getByTestId('undo')
     this.range = page.getByTestId('range')

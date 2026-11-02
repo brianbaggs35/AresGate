@@ -55,6 +55,14 @@ export interface ActivityRequest {
   /** A collector of the firewall in each of these states, to say how collecting is going. The
    * integration need not be connected. */
   collectors?: ('waiting' | 'ok' | 'problem' | 'late')[]
+  /** Alerts that a program keeps reporting, from three addresses to five others, for the
+   * dashboard to call the noise. */
+  repeated?: {
+    source: string
+    signature: string
+    severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
+    count: number
+  }[]
 }
 
 /** How much `createActivity()` stored. */

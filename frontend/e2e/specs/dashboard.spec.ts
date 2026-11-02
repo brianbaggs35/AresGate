@@ -124,6 +124,76 @@ test.describe('dashboard', () => {
     await expect(dashboard.needsYouCards).toHaveCount(2)
   })
 
+  test('shows where the alerts come from, with the alert reported most first', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({
+      collectors: ['ok'],
+      alerts: { low: 1 },
+      repeated: [{ source: 'ntopng', signature: 'Blacklisted flow', severity: 'high', count: 3 }],
+    })
+
+    await dashboard.goto()
+
+    await expect(
+      dashboard.noise.getByRole('heading', { name: 'What is making the noise' }),
+    ).toBeVisible()
+    await expect(dashboard.noiseSummary).toContainText('of the 4 alerts')
+    await expect(dashboard.noiseItems.first().getByTestId('noise-name')).toHaveText(
+      'Blacklisted flow',
+    )
+    await expect(dashboard.noiseItems.first().getByTestId('noise-count')).toContainText('3 · 75%')
+    await expect(dashboard.noiseItems.first().getByTestId('noise-reach')).toHaveText(
+      'From 3 addresses to 3',
+    )
+    await expect(dashboard.noiseItems.first().getByTestId('severity')).toHaveText('High')
+  })
+
+  test('leaves out where the alerts come from when there were none', async ({
+    harness,
+    dashboard,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'] })
+
+    await dashboard.goto()
+
+    await expect(dashboard.banner).toBeVisible()
+    await expect(dashboard.noise).toBeHidden()
+  })
+
+  test('quiets an alert from the card, and takes it back', async ({ harness, dashboard }) => {
+    await harness.createActivity({ collectors: ['ok'], alerts: { medium: 2 } })
+    await dashboard.goto()
+    const first = dashboard.noiseItems.first()
+
+    await first.getByTestId('noise-quiet').click()
+
+    await expect(dashboard.judged).toHaveText('Remembered: “e2e.medium” is low priority.')
+    await expect(first.getByTestId('verdict')).toHaveText('Low priority')
+    await expect(first.getByTestId('noise-quiet')).toBeHidden()
+
+    await dashboard.undo.click()
+
+    await expect(dashboard.judged).toHaveText('Taken back.')
+    await expect(first.getByTestId('noise-quiet')).toBeVisible()
+  })
+
+  test('leads from an alert to its rows in the logs', async ({
+    page,
+    harness,
+    dashboard,
+    logs,
+  }) => {
+    await harness.createActivity({ collectors: ['ok'], alerts: { high: 1 } })
+    await dashboard.goto()
+
+    await dashboard.noiseLogs.first().click()
+
+    await expect(page).toHaveURL(/\/logs\?q=/)
+    await expect(logs.matched).toHaveText('1 event')
+  })
+
   test('says the collectors are starting until one has run', async ({ harness, dashboard }) => {
     await harness.createActivity({ collectors: ['waiting'] })
 
