@@ -80,6 +80,21 @@ Every release's notes are here, newest first. The format follows
   pin it. The Wazuh connections show a note beside **Certificate** saying which certificate answers
   there and what to choose, and the setup instructions say how to compare the API's fingerprint.
   ([DOCS/integrations.md](DOCS/integrations.md#wazuh)).
+- **An Alerts page, and Discord channels to send alerts to.** **Alerts** is a new place in the
+  menu. Add the webhook of a channel on your own Discord server, give it a name, and choose
+  **Send test message** to check it reaches the channel; each destination shows whether it works
+  and, if not, why in words (Discord doesn't accept the webhook, is limiting how fast messages
+  go, or didn't answer). A destination can be turned off, renamed, given a new address or
+  removed. The webhook's address is a secret, since anyone who has it can post to the channel:
+  it is sealed like the other credentials, shown only as the end of its number, never returned by
+  the API, kept out of the API log and the audit log, and checked when it is typed and again
+  every time it is used. Only `discord.com` and `discordapp.com` webhook addresses are accepted,
+  and the request goes through the same network guard as AI providers (the internet only, no
+  redirects, the certificate verified). Messages are sent so that nothing in them can ping
+  `@everyone`, a role or a person. This is the first slice: the rules for what is sent, the
+  sender with its delivery log and a daily digest come next. See
+  [DOCS/alerts.md](DOCS/alerts.md), which also says what was read from Discord's documentation
+  and what was inferred.
 
 ## 0.0.5
 

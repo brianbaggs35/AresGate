@@ -2,9 +2,9 @@
 AI provider's.
 
 Each is sealed with the app secret key (see ``vault``) before it reaches the database, so a copy
-of the database on its own reveals none of them. Integrations and AI providers each have a key
-of their own, and each secret names the row it belongs to, so one can't be copied onto another
-row and opened as something else.
+of the database on its own reveals none of them. Integrations, AI providers and alert destinations
+each have a key of their own, and each secret names the row it belongs to, so one can't be
+copied onto another row and opened as something else.
 
 Secrets only go in. The API stores, replaces and deletes them and says which are set, but no
 route returns one: only the code that talks to the integration calls ``reveal``.
@@ -31,11 +31,14 @@ _NAME = re.compile(NAME_PATTERN)
 class Kind(StrEnum):
     INTEGRATION = "integration"
     AI_PROVIDER = "ai_provider"
+    # Where alerts are sent, such as the address of a Discord webhook.
+    DESTINATION = "destination"
 
 
 _PURPOSES = {
     Kind.INTEGRATION: "integration-credential",
     Kind.AI_PROVIDER: "ai-provider-credential",
+    Kind.DESTINATION: "destination-credential",
 }
 
 

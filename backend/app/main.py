@@ -85,6 +85,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # (The harness points them at stand-ins on its own machine instead, with ``ai_origins``.)
     app.state.ai_policy = netguard.PUBLIC_INTERNET
     app.state.ai_origins = {}
+    # Alerts go to Discord's webhooks on the internet, and never to the home network or the machine
+    # itself. (The harness points them at a stand-in on its own machine instead, with
+    # ``alert_origin``.)
+    app.state.alert_policy = netguard.PUBLIC_INTERNET
+    app.state.alert_origin = None
     app.add_middleware(RequestContext)
     app.add_exception_handler(Exception, server_error)
     app.add_exception_handler(RequestValidationError, invalid_request)

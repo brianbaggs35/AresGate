@@ -24,5 +24,6 @@ def create_e2e_app(settings: Settings | None = None) -> FastAPI:
     app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.local_ai_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.ai_policy = netguard.PUBLIC_INTERNET_AND_LOOPBACK
+    app.state.alert_policy = netguard.PUBLIC_INTERNET_AND_LOOPBACK
     app.include_router(router, prefix="/api")
     return app

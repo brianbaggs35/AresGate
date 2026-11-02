@@ -5,6 +5,7 @@ import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
 import { AiSettingsPage } from './pages/ai-settings-page'
 import { AiUsagePage } from './pages/ai-usage-page'
+import { AlertsPage } from './pages/alerts-page'
 import { AssistantPage } from './pages/assistant-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
@@ -52,6 +53,8 @@ export interface AresGateFixtures {
   aiUsage: AiUsagePage
   /** The chat with the assistant. */
   assistant: AssistantPage
+  /** Where alerts are sent. */
+  alerts: AlertsPage
   status: StatusPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
@@ -134,6 +137,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   interfaces: async ({ page }, use) => {
     await use(new InterfacesPage(page))
+  },
+
+  alerts: async ({ page }, use) => {
+    await use(new AlertsPage(page))
   },
 
   signIn: async ({ page }, use) => {

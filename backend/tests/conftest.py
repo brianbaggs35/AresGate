@@ -101,6 +101,7 @@ def app(settings: Settings, session: Session, engine: Engine) -> FastAPI:
     app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.local_ai_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.ai_policy = netguard.PUBLIC_INTERNET_AND_LOOPBACK
+    app.state.alert_policy = netguard.PUBLIC_INTERNET_AND_LOOPBACK
     return app
 
 

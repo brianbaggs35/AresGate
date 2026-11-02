@@ -1300,6 +1300,37 @@ def openai(api_key: str, models: Collection[str] = ()) -> Handler:
     return handle
 
 
+def discord(webhook: str) -> Handler:
+    """Discord's Execute Webhook: ``POST /api/webhooks/{id}/{token}`` (the version in the path is
+    optional) with a JSON message of at least some ``content`` or ``embeds`` answers 204 No
+    Content. ``webhook`` is the ``id/token`` it knows; any other is Unknown Webhook (404). A
+    request without the User-Agent Discord asks for is refused (403), as it may be blocked."""
+    known = f"/api/webhooks/{webhook}"
+
+    def handle(seen: Seen) -> Answer:
+        path = re.sub(r"^/api/v\d+/", "/api/", seen.path.partition("?")[0])
+        if seen.method != "POST" or not path.startswith("/api/webhooks/"):
+            return _json({"message": "404: Not Found", "code": 0}, 404)
+        if not seen.headers.get("user-agent", "").startswith("DiscordBot ("):
+            return _json(
+                {"message": "You are being blocked from accessing our API", "code": 0}, 403
+            )
+        if path != known:
+            return _json({"message": "Unknown Webhook", "code": 10015}, 404)
+        try:
+            asked = json.loads(seen.body)
+        except ValueError:
+            return _json({"message": "The request body contains invalid JSON.", "code": 50109}, 400)
+        message: Mapping[str, object] = (
+            cast("Mapping[str, object]", asked) if isinstance(asked, dict) else {}
+        )
+        if not (message.get("content") or message.get("embeds")):
+            return _json({"message": "Cannot send an empty message", "code": 50006}, 400)
+        return Answer(status=204)
+
+    return handle
+
+
 def ollama(api_key: str = "", models: Collection[str] = (), paid: Collection[str] = ()) -> Handler:
     """Ollama's API: the models it has at ``/api/tags`` and an answer from ``/api/chat``. With a
     key (Ollama's cloud) a bearer key is needed, and without one (an Ollama at home) none is.
@@ -1588,7 +1619,15 @@ def sample_wazuh_agents(now: datetime) -> list[dict[str, object]]:
 
 
 Kind = Literal[
-    "opnsense", "zenarmor", "ntopng", "crowdsec", "wazuh", "anthropic", "openai", "ollama"
+    "opnsense",
+    "zenarmor",
+    "ntopng",
+    "crowdsec",
+    "wazuh",
+    "anthropic",
+    "openai",
+    "ollama",
+    "discord",
 ]
 
 
@@ -1623,6 +1662,7 @@ class StandIns:
         password: str = "",
         models: Collection[str] = (),
         paid: Collection[str] = (),
+        webhook: str = "",
     ) -> Running:
         now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
@@ -1651,6 +1691,7 @@ class StandIns:
             "anthropic": anthropic(api_key, models),
             "openai": openai(api_key, models),
             "ollama": ollama(api_key, models, paid),
+            "discord": discord(webhook),
         }
         names: dict[Kind, str] = {
             "opnsense": "fw.home.arpa",
@@ -1668,6 +1709,12 @@ class StandIns:
             url=server.url,
             fingerprint=certificate.fingerprint if certificate else None,
         )
+
+    def requests(self, identifier: str) -> list[Seen]:
+        """What a stand-in was asked, oldest first. Empty for one that isn't running."""
+        with self._lock:
+            server = self._running.get(identifier)
+        return list(server.seen) if server else []
 
     def stop_all(self) -> None:
         with self._lock:

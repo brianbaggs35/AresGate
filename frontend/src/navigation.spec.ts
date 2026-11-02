@@ -35,6 +35,7 @@ describe('navigation', () => {
       'integrations',
       'interfaces',
       'ai-usage',
+      'alerts',
       'status',
       'settings',
     ])

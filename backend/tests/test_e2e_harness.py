@@ -148,6 +148,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "ai_providers": 0,
         "ai_settings": 0,
         "ai_triage": 0,
+        "alert_destinations": 0,
         "audit_events": 0,
         "collector_health": 0,
         "credentials": 0,
@@ -225,6 +226,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "credentials",
             "collector_health",
             "audit_events",
+            "alert_destinations",
             "ai_providers",
             "ai_conversations",
             "ai_calls",
@@ -544,6 +546,48 @@ def test_an_ai_stand_in_that_is_not_for_a_provider_changes_nothing_about_where_t
 
     assert started.status_code == 201
     assert harness.state.ai_origins == {}
+
+
+@pytest.mark.usefixtures("stand_ins")
+@pytest.mark.parametrize("reset", ["clean", "stop"])
+def test_a_discord_stand_in_takes_the_place_of_discord_until_it_is_stopped(
+    e2e: TestClient, harness: FastAPI, reset: str
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins", json={"kind": "discord", "webhook": "1/a-token"}
+    ).json()
+
+    assert harness.state.alert_origin == started["url"]
+
+    if reset == "clean":
+        e2e.post("/api/__test__/database/clean")
+    else:
+        e2e.delete("/api/__test__/stand-ins")
+
+    assert harness.state.alert_origin is None
+    assert not reachable(started["url"])
+
+
+@pytest.mark.usefixtures("stand_ins")
+def test_what_a_stand_in_was_asked_can_be_read_back(e2e: TestClient) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins", json={"kind": "discord", "webhook": "1/a-token"}
+    ).json()
+    agent = {"User-Agent": "DiscordBot (https://example.test, 1.0)"}
+    httpx2.post(f"{started['url']}/api/webhooks/1/a-token", json={"content": "hi"}, headers=agent)
+    httpx2.post(f"{started['url']}/api/webhooks/1/a-token", content=b"{nope", headers=agent)
+
+    asked = e2e.get(f"/api/__test__/stand-ins/{started['id']}/requests").json()
+
+    assert [(item["method"], item["path"], item["body"]) for item in asked] == [
+        ("POST", "/api/webhooks/1/a-token", {"content": "hi"}),
+        ("POST", "/api/webhooks/1/a-token", None),
+    ]
+    assert asked[0]["user_agent"] == "DiscordBot (https://example.test, 1.0)"
+
+
+def test_nothing_was_asked_of_a_stand_in_that_is_not_running(e2e: TestClient) -> None:
+    assert e2e.get("/api/__test__/stand-ins/nothing/requests").json() == []
 
 
 @pytest.mark.usefixtures("stand_ins")

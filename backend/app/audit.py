@@ -72,6 +72,10 @@ class Action(StrEnum):
     INTERFACE_CHANGED = "interface.changed"
     INTERFACE_REMOVED = "interface.removed"
     INTERFACE_FEED_PLACED = "interface.feed_placed"
+    ALERT_DESTINATION_ADDED = "alerts.destination_added"
+    ALERT_DESTINATION_CHANGED = "alerts.destination_changed"
+    ALERT_DESTINATION_REMOVED = "alerts.destination_removed"
+    ALERT_DESTINATION_TESTED = "alerts.destination_tested"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

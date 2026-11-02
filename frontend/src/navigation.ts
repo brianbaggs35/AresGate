@@ -1,4 +1,5 @@
 import {
+  BellRing,
   Bot,
   ChartColumn,
   HeartPulse,
@@ -38,6 +39,7 @@ export const navItems: readonly NavItem[] = [
     icon: ChartColumn,
     keywords: 'spending cost money tokens limit budget level',
   },
+  { route: 'alerts', title: 'Alerts', icon: BellRing },
   { route: 'status', title: 'Status', icon: HeartPulse },
   { route: 'settings', title: 'Settings', icon: Settings },
 ]
