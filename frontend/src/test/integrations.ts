@@ -1,5 +1,6 @@
 import type {
   Call,
+  CertificateReview,
   Connection,
   ConnectionDefinition,
   Field,
@@ -60,6 +61,25 @@ export function connection(
     last_attempt_at: null,
     last_success_at: null,
     last_error: null,
+    certificate_problem: false,
+    ...overrides,
+  }
+}
+
+/** What a lookup of the certificate at an address finds: a device's own, that nothing else
+ * vouches for, which the computer's trusted certificates don't accept. */
+export function certificateReview(overrides: Partial<CertificateReview> = {}): CertificateReview {
+  return {
+    fingerprint: 'AA:BB:CC:DD',
+    subject: 'CN=fw.home.arpa',
+    issuer: 'CN=fw.home.arpa',
+    not_before: '2026-01-01T00:00:00Z',
+    not_after: '2099-01-01T00:00:00Z',
+    names: ['fw.home.arpa', '192.168.1.1'],
+    self_signed: true,
+    issuers: [],
+    accepted: false,
+    verdict: "The certificate isn't trusted: it vouches for itself and nobody else does.",
     ...overrides,
   }
 }

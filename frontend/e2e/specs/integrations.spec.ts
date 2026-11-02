@@ -745,6 +745,188 @@ test.describe('integrations', () => {
     })
   })
 
+  test.describe('the certificate a system presents', () => {
+    test('is looked up and trusted before connecting, without choosing a way first', async ({
+      harness,
+      integration,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: KEY,
+        api_secret: SECRET,
+        services: [],
+      })
+      await integration.goto('opnsense')
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill(KEY)
+      await integration.field('api', 'api_secret').fill(SECRET)
+
+      // The ways of checking are all still there, with the certificates this computer trusts
+      // chosen, and the lookup does not need another to be.
+      await expect(integration.tlsMode('api', 'system')).toBeChecked()
+      await expect(integration.tlsMode('api', 'ca')).toBeVisible()
+      await expect(integration.tlsMode('api', 'pinned')).toBeVisible()
+      await integration.lookUp('api').click()
+
+      await expect(integration.found('api')).toContainText('CN=fw.home.arpa')
+      await expect(integration.foundFingerprint('api')).toHaveText(firewall.fingerprint ?? '')
+      await expect(integration.selfSigned('api')).toBeVisible()
+      await expect(integration.verdict('api')).toContainText('vouches for itself')
+      // Nothing is saved yet, so there is nothing to test.
+      await expect(integration.trustAndTest('api')).toHaveCount(0)
+
+      await integration.trust('api').click()
+
+      await expect(integration.trusted('api')).toBeVisible()
+      await expect(integration.tlsMode('api', 'pinned')).toBeChecked()
+      await expect(integration.fingerprint('api')).toHaveValue(firewall.fingerprint ?? '')
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.status).toHaveText('Connected')
+    })
+
+    test('is reviewed and trusted in one step when a test fails over it', async ({
+      harness,
+      integration,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: KEY,
+        api_secret: SECRET,
+        services: [],
+      })
+      await integration.goto('opnsense')
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill(KEY)
+      await integration.field('api', 'api_secret').fill(SECRET)
+
+      await integration.save.click()
+
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.report).toContainText("The certificate isn't trusted")
+      await expect(integration.status).toHaveText('Problem')
+      // The failure offers what to do about it, where it is said.
+      await expect(integration.reviewCertificate('api')).toBeVisible()
+      await expect(integration.found('api')).toHaveCount(0)
+
+      await integration.reviewFromReport().click()
+
+      await expect(integration.found('api')).toBeVisible()
+      await expect(integration.foundFingerprint('api')).toHaveText(firewall.fingerprint ?? '')
+      await expect(integration.verdict('api')).toContainText('vouches for itself')
+      await integration.trustAndTest('api').click()
+
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.status).toHaveText('Connected')
+      await expect(integration.trusted('api')).toBeVisible()
+      await expect(integration.tlsMode('api', 'pinned')).toBeChecked()
+      await expect(integration.reviewCertificate('api')).toHaveCount(0)
+    })
+
+    test('is reviewed from the card where it failed, and only trusted when told so', async ({
+      harness,
+      integration,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: KEY,
+        api_secret: SECRET,
+        services: [],
+      })
+      await integration.goto('opnsense')
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill(KEY)
+      await integration.field('api', 'api_secret').fill(SECRET)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Problem')
+
+      await integration.reviewCertificate('api').click()
+      await expect(integration.found('api')).toBeVisible()
+      await integration.trust('api').click()
+
+      // Trusting does not save by itself, and the page says so.
+      await expect(integration.trusted('api')).toBeVisible()
+      await expect(integration.unsaved).toBeVisible()
+      await expect(integration.status).toHaveText('Problem')
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+    })
+
+    test('is trusted for each connection of Wazuh, which has two', async ({
+      harness,
+      integration,
+    }) => {
+      const wazuh = await harness.standIn({ kind: 'wazuh', username: USERNAME, password: PASSWORD })
+      await integration.goto('wazuh')
+      for (const connection of ['manager', 'indexer']) {
+        await integration.address(connection).fill(wazuh.url)
+        await integration.field(connection, 'username').fill(USERNAME)
+        await integration.field(connection, 'password').fill(PASSWORD)
+      }
+
+      await integration.save.click()
+
+      // Neither is trusted yet, and each says so with the way to trust it.
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.checks).toHaveCount(2)
+      await expect(integration.reviewCertificate('manager')).toBeVisible()
+      await expect(integration.reviewCertificate('indexer')).toBeVisible()
+
+      await integration.reviewFromReport('Manager API').click()
+      await integration.trustAndTest('manager').click()
+      // One is trusted, and the other still fails: it has a certificate setting of its own.
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.reviewCertificate('manager')).toHaveCount(0)
+      await expect(integration.reviewCertificate('indexer')).toBeVisible()
+
+      await integration.reviewCertificate('indexer').click()
+      await integration.trustAndTest('indexer').click()
+
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.status).toHaveText('Connected')
+    })
+
+    test('that has changed since it was trusted fails the test, and the new one is reviewed and trusted', async ({
+      harness,
+      integration,
+    }) => {
+      await connectFirewall(harness, integration, [])
+      const trusted = await integration.fingerprint('api').inputValue()
+      // The system is now presenting another certificate than the one trusted (a fingerprint of
+      // nothing but zeros).
+      await integration.fingerprint('api').fill(trusted.replace(/[0-9a-f]/gi, '0'))
+
+      await integration.save.click()
+
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.report).toContainText('The certificate has changed')
+      await expect(integration.status).toHaveText('Problem')
+      await expect(integration.reviewCertificate('api')).toBeVisible()
+
+      await integration.reviewFromReport().click()
+
+      await expect(integration.verdict('api')).toContainText('The certificate has changed')
+      await expect(integration.trusted('api')).toHaveCount(0)
+      await integration.trustAndTest('api').click()
+
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.fingerprint('api')).toHaveValue(trusted)
+      await expect(integration.status).toHaveText('Connected')
+    })
+
+    test('says why an address cannot be looked at, and offers no certificate for it', async ({
+      integration,
+    }) => {
+      await integration.goto('opnsense')
+      await integration.address('api').fill('https://203.0.113.9')
+
+      await integration.lookUp('api').click()
+
+      await expect(integration.lookUpError('api')).toContainText("isn't a private network address")
+      await expect(integration.found('api')).toHaveCount(0)
+    })
+  })
+
   test.describe('Wazuh', () => {
     test('says beside the certificate that its Let’s Encrypt page is for the dashboard only', async ({
       integration,
@@ -772,7 +954,7 @@ test.describe('integrations', () => {
         await integration.address(connection).fill(wazuh.url)
         await integration.field(connection, 'username').fill(USERNAME)
         await integration.field(connection, 'password').fill(PASSWORD)
-        await integration.tlsMode(connection, 'pinned').check()
+        // The certificate is looked up and trusted without choosing a way of checking first.
         await integration.lookUp(connection).click()
         await integration.trust(connection).click()
       }

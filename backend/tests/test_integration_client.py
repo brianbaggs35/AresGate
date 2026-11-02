@@ -250,7 +250,7 @@ def test_an_untrusted_certificate_says_how_to_trust_it(serve: Serve) -> None:
     with pytest.raises(CallFailed, match="vouches for itself") as raised:
         request(where, log, "GET", "/x")
 
-    assert "pin the certificate's fingerprint" in str(raised.value)
+    assert "review its certificate under Certificate and trust it" in str(raised.value)
     assert server.seen == []
 
 
@@ -271,11 +271,11 @@ def test_a_wrong_pinned_fingerprint_is_refused_and_logged(serve: Serve) -> None:
     pin = make_certificate().fingerprint
     where = target(server, mode="pinned", pin=pin)
 
-    with pytest.raises(CallFailed, match="isn't the pinned one"):
+    with pytest.raises(CallFailed, match="has changed"):
         request(where, log, "GET", "/x")
 
     assert server.seen == []
-    assert "isn't the pinned one" in str(log.calls[0].error)
+    assert "has changed" in str(log.calls[0].error)
 
 
 def test_https_to_a_plain_server_is_a_failed_secure_connection(serve: Serve) -> None:

@@ -49,6 +49,20 @@ Every release's notes are here, newest first. The format follows
   decides whether one incident needs you lives in one place, `app/incidents/attention.py`
   (`standing`, with the same rule as SQL in `clauses`), for the dashboard, the lane and anything
   that later has to choose what is worth a message.
+- **Look up the certificate a system presents and trust it, whatever it is.** Under
+  **Certificate** on every integration's page, **Look up the certificate** is now offered whichever
+  way of checking is chosen, not only after choosing the third one. It shows what the system
+  presented (its own certificate, who made it, who it names, how long it is good for, its SHA-256
+  fingerprint to compare with the system's own, and the others it sent with it), says in words
+  whether the way chosen would already accept it and, if not, why, and **Trust this certificate**
+  pins it, a self-signed or expired one included. A test that fails over a certificate now has
+  **Review the certificate** where the failure is said (on the card and in the report), and
+  **Trust and test** trusts it, saves and tests again in one step, so connecting Wazuh (two
+  connections) or any system with its own certificate no longer means finding a fingerprint first.
+  The three ways of checking are as they were. If a pinned system presents a different certificate
+  later, the test now says "The certificate has changed" with both fingerprints, and the same
+  button reviews and trusts the new one
+  ([DOCS/integrations.md](DOCS/integrations.md#trusting-the-certificate-a-system-presents)).
 
 ### Changed
 

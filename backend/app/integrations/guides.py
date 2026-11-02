@@ -174,8 +174,11 @@ OPNSENSE = Guide(
                     ),
                     fills=(Fill(label=ADDRESS, value="https://192.168.1.1"),),
                     watch=(
-                        "If OPNsense uses a certificate it made itself, choose how AresGate "
-                        "trusts it under Certificate on the card."
+                        "OPNsense makes a certificate for itself until you replace it. Under "
+                        "Certificate on the card, click Look up the certificate, compare its "
+                        "fingerprint with the one in System, Trust, Certificates, and trust it. "
+                        "If the test fails over the certificate, Review the certificate does the "
+                        "same."
                     ),
                 ),
             ),
@@ -470,9 +473,9 @@ WAZUH = Guide(
                         "Enter the manager's address with port 55000, and the user name and "
                         "password from above. The API answers with its own certificate, which "
                         "Wazuh's pages call self-signed by default. Under Certificate on the "
-                        "card choose Only this exact certificate, click Look up the "
-                        "certificate, and trust it once its fingerprint matches the one on the "
-                        "Wazuh server (below)."
+                        "card, click Look up the certificate, compare its fingerprint with the "
+                        "one on the Wazuh server (below) and trust it. If the test fails over "
+                        "the certificate, Review the certificate does the same."
                     ),
                     fills=(Fill(label=ADDRESS, value="https://192.168.1.3:55000"),),
                     command=(
@@ -562,10 +565,10 @@ WAZUH = Guide(
                     detail=(
                         "Enter the indexer's address with port 9200, and the user name and "
                         "password of this user. Wazuh's certificate tool makes the indexer's "
-                        "certificate and the authority that signed it, root-ca.pem. Under "
-                        "Certificate on the card choose A certificate authority I paste and "
-                        "paste the contents of root-ca.pem, or choose Only this exact "
-                        "certificate and look it up."
+                        "certificate and the authority that signed it, root-ca.pem. This card "
+                        "has its own Certificate setting. Under Certificate on the card, click "
+                        "Look up the certificate and trust it, or choose A certificate "
+                        "authority I paste and paste the contents of root-ca.pem."
                     ),
                     fills=(Fill(label=ADDRESS, value="https://192.168.1.3:9200"),),
                     watch=(

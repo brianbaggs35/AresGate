@@ -115,6 +115,7 @@ def test_it_describes_the_certificate_nginx_serves(
             not_before=now - timedelta(days=60),
             not_after=now + timedelta(days=29, hours=12),
             names=["aresgate.test"],
+            self_signed=False,
         )
 
     monkeypatch.setattr(netguard, "look_up_served_certificate", look_up)

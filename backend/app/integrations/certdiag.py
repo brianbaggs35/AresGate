@@ -33,6 +33,20 @@ ADDRESS_MISMATCH = 64
 
 _SHOWN_NAMES = 4
 _MAX_URL = 120
+# Every message about a certificate begins with these words, so that a failed test can offer to
+# review it, without a test's outcome having to carry what kind of failure it was.
+ABOUT_A_CERTIFICATE = "The certificate "
+# How to trust the certificate as it is, said where a failure is read: the page it is read on has
+# a button for it (and the same words are in the log of requests, which has none).
+TRUST = "review its certificate under Certificate and trust it"
+# And said where the certificate is in front of the reader, with the button to trust it below.
+TRUST_BELOW = "trust it below"
+
+
+def is_about_a_certificate(message: str | None) -> bool:
+    """Whether a failure's message is about the system's certificate, which can be reviewed and
+    trusted, as opposed to a wrong password or an address nobody answers."""
+    return message is not None and message.startswith(ABOUT_A_CERTIFICATE)
 
 
 @dataclass(frozen=True)
@@ -104,24 +118,21 @@ def _date(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%d")
 
 
-def _what_to_do(mode: str, issuer: str) -> str:
+def _what_to_do(mode: str, issuer: str, trust: str) -> str:
     """The cure in AresGate, for a certificate that nothing here vouches for."""
     if mode == "ca":
-        return (
-            f"add {issuer}'s certificate to the authority pasted under Certificate, or pin its "
-            "fingerprint there."
-        )
-    return f"paste {issuer}'s certificate under Certificate, or pin its fingerprint there."
+        return f"add {issuer}'s certificate to the authority pasted under Certificate, or {trust}."
+    return f"paste {issuer}'s certificate under Certificate, or {trust}."
 
 
-def _unknown_issuer(presented: Presented, mode: str) -> str:
+def _unknown_issuer(presented: Presented, mode: str, trust: str) -> str:
     top = presented.top
     issuer = name_of(top.issuer)
     if len(presented.chain) > 1:
         return (
             f"The chain it sent ends at {name_of(top.subject)}, issued by {issuer}, and this "
             f"computer doesn't trust {issuer}. If that is your own authority, in AresGate "
-            + _what_to_do(mode, issuer)
+            + _what_to_do(mode, issuer, trust)
         )
     source = _where_to_get_issuer(top)
     if source is None:
@@ -129,7 +140,7 @@ def _unknown_issuer(presented: Presented, mode: str) -> str:
             f"It sent only its own certificate, issued by {issuer}, and doesn't say where to get "
             f"{issuer}'s certificate, as a public authority's usually do. That looks like an "
             "authority of the system's own, not Let's Encrypt. In AresGate, "
-            + _what_to_do(mode, issuer)
+            + _what_to_do(mode, issuer, trust)
             + " If it should be a public certificate, serve the whole chain on that system "
             "(fullchain.pem)."
         )
@@ -137,47 +148,50 @@ def _unknown_issuer(presented: Presented, mode: str) -> str:
         f"It sent only its own certificate, issued by {issuer}, without {issuer}'s certificate. "
         "Browsers fetch what is missing; AresGate doesn't. Serve the whole chain on that system "
         f"(with Let's Encrypt, fullchain.pem instead of cert.pem). Its certificate says where to "
-        f"get it: {source}. Or in AresGate, " + _what_to_do(mode, issuer)
+        f"get it: {source}. Or in AresGate, " + _what_to_do(mode, issuer, trust)
     )
 
 
 def explain(
-    error: ssl.SSLCertVerificationError, presented: Presented | None, mode: str, host: str
+    error: ssl.SSLCertVerificationError,
+    presented: Presented | None,
+    mode: str,
+    host: str,
+    trust: str = TRUST,
 ) -> str:
     """What is wrong with the system's certificate and what to change, from what OpenSSL said
-    (``error``) and what the system presents (``presented``, or None if that couldn't be seen)."""
+    (``error``) and what the system presents (``presented``, or None if that couldn't be seen).
+    ``trust`` says how to trust the certificate as it is, which depends on where it is read."""
     code = error.verify_code
     generic = (
         f"The certificate isn't trusted ({error.verify_message}). If it is the right system, "
-        "paste the certificate authority that signed it or pin the certificate's fingerprint, "
-        "under Certificate."
+        f"{trust}, or paste the certificate authority that signed it."
     )
     if presented is None:
         return generic
     if code in (NO_ISSUER, NO_FIRST_ISSUER):
-        return "The certificate isn't trusted. " + _unknown_issuer(presented, mode)
+        return "The certificate isn't trusted. " + _unknown_issuer(presented, mode, trust)
     if code == SELF_SIGNED:
         return (
             "The certificate isn't trusted: it vouches for itself and nobody else does. If it "
-            "is the right system, pin the certificate's fingerprint under Certificate, or "
-            "paste the certificate there as the authority."
+            f"is the right system, {trust}."
         )
     if code == SELF_SIGNED_IN_CHAIN:
         top = name_of(presented.top.subject)
         return (
             f"The certificate isn't trusted: the chain it sent ends at {top}, which signed "
             f"itself, and this computer doesn't trust {top}. If that is your own authority, in "
-            "AresGate " + _what_to_do(mode, top)
+            "AresGate " + _what_to_do(mode, top, trust)
         )
     if code == EXPIRED:
         return (
             f"The certificate expired on {_date(presented.leaf.not_valid_after_utc)}. Renew it "
-            "on that system."
+            f"on that system, or if you know better, {trust} as it is."
         )
     if code == NOT_YET_VALID:
         return (
             f"The certificate isn't valid until {_date(presented.leaf.not_valid_before_utc)}. "
-            "If that date has passed, check the clocks of both computers."
+            f"If that date has passed, check the clocks of both computers, or {trust} as it is."
         )
     if code in (HOSTNAME_MISMATCH, ADDRESS_MISMATCH):
         names = _names(presented.leaf)
@@ -190,7 +204,6 @@ def explain(
             )
         return (
             f"The certificate is for {shown}{more}, not for {host}. Use one of those names in "
-            "the address (it has to reach this system), or pin the certificate's fingerprint "
-            "under Certificate."
+            f"the address (it has to reach this system), or {trust}."
         )
     return generic

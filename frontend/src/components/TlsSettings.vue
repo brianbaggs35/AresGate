@@ -1,18 +1,25 @@
 <script setup lang="ts">
-import { Info, SearchCheck, ShieldCheck, TriangleAlert } from '@lucide/vue'
-import { ref, watch } from 'vue'
+import { Info, SearchCheck } from '@lucide/vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import { ApiError, errorMessage } from '@/api/client'
-import { lookUpCertificate, type Certificate, type TlsMode } from '@/api/integrations'
-import { formatDateTime } from '@/format'
+import {
+  lookUpCertificate,
+  type CertificateChoice,
+  type CertificateReview as Review,
+  type TlsMode,
+} from '@/api/integrations'
+import CertificateReview from '@/components/CertificateReview.vue'
 import { sameFingerprint } from '@/integrations'
 import { useSessionStore } from '@/stores/session'
 
 /**
  * How AresGate knows it is talking to the right device. Most devices at home use a certificate
- * they made for themselves, which no certificate authority vouches for, so besides the ones this
- * computer trusts, a certificate authority can be pasted, or one certificate pinned by its
- * fingerprint (which can be looked up, then compared with what the device itself shows).
+ * they made for themselves, which no certificate authority vouches for. So the certificate the
+ * device presents can be looked up whatever is chosen, reviewed, and trusted in one click (it is
+ * pinned by its fingerprint). The ways of checking stay as they were: the certificates this
+ * computer trusts, a certificate authority that is pasted, or one certificate pinned by its
+ * fingerprint, typed in.
  */
 const props = defineProps<{
   integration: string
@@ -24,6 +31,12 @@ const props = defineProps<{
   problems: Readonly<Record<string, string>>
   /** What this product's documentation adds about its certificate, if anything. */
   note?: string
+  /** Whether the connection is saved, so that trusting a certificate can test it right away. */
+  canTest?: boolean
+}>()
+const emit = defineEmits<{
+  /** A certificate was trusted, and whether to save and test the connection straight after. */
+  trusted: [test: boolean]
 }>()
 const mode = defineModel<TlsMode>('mode', { required: true })
 const authority = defineModel<string>('authority', { required: true })
@@ -31,7 +44,11 @@ const fingerprint = defineModel<string>('fingerprint', { required: true })
 
 const session = useSessionStore()
 
-const found = ref<Certificate | null>(null)
+const section = ref<HTMLElement | null>(null)
+const panel = ref<{ focus: () => void } | null>(null)
+const found = ref<Review | null>(null)
+/** How the certificate was set to be checked when it was looked up, which its verdict is about. */
+const lookedUpWith = ref<CertificateChoice | null>(null)
 const looking = ref(false)
 const lookupError = ref<string | null>(null)
 
@@ -48,10 +65,16 @@ async function lookUp() {
   looking.value = true
   lookupError.value = null
   found.value = null
+  const choice = {
+    mode: mode.value,
+    authority: authority.value,
+    fingerprint: fingerprint.value,
+  }
   try {
     found.value = await session.change((token) =>
-      lookUpCertificate(props.integration, props.url.trim(), token),
+      lookUpCertificate(props.integration, props.url.trim(), choice, token),
     )
+    lookedUpWith.value = choice
   } catch (error) {
     // This route says what is wrong with the address in words, as its one problem.
     lookupError.value =
@@ -61,20 +84,49 @@ async function lookUp() {
   }
 }
 
-function trust(certificate: Certificate) {
-  mode.value = 'pinned'
-  fingerprint.value = certificate.fingerprint
+/** Looks the certificate up and brings it into view, for a button elsewhere on the page. */
+async function review() {
+  section.value?.scrollIntoView({ block: 'nearest' })
+  await lookUp()
+  await nextTick()
+  panel.value?.focus()
 }
+defineExpose({ review })
 
-const expired = (certificate: Certificate) => new Date(certificate.not_after) < new Date()
+/** Whether the certificate found is the one trusted (pinned), however its fingerprint is written. */
+const trusted = computed(
+  () =>
+    found.value !== null &&
+    mode.value === 'pinned' &&
+    sameFingerprint(fingerprint.value, found.value.fingerprint),
+)
+
+/** What the way of checking makes of the certificate found: only while it is chosen as it was
+ * when the certificate was looked up. */
+const verdict = computed(() => {
+  const was = lookedUpWith.value
+  if (!found.value || !was || was.mode !== mode.value) return null
+  if (mode.value === 'ca' && was.authority !== authority.value) return null
+  if (mode.value === 'pinned' && was.fingerprint !== fingerprint.value) return null
+  return { accepted: found.value.accepted, text: found.value.verdict }
+})
+
+function trust(test: boolean) {
+  if (!found.value) return
+  mode.value = 'pinned'
+  fingerprint.value = found.value.fingerprint
+  emit('trusted', test)
+}
 </script>
 
 <template>
-  <fieldset class="tls" :data-test="`${idPrefix}-tls`">
+  <fieldset ref="section" class="tls" :data-test="`${idPrefix}-tls`">
     <legend class="text-title-medium mb-1">Certificate</legend>
-    <p class="text-body-medium text-medium-emphasis mb-2">
-      How AresGate knows this is the right device. OPNsense, Wazuh and many others make their own
-      certificate until you replace it: pin that one, or paste the authority that signed it.
+    <p class="text-body-medium text-medium-emphasis mb-3">
+      How AresGate knows this is the right device. OPNsense, Wazuh and many others make a
+      certificate for themselves that nothing else vouches for. Look up the one the device presents,
+      compare its fingerprint with the device's own, and trust it: whatever it is, even a
+      self-signed one.
     </p>
     <v-alert
       v-if="note"
@@ -87,6 +139,48 @@ const expired = (certificate: Certificate) => new Date(certificate.not_after) < 
     >
       {{ note }}
     </v-alert>
+
+    <div class="d-flex flex-wrap align-center ga-3">
+      <v-btn
+        variant="tonal"
+        :prepend-icon="SearchCheck"
+        :loading="looking"
+        :disabled="url.trim() === ''"
+        class="tls__look-up"
+        data-test="tls-look-up"
+        @click="lookUp"
+      >
+        Look up the certificate
+      </v-btn>
+      <span v-if="url.trim() === ''" class="text-body-medium text-medium-emphasis">
+        Enter the address first.
+      </span>
+    </div>
+
+    <v-alert
+      v-if="lookupError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mt-4"
+      data-test="tls-look-up-error"
+    >
+      {{ lookupError }}
+    </v-alert>
+
+    <CertificateReview
+      v-if="found"
+      ref="panel"
+      :address="url.trim()"
+      :certificate="found"
+      :verdict="verdict"
+      :trusted="trusted"
+      :can-test="canTest === true"
+      class="mt-4"
+      @trust="trust"
+    />
+
+    <h4 class="text-title-small mt-6 mb-1">How it is checked</h4>
     <v-radio-group
       v-model="mode"
       :error-messages="problems.tls_mode"
@@ -141,95 +235,20 @@ const expired = (certificate: Certificate) => new Date(certificate.not_after) < 
       data-test="tls-ca-pem"
     />
 
-    <div v-else-if="mode === 'pinned'" class="mt-4">
-      <v-text-field
-        :id="`${idPrefix}-tls_fingerprint`"
-        v-model="fingerprint"
-        label="SHA-256 fingerprint"
-        placeholder="AA:BB:CC:…"
-        hint="Look it up below, then compare it with the one the device itself shows."
-        persistent-hint
-        spellcheck="false"
-        autocomplete="off"
-        class="tls__fingerprint"
-        :error-messages="problems.tls_fingerprint"
-        data-test="tls-fingerprint"
-      />
-      <v-btn
-        variant="tonal"
-        :prepend-icon="SearchCheck"
-        :loading="looking"
-        :disabled="url.trim() === ''"
-        data-test="tls-look-up"
-        @click="lookUp"
-      >
-        Look up the certificate
-      </v-btn>
-      <span v-if="url.trim() === ''" class="text-body-medium text-medium-emphasis ml-3">
-        Enter the address first.
-      </span>
-
-      <v-alert
-        v-if="lookupError"
-        type="error"
-        variant="tonal"
-        density="compact"
-        class="mt-4"
-        data-test="tls-look-up-error"
-      >
-        {{ lookupError }}
-      </v-alert>
-
-      <div v-if="found" class="tls__found mt-4" data-test="tls-found">
-        <h4 class="text-title-small mb-2">The certificate at {{ url.trim() }}</h4>
-        <dl class="tls__details text-body-medium">
-          <dt>Subject</dt>
-          <dd data-test="tls-subject">{{ found.subject }}</dd>
-          <dt>Issuer</dt>
-          <dd>{{ found.issuer }}</dd>
-          <template v-if="found.names.length">
-            <dt>Names</dt>
-            <dd>{{ found.names.join(', ') }}</dd>
-          </template>
-          <dt>Valid</dt>
-          <dd>
-            {{ formatDateTime(found.not_before) }} to {{ formatDateTime(found.not_after) }}
-            <v-chip v-if="expired(found)" size="small" color="error" variant="tonal" class="ml-1">
-              Expired
-            </v-chip>
-          </dd>
-          <dt>SHA-256</dt>
-          <dd class="tls__digest" data-test="tls-found-fingerprint">{{ found.fingerprint }}</dd>
-        </dl>
-        <v-alert
-          type="warning"
-          variant="tonal"
-          density="compact"
-          :icon="TriangleAlert"
-          class="my-3"
-        >
-          This is what the device presented just now, over your network. Check the fingerprint
-          against the one in the device's own certificate settings before you trust it.
-        </v-alert>
-        <p
-          v-if="sameFingerprint(fingerprint, found.fingerprint)"
-          class="d-flex align-center ga-2 text-success"
-          data-test="tls-trusted"
-        >
-          <ShieldCheck :size="20" aria-hidden="true" />
-          This certificate is the one trusted.
-        </p>
-        <v-btn
-          v-else
-          color="primary"
-          :prepend-icon="ShieldCheck"
-          data-test="tls-trust"
-          @click="trust(found)"
-        >
-          Trust this certificate
-        </v-btn>
-      </div>
-    </div>
+    <v-text-field
+      v-else-if="mode === 'pinned'"
+      :id="`${idPrefix}-tls_fingerprint`"
+      v-model="fingerprint"
+      label="SHA-256 fingerprint"
+      placeholder="AA:BB:CC:…"
+      hint="Type it in, or look up the certificate above and trust it."
+      persistent-hint
+      spellcheck="false"
+      autocomplete="off"
+      class="tls__fingerprint mt-4"
+      :error-messages="problems.tls_fingerprint"
+      data-test="tls-fingerprint"
+    />
   </fieldset>
 </template>
 
@@ -246,32 +265,14 @@ const expired = (certificate: Certificate) => new Date(certificate.not_after) < 
 }
 
 .tls__pem :deep(textarea),
-.tls__fingerprint :deep(input),
-.tls__digest {
+.tls__fingerprint :deep(input) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.875rem;
 }
 
-.tls__found {
-  padding: 1rem;
-  border: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 12px;
-}
-
-.tls__details {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.25rem 1rem;
-  margin: 0;
-}
-
-.tls__details dt {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-}
-
-.tls__details dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
+@media (max-width: 599px) {
+  .tls__look-up {
+    width: 100%;
+  }
 }
 </style>

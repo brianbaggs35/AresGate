@@ -205,7 +205,7 @@ def certificate_info(
         not_before=found.not_before,
         not_after=found.not_after,
         days_left=(found.not_after - now).days,
-        self_signed=found.subject == found.issuer,
+        self_signed=found.self_signed,
     )
 
 

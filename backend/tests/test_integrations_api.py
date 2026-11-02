@@ -14,7 +14,7 @@ from app.models import ApiCall, AuditEvent, IntegrationConnection, User
 from app.security import credential_store
 from app.security.credential_store import Kind
 from tests.helpers import OTHER_ORIGIN
-from tests.stubs import Answer, Seen, Serve, StubServer, make_certificate
+from tests.stubs import Answer, Seen, Serve, StubServer, make_certificate, make_chain
 
 BASE = "/api/integrations"
 SECRET = "a-very-secret-api-key-for-tests"
@@ -268,7 +268,12 @@ def test_a_test_that_works_marks_it_connected_and_logs_the_call(
     body = response.json()
     assert body["ok"] is True
     assert body["checks"] == [
-        {"connection": "lapi", "ok": True, "message": "CrowdSec's local API accepted the key."}
+        {
+            "connection": "lapi",
+            "ok": True,
+            "message": "CrowdSec's local API accepted the key.",
+            "certificate_problem": False,
+        }
     ]
     assert body["integration"]["status"] == "connected"
     assert body["integration"]["last_success_at"] is not None
@@ -298,6 +303,9 @@ def test_a_test_that_fails_says_why_and_marks_the_problem(
     assert "CrowdSec didn't accept the credentials" in body["checks"][0]["message"]
     assert body["integration"]["status"] == "problem"
     assert body["integration"]["last_error"] == body["checks"][0]["message"]
+    # Nothing to do with a certificate, so nothing to review.
+    assert body["checks"][0]["certificate_problem"] is False
+    assert body["integration"]["connections"][0]["certificate_problem"] is False
     calls = client.get(f"{BASE}/crowdsec/calls", params={"failed": True}).json()["calls"]
     assert [(call["status_code"], call["error"]) for call in calls] == [(403, "Forbidden")]
     event = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
@@ -437,6 +445,137 @@ def test_the_certificate_a_system_presents_can_be_looked_at(
     assert body["subject"] == "CN=fw.example"
     assert body["names"] == ["fw.example", "127.0.0.1"]
     assert body["not_before"] < body["not_after"]
+    assert body["self_signed"] is True
+    assert body["issuers"] == []
+    # Chosen as a new connection is, it is not accepted, and it says why.
+    assert body["accepted"] is False
+    assert body["verdict"].startswith("The certificate isn't trusted: it vouches for itself")
+    assert body["verdict"].endswith("trust it below.")
+    assert server.seen == []
+
+
+def certificate_of(
+    client: TestClient, csrf_token: str, server: StubServer, *, key: str = "wazuh", **choice: object
+) -> dict[str, object]:
+    response = client.post(
+        f"{BASE}/{key}/certificate",
+        json={"url": server.url, **choice},
+        headers=headers(csrf_token),
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_the_certificate_found_is_judged_by_how_the_connection_is_set_to_check_it(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    certificate = make_certificate("wazuh.example")
+    server = serve(lambda seen: Answer(), certificate)
+
+    pinned = certificate_of(
+        client, csrf_token, server, tls_mode="pinned", tls_fingerprint=certificate.fingerprint
+    )
+    # A fingerprint is understood however it is written.
+    typed = certificate_of(
+        client,
+        csrf_token,
+        server,
+        tls_mode="pinned",
+        tls_fingerprint=certificate.fingerprint.replace(":", " ").lower(),
+    )
+    changed = certificate_of(
+        client,
+        csrf_token,
+        server,
+        tls_mode="pinned",
+        tls_fingerprint=make_certificate().fingerprint,
+    )
+    nothing = certificate_of(
+        client, csrf_token, server, tls_mode="pinned", tls_fingerprint="not one"
+    )
+    authority = certificate_of(
+        client, csrf_token, server, tls_mode="ca", tls_ca_pem=certificate.pem
+    )
+
+    assert (pinned["accepted"], typed["accepted"]) == (True, True)
+    assert pinned["verdict"] == "It is the certificate you trusted."
+    assert changed["accepted"] is False
+    assert str(changed["verdict"]).startswith("The certificate has changed")
+    assert (nothing["accepted"], nothing["verdict"]) == (False, "No certificate is trusted yet.")
+    assert authority["accepted"] is True
+
+
+def test_the_certificates_sent_with_the_one_found_are_listed(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    chain = make_chain()
+    server = serve(lambda seen: Answer(), chain.full)
+
+    body = certificate_of(client, csrf_token, server)
+
+    assert body["self_signed"] is False
+    assert [issuer["subject"] for issuer in body["issuers"]] == ["CN=Test Intermediate"]  # type: ignore[attr-defined]
+
+
+def test_a_certificate_is_not_judged_by_a_way_of_checking_there_is_not(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(lambda seen: Answer(), make_certificate())
+
+    response = client.post(
+        f"{BASE}/wazuh/certificate",
+        json={"url": server.url, "tls_mode": "anything"},
+        headers=headers(csrf_token),
+    )
+
+    assert response.status_code == 422
+    [problem] = response.json()["detail"]
+    assert problem["loc"] == ["body", "tls_mode"]
+
+
+def test_a_test_that_fails_over_the_certificate_says_so_and_it_can_be_trusted_and_tested_again(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    certificate = make_certificate()
+    server = serve(crowdsec_router, certificate)
+    body = crowdsec_body(server)
+
+    put(client, csrf_token, "crowdsec", body)
+    failed = client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token)).json()
+
+    assert failed["ok"] is False
+    assert failed["checks"][0]["certificate_problem"] is True
+    assert failed["integration"]["connections"][0]["certificate_problem"] is True
+    # Reading the integration again says so too, as a page that is opened later does.
+    again = client.get(f"{BASE}/crowdsec").json()
+    assert again["connections"][0]["certificate_problem"] is True
+
+    found = certificate_of(client, csrf_token, server, key="crowdsec")
+    assert found["accepted"] is False
+    put(
+        client,
+        csrf_token,
+        "crowdsec",
+        crowdsec_body(server, tls_mode="pinned", tls_fingerprint=found["fingerprint"]),
+    )
+    passed = client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token)).json()
+
+    assert passed["ok"] is True
+    assert passed["checks"][0]["certificate_problem"] is False
+
+
+def test_a_pinned_certificate_that_changes_fails_the_test_and_asks_to_be_trusted_again(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(crowdsec_router, make_certificate())
+    body = crowdsec_body(server, tls_mode="pinned", tls_fingerprint=make_certificate().fingerprint)
+    put(client, csrf_token, "crowdsec", body)
+
+    failed = client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token)).json()
+
+    assert failed["ok"] is False
+    assert failed["checks"][0]["message"].startswith("The certificate has changed")
+    assert failed["checks"][0]["certificate_problem"] is True
     assert server.seen == []
 
 

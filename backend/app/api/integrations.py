@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.db import get_sessionmaker
-from app.integrations import apilog, netguard, probes, registry, service
+from app.integrations import apilog, certdiag, netguard, probes, registry, review, service
 from app.integrations.apilog import DEFAULT_PAGE, MAX_PAGE, ApiLogRecorder
 from app.integrations.client import Recorder
 from app.integrations.guides import Guide
@@ -84,6 +84,9 @@ class ConnectionOut(BaseModel):
     last_attempt_at: datetime | None
     last_success_at: datetime | None
     last_error: str | None
+    # Whether the last failure was about the system's certificate, which can be reviewed and
+    # trusted from the page.
+    certificate_problem: bool
 
 
 class IntegrationSummary(BaseModel):
@@ -129,6 +132,8 @@ class Check(BaseModel):
     connection: str
     ok: bool
     message: str
+    # Whether it failed over the system's certificate.
+    certificate_problem: bool
 
 
 class CheckReport(BaseModel):
@@ -149,7 +154,14 @@ class LookupOut(BaseModel):
 
 
 class CertificateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     url: str = Field(max_length=1024)
+    # How the connection is set to check the certificate, so that the answer can say whether it
+    # would accept the one found. Left out, it is what a new connection starts with.
+    tls_mode: str = Field(default="system", max_length=16)
+    tls_ca_pem: str | None = Field(default=None, max_length=65536)
+    tls_fingerprint: str | None = Field(default=None, max_length=256)
 
 
 class CertificateOut(BaseModel):
@@ -159,6 +171,16 @@ class CertificateOut(BaseModel):
     not_before: datetime
     not_after: datetime
     names: list[str]
+    self_signed: bool
+
+
+class CertificateReviewOut(CertificateOut):
+    """The certificate a system presents, then the others it sent with it, and what the
+    connection's way of checking makes of it."""
+
+    issuers: list[CertificateOut]
+    accepted: bool
+    verdict: str
 
 
 class CallOut(BaseModel):
@@ -234,6 +256,7 @@ def _connection_out(
         last_attempt_at=row.last_attempt_at if row else None,
         last_success_at=row.last_success_at if row else None,
         last_error=row.last_error if row else None,
+        certificate_problem=certdiag.is_about_a_certificate(row.last_error if row else None),
     )
 
 
@@ -380,7 +403,15 @@ def test_integration(
             verdict = service.Verdict(False, str(incomplete))
         if row:
             service.record_attempt(row, verdict, utcnow())
-        checks.append(Check(connection=connection.key, ok=verdict.ok, message=verdict.message))
+        checks.append(
+            Check(
+                connection=connection.key,
+                ok=verdict.ok,
+                message=verdict.message,
+                certificate_problem=not verdict.ok
+                and certdiag.is_about_a_certificate(verdict.message),
+            )
+        )
     ok = all(check.ok for check in checks)
     record_audit(
         db,
@@ -454,19 +485,7 @@ def look_up_field(
     return LookupOut(ok=result.ok, message=result.message, entries=list(result.entries))
 
 
-@router.post("/{key}/certificate")
-def look_up_certificate(key: Key, body: CertificateRequest, policy: PolicyDep) -> CertificateOut:
-    """The certificate the system at an address presents, so that it can be compared with what
-    that system shows for itself and then trusted. Nothing is sent to it but the connection."""
-    _definition(key)
-    try:
-        origin = netguard.parse_origin(body.url, allow_http=False)
-        netguard.check_reachable(policy, origin)
-        found = anyio.from_thread.run(netguard.look_up_certificate, policy, origin)
-    except netguard.Refused as refusal:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(refusal))]
-        ) from refusal
+def _certificate_out(found: netguard.CertificateInfo) -> CertificateOut:
     return CertificateOut(
         fingerprint=found.fingerprint,
         subject=found.subject,
@@ -474,6 +493,43 @@ def look_up_certificate(key: Key, body: CertificateRequest, policy: PolicyDep) -
         not_before=found.not_before,
         not_after=found.not_after,
         names=found.names,
+        self_signed=found.self_signed,
+    )
+
+
+@router.post("/{key}/certificate")
+def look_up_certificate(
+    key: Key, body: CertificateRequest, policy: PolicyDep
+) -> CertificateReviewOut:
+    """The certificate the system at an address presents, so that it can be compared with what
+    that system shows for itself and then trusted, with whether the way of checking given would
+    accept it already. Nothing is sent to it but the connection."""
+    _definition(key)
+    if body.tls_mode not in service.TLS_MODES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [_invalid("tls_mode", message="Choose how to check the certificate.")],
+        )
+    try:
+        origin = netguard.parse_origin(body.url, allow_http=False)
+        netguard.check_reachable(policy, origin)
+        found = anyio.from_thread.run(
+            review.review,
+            policy,
+            origin,
+            body.tls_mode,
+            body.tls_ca_pem,
+            netguard.normalize_fingerprint(body.tls_fingerprint or ""),
+        )
+    except netguard.Refused as refusal:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(refusal))]
+        ) from refusal
+    return CertificateReviewOut(
+        **_certificate_out(found.certificate).model_dump(),
+        issuers=[_certificate_out(issuer) for issuer in found.issuers],
+        accepted=found.accepted,
+        verdict=found.verdict,
     )
 
 

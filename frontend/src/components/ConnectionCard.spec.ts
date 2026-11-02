@@ -6,22 +6,31 @@ import * as integrationsApi from '@/api/integrations'
 import ConnectionCard from '@/components/ConnectionCard.vue'
 import LookupField from '@/components/LookupField.vue'
 import { WHOLE, draftFrom } from '@/integrations'
-import { connection, field, module, ntopngApi, opnsense } from '@/test/integrations'
+import {
+  certificateReview,
+  connection,
+  field,
+  module,
+  ntopngApi,
+  opnsense,
+} from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 async function open(connection: Connection = ntopngApi(), problems: Record<string, string> = {}) {
   const draft = reactive(draftFrom(connection))
   const asked = ref(0)
+  const trusted = vi.fn()
+  const card = ref<{ reviewCertificate: () => Promise<void> } | null>(null)
   const host = defineComponent({
     components: { ConnectionCard },
-    setup: () => ({ connection, draft, problems, asked }),
+    setup: () => ({ connection, draft, problems, asked, trusted, card }),
     template:
-      '<ConnectionCard v-model="draft" integration="ntopng" :connection="connection" :problems="problems" @asked="asked += 1" />',
+      '<ConnectionCard ref="card" v-model="draft" integration="ntopng" :connection="connection" :problems="problems" @asked="asked += 1" @trusted="trusted" />',
   })
   const mounted = await mountWithPlugins(host, { signedIn: 'admin' })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const input = (selector: string) => find(selector).find('input')
-  return { ...mounted, draft, asked, find, input }
+  return { ...mounted, draft, asked, trusted, card, find, input }
 }
 
 const [, zenarmor] = opnsense().connections
@@ -223,6 +232,81 @@ describe('ConnectionCard', () => {
       expect(find('connection-last-error').text()).toContain('The last test failed')
       expect(find('connection-last-error').text()).toContain('ntopng redirected to its login page.')
       expect(find('connection-last-success').exists()).toBe(false)
+    })
+  })
+
+  describe('a failure over the certificate', () => {
+    const failed = (changes: Partial<Connection> = {}) =>
+      ntopngApi({
+        url: 'https://192.168.1.2:3001',
+        status: 'problem',
+        last_error: "The certificate isn't trusted: it vouches for itself and nobody else does.",
+        certificate_problem: true,
+        ...changes,
+      })
+
+    it('offers to review the certificate, where the failure is said', async () => {
+      const { find } = await open(failed())
+      expect(find('connection-last-error').text()).toContain('The certificate isn')
+      expect(find('connection-review-certificate').text()).toBe('Review the certificate')
+    })
+
+    it('offers nothing for a failure that is not about the certificate', async () => {
+      const { find } = await open(failed({ certificate_problem: false }))
+      expect(find('connection-last-error').exists()).toBe(true)
+      expect(find('connection-review-certificate').exists()).toBe(false)
+    })
+
+    it('offers nothing for an address that is plain http, which has no certificate', async () => {
+      const { find, input } = await open(failed())
+      await input('connection-url').setValue('http://192.168.1.2:3000')
+      expect(find('connection-review-certificate').exists()).toBe(false)
+    })
+
+    it('looks the certificate up when it is asked to, and can be trusted and tested from there', async () => {
+      const lookUp = vi
+        .spyOn(integrationsApi, 'lookUpCertificate')
+        .mockResolvedValue(certificateReview())
+      const { find, trusted, draft } = await open(failed())
+
+      await find('connection-review-certificate').trigger('click')
+      await flushPromises()
+
+      expect(lookUp).toHaveBeenCalledWith(
+        'ntopng',
+        'https://192.168.1.2:3001',
+        { mode: 'system', authority: '', fingerprint: '' },
+        'a-security-token',
+      )
+      expect(find('tls-found').exists()).toBe(true)
+      await find('tls-trust-test').trigger('click')
+      expect(draft.tlsMode).toBe('pinned')
+      expect(draft.tlsFingerprint).toBe('AA:BB:CC:DD')
+      expect(trusted).toHaveBeenCalledWith(true)
+    })
+
+    it('can be asked from outside the card, as a report of a failed test does', async () => {
+      const lookUp = vi
+        .spyOn(integrationsApi, 'lookUpCertificate')
+        .mockResolvedValue(certificateReview())
+      const { find, card } = await open(failed())
+
+      await card.value?.reviewCertificate()
+      await flushPromises()
+
+      expect(lookUp).toHaveBeenCalledOnce()
+      expect(find('tls-found').exists()).toBe(true)
+    })
+
+    it('does not offer to test a connection that is not saved', async () => {
+      vi.spyOn(integrationsApi, 'lookUpCertificate').mockResolvedValue(certificateReview())
+      const { find, input } = await open(ntopngApi())
+      await input('connection-url').setValue('https://192.168.1.2:3001')
+      await find('tls-look-up').trigger('click')
+      await flushPromises()
+      expect(find('tls-found').exists()).toBe(true)
+      expect(find('tls-trust-test').exists()).toBe(false)
+      expect(find('tls-trust').exists()).toBe(true)
     })
   })
 

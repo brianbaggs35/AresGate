@@ -4,7 +4,14 @@ import * as integrationsApi from '@/api/integrations'
 import type { CheckReport, Integration } from '@/api/integrations'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
-import { call, integration, module, ntopngApi, opnsense } from '@/test/integrations'
+import {
+  call,
+  certificateReview,
+  integration,
+  module,
+  ntopngApi,
+  opnsense,
+} from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import ConnectionCard from '@/components/ConnectionCard.vue'
 import { draftFrom } from '@/integrations'
@@ -31,7 +38,14 @@ const working = (): Integration =>
 
 const passed = (after: Integration = working()): CheckReport => ({
   ok: true,
-  checks: [{ connection: 'api', ok: true, message: 'ntopng answered. Interface 0 is eth0.' }],
+  checks: [
+    {
+      connection: 'api',
+      ok: true,
+      message: 'ntopng answered. Interface 0 is eth0.',
+      certificate_problem: false,
+    },
+  ],
   integration: after,
 })
 
@@ -322,7 +336,14 @@ describe('IntegrationView', () => {
       opened.save.mockResolvedValue(after)
       opened.test.mockResolvedValue({
         ok: false,
-        checks: [{ connection: 'api', ok: false, message: 'ntopng redirected to its login page.' }],
+        checks: [
+          {
+            connection: 'api',
+            ok: false,
+            message: 'ntopng redirected to its login page.',
+            certificate_problem: false,
+          },
+        ],
         integration: after,
       })
       await fillIn(opened)
@@ -533,6 +554,114 @@ describe('IntegrationView', () => {
     })
   })
 
+  describe('a certificate that is not trusted', () => {
+    const REASON = "The certificate isn't trusted: it vouches for itself and nobody else does."
+
+    /** ntopng over https, whose last test failed over its certificate. */
+    const refused = (): Integration =>
+      integration({
+        status: 'problem',
+        connections: [
+          ntopngApi({
+            url: 'https://192.168.1.2:3001',
+            secrets_set: ['token'],
+            status: 'problem',
+            last_attempt_at: CONNECTED_AT,
+            last_error: REASON,
+            certificate_problem: true,
+          }),
+        ],
+      })
+
+    const failedCheck = (certificateProblem: boolean) => ({
+      ok: false,
+      checks: [
+        {
+          connection: 'api',
+          ok: false,
+          message: REASON,
+          certificate_problem: certificateProblem,
+        },
+      ],
+      integration: refused(),
+    })
+
+    it('offers to review the certificate on the card of the connection that failed', async () => {
+      const { find } = await open(refused())
+      expect(find('connection-last-error').text()).toContain(REASON)
+      expect(find('connection-review-certificate').exists()).toBe(true)
+    })
+
+    it('offers it from the report of a test too, for the connection that failed over it', async () => {
+      const opened = await open(working())
+      opened.test.mockResolvedValue(failedCheck(true))
+      await opened.click('test')
+      expect(opened.find('check-review-certificate').text()).toBe('Review the certificate')
+    })
+
+    it('offers nothing in the report for a failure that has nothing to do with it', async () => {
+      const opened = await open(working())
+      opened.test.mockResolvedValue(failedCheck(false))
+      await opened.click('test')
+      expect(opened.find('check').exists()).toBe(true)
+      expect(opened.find('check-review-certificate').exists()).toBe(false)
+    })
+
+    it('looks the certificate up from the report, on the card of that connection', async () => {
+      const opened = await open(working())
+      const lookUp = vi
+        .spyOn(integrationsApi, 'lookUpCertificate')
+        .mockResolvedValue(certificateReview())
+      opened.test.mockResolvedValue(failedCheck(true))
+      await opened.click('test')
+      // The test found the address is https now.
+      await opened.type('connection-url', 'https://192.168.1.2:3001')
+
+      await opened.click('check-review-certificate')
+
+      expect(lookUp).toHaveBeenCalledOnce()
+      expect(opened.find('tls-found').exists()).toBe(true)
+    })
+
+    it('trusts the certificate and tests again in one step, saving it as it does', async () => {
+      const opened = await open(refused())
+      const trusted = refused()
+      trusted.connections[0]!.tls_mode = 'pinned'
+      trusted.connections[0]!.tls_fingerprint = 'AA:BB:CC:DD'
+      vi.spyOn(integrationsApi, 'lookUpCertificate').mockResolvedValue(certificateReview())
+      opened.save.mockResolvedValue(trusted)
+      opened.test.mockResolvedValue(passed())
+
+      await opened.click('connection-review-certificate')
+      await opened.click('tls-trust-test')
+
+      expect(opened.save).toHaveBeenCalledOnce()
+      expect(opened.save.mock.calls[0]?.[1]).toMatchObject({
+        api: {
+          url: 'https://192.168.1.2:3001',
+          tls_mode: 'pinned',
+          tls_fingerprint: 'AA:BB:CC:DD',
+        },
+      })
+      expect(opened.test).toHaveBeenCalledOnce()
+      expect(opened.find('report').text()).toContain('The test passed')
+      // What was reviewed is still there to see, now as the one trusted.
+      expect(opened.find('tls-trusted').exists()).toBe(true)
+    })
+
+    it('only trusts it, leaving the saving to the person, when told so', async () => {
+      const opened = await open(refused())
+      vi.spyOn(integrationsApi, 'lookUpCertificate').mockResolvedValue(certificateReview())
+
+      await opened.click('connection-review-certificate')
+      await opened.click('tls-trust')
+
+      expect(opened.save).not.toHaveBeenCalled()
+      expect(opened.find('unsaved').exists()).toBe(true)
+      expect(opened.find('tls-trusted').exists()).toBe(true)
+    })
+  })
+
   describe('a connection that not everyone has', () => {
     const switchOn = async (opened: Awaited<ReturnType<typeof open>>) => {
       await opened
@@ -568,8 +697,18 @@ describe('IntegrationView', () => {
       opened.test.mockResolvedValue({
         ok: false,
         checks: [
-          { connection: 'api', ok: true, message: 'OPNsense answered.' },
-          { connection: 'zenarmor', ok: false, message: 'Zenarmor answered 403.' },
+          {
+            connection: 'api',
+            ok: true,
+            message: 'OPNsense answered.',
+            certificate_problem: false,
+          },
+          {
+            connection: 'zenarmor',
+            ok: false,
+            message: 'Zenarmor answered 403.',
+            certificate_problem: false,
+          },
         ],
         integration: opnsense(),
       })

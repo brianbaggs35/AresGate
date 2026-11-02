@@ -891,9 +891,8 @@ class TestStandIns:
         started = running.start(kind, api_key="a-key", api_secret="a-secret")
         origin = netguard.parse_origin(started.url, allow_http=False)
 
-        presented = asyncio.run(
-            netguard.look_up_certificate(netguard.HOME_NETWORK_AND_LOOPBACK, origin)
-        )
+        [der, *_] = asyncio.run(netguard.look_up_chain(netguard.HOME_NETWORK_AND_LOOPBACK, origin))
+        presented = netguard.describe_certificate(der)
 
         assert started.url.startswith("https://127.0.0.1:")
         assert started.fingerprint == presented.fingerprint
@@ -905,9 +904,8 @@ class TestStandIns:
         started = running.start("wazuh", username="a-user", password="a-password")
         origin = netguard.parse_origin(started.url, allow_http=False)
 
-        presented = asyncio.run(
-            netguard.look_up_certificate(netguard.HOME_NETWORK_AND_LOOPBACK, origin)
-        )
+        [der, *_] = asyncio.run(netguard.look_up_chain(netguard.HOME_NETWORK_AND_LOOPBACK, origin))
+        presented = netguard.describe_certificate(der)
 
         assert started.url.startswith("https://127.0.0.1:")
         assert started.fingerprint == presented.fingerprint
