@@ -12,8 +12,13 @@ the time of its event. A host that reports again and goes quiet again is a new o
 
 Read from Wazuh's documentation: the manager API's OpenAPI specification (``POST
 /security/user/authenticate``, ``GET /agents`` with its ``limit``, ``select`` and ``status``
-parameters, and the ``Agent`` schema with ``lastKeepAlive``). Not tried against a live Wazuh:
-whether ``lastKeepAlive`` carries a zone on every version, so one that doesn't is left out."""
+parameters, and the ``Agent`` schema with ``lastKeepAlive``). Whether ``lastKeepAlive`` carries a
+zone on every version isn't known, so one that doesn't is left out.
+
+Tried against a Wazuh 4.14.1 manager: a user with no role signs in and gets 200 and an empty list
+from ``GET /agents`` (the API filters what a role doesn't allow instead of refusing), and one with
+``agents_readonly`` gets the manager itself, agent ``000``. So a list with nothing in it means the
+user can't read agents, and is reported as such."""
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -25,8 +30,8 @@ from app.events.event import NewEvent, Severity
 from app.integrations import probes
 from app.metrics.sample import NewSample
 
-PATH = "/agents"
-PRODUCT = "The Wazuh manager"
+PATH = probes.WAZUH_AGENTS
+PRODUCT = probes.WAZUH_MANAGER
 SOURCE = "wazuh"
 CONNECTION = "manager"
 FIELDS = "id,name,ip,status,lastKeepAlive"
@@ -73,11 +78,13 @@ async def _rows(context: Context) -> list[object]:
     )
     if bad := probes.problem(reply, PRODUCT):
         raise CollectorFailed(bad.message)
-    answer = probes.as_object(reply.json())
-    data = probes.as_object(answer.get("data")) if answer else None
-    rows = probes.as_array(data.get("affected_items")) if data else None
+    rows = probes.wazuh_agent_rows(reply)
     if rows is None:
         raise CollectorFailed(probes.unexpected(PRODUCT).message)
+    if not rows:
+        # The manager lists itself to a user who may read agents, so a list with nothing in it is
+        # a user who may not, which would otherwise look like a network with no agents.
+        raise CollectorFailed(probes.NO_AGENTS_LISTED)
     return rows
 
 

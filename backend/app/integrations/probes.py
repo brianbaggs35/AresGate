@@ -7,6 +7,7 @@ is its own text and can't be trusted, so a probe says only what it checked, plus
 facts (a version, an interface name) with control characters removed.
 """
 
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import cast
@@ -57,11 +58,18 @@ def as_array(value: object) -> list[object] | None:
     return cast("list[object]", value) if isinstance(value, list) else None
 
 
-def problem(reply: Reply, product: str) -> Verdict | None:
-    """Why a reply isn't a good one, or None if it is."""
+def problem(
+    reply: Reply, product: str, *, refused: str | None = None, forbidden: str | None = None
+) -> Verdict | None:
+    """Why a reply isn't a good one, or None if it is. A product that tells a sign-in it refuses
+    (401) from a user it won't allow (403) can say each in its own words."""
     status = reply.status
     if reply.ok:
         return None
+    if status == 401 and refused is not None:
+        return Verdict(False, refused)
+    if status == 403 and forbidden is not None:
+        return Verdict(False, forbidden)
     if 300 <= status < 400:
         return Verdict(
             False,
@@ -389,6 +397,10 @@ async def ntopng_interface_lookup(client: ApiClient, target: Target) -> Lookup:
     return Lookup(True, f"ntopng lists {_count_of(len(entries), 'interface')}.", tuple(entries))
 
 
+WAZUH_MANAGER = "The Wazuh manager"
+WAZUH_AGENTS = "/agents"
+
+
 async def wazuh_sign_in(client: ApiClient, target: Target) -> str | Verdict:
     """Signs in to the manager's API for a token (valid for a few minutes), as Wazuh's API
     documentation describes, and keeps it out of every message. The token, or why not."""
@@ -398,7 +410,7 @@ async def wazuh_sign_in(client: ApiClient, target: Target) -> str | Verdict:
         query={"raw": "true"},
         auth=(str(target.options["username"]), target.secrets["password"]),
     )
-    if bad := problem(signed_in, "The Wazuh manager"):
+    if bad := problem(signed_in, WAZUH_MANAGER):
         return bad
     token = signed_in.text.strip()
     if not token or len(token) > 4096 or any(character.isspace() for character in token):
@@ -407,35 +419,149 @@ async def wazuh_sign_in(client: ApiClient, target: Target) -> str | Verdict:
     return token
 
 
+def wazuh_agent_rows(reply: Reply) -> list[object] | None:
+    """The agents in the answer to ``GET /agents``, or None if it isn't a list of them."""
+    answer = as_object(reply.json())
+    data = as_object(answer.get("data")) if answer else None
+    return as_array(data.get("affected_items")) if data else None
+
+
+NO_AGENTS_LISTED = (
+    "The Wazuh manager accepted the sign-in, but lists no agents to this user, not even the "
+    "manager itself (agent 000). That is what a user whose role doesn't allow reading agents "
+    "sees. Link the agents_readonly role to the user."
+)
+
+
 async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
-    """Signs in, then asks the API about itself with the token."""
+    """Signs in, then asks the API about itself with the token, and for one agent. The manager
+    lists itself as agent 000 to a user whose role may read agents, and nothing at all to one
+    whose role may not (the API answers that with an empty list, not with a refusal), so an empty
+    list is what a user without the right role looks like."""
     token = await wazuh_sign_in(client, target)
     if isinstance(token, Verdict):
         return token
-    reply = await client.request("GET", "/", headers={"Authorization": f"Bearer {token}"})
-    if bad := problem(reply, "The Wazuh manager"):
+    bearer = {"Authorization": f"Bearer {token}"}
+    reply = await client.request("GET", "/", headers=bearer)
+    if bad := problem(reply, WAZUH_MANAGER):
         return bad
     data = as_object(reply.json())
     info = as_object(data.get("data")) if data else None
     if info is None or "api_version" not in info:
         return unexpected("the Wazuh manager")
-    return Verdict(True, f"The Wazuh manager answered: API version {fact(info['api_version'])}.")
+    listed = await client.request(
+        "GET", WAZUH_AGENTS, query={"limit": "1", "select": "id"}, headers=bearer
+    )
+    if bad := problem(listed, WAZUH_MANAGER):
+        return bad
+    agents = wazuh_agent_rows(listed)
+    if agents is None:
+        return unexpected("the Wazuh manager")
+    if not agents:
+        return Verdict(False, NO_AGENTS_LISTED)
+    return Verdict(
+        True,
+        f"The Wazuh manager answered: API version {fact(info['api_version'])}, "
+        "and the user can list its agents.",
+    )
+
+
+WAZUH_INDEXER = "The Wazuh indexer"
+WAZUH_ALERTS = "/wazuh-alerts-*/_search"
+INDEXER_REFUSED = (
+    f"{WAZUH_INDEXER} didn't accept the credentials (HTTP 401). It has its own users, apart "
+    "from the manager API's: Indexer management, Security, Internal users."
+)
+# What the indexer's security plugin says of a user who may not do what was asked, for example
+# ``no permissions for [indices:data/read/search] and User [name=aresgate, backend_roles=[]]``.
+MISSING_PERMISSION = re.compile(r"no permissions for \[([A-Za-z0-9_:/*.-]{1,80})\]")
+
+
+def missing_permission(reply: Reply) -> str | None:
+    """The permission the indexer says the user lacks, if it says one in the way its security
+    plugin does. Only an action's name is taken from what it said, so nothing else gets through."""
+    answer = as_object(reply.json())
+    error = as_object(answer.get("error")) if answer else None
+    reason = error.get("reason") if error else None
+    found = MISSING_PERMISSION.search(reason) if isinstance(reason, str) else None
+    return found.group(1) if found else None
+
+
+def indexer_forbidden(reply: Reply) -> str:
+    """Why the indexer won't let the user read the alerts, and what to change. It answers 403 to
+    a user who signed in properly but whose roles don't allow the request, and 401 to one who
+    didn't, so this is never a wrong password."""
+    message = (
+        f"{WAZUH_INDEXER} accepted the sign-in, but the user isn't allowed to read the alerts "
+        "(HTTP 403)."
+    )
+    permission = missing_permission(reply)
+    if permission:
+        message += f" It says the user has no permission for {fact(permission, 80)}."
+    if permission and permission.startswith("cluster:"):
+        return f"{message} Add it under the user's role, in Cluster permissions."
+    return (
+        f"{message} Give the user's role the index permission read on wazuh-alerts-*, and map "
+        "the user to the role (Mapped users)."
+    )
+
+
+def indexer_problem(reply: Reply) -> Verdict | None:
+    """Why the indexer's answer to the search isn't a good one, or None if it is."""
+    forbidden = indexer_forbidden(reply) if reply.status == 403 else None
+    return problem(reply, WAZUH_INDEXER, refused=INDEXER_REFUSED, forbidden=forbidden)
+
+
+async def wazuh_alerts_search(
+    client: ApiClient, target: Target, body: Mapping[str, object]
+) -> Reply:
+    """A search of the indexer's ``wazuh-alerts-*`` indices, with basic authentication. The test
+    and the collector that reads the alerts both ask this way, so a test that passes means the
+    collector is allowed to do what it does."""
+    return await client.request(
+        "POST",
+        WAZUH_ALERTS,
+        json_body=body,
+        auth=(str(target.options["username"]), target.secrets["password"]),
+    )
+
+
+def _stored(total: object) -> str:
+    """How many alerts the indexer says it holds, as a sentence, or nothing if it doesn't say
+    in a way that is understood. Its count stops at 10,000 unless it is asked for more."""
+    count, exact = None, True
+    if isinstance(total, int) and not isinstance(total, bool):
+        count = total
+    elif (counted := as_object(total)) is not None:
+        value = counted.get("value")
+        count = value if isinstance(value, int) and not isinstance(value, bool) else None
+        exact = counted.get("relation") != "gte"
+    if count is None or count < 0:
+        return ""
+    if count == 0:
+        return " It holds none yet."
+    if not exact:
+        return f" It holds {count:,} or more."
+    return f" It holds {count:,} {'alert' if count == 1 else 'alerts'}."
 
 
 async def wazuh_indexer(client: ApiClient, target: Target) -> Verdict:
-    """The indexer's root, which names the cluster and its version, with basic authentication."""
-    reply = await client.request(
-        "GET",
-        "/",
-        auth=(str(target.options["username"]), target.secrets["password"]),
-    )
-    if bad := problem(reply, "The Wazuh indexer"):
+    """Searches the alerts the way the collector does, but asks for none of them. That is the
+    one thing AresGate needs the user to be allowed: the root page, which names the version, is
+    forbidden to a user that has read access to the alerts and no cluster permission, such as
+    one with Wazuh's own read-only example role."""
+    reply = await wazuh_alerts_search(client, target, {"size": 0})
+    if bad := indexer_problem(reply):
         return bad
-    data = as_object(reply.json())
-    version = as_object(data.get("version")) if data else None
-    if version is None or "number" not in version:
+    answer = as_object(reply.json())
+    found = as_object(answer.get("hits")) if answer else None
+    if found is None or as_array(found.get("hits")) is None:
         return unexpected("the Wazuh indexer")
-    return Verdict(True, f"The Wazuh indexer answered: version {fact(version['number'])}.")
+    return Verdict(
+        True,
+        f"{WAZUH_INDEXER} answered, and the user can search the alerts."
+        f"{_stored(found.get('total'))}",
+    )
 
 
 async def crowdsec(client: ApiClient, target: Target) -> Verdict:

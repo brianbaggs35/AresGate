@@ -599,12 +599,25 @@ def test_ntopng_that_cannot_list_its_interfaces_says_why(
 
 MANAGER_OPTIONS: dict[str, str | int] = {"username": "wazuh-wui"}
 MANAGER_SECRETS = {"password": "pw-123456"}
+# What a manager lists to a user whose role may read agents: at least itself, which is agent 000.
+ITSELF: dict[str, object] = {
+    "data": {"affected_items": [{"id": "000"}], "total_affected_items": 1},
+    "error": 0,
+}
+NOBODY: dict[str, object] = {
+    "data": {"affected_items": [], "total_affected_items": 0},
+    "error": 0,
+}
 
 
-def wazuh_manager_router(jwt: str = "eyJ.token.value", info: object | None = None) -> Router:
+def wazuh_manager_router(
+    jwt: str = "eyJ.token.value", info: object | None = None, agents: object | None = None
+) -> Router:
     def route(seen: Seen) -> Answer:
         if seen.path == "/security/user/authenticate":
             return Answer(body=jwt)
+        if seen.path == "/agents":
+            return json_answer(agents if agents is not None else ITSELF)
         return json_answer(
             info if info is not None else {"data": {"api_version": "4.9.0"}, "error": 0}
         )
@@ -612,7 +625,9 @@ def wazuh_manager_router(jwt: str = "eyJ.token.value", info: object | None = Non
     return route
 
 
-def test_the_wazuh_manager_signs_in_and_asks_about_itself_with_the_token(serve: Serve) -> None:
+def test_the_wazuh_manager_signs_in_and_asks_about_itself_and_its_agents_with_the_token(
+    serve: Serve,
+) -> None:
     result, server, log = verdict(
         serve,
         "wazuh",
@@ -622,14 +637,37 @@ def test_the_wazuh_manager_signs_in_and_asks_about_itself_with_the_token(serve: 
         secrets=MANAGER_SECRETS,
     )
 
-    assert result == Verdict(True, "The Wazuh manager answered: API version 4.9.0.")
-    login, info = server.seen
+    assert result == Verdict(
+        True, "The Wazuh manager answered: API version 4.9.0, and the user can list its agents."
+    )
+    login, info, agents = server.seen
     assert (login.method, login.target) == ("POST", "/security/user/authenticate?raw=true")
     assert basic(login) == ("wazuh-wui", "pw-123456")
     assert (info.method, info.path) == ("GET", "/")
     assert info.headers["authorization"] == "Bearer eyJ.token.value"
-    assert [call.path for call in log.calls] == ["/security/user/authenticate", "/"]
+    assert (agents.method, agents.target) == ("GET", "/agents?limit=1&select=id")
+    assert agents.headers["authorization"] == "Bearer eyJ.token.value"
+    assert [call.path for call in log.calls] == ["/security/user/authenticate", "/", "/agents"]
     assert "eyJ.token.value" not in repr(log.calls)
+
+
+def test_a_manager_that_lists_no_agents_to_the_user_says_the_role_is_missing(
+    serve: Serve,
+) -> None:
+    """A user with no role signs in, and the API answers 200 with nothing in the list, where the
+    user with agents_readonly sees at least the manager (tried on Wazuh 4.14.1)."""
+    result, server, _ = verdict(
+        serve,
+        "wazuh",
+        "manager",
+        wazuh_manager_router(agents=NOBODY),
+        options=MANAGER_OPTIONS,
+        secrets=MANAGER_SECRETS,
+    )
+
+    assert result == Verdict(False, probes.NO_AGENTS_LISTED)
+    assert "agents_readonly" in result.message
+    assert len(server.seen) == 3
 
 
 @pytest.mark.parametrize("token", ["", "two words", "x" * 5000])
@@ -676,9 +714,24 @@ def test_the_wazuh_manager_refusing_the_token_is_explained(serve: Serve) -> None
     assert len(server.seen) == 2
 
 
+def test_the_wazuh_manager_refusing_to_list_agents_is_explained(serve: Serve) -> None:
+    def route(seen: Seen) -> Answer:
+        if seen.path == "/agents":
+            return Answer(status=403)
+        return wazuh_manager_router()(seen)
+
+    result, server, _ = verdict(
+        serve, "wazuh", "manager", route, options=MANAGER_OPTIONS, secrets=MANAGER_SECRETS
+    )
+
+    assert not result.ok
+    assert "(HTTP 403)" in result.message
+    assert len(server.seen) == 3
+
+
 @pytest.mark.parametrize("info", [[], {"data": []}, {"data": {"title": "x"}}, "text"])
 def test_the_wazuh_manager_answering_oddly_is_explained(serve: Serve, info: object) -> None:
-    result, _, _ = verdict(
+    result, server, _ = verdict(
         serve,
         "wazuh",
         "manager",
@@ -689,27 +742,218 @@ def test_the_wazuh_manager_answering_oddly_is_explained(serve: Serve, info: obje
 
     assert not result.ok
     assert "doesn't look like the Wazuh manager's" in result.message
+    assert len(server.seen) == 2
 
 
-def test_the_wazuh_indexer_names_its_version(serve: Serve) -> None:
-    result, server, _ = verdict(
+@pytest.mark.parametrize(
+    "agents", [[], {"data": []}, {"data": {"affected_items": "000"}}, {"message": "hello"}, "text"]
+)
+def test_the_wazuh_manager_listing_agents_oddly_is_explained(serve: Serve, agents: object) -> None:
+    result, _, _ = verdict(
+        serve,
+        "wazuh",
+        "manager",
+        wazuh_manager_router(agents=agents),
+        options=MANAGER_OPTIONS,
+        secrets=MANAGER_SECRETS,
+    )
+
+    assert not result.ok
+    assert "doesn't look like the Wazuh manager's" in result.message
+
+
+INDEXER_OPTIONS: dict[str, str | int] = {"username": "reader"}
+INDEXER_SECRETS = {"password": "pw-123456"}
+# The two requests of the indexer the security plugin of OpenSearch tells apart, and the
+# permission each needs. The answers below are what OpenSearch 2.19.1 gave a user who signed in
+# and lacked it, and one who didn't sign in.
+ROOT_NEEDS = "cluster:monitor/main"
+SEARCH_NEEDS = "indices:data/read/search"
+
+
+def lacking(permission: str) -> Answer:
+    reason = (
+        f"no permissions for [{permission}] and "
+        "User [name=reader, backend_roles=[], requestedTenant=null]"
+    )
+    return json_answer(
+        {
+            "error": {
+                "root_cause": [{"type": "security_exception", "reason": reason}],
+                "type": "security_exception",
+                "reason": reason,
+            },
+            "status": 403,
+        },
+        403,
+    )
+
+
+def indexer_security(allowed: set[str], total: object = None) -> Router:
+    """An indexer whose user holds these permissions. It answers as OpenSearch does: 401 to a user
+    it doesn't know, 403 naming the permission to one who lacks it, and for a search the hits."""
+
+    def route(seen: Seen) -> Answer:
+        if basic(seen) != ("reader", "pw-123456"):
+            return Answer(status=401, body="Unauthorized")
+        searching = (seen.method, seen.path) == ("POST", "/wazuh-alerts-*/_search")
+        needed = SEARCH_NEEDS if searching else ROOT_NEEDS
+        if needed not in allowed:
+            return lacking(needed)
+        if searching:
+            hits: dict[str, object] = {"max_score": None, "hits": []}
+            if total is not None:
+                hits["total"] = total
+            return json_answer({"took": 1, "timed_out": False, "hits": hits})
+        return json_answer({"name": "node-1", "version": {"number": "2.19.1"}})
+
+    return route
+
+
+def indexer(
+    serve: Serve, handler: Router, secrets: dict[str, str] | None = None
+) -> tuple[Verdict, StubServer, Log]:
+    return verdict(
         serve,
         "wazuh",
         "indexer",
-        lambda seen: json_answer({"name": "node-1", "version": {"number": "7.10.2"}}),
-        options={"username": "reader"},
-        secrets={"password": "pw-123456"},
+        handler,
+        options=INDEXER_OPTIONS,
+        secrets=secrets or INDEXER_SECRETS,
     )
 
-    assert result == Verdict(True, "The Wazuh indexer answered: version 7.10.2.")
-    assert basic(server.seen[0]) == ("reader", "pw-123456")
-    assert server.seen[0].path == "/"
+
+def test_the_wazuh_indexer_is_asked_to_search_the_alerts_the_way_the_collector_does(
+    serve: Serve,
+) -> None:
+    result, server, log = indexer(
+        serve, indexer_security({SEARCH_NEEDS}, {"value": 1204, "relation": "eq"})
+    )
+
+    assert result == Verdict(
+        True,
+        "The Wazuh indexer answered, and the user can search the alerts. It holds 1,204 alerts.",
+    )
+    [asked] = server.seen
+    assert (asked.method, asked.path) == ("POST", "/wazuh-alerts-*/_search")
+    assert json.loads(asked.body) == {"size": 0}
+    assert basic(asked) == ("reader", "pw-123456")
+    assert [(call.method, call.path) for call in log.calls] == [("POST", "/wazuh-alerts-*/_search")]
+
+
+def test_a_user_who_may_only_search_the_alerts_passes_without_the_root_page(
+    serve: Serve,
+) -> None:
+    """Wazuh's own example of a read-only role (the cluster permission cluster_composite_ops_ro
+    and read on the indices) lets a user search but not ask the root page, which needs
+    cluster:monitor/main: OpenSearch answered 403 to it and 200 to the search. The test used to
+    ask the root page, and so refused the user the collector can use."""
+    result, server, _ = indexer(serve, indexer_security({SEARCH_NEEDS}))
+
+    assert result.ok
+    assert [seen.path for seen in server.seen] == ["/wazuh-alerts-*/_search"]
+
+
+@pytest.mark.parametrize(
+    ("total", "sentence"),
+    [
+        ({"value": 0, "relation": "eq"}, " It holds none yet."),
+        ({"value": 1, "relation": "eq"}, " It holds 1 alert."),
+        ({"value": 7, "relation": "eq"}, " It holds 7 alerts."),
+        ({"value": 10000, "relation": "gte"}, " It holds 10,000 or more."),
+        ({"value": 3}, " It holds 3 alerts."),
+        (12, " It holds 12 alerts."),
+        (None, ""),
+        ({"value": -1, "relation": "eq"}, ""),
+        ({"value": "many"}, ""),
+        ({"value": True}, ""),
+        ({}, ""),
+        (True, ""),
+        ("many", ""),
+        (-4, ""),
+    ],
+)
+def test_the_wazuh_indexer_says_how_many_alerts_it_holds_when_it_says_so_clearly(
+    serve: Serve, total: object, sentence: str
+) -> None:
+    result, _, _ = indexer(serve, indexer_security({SEARCH_NEEDS}, total))
+
+    assert result == Verdict(
+        True, f"The Wazuh indexer answered, and the user can search the alerts.{sentence}"
+    )
+
+
+def test_a_wrong_password_for_the_wazuh_indexer_is_a_refused_sign_in(serve: Serve) -> None:
+    result, _, _ = indexer(
+        serve, indexer_security({SEARCH_NEEDS}), secrets={"password": "not-the-password"}
+    )
+
+    assert result == Verdict(False, probes.INDEXER_REFUSED)
+    assert result.message.startswith("The Wazuh indexer didn't accept the credentials (HTTP 401).")
+    assert "Internal users" in result.message
+    assert "allowed" not in result.message
+
+
+def test_a_user_who_may_not_search_the_alerts_is_told_which_permission_to_give(
+    serve: Serve,
+) -> None:
+    result, _, _ = indexer(serve, indexer_security(set()))
+
+    assert result == Verdict(
+        False,
+        "The Wazuh indexer accepted the sign-in, but the user isn't allowed to read the alerts "
+        "(HTTP 403). It says the user has no permission for indices:data/read/search. Give the "
+        "user's role the index permission read on wazuh-alerts-*, and map the user to the role "
+        "(Mapped users).",
+    )
+
+
+def test_a_permission_of_the_cluster_is_asked_for_under_cluster_permissions(
+    serve: Serve,
+) -> None:
+    result, _, _ = indexer(serve, lambda seen: lacking(ROOT_NEEDS))
+
+    assert not result.ok
+    assert "no permission for cluster:monitor/main" in result.message
+    assert result.message.endswith("Add it under the user's role, in Cluster permissions.")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "",
+        "<html>Forbidden</html>",
+        "[]",
+        '{"status": 403}',
+        '{"error": "forbidden"}',
+        '{"error": {"reason": 5}}',
+        '{"error": {"reason": "no permissions for [two words]"}}',
+        '{"error": {"reason": "no permissions for []"}}',
+        '{"error": {"reason": "no permissions for [' + "a" * 81 + ']"}}',
+        '{"error": {"reason": "no permissions for [<script>alert(1)</script>]"}}',
+        '{"error": {"reason": "Forbidden"}}',
+    ],
+)
+def test_a_refusal_that_names_no_permission_quotes_nothing_the_indexer_said(
+    serve: Serve, body: str
+) -> None:
+    result, _, _ = indexer(serve, lambda seen: Answer(status=403, body=body))
+
+    assert result.message == (
+        "The Wazuh indexer accepted the sign-in, but the user isn't allowed to read the alerts "
+        "(HTTP 403). Give the user's role the index permission read on wazuh-alerts-*, and map "
+        "the user to the role (Mapped users)."
+    )
 
 
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        (Answer(status=401), "The Wazuh indexer didn't accept the credentials"),
+        (Answer(status=404), "The Wazuh indexer answered 404"),
+        (Answer(status=503), "The Wazuh indexer answered HTTP 503."),
+        (Answer(status=302), "The Wazuh indexer redirected the request"),
+        (Answer(body='{"hits": "x"}'), "doesn't look like the Wazuh indexer's"),
+        (Answer(body='{"hits": {"hits": 3}}'), "doesn't look like the Wazuh indexer's"),
         (Answer(body='{"version": "7"}'), "doesn't look like the Wazuh indexer's"),
         (Answer(body="[]"), "doesn't look like the Wazuh indexer's"),
     ],
@@ -717,14 +961,7 @@ def test_the_wazuh_indexer_names_its_version(serve: Serve) -> None:
 def test_the_wazuh_indexer_that_does_not_answer_properly_is_explained(
     serve: Serve, answer: Answer, message: str
 ) -> None:
-    result, _, _ = verdict(
-        serve,
-        "wazuh",
-        "indexer",
-        lambda seen: answer,
-        options={"username": "reader"},
-        secrets={"password": "pw-123456"},
-    )
+    result, _, _ = indexer(serve, lambda seen: answer)
 
     assert not result.ok
     assert message in result.message

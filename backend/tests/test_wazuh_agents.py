@@ -11,6 +11,7 @@ from app.collectors import registry as collectors
 from app.collectors.wazuh.agents import LIMIT, Agents, samples, silent
 from app.config import Settings
 from app.events.event import Severity
+from app.integrations import probes
 from app.models import Event, MetricSample, MetricSeries
 from e2e.stand_ins import sample_wazuh_agents, wazuh
 from tests.opnsense import answering, collect, health
@@ -256,6 +257,22 @@ class TestRunningAgainstWazuh:
         record = health(session)
         assert record.consecutive_failures == 1
         assert record.last_error == "It answered, but the agents aren't in a form AresGate reads."
+        assert stored_counts(session) == []
+
+    def test_a_list_with_nothing_in_it_is_a_user_who_may_not_read_agents(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        """The manager lists itself to a user whose role may read agents, and nothing at all to
+        one whose role may not (tried on Wazuh 4.14.1), which would otherwise be counted as a
+        network with no agents: four zeros, every minute, and no sign anything was wrong."""
+        certificate = make_certificate()
+        connect(session, settings, serve(listing([]), certificate).url, certificate)
+
+        collect(settings, engine, Agents())
+
+        record = health(session)
+        assert record.consecutive_failures == 1
+        assert record.last_error == probes.NO_AGENTS_LISTED
         assert stored_counts(session) == []
 
     @pytest.mark.parametrize(
