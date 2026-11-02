@@ -62,6 +62,11 @@ def upgrade() -> None:
     for column in columns():
         op.add_column("alert_destinations", column, if_not_exists=True)
     for name, condition in CHECKS:
+        # Postgres can't add a constraint only if it is missing, so it is dropped first: the
+        # newest migration has to be able to run again on a database that has it.
+        op.drop_constraint(
+            op.f(f"ck_alert_destinations_{name}"), "alert_destinations", if_exists=True
+        )
         op.create_check_constraint(
             op.f(f"ck_alert_destinations_{name}"), "alert_destinations", condition
         )
