@@ -225,8 +225,10 @@ class TestMakingAHost:
         )
 
     def test_the_time_needs_a_time_zone(self) -> None:
+        naive = datetime(2026, 10, 25, 12, 0)
+
         with pytest.raises(ValueError, match="time zone"):
-            NewHost("002", datetime(2026, 10, 25, 12, 0), "active", True)
+            NewHost("002", naive, "active", True)
 
     def test_a_host_needs_its_key(self) -> None:
         with pytest.raises(ValueError, match="key"):

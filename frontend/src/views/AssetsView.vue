@@ -304,7 +304,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         />
       </div>
 
-      <div class="assets__toggles" role="group" aria-label="Narrow the list">
+      <fieldset class="assets__toggles">
+        <legend class="sr-only">Narrow the list</legend>
         <v-btn
           v-for="source in listing"
           :key="source.key"
@@ -349,7 +350,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         <v-btn v-if="narrowed > 0" variant="text" data-test="clear-filters" @click="clearFilters">
           Clear filters
         </v-btn>
-      </div>
+      </fieldset>
 
       <h2 class="sr-only">Assets</h2>
       <ul v-if="items.length" class="assets__list" data-test="asset-list">
@@ -462,6 +463,10 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .assets__list {
