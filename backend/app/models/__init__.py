@@ -11,6 +11,8 @@ from app.models.ai import (
     AiSettings,
     AiTriage,
 )
+from app.models.alerts import KINDS as ALERT_KINDS
+from app.models.alerts import AlertDestination
 from app.models.audit import AuditEvent
 from app.models.auth import (
     LoginThrottle,
@@ -37,6 +39,7 @@ from app.models.system import SystemInfo
 from app.models.verdicts import VERDICTS, VerdictRule
 
 __all__ = [
+    "ALERT_KINDS",
     "CLASSES",
     "INCIDENT_STATUSES",
     "INTERFACE_ROLES",
@@ -49,6 +52,7 @@ __all__ = [
     "AiProvider",
     "AiSettings",
     "AiTriage",
+    "AlertDestination",
     "ApiCall",
     "AuditEvent",
     "Base",

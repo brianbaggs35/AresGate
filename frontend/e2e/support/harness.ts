@@ -209,7 +209,15 @@ export interface AiCallsRecord {
 
 /** The kinds of integration a stand-in can answer like. */
 export type StandInKind =
-  'opnsense' | 'zenarmor' | 'ntopng' | 'crowdsec' | 'wazuh' | 'anthropic' | 'openai' | 'ollama'
+  | 'opnsense'
+  | 'zenarmor'
+  | 'ntopng'
+  | 'crowdsec'
+  | 'wazuh'
+  | 'anthropic'
+  | 'openai'
+  | 'ollama'
+  | 'discord'
 
 /** What a stand-in accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
  * `api_key` and `api_secret` (and the keys of the `services` it has installed and running),
@@ -229,6 +237,9 @@ export interface StandInRequest {
   /** An Ollama's models that need a paid plan: listed, and answered with 402. */
   paid?: string[]
   provider?: 'anthropic' | 'openai' | 'ollama_cloud'
+  /** Discord's: the `id/token` of the one webhook it knows. Alerts are sent to it instead of to
+   * Discord while it runs. */
+  webhook?: string
 }
 
 /** A server on the test machine that answers like an integration. */
@@ -239,6 +250,15 @@ export interface StandIn {
   url: string
   /** Its certificate's SHA-256 fingerprint, for the ones that have a certificate of their own. */
   fingerprint: string | null
+}
+
+/** A request a stand-in received. */
+export interface StandInCall {
+  method: string
+  path: string
+  user_agent: string
+  /** The message that was posted, if it was JSON. */
+  body: unknown
 }
 
 /** How the collector worker looks to the status page: it reported in just now, it did a while
@@ -395,6 +415,13 @@ export class Harness {
     return this.api
       .post('/api/__test__/stand-ins', { data: request })
       .then((response) => readJson<StandIn>(response, `Starting a ${request.kind} stand-in`))
+  }
+
+  /** What a stand-in was asked, oldest first, such as the messages a Discord one was sent. */
+  standInRequests(id: string): Promise<StandInCall[]> {
+    return this.api
+      .get(`/api/__test__/stand-ins/${id}/requests`)
+      .then((response) => readJson<StandInCall[]>(response, 'Reading what a stand-in was asked'))
   }
 
   /** Runs every collector once, now, and answers when they have all finished. The worker does

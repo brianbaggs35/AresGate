@@ -502,6 +502,58 @@ test.describe('layout on a phone', () => {
     })
   })
 
+  test.describe('alerts', () => {
+    const id = '1234567890123456789'
+    const token = 'Zk3-_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-_x'
+    const overflow = (page: Page) =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+
+    test('the page, a destination and its dialog fit the screen, with buttons big enough to tap', async ({
+      page,
+      harness,
+      alerts,
+    }) => {
+      await harness.standIn({ kind: 'discord', webhook: `${id}/${token}` })
+      await alerts.goto()
+      await expect(alerts.empty).toBeVisible()
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+
+      await alerts.addDestination(
+        'A security channel with a rather long name for a phone',
+        `https://discord.com/api/webhooks/${id}/${token}`,
+      )
+      const card = alerts.destinations.first()
+      await expect(card).toBeVisible()
+      await card.getByTestId('destination-test').click()
+      await expect(card.getByTestId('status')).toHaveText('Connected')
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+
+      const viewport = page.viewportSize()
+      const box = await card.boundingBox()
+      expect(box?.x).toBeGreaterThanOrEqual(0)
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+      for (const name of ['destination-test', 'destination-edit', 'destination-remove']) {
+        const button = await card.getByTestId(name).boundingBox()
+        expect(button?.height, name).toBeGreaterThanOrEqual(44)
+      }
+
+      await card.getByTestId('destination-edit').click()
+      await expect(alerts.dialog).toBeVisible()
+      await expect
+        .poll(async () => (await alerts.dialog.boundingBox())?.width)
+        .toBeLessThanOrEqual(viewport?.width ?? 0)
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+      // The dialog grows into place as it opens, so the buttons are measured once it has.
+      for (const button of [alerts.save, alerts.cancel]) {
+        await expect
+          .poll(async () => (await button.boundingBox())?.height)
+          .toBeGreaterThanOrEqual(44)
+      }
+    })
+  })
+
   test.describe('the setup instructions', () => {
     test('fill the screen, scroll to the pages they come from, and close', async ({
       page,

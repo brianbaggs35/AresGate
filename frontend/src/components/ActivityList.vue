@@ -49,6 +49,10 @@ const TITLES: Readonly<Record<string, string>> = {
   'interface.changed': 'An interface was changed',
   'interface.removed': 'An interface was removed',
   'interface.feed_placed': 'A source was placed on an interface, or set aside',
+  'alerts.destination_added': 'An alert destination was added',
+  'alerts.destination_changed': 'An alert destination was changed',
+  'alerts.destination_removed': 'An alert destination was removed',
+  'alerts.destination_tested': 'A test message was sent to an alert destination',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

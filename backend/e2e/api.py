@@ -4,6 +4,7 @@ They put the database back to a known state, make extra records and hand over th
 coverage. Only ``e2e.main`` mounts them.
 """
 
+import json
 from datetime import datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -83,6 +84,7 @@ class Loaded(BaseModel):
 def _load(db: Session, name: FixtureName, request: Request) -> Loaded:
     STAND_INS.stop_all()
     request.app.state.ai_origins.clear()
+    request.app.state.alert_origin = None
     emptied = baseline.load(db, name)
     db.commit()
     return Loaded(fixture=name, tables_emptied=emptied)
@@ -438,6 +440,9 @@ class StandInRequest(BaseModel):
     # An Ollama's models that need a paid plan: they are listed, and answer 402 Payment Required.
     paid: list[str] = []
     provider: Literal["anthropic", "openai", "ollama_cloud"] | None = None
+    # Discord: the `id/token` of the one webhook it knows. Alerts are sent to it instead of to
+    # Discord while it runs.
+    webhook: str = ""
 
 
 class StandInRecord(BaseModel):
@@ -462,12 +467,43 @@ def start_stand_in(body: StandInRequest, request: Request) -> StandInRecord:
         password=body.password,
         models=body.models,
         paid=body.paid,
+        webhook=body.webhook,
     )
     if body.provider is not None:
         request.app.state.ai_origins[body.provider] = running.url
+    if body.kind == "discord":
+        request.app.state.alert_origin = running.url
     return StandInRecord(
         id=running.id, kind=running.kind, url=running.url, fingerprint=running.fingerprint
     )
+
+
+class StandInRequestSeen(BaseModel):
+    method: str
+    path: str
+    user_agent: str
+    # The message that was posted, if it was JSON.
+    body: Any
+
+
+@router.get("/stand-ins/{stand_in_id}/requests")
+def stand_in_requests(stand_in_id: str) -> list[StandInRequestSeen]:
+    """What a stand-in was asked, oldest first, for a test to check what AresGate sent."""
+    seen: list[StandInRequestSeen] = []
+    for request in STAND_INS.requests(stand_in_id):
+        try:
+            body = json.loads(request.body) if request.body else None
+        except ValueError:
+            body = None
+        seen.append(
+            StandInRequestSeen(
+                method=request.method,
+                path=request.path,
+                user_agent=request.headers.get("user-agent", ""),
+                body=body,
+            )
+        )
+    return seen
 
 
 @router.delete("/stand-ins", status_code=status.HTTP_204_NO_CONTENT)
@@ -475,6 +511,7 @@ def stop_stand_ins(request: Request) -> None:
     """Stops every stand-in."""
     STAND_INS.stop_all()
     request.app.state.ai_origins.clear()
+    request.app.state.alert_origin = None
 
 
 def collector_scheduler(request: Request, settings: SettingsDep, db: Db) -> Scheduler:

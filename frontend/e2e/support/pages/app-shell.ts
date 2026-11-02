@@ -6,10 +6,18 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 
 /** The places in the menu, by the names of their routes. */
 export type Place =
-  'home' | 'incidents' | 'assistant' | 'logs' | 'integrations' | 'ai-usage' | 'status' | 'settings'
+  | 'home'
+  | 'incidents'
+  | 'assistant'
+  | 'logs'
+  | 'integrations'
+  | 'ai-usage'
+  | 'alerts'
+  | 'status'
+  | 'settings'
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
-const BEHIND_MORE: readonly Place[] = ['integrations', 'ai-usage', 'status', 'settings']
+const BEHIND_MORE: readonly Place[] = ['integrations', 'ai-usage', 'alerts', 'status', 'settings']
 
 /**
  * What's around every page: the logo, which links home, the menu (at the side on a computer or

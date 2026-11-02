@@ -954,6 +954,55 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the alerts, their dialog with a mistake in it, and the question about removing one have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      alerts,
+      shell,
+    }) => {
+      // The stand-in knows one webhook, so the second one is turned away and shows a problem.
+      const id = '1234567890123456789'
+      const token = 'Zk3-_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-_x'
+      await harness.standIn({ kind: 'discord', webhook: `${id}/${token}` })
+      await alerts.goto()
+      await expect(alerts.empty).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await alerts.addDestination(
+        'Security channel',
+        `https://discord.com/api/webhooks/${id}/${token}`,
+      )
+      await alerts.destination('Security channel').getByTestId('destination-test').click()
+      await expect(alerts.destination('Security channel').getByTestId('status')).toHaveText(
+        'Connected',
+      )
+      await alerts.addDestination(
+        'Family',
+        'https://discord.com/api/webhooks/9876543210987654321/Qq9-_zyxwvutsrqponmlkjihgfedcba',
+      )
+      await alerts.destination('Family').getByTestId('destination-test').click()
+      await expect(alerts.destination('Family').getByTestId('status')).toHaveText('Problem')
+      await expect(alerts.destination('Family').getByTestId('destination-result')).toBeVisible()
+      await expectAccessible(page)
+
+      // The dialog, with an address that is refused and said so in words.
+      await alerts.add.click()
+      await alerts.name.fill('Somewhere')
+      await alerts.url.fill('https://example.com/api/webhooks/1234567890123456789/abcdefghijklmnop')
+      await alerts.save.click()
+      await expect(alerts.dialog).toContainText("That isn't a Discord address.")
+      await expectAccessible(page)
+      await alerts.cancel.click()
+      await expect(alerts.dialog).toHaveCount(0)
+
+      // The question, with a destination that is turned off behind it.
+      await alerts.destination('Family').getByTestId('destination-remove').click()
+      await expect(alerts.confirmTitle).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('an integration, with its mistakes and its log, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

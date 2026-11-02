@@ -867,6 +867,52 @@ class TestAiProviders:
         assert handler(seen("/api/tags")).status == 200
 
 
+class TestDiscord:
+    handler = staticmethod(stand_ins.discord("1/abc"))
+    agent: ClassVar[dict[str, str]] = {"user-agent": "DiscordBot (https://example.test, 1.0)"}
+
+    def test_a_message_to_the_webhook_it_knows_is_taken(self) -> None:
+        message = {"embeds": [{"title": "t"}]}
+
+        assert self.handler(post("/api/webhooks/1/abc", message, **self.agent)).status == 204
+        assert self.handler(post("/api/v10/webhooks/1/abc", message, **self.agent)).status == 204
+        assert (
+            self.handler(post("/api/webhooks/1/abc?wait=true", message, **self.agent)).status == 204
+        )
+        assert (
+            self.handler(post("/api/webhooks/1/abc", {"content": "hi"}, **self.agent)).status == 204
+        )
+
+    def test_another_webhook_is_unknown(self) -> None:
+        answer = self.handler(post("/api/webhooks/1/other", {"content": "hi"}, **self.agent))
+
+        assert answer.status == 404
+        assert body(answer) == {"message": "Unknown Webhook", "code": 10015}
+
+    def test_a_message_with_nothing_in_it_is_refused(self) -> None:
+        messages: tuple[object, ...] = ({}, {"embeds": []}, {"content": ""}, [], "text")
+        for message in messages:
+            answer = self.handler(post("/api/webhooks/1/abc", message, **self.agent))
+            assert (answer.status, body(answer)["code"]) == (400, 50006)
+
+    def test_a_body_that_is_not_json_is_refused(self) -> None:
+        asked = Seen("POST", "/api/webhooks/1/abc", self.agent, b"{not json")
+
+        assert self.handler(asked).status == 400
+
+    def test_a_request_without_discords_user_agent_is_blocked(self) -> None:
+        message = {"content": "hi"}
+
+        assert self.handler(post("/api/webhooks/1/abc", message)).status == 403
+        assert (
+            self.handler(post("/api/webhooks/1/abc", message, **{"user-agent": "x"})).status == 403
+        )
+
+    def test_anything_else_is_not_found(self) -> None:
+        assert self.handler(seen("/api/webhooks/1/abc", **self.agent)).status == 404
+        assert self.handler(post("/api/other", {"content": "hi"}, **self.agent)).status == 404
+
+
 class TestStandIns:
     def test_ntopng_and_crowdsec_answer_over_plain_http(self, running: StandIns) -> None:
         ntopng = running.start("ntopng", token="a-token")

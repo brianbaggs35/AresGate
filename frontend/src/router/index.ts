@@ -108,6 +108,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'AI usage' },
   },
   {
+    path: '/alerts',
+    name: 'alerts',
+    component: () => import('@/views/AlertsView.vue'),
+    meta: { title: 'Alerts' },
+  },
+  {
     path: '/status',
     name: 'status',
     component: () => import('@/views/StatusView.vue'),
