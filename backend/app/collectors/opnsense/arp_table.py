@@ -13,6 +13,7 @@ from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
 from app.collectors.opnsense.api import PRODUCT, read
 from app.devices.sighting import NewSighting
+from app.devices.ways import ARP
 from app.integrations import probes
 
 ARP_PATH = "/api/diagnostics/interface/get_arp"
@@ -37,7 +38,7 @@ class ArpTable(Collector):
             raise CollectorFailed(probes.unexpected(PRODUCT).message)
         if entries and not any("mac" in (probes.as_object(entry) or {}) for entry in entries):
             raise CollectorFailed("It answered, but the ARP table isn't in a form AresGate reads.")
-        return Outcome(items=await context.record_devices(sightings(entries, context.now)))
+        return Outcome(items=await context.record_devices(sightings(entries, context.now), ARP))
 
 
 def sightings(entries: Sequence[object], seen_at: datetime) -> list[NewSighting]:

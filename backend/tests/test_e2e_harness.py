@@ -5,6 +5,7 @@ import socket
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import coverage
@@ -153,7 +154,9 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "collector_health": 0,
         "credentials": 0,
         "device_addresses": 0,
+        "device_sources": 0,
         "devices": 0,
+        "host_listings": 0,
         "event_retention": 0,
         "events": 0,
         "incident_signals": 0,
@@ -204,6 +207,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "metric_samples",
             "interface_feeds",
             "incident_signals",
+            "device_sources",
             "device_addresses",
             "ai_triage",
             "ai_settings",
@@ -220,6 +224,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "integration_connections",
             "integration_api_calls",
             "incidents",
+            "host_listings",
             "events",
             "event_retention",
             "devices",
@@ -1137,6 +1142,55 @@ def test_feeds_can_be_made_and_placed_to_order(e2e: TestClient) -> None:
         ("opnsense", "api", "igc1"),
     ]
     assert [f["native_name"] for f in body["ignored"]] == ["lo0"]
+
+
+def test_a_machine_made_for_the_assets_needs_the_key_it_is_known_by(e2e: TestClient) -> None:
+    made = e2e.post("/api/__test__/factories/assets", json={"hosts": [{"key": ""}]})
+
+    assert made.status_code == 422
+
+
+def test_assets_can_be_made_listed_by_the_ways_and_at_the_times_given(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    request: dict[str, Any] = {
+        "devices": [
+            {
+                "hostname": "laptop",
+                "vendor": "Example Devices Inc.",
+                "addresses": ["192.168.1.20"],
+                "earlier": ["192.168.1.10"],
+                "listed": [
+                    {"minutes_ago": 2},
+                    {"source": "opnsense", "via": "dhcp", "minutes_ago": 5},
+                ],
+                "first_seen_hours": 48,
+            },
+            {"mac": "02:aa:bb:cc:dd:ee", "listed": []},
+            {},
+        ],
+        "hosts": [{"key": "002", "hostname": "web1", "address": "192.168.1.30"}],
+    }
+    made = e2e.post("/api/__test__/factories/assets", json=request)
+
+    assert made.status_code == 201
+    assert made.json() == {"devices": 3, "hosts": 1}
+    sign_in(e2e)
+    body = e2e.get("/api/assets").json()
+    assert body["total"] == 4
+    by_name = {item["name"]: item for item in body["items"]}
+    laptop = by_name["laptop"]
+    assert laptop["status"] == "online"
+    assert laptop["addresses"] == ["192.168.1.20", "192.168.1.10"]
+    assert [(item["source"], item["via"]) for item in laptop["listings"]] == [
+        ("opnsense", "arp"),
+        ("opnsense", "dhcp"),
+    ]
+    assert by_name["web1"]["kind"] == "host"
+    # A device made with no listing was only ever listed once, long ago, the usual way.
+    quiet = by_name["02:aa:bb:cc:dd:ee"]
+    assert [(item["source"], item["via"]) for item in quiet["listings"]] == [("opnsense", "arp")]
+    assert quiet["status"] == "away"
 
 
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:

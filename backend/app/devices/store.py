@@ -6,12 +6,14 @@ from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any
 
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import Insert, insert
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
-from app.devices.sighting import NewSighting
-from app.models import Device, DeviceAddress
+from app.devices import ways
+from app.devices.sighting import NewHost, NewSighting
+from app.models import Device, DeviceAddress, DeviceSource, HostListing
 
 
 @dataclass
@@ -27,12 +29,16 @@ class _Seen:
     )
 
 
-def record(db: Session, sightings: Sequence[NewSighting], now: datetime) -> int:
+def record(
+    db: Session, sightings: Sequence[NewSighting], now: datetime, *, source: str, via: str
+) -> int:
     """Remembers the devices that were listed, and returns how many different ones there were.
     A device is told apart by its MAC address: one not seen before is added, and one that was is
     updated with when it was seen, its addresses, and a name or maker if the sighting has one,
-    which replaces the one kept. A time ahead of ``now`` is taken as ``now``. The caller
-    commits."""
+    which replaces the one kept. ``source`` is the integration that listed them and ``via`` how
+    (a key of ``app.devices.ways``), which are kept with the time of the listing. A time ahead of
+    ``now`` is taken as ``now``. The caller commits."""
+    ways.check(via)
     seen = _sum_up(sightings, now)
     if not seen:
         return 0
@@ -53,7 +59,81 @@ def record(db: Session, sightings: Sequence[NewSighting], now: datetime) -> int:
             new.on_conflict_do_update(index_elements=["device_id", "address"], set_=_widen(new)),
             addresses,
         )
+    listings = insert(DeviceSource)
+    db.execute(
+        listings.on_conflict_do_update(
+            index_elements=["device_id", "source", "via"], set_=_widen(listings)
+        ),
+        [
+            {
+                "device_id": devices[mac],
+                "source": source,
+                "via": via,
+                "first_seen_at": found.first,
+                "last_seen_at": found.last,
+            }
+            for mac, found in seen.items()
+        ],
+    )
     return len(seen)
+
+
+def record_hosts(
+    db: Session,
+    hosts: Sequence[NewHost],
+    now: datetime,
+    *,
+    source: str,
+    connection: str,
+    via: str,
+    complete: bool,
+) -> int:
+    """Remembers the machines an integration listed that have no hardware address, and returns
+    how many. One listed before is updated, and its first sighting kept. When ``complete`` says
+    the list is the whole of what the connection has, the ones it no longer lists are forgotten,
+    since an agent that was removed is not an asset any more. A time ahead of ``now`` is taken as
+    ``now``. The caller commits."""
+    ways.check(via)
+    found = {host.key: host for host in hosts}
+    if found:
+        new = insert(HostListing)
+        db.execute(
+            new.on_conflict_do_update(
+                index_elements=["source", "connection", "key"],
+                set_={
+                    "via": new.excluded.via,
+                    "hostname": func.coalesce(new.excluded.hostname, HostListing.hostname),
+                    "address": func.coalesce(new.excluded.address, HostListing.address),
+                    "state": new.excluded.state,
+                    "online": new.excluded.online,
+                    **_widen(new),
+                },
+            ),
+            [
+                {
+                    "source": source,
+                    "connection": connection,
+                    "via": via,
+                    "key": host.key,
+                    "hostname": host.hostname,
+                    "address": host.address,
+                    "state": host.state,
+                    "online": host.online,
+                    "first_seen_at": min(host.seen_at, now),
+                    "last_seen_at": min(host.seen_at, now),
+                }
+                for host in found.values()
+            ],
+        )
+    if complete:
+        db.execute(
+            delete(HostListing).where(
+                HostListing.source == source,
+                HostListing.connection == connection,
+                HostListing.key.not_in(list(found)),
+            )
+        )
+    return len(found)
 
 
 def _sum_up(sightings: Sequence[NewSighting], now: datetime) -> dict[str, _Seen]:

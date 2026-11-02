@@ -12,6 +12,8 @@ from app.audit import clean
 
 MAX_HOSTNAME = 253
 MAX_VENDOR = 128
+MAX_KEY = 128
+MAX_STATE = 32
 
 # Six bytes of one or two hex digits, joined by colons or by hyphens: FreeBSD writes the bytes
 # without their leading zeros ("0:c:29:a:b:c"). Or the twelve digits run together.
@@ -79,6 +81,53 @@ class NewSighting:
             _address(address),
             _hostname(hostname),
             _text(vendor, MAX_VENDOR),
+        )
+
+
+@dataclass(frozen=True)
+class NewHost:
+    """A machine an integration listed by name and address, with no hardware address (a Wazuh
+    agent), as a collector found it. Make one with ``of``."""
+
+    # What the integration calls it, such as the agent's number.
+    key: str
+    # When it was last heard from: now, for one in touch.
+    seen_at: datetime
+    # The integration's word for how it is doing, and whether that means it is in touch now.
+    state: str
+    online: bool
+    address: IPv4Address | IPv6Address | None = None
+    hostname: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.key:
+            raise ValueError("A host needs the key the integration knows it by.")
+        if self.seen_at.tzinfo is None:
+            raise ValueError("A host's time must have a time zone.")
+
+    @classmethod
+    def of(
+        cls,
+        key: str,
+        seen_at: datetime,
+        *,
+        state: str,
+        online: bool,
+        address: str | None = None,
+        hostname: str | None = None,
+    ) -> Self | None:
+        """The host, or None when it has no key to be told by. Like a sighting, what the other
+        system said is cleaned and what is not an address or a name is left out."""
+        found = _text(key, MAX_KEY)
+        if found is None:
+            return None
+        return cls(
+            found,
+            seen_at,
+            (_text(state, MAX_STATE) or "unknown").lower(),
+            online,
+            _address(address),
+            _hostname(hostname),
         )
 
 

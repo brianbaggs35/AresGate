@@ -3,7 +3,15 @@ from ipaddress import IPv4Address, IPv6Address
 
 import pytest
 
-from app.devices.sighting import MAX_HOSTNAME, MAX_VENDOR, NewSighting, mac_address
+from app.devices.sighting import (
+    MAX_HOSTNAME,
+    MAX_KEY,
+    MAX_STATE,
+    MAX_VENDOR,
+    NewHost,
+    NewSighting,
+    mac_address,
+)
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 MAC = "00:11:22:0a:0b:0c"
@@ -169,3 +177,57 @@ class TestWhatASightingNeeds:
 
         with pytest.raises(ValueError, match="time zone"):
             NewSighting(MAC, naive)
+
+
+class TestMakingAHost:
+    def test_it_is_cleaned_up_like_a_sighting(self) -> None:
+        host = NewHost.of(
+            " 002\n", NOW, state="Active", online=True, address="192.168.1.41", hostname="web1."
+        )
+
+        assert host is not None
+        assert (host.key, host.state, host.online) == ("002", "active", True)
+        assert (host.address, host.hostname) == (IPv4Address("192.168.1.41"), "web1")
+
+    @pytest.mark.parametrize("key", ["", "   ", "*"])
+    def test_one_with_no_key_is_none(self, key: str) -> None:
+        assert NewHost.of(key, NOW, state="active", online=True) is None
+
+    @pytest.mark.parametrize("address", ["any", "", "N/A", None])
+    def test_an_address_that_isnt_one_is_left_out(self, address: str | None) -> None:
+        host = NewHost.of("002", NOW, state="active", online=True, address=address)
+
+        assert host is not None
+        assert host.address is None
+
+    @pytest.mark.parametrize("name", ["*", "?", "-", "", None])
+    def test_a_name_that_stands_for_none_is_none(self, name: str | None) -> None:
+        host = NewHost.of("002", NOW, state="active", online=True, hostname=name)
+
+        assert host is not None
+        assert host.hostname is None
+
+    @pytest.mark.parametrize("state", ["", "*"])
+    def test_a_state_that_is_not_said_is_unknown(self, state: str) -> None:
+        host = NewHost.of("002", NOW, state=state, online=False)
+
+        assert host is not None
+        assert host.state == "unknown"
+
+    def test_text_is_cut_to_fit(self) -> None:
+        host = NewHost.of("k" * 300, NOW, state="s" * 90, online=False, hostname="n" * 400)
+
+        assert host is not None
+        assert (len(host.key), len(host.state), len(host.hostname or "")) == (
+            MAX_KEY,
+            MAX_STATE,
+            MAX_HOSTNAME,
+        )
+
+    def test_the_time_needs_a_time_zone(self) -> None:
+        with pytest.raises(ValueError, match="time zone"):
+            NewHost("002", datetime(2026, 10, 25, 12, 0), "active", True)
+
+    def test_a_host_needs_its_key(self) -> None:
+        with pytest.raises(ValueError, match="key"):
+            NewHost("", NOW, "active", True)

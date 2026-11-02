@@ -12,6 +12,7 @@ from app.collectors import traffic
 from app.collectors.base import CollectorFailed, Context, Outcome
 from app.collectors.opnsense.api import PRODUCT, read
 from app.devices.sighting import NewSighting
+from app.devices.ways import DHCP
 from app.integrations import probes
 
 
@@ -28,7 +29,7 @@ async def collect(
     if rows and not any("hwaddr" in lease for lease in leases):
         raise CollectorFailed("It answered, but the leases aren't in a form AresGate reads.")
     found = sightings([lease for lease in leases if current(lease)], context.now)
-    return Outcome(items=await context.record_devices(found))
+    return Outcome(items=await context.record_devices(found, DHCP))
 
 
 def sightings(leases: Sequence[Mapping[str, object]], seen_at: datetime) -> list[NewSighting]:

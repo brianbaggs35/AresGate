@@ -26,6 +26,8 @@ from datetime import datetime, timedelta
 
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
+from app.devices.sighting import NewHost
+from app.devices.ways import AGENT
 from app.events.event import NewEvent, Severity
 from app.integrations import probes
 from app.metrics.sample import NewSample
@@ -63,6 +65,8 @@ class Agents(Collector):
         # The manager lists itself as an agent, which it isn't one to watch.
         agents = [entry for entry in found if traffic.text(entry, "id") not in ("", MANAGER)]
         await context.record_samples(samples(agents, context.now))
+        # What the manager lists is all there is, unless it had more than one run reads.
+        await context.record_hosts(hosts(agents, context.now), AGENT, complete=len(rows) < LIMIT)
         return Outcome(items=await context.record(silent(agents)))
 
 
@@ -108,6 +112,33 @@ def silent(agents: Sequence[Mapping[str, object]]) -> list[NewEvent]:
         if traffic.text(agent, "status").lower() == "disconnected" and last_heard is not None:
             events.append(_event(agent, last_heard))
     return events
+
+
+def hosts(agents: Sequence[Mapping[str, object]], seen_at: datetime) -> list[NewHost]:
+    """The agents as machines on the network: by their name and address, since the manager gives
+    no hardware address. An agent that is active was heard from now; any other was heard from when
+    it last reported in, and one that never did (``pending``, ``never_connected``) has not been
+    on the network as far as Wazuh knows, so it is not listed."""
+    found: list[NewHost] = []
+    for agent in agents:
+        state = traffic.text(agent, "status").lower()
+        active = state == "active"
+        heard = seen_at if active else _moment(traffic.text(agent, "lastKeepAlive"))
+        host = (
+            None
+            if heard is None
+            else NewHost.of(
+                traffic.text(agent, "id"),
+                heard,
+                state=state,
+                online=active,
+                address=traffic.text(agent, "ip"),
+                hostname=traffic.text(agent, "name"),
+            )
+        )
+        if host is not None:
+            found.append(host)
+    return found
 
 
 def _moment(stamp: str) -> datetime | None:

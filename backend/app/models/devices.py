@@ -4,7 +4,16 @@ hardware address, what they are called and which addresses they have had."""
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import BigInteger, ForeignKey, Identity, Index, PrimaryKeyConstraint, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Identity,
+    Index,
+    PrimaryKeyConstraint,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import INET, MACADDR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,4 +57,48 @@ class DeviceAddress(Base):
     device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("devices.id", ondelete="CASCADE"))
     address: Mapped[IPv4Address | IPv6Address] = mapped_column(INET)
     first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class DeviceSource(Base):
+    """One way an integration lists a device: OPNsense's ARP table, its DHCP leases, an ntopng
+    host. A device listed by more than one has a row for each, so a page can say who has seen it
+    and how long ago, and tell a device that is on the network now (the ARP table, ntopng) from
+    one that only has a lease."""
+
+    __tablename__ = "device_sources"
+    # Not on when it was seen, which changes on every read, so that reading is a cheap update.
+    __table_args__ = (PrimaryKeyConstraint("device_id", "source", "via"),)
+
+    device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("devices.id", ondelete="CASCADE"))
+    # The integration (opnsense) and how it listed the device: a key of ``app.devices.ways``.
+    source: Mapped[str] = mapped_column(String(32))
+    via: Mapped[str] = mapped_column(String(16))
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class HostListing(Base):
+    """A machine an integration lists by name and address, with no hardware address to tell it
+    apart by, such as a Wazuh agent. It is not a ``Device``, but the Assets page matches it to one
+    by its address or its name, and lists it on its own when nothing matches."""
+
+    __tablename__ = "host_listings"
+    __table_args__ = (UniqueConstraint("source", "connection", "key", name="uq_host_listings_key"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32))
+    connection: Mapped[str] = mapped_column(String(32))
+    # How it was listed: a key of ``app.devices.ways``.
+    via: Mapped[str] = mapped_column(String(16))
+    # What the integration calls it: the agent's number.
+    key: Mapped[str] = mapped_column(String(128))
+    hostname: Mapped[str | None] = mapped_column(String(253), default=None)
+    address: Mapped[IPv4Address | IPv6Address | None] = mapped_column(INET, default=None)
+    # The integration's word for how it is doing (``active``, ``disconnected``), and whether that
+    # means it is in touch now.
+    state: Mapped[str] = mapped_column(String(32))
+    online: Mapped[bool] = mapped_column(Boolean)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # The last time the integration heard from it: the run's time for one in touch.
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)

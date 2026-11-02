@@ -412,6 +412,76 @@ def make_feeds(body: FeedsRequest, db: Db) -> FeedsRecord:
     return FeedsRecord(feeds=made)
 
 
+class ListedRequest(BaseModel):
+    """One way a device was listed, and how long ago."""
+
+    source: str = Field(default="opnsense", max_length=32)
+    via: str = Field(default="arp", max_length=16)
+    minutes_ago: float = Field(default=1, ge=0, le=60 * 24 * 365)
+
+
+class DeviceRequest(BaseModel):
+    """A device, as the integrations that list it left it."""
+
+    hostname: str | None = Field(default=None, max_length=253)
+    mac: str | None = Field(default=None, max_length=17)
+    vendor: str | None = Field(default=None, max_length=128)
+    addresses: list[str] = Field(default_factory=list[str], max_length=8)
+    earlier: list[str] = Field(default_factory=list[str], max_length=8)
+    listed: list[ListedRequest] = Field(default_factory=lambda: [ListedRequest()])
+    first_seen_hours: float = Field(default=24 * 30, ge=0, le=24 * 365 * 5)
+
+
+class HostRequest(BaseModel):
+    """A machine with no hardware address, such as a Wazuh agent."""
+
+    key: str = Field(min_length=1, max_length=128)
+    hostname: str | None = Field(default=None, max_length=253)
+    address: str | None = Field(default=None, max_length=64)
+    state: str = Field(default="active", max_length=32)
+    online: bool = True
+    minutes_ago: float = Field(default=0, ge=0, le=60 * 24 * 365)
+    source: str = Field(default="wazuh", max_length=32)
+    connection: str = Field(default="manager", max_length=32)
+    via: str = Field(default="agent", max_length=16)
+
+
+class AssetsRequest(BaseModel):
+    devices: list[DeviceRequest] = Field(default_factory=list[DeviceRequest], max_length=200)
+    hosts: list[HostRequest] = Field(default_factory=list[HostRequest], max_length=50)
+
+
+class AssetsRecord(BaseModel):
+    devices: int
+    hosts: int
+
+
+def _device_spec(item: DeviceRequest) -> factories.AssetSpec:
+    return factories.AssetSpec(
+        hostname=item.hostname,
+        mac=item.mac,
+        vendor=item.vendor,
+        addresses=tuple(item.addresses),
+        earlier=tuple(item.earlier),
+        listed=tuple(factories.Listed(**each.model_dump()) for each in item.listed),
+        first_seen_hours=item.first_seen_hours,
+    )
+
+
+@router.post("/factories/assets", status_code=status.HTTP_201_CREATED)
+def make_assets(body: AssetsRequest, db: Db) -> AssetsRecord:
+    """Stores devices and machines as the integrations that list them leave them, for the Assets
+    page to show."""
+    made = factories.assets(
+        db,
+        utcnow(),
+        [_device_spec(item) for item in body.devices],
+        [factories.HostSpec(**item.model_dump()) for item in body.hosts],
+    )
+    db.commit()
+    return AssetsRecord(devices=made.devices, hosts=made.hosts)
+
+
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)
 def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""

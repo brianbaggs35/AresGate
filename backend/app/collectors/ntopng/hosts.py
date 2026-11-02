@@ -26,6 +26,7 @@ from app.collectors.base import Collector, CollectorFailed, Context, Outcome
 from app.collectors.ntopng.api import PRODUCT, interfaces, read
 from app.collectors.readings import Readings, number
 from app.devices.sighting import NewSighting
+from app.devices.ways import HOSTS
 from app.integrations import probes
 
 PATH = "/lua/rest/v2/get/host/active.lua"
@@ -63,7 +64,7 @@ class Hosts(Collector):
                 for metric, value in measure(host).items():
                     readings.add(metric, value, host=address)
         await readings.save()
-        await context.record_devices(sightings(found, context.now))
+        await context.record_devices(sightings(found, context.now), HOSTS)
         return Outcome(items=len(found))
 
 
