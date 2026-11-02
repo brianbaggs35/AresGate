@@ -252,6 +252,17 @@ describe('ConnectionCard', () => {
       expect(draft.tlsFingerprint).toBe('AA:BB')
     })
 
+    it('adds what the product’s documentation says about its certificate, when it does', async () => {
+      const note = 'Its Let’s Encrypt certificate is for the dashboard only.'
+      const { find } = await open(
+        connection({ key: 'indexer', label: 'Indexer', certificate_note: note }),
+      )
+      expect(find('tls-note').text()).toBe(note)
+
+      const plain = await open()
+      expect(plain.find('tls-note').exists()).toBe(false)
+    })
+
     it('shows what is wrong with it', async () => {
       const { find } = await open(ntopngApi({ tls_mode: 'pinned' }), {
         tls_fingerprint: 'That is not a SHA-256 fingerprint.',

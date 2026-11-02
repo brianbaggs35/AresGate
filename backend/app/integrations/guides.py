@@ -468,12 +468,30 @@ WAZUH = Guide(
                     title="Enter the address and the sign-in",
                     detail=(
                         "Enter the manager's address with port 55000, and the user name and "
-                        "password from above. The manager's API uses a certificate made by Wazuh "
-                        "until you replace it: choose how AresGate trusts it under Certificate "
-                        "on the card, by pasting the certificate authority that signed it or "
-                        "pinning its fingerprint."
+                        "password from above. The API answers with its own certificate, which "
+                        "Wazuh's pages call self-signed by default. Under Certificate on the "
+                        "card choose Only this exact certificate, click Look up the "
+                        "certificate, and trust it once its fingerprint matches the one on the "
+                        "Wazuh server (below)."
                     ),
                     fills=(Fill(label=ADDRESS, value="https://192.168.1.3:55000"),),
+                    command=(
+                        "openssl x509 -in /var/ossec/api/configuration/ssl/server.crt "
+                        "-noout -fingerprint -sha256"
+                    ),
+                    watch=(
+                        "A Let's Encrypt certificate on the Wazuh dashboard is not used here. "
+                        "Wazuh's page on Let's Encrypt covers the dashboard only, so the "
+                        "choice The certificates this computer trusts fails on the API unless "
+                        "you also put a public certificate on it (the cert and key settings "
+                        "under https in api.yaml)."
+                    ),
+                    inferred=(
+                        "The command is plain OpenSSL, run on the file the API's configuration "
+                        "page names as its default certificate (server.crt in the ssl folder). "
+                        "No Wazuh page shows it, and the file is somewhere else if you changed "
+                        "api.yaml."
+                    ),
                 ),
             ),
         ),
@@ -543,10 +561,26 @@ WAZUH = Guide(
                     title="Enter the address and the sign-in",
                     detail=(
                         "Enter the indexer's address with port 9200, and the user name and "
-                        "password of this user. A default install uses a certificate made by "
-                        "Wazuh here too, so choose how AresGate trusts it under Certificate."
+                        "password of this user. Wazuh's certificate tool makes the indexer's "
+                        "certificate and the authority that signed it, root-ca.pem. Under "
+                        "Certificate on the card choose A certificate authority I paste and "
+                        "paste the contents of root-ca.pem, or choose Only this exact "
+                        "certificate and look it up."
                     ),
                     fills=(Fill(label=ADDRESS, value="https://192.168.1.3:9200"),),
+                    watch=(
+                        "A Let's Encrypt certificate on the Wazuh dashboard is not used here. "
+                        "Wazuh's page on Let's Encrypt covers the dashboard only, so the "
+                        "choice The certificates this computer trusts fails on the indexer "
+                        "unless you also replaced its certificate. Paste root-ca.pem, never "
+                        "root-ca.key."
+                    ),
+                    inferred=(
+                        "The certificate tool's script gives each certificate the addresses and "
+                        "names it was run with, so if the test says the certificate is for "
+                        "other names, use one of those in the address. Wazuh's pages don't say "
+                        "so, and where root-ca.pem was kept depends on how Wazuh was installed."
+                    ),
                 ),
             ),
         ),
@@ -563,6 +597,28 @@ WAZUH = Guide(
         Source(
             title="Wazuh: creating and mapping internal users",
             url="https://documentation.wazuh.com/current/user-manual/user-administration/rbac.html",
+        ),
+        Source(
+            title="Wazuh: configuring third-party certificates (the dashboard only)",
+            url=(
+                "https://documentation.wazuh.com/current/user-manual/wazuh-dashboard/"
+                "configuring-third-party-certs/index.html"
+            ),
+        ),
+        Source(
+            title="Wazuh: the API's configuration file, with its https settings",
+            url="https://documentation.wazuh.com/current/user-manual/api/configuration.html",
+        ),
+        Source(
+            title="Wazuh: certificate deployment, with root-ca.pem",
+            url=(
+                "https://documentation.wazuh.com/current/user-manual/wazuh-indexer-cluster/"
+                "certificate-deployment.html"
+            ),
+        ),
+        Source(
+            title="Wazuh source: the certificate tool",
+            url="https://packages.wazuh.com/4.14/wazuh-certs-tool.sh",
         ),
         Source(
             title="Wazuh source: the default roles",

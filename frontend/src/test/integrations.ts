@@ -46,6 +46,7 @@ export function connection(
       allow_http: false,
       fields: [],
       optional: false,
+      certificate_note: '',
       ...definition,
     },
     url: null,

@@ -339,7 +339,21 @@ Wazuh has two connections, each with its own address and sign-in:
   on `wazuh-alerts-*` and no cluster permission, mapped to that user, rather than using `admin`.
   The indexer's users are separate from the manager API's.
 
-Both use HTTPS with a self-signed certificate in a default install, so see the next section.
+Both use HTTPS with a certificate Wazuh made in a default install, so see
+[Certificates are verified](#what-aresgate-will-connect-to) below. A Let's Encrypt certificate on
+the **dashboard** (the only part Wazuh's own page on third-party certificates covers) isn't the
+one these two answer with:
+
+- **Manager API**: its certificate is self-signed by default (`server.crt` in
+  `/var/ossec/api/configuration/ssl`, set in `api.yaml`). Choose **Only this exact certificate**,
+  click **Look up the certificate**, and compare the fingerprint with the one on the Wazuh server
+  (`openssl x509 -in /var/ossec/api/configuration/ssl/server.crt -noout -fingerprint -sha256`).
+- **Indexer**: its certificate comes from Wazuh's certificate tool, which also makes the authority
+  that signed it, `root-ca.pem`. Choose **A certificate authority I paste** and paste `root-ca.pem`
+  (never `root-ca.key`), or pin the certificate. The tool puts the addresses it was given in the
+  certificate, so use one of them in the address.
+- To have **The certificates this computer trusts** work, install a public certificate on the API
+  and the indexer too; that isn't covered by Wazuh's Let's Encrypt page.
 
 ### Alerts
 
@@ -531,6 +545,13 @@ The ones to know about:
   call that does was tried). The indexer role is narrowed from Wazuh's read-only example to
   `read` on `wazuh-alerts-*` with no cluster permission, which was tried on OpenSearch, not on
   Wazuh's build of it.
+  role, but not the dashboard's Users tab, and the indexer role is narrowed from Wazuh's
+  read-only example to `wazuh-alerts-*`. If the indexer's test is refused, add `cluster_monitor`.
+  That the API's and the indexer's certificates are not the dashboard's comes from Wazuh's pages
+  on the API (default self-signed certificates, the `https` settings of `api.yaml`), on
+  third-party certificates (the dashboard only) and on certificate deployment (`root-ca.pem`);
+  the fingerprint command is plain OpenSSL, and that a certificate holds the addresses it was
+  made with is read from the certificate tool's script.
 - **CrowdSec.** The configuration page gives `api.server.listen_uri` as `host:port` but no
   default; `127.0.0.1:8080` is from other pages' examples.
 
@@ -553,7 +574,9 @@ Every integration is reached the same way, and a few rules are not settings:
 - **Certificates are verified.** HTTPS addresses are checked against the system's trusted
   authorities. A product with its own certificate (OPNsense, Wazuh) has two ways to be trusted,
   under **Certificate** on its page:
-  - **Pasted authority.** Paste the PEM certificate of the authority that signed it.
+  - **Pasted authority.** Paste the PEM certificate of the authority that signed it. It is
+    accepted as OpenSSL's tools make it, even without a key usage extension (the checks
+    on the signatures, the dates and the name are the same as for any other certificate).
   - **Pinned fingerprint.** Click **Look up the certificate**, compare the SHA-256 fingerprint it
     shows with the one in the product (OPNsense: **System, Trust, Certificates**), then click
     **Trust this certificate**. The connection then only accepts that exact certificate.
@@ -576,10 +599,15 @@ and says which it is, naming the authority:
   only choice for a certificate nothing vouches for.
 - **Signed by an authority this computer doesn't trust.** The message says where the chain it
   sent ends. Paste that authority's certificate (or add it to the one pasted), or pin.
+- **Sent alone by an authority that doesn't say where to get its certificate.** Public
+  authorities' certificates usually say, so this is probably an authority of the system's own,
+  such as the one Wazuh's certificate tool makes for the indexer, and it is named in the message.
+  Paste that authority's certificate or pin; the `fullchain.pem` advice is for a public one.
 - **Also named in words:** a certificate that vouches for itself, one that has expired (and
   when), one that isn't valid yet (check the clocks), and one made for other names than the one
   in the address, which are listed. Use one of them in the address, since a certificate for a
-  name isn't accepted for an IP address.
+  name isn't accepted for an IP address. A certificate that names nothing at all can only be
+  pinned.
 
 The image carries Wolfi's `ca-certificates-bundle`, and its smoke test fails if Python finds no
 certificate authority in it (`python -m app.cli trust-store` shows how many).

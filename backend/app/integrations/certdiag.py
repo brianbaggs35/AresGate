@@ -61,11 +61,14 @@ def read_chain(chain: list[bytes]) -> Presented | None:
 
 
 def name_of(name: x509.Name) -> str:
-    """A certificate's subject or issuer as a person would say it: its common name, or else
-    the whole name. It came from the system, so it's cleaned and kept short."""
-    common = name.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
-    text = str(common[0].value) if common else name.rfc4514_string()
-    return audit.clean(text, 60) or "an unnamed authority"
+    """A certificate's subject or issuer as a person would say it: its common name, or else the
+    organization (Wazuh's authority has only that), or else the whole name. It came from the
+    system, so it's cleaned and kept short."""
+    for oid in (x509.oid.NameOID.COMMON_NAME, x509.oid.NameOID.ORGANIZATION_NAME):
+        found = name.get_attributes_for_oid(oid)
+        if found:
+            return audit.clean(str(found[0].value), 60) or "an unnamed authority"
+    return audit.clean(name.rfc4514_string(), 60) or "an unnamed authority"
 
 
 def _names(certificate: x509.Certificate) -> list[str]:
@@ -121,12 +124,20 @@ def _unknown_issuer(presented: Presented, mode: str) -> str:
             + _what_to_do(mode, issuer)
         )
     source = _where_to_get_issuer(top)
-    where = f" Its certificate says where to get it: {source}." if source else ""
+    if source is None:
+        return (
+            f"It sent only its own certificate, issued by {issuer}, and doesn't say where to get "
+            f"{issuer}'s certificate, as a public authority's usually do. That looks like an "
+            "authority of the system's own, not Let's Encrypt. In AresGate, "
+            + _what_to_do(mode, issuer)
+            + " If it should be a public certificate, serve the whole chain on that system "
+            "(fullchain.pem)."
+        )
     return (
         f"It sent only its own certificate, issued by {issuer}, without {issuer}'s certificate. "
         "Browsers fetch what is missing; AresGate doesn't. Serve the whole chain on that system "
-        f"(with Let's Encrypt, fullchain.pem instead of cert.pem).{where} Or in AresGate, "
-        + _what_to_do(mode, issuer)
+        f"(with Let's Encrypt, fullchain.pem instead of cert.pem). Its certificate says where to "
+        f"get it: {source}. Or in AresGate, " + _what_to_do(mode, issuer)
     )
 
 
@@ -172,6 +183,11 @@ def explain(
         names = _names(presented.leaf)
         shown = ", ".join(names[:_SHOWN_NAMES]) or "no name AresGate can read"
         more = f" and {len(names) - _SHOWN_NAMES} more" if len(names) > _SHOWN_NAMES else ""
+        if not names:
+            return (
+                f"The certificate is for {shown}, not for {host}. With no name in it to match "
+                "to the address, pin the certificate's fingerprint under Certificate."
+            )
         return (
             f"The certificate is for {shown}{more}, not for {host}. Use one of those names in "
             "the address (it has to reach this system), or pin the certificate's fingerprint "

@@ -200,6 +200,11 @@ export class IntegrationPage {
     return this.connection(connection).getByTestId('tls-ca-pem').locator('textarea')
   }
 
+  /** What the product's documentation adds about its certificate, when it has something to. */
+  certificateNote(connection: string): Locator {
+    return this.connection(connection).getByTestId('tls-note')
+  }
+
   fingerprint(connection: string): Locator {
     return this.connection(connection).getByTestId('tls-fingerprint').locator('input')
   }

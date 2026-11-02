@@ -1011,6 +1011,23 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('Wazuh, with what its certificates need said beside the choice, has no WCAG 2.2 AA problems', async ({
+      page,
+      integration,
+      shell,
+    }) => {
+      await integration.goto('wazuh')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expect(integration.certificateNote('manager')).toBeVisible()
+      await expect(integration.certificateNote('indexer')).toBeVisible()
+      await expectAccessible(page)
+
+      await integration.tlsMode('indexer', 'ca').check()
+      await expect(integration.authority('indexer')).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('OPNsense, with its certificate, services and Zenarmor, has no WCAG 2.2 AA problems', async ({
       page,
       harness,

@@ -3,12 +3,18 @@ apart from one signed by an authority nobody here knows, with real connections t
 present each chain."""
 
 import ssl
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 from app.integrations import certdiag, netguard
+from app.integrations import client as client_module
 from app.integrations.client import CallFailed
 from tests.stubs import Answer, Certificate, Serve, make_certificate, make_chain
 from tests.test_integration_client import Log, request, target
@@ -28,6 +34,113 @@ def refused(served: Certificate, serve: Serve, **options: object) -> str:
     return str(raised.value)
 
 
+@dataclass(frozen=True)
+class WazuhStyle:
+    """What Wazuh's certificate tool makes: an authority with only an organization for a name and
+    no key usage extension, and a certificate it signed that is served alone."""
+
+    root_pem: str
+    indexer: Certificate
+
+
+def wazuh_style() -> WazuhStyle:
+    now = datetime.now(UTC)
+    root_key, leaf_key = (
+        ec.generate_private_key(ec.SECP256R1()),
+        ec.generate_private_key(ec.SECP256R1()),
+    )
+    wazuh = x509.Name(
+        [
+            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Wazuh"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Wazuh"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "California"),
+        ]
+    )
+
+    def build(
+        subject: x509.Name, issuer: x509.Name, key: ec.EllipticCurvePrivateKey, *, authority: bool
+    ) -> x509.CertificateBuilder:
+        builder = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1))
+            .not_valid_after(now + timedelta(days=30))
+            .add_extension(
+                x509.BasicConstraints(ca=authority, path_length=None), critical=authority
+            )
+        )
+        if not authority:
+            builder = builder.add_extension(
+                x509.SubjectAlternativeName(
+                    [x509.DNSName("localhost"), x509.IPAddress(ip_address("127.0.0.1"))]
+                ),
+                critical=False,
+            )
+        return builder
+
+    root = build(wazuh, wazuh, root_key, authority=True).sign(root_key, hashes.SHA256())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "indexer")])
+    leaf = build(name, wazuh, leaf_key, authority=False).sign(root_key, hashes.SHA256())
+    return WazuhStyle(
+        root_pem=root.public_bytes(serialization.Encoding.PEM).decode(),
+        indexer=Certificate(
+            pem=leaf.public_bytes(serialization.Encoding.PEM).decode(),
+            key_pem=leaf_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode(),
+            der=leaf.public_bytes(serialization.Encoding.DER),
+        ),
+    )
+
+
+class TestAnAuthorityOfTheSystemsOwn:
+    """A certificate from the authority a product made for itself, as Wazuh's indexer has, which
+    isn't a Let's Encrypt certificate whatever is installed on the same product's dashboard."""
+
+    def test_it_is_named_and_not_taken_for_a_public_one(self, serve: Serve) -> None:
+        message = refused(wazuh_style().indexer, serve)
+
+        assert message.startswith(
+            "The certificate isn't trusted. It sent only its own certificate, issued by Wazuh, "
+            "and doesn't say where to get Wazuh's certificate"
+        )
+        assert "That looks like an authority of the system's own, not Let's Encrypt." in message
+        assert "paste Wazuh's certificate under Certificate, or pin its fingerprint" in message
+        assert "If it should be a public certificate, serve the whole chain" in message
+        assert len(message) <= client_module.MAX_ERROR
+
+    def test_the_authority_pasted_is_accepted_though_it_has_no_key_usage(
+        self, serve: Serve
+    ) -> None:
+        wazuh = wazuh_style()
+        server = serve(lambda seen: Answer(body="ok"), wazuh.indexer)
+
+        reply = request(target(server, mode="ca", ca_pem=wazuh.root_pem), Log(), "GET", "/")
+
+        assert reply.text == "ok"
+
+    def test_so_is_a_chain_of_authorities_made_that_way(self, serve: Serve) -> None:
+        chain = make_chain(authority_key_usage=False)
+        server = serve(lambda seen: Answer(body="ok"), chain.full)
+
+        reply = request(target(server, mode="ca", ca_pem=chain.root_pem), Log(), "GET", "/")
+
+        assert reply.text == "ok"
+
+    def test_its_certificate_can_be_pinned(self, serve: Serve) -> None:
+        wazuh = wazuh_style()
+        server = serve(lambda seen: Answer(body="ok"), wazuh.indexer)
+
+        where = target(server, mode="pinned", pin=wazuh.indexer.fingerprint)
+
+        assert request(where, Log(), "GET", "/").text == "ok"
+
+
 class TestACertificateSentWithoutTheOneThatSignedIt:
     def test_it_says_so_and_says_to_serve_the_whole_chain(self, serve: Serve) -> None:
         chain = make_chain(issuer_url=ISSUER_URL)
@@ -45,6 +158,7 @@ class TestACertificateSentWithoutTheOneThatSignedIt:
 
         assert "paste Test Intermediate's certificate under Certificate" in message
         assert "Its certificate says where to get it" not in message
+        assert "doesn't say where to get Test Intermediate's certificate" in message
 
     def test_the_whole_chain_is_trusted_with_the_authority_that_signed_it(
         self, serve: Serve
@@ -194,7 +308,10 @@ class TestReadingWhatWasPresented:
 
         message = certdiag.explain(error(certdiag.HOSTNAME_MISMATCH), presented, "ca", "nas")
 
-        assert message.startswith("The certificate is for no name AresGate can read, not for nas.")
+        assert message == (
+            "The certificate is for no name AresGate can read, not for nas. With no name in it "
+            "to match to the address, pin the certificate's fingerprint under Certificate."
+        )
 
     def test_a_certificate_for_an_address_says_the_address(self) -> None:
         presented = certdiag.read_chain([make_chain(dns_names=(), address=True).leaf.der])
@@ -213,21 +330,22 @@ class TestReadingWhatWasPresented:
 
         assert "where to get it" not in message
 
-    def test_a_name_is_the_common_name_or_else_the_whole_name(self) -> None:
-        from cryptography import x509
-        from cryptography.x509.oid import NameOID
+    def test_a_name_is_the_common_name_or_else_the_organization_or_the_whole_name(self) -> None:
+        organization = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Home Org")])
+        common = x509.Name(
+            [
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Home Org"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "Home CA"),
+            ]
+        )
+        place = x509.Name([x509.NameAttribute(NameOID.LOCALITY_NAME, "Halifax")])
 
-        named = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Home Org")])
-
-        assert certdiag.name_of(named) == "O=Home Org"
+        assert certdiag.name_of(common) == "Home CA"
+        assert certdiag.name_of(organization) == "Home Org"
+        assert certdiag.name_of(place) == "L=Halifax"
         assert certdiag.name_of(x509.Name([])) == "an unnamed authority"
 
     def test_a_certificate_with_no_names_at_all_says_so(self) -> None:
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.x509.oid import NameOID
-
         key = ec.generate_private_key(ec.SECP256R1())
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OPNsense.localdomain")])
         now = datetime.now(UTC)
