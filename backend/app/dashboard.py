@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import ColumnElement, Interval, and_, func, literal, or_, select
+from sqlalchemy import ColumnElement, Interval, and_, cast, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
@@ -32,6 +33,21 @@ IS_BLOCK = and_(Event.kind == "firewall", Event.severity >= Severity.LOW)
 
 RECENT_ALERTS = 8
 TOP_SOURCES = 8
+# How many signatures the noise report lists, and how serious an alert has to be to be counted
+# as serious in it: the same as the banner has always said.
+NOISY_SIGNATURES = 6
+SERIOUS_FROM = Severity.HIGH
+# The addresses that are on a network of the owner's, or can't be anywhere else: private, shared
+# (carrier-grade NAT), link-local and unique local ones.
+INSIDE = (
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "100.64.0.0/10",
+    "169.254.0.0/16",
+    "fc00::/7",
+    "fe80::/10",
+)
 # How many incidents are marked on the charts, and how serious one has to be to be marked: a
 # chart with a flag for every low-severity scan says nothing.
 MARKED_INCIDENTS = 12
@@ -154,6 +170,87 @@ def alerts(db: Session, win: Window) -> Alerts:
         by_severity=by_severity,
         highest=max(present, default=None),
     )
+
+
+def _inside(column: InstrumentedAttribute[IPv4Address | IPv6Address | None]) -> ColumnElement[bool]:
+    """Whether an address is one of the owner's own kind (see ``INSIDE``)."""
+    return or_(*(column.op("<<=")(cast(net, INET)) for net in INSIDE))
+
+
+@dataclass(frozen=True)
+class SourceAlerts:
+    """What one program reported as alerts in a window."""
+
+    source: str
+    total: int
+    # How many of them were high or critical, and how many were between two addresses that are
+    # both on the owner's network.
+    serious: int
+    inside: int
+
+
+def alerts_by_source(db: Session, win: Window) -> list[SourceAlerts]:
+    """Which programs the alerts of a window came from, the one with most first: how many, how
+    many of them serious and how many were between two addresses on the network. Where "3,642
+    serious alerts" come from is the first question about a noisy dashboard."""
+    count = func.count().label("count")
+    rows = db.execute(
+        select(
+            Event.source,
+            count,
+            func.count().filter(Event.severity >= SERIOUS_FROM),
+            func.count().filter(and_(_inside(Event.src_address), _inside(Event.dst_address))),
+        )
+        .where(IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+        .group_by(Event.source)
+        .order_by(count.desc(), Event.source)
+    ).all()
+    return [SourceAlerts(*row) for row in rows]
+
+
+@dataclass(frozen=True)
+class NoisySignature:
+    """One alert (a rule, a signature) that a program reported, and how often."""
+
+    source: str
+    # None for alerts that do not say which rule raised them.
+    signature: str | None
+    # The most serious it was.
+    severity: Severity
+    count: int
+    # How many different addresses it came from and went to.
+    from_addresses: int
+    to_addresses: int
+    first_at: datetime
+    last_at: datetime
+
+
+def noisy_signatures(
+    db: Session, win: Window, limit: int = NOISY_SIGNATURES
+) -> list[NoisySignature]:
+    """The alerts that were reported most in a window, the most first: what to quiet if they are
+    not worth hearing about, and what to look at if they are."""
+    count = func.count().label("count")
+    rows = db.execute(
+        select(
+            Event.source,
+            Event.signature,
+            func.max(Event.severity),
+            count,
+            func.count(Event.src_address.distinct()),
+            func.count(Event.dst_address.distinct()),
+            func.min(Event.occurred_at),
+            func.max(Event.occurred_at),
+        )
+        .where(IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+        .group_by(Event.source, Event.signature)
+        .order_by(count.desc(), Event.source, Event.signature)
+        .limit(limit)
+    ).all()
+    return [
+        NoisySignature(source, signature, Severity(severity), total, sources, targets, first, last)
+        for source, signature, severity, total, sources, targets, first, last in rows
+    ]
 
 
 @dataclass(frozen=True)

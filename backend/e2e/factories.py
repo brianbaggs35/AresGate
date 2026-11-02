@@ -81,6 +81,16 @@ class Recorded(NamedTuple):
 CollectorState = Literal["waiting", "ok", "problem", "late"]
 
 
+class Repeated(NamedTuple):
+    """One alert that a program keeps reporting: that many of it, from a few addresses to a few
+    others, half a minute apart."""
+
+    source: str
+    signature: str
+    severity: Severity
+    times: int
+
+
 def activity(
     session: Session,
     settings: Settings,
@@ -91,13 +101,14 @@ def activity(
     traffic: Mapping[str, float],
     devices: int,
     collectors: Sequence[CollectorState],
+    repeated: Sequence[Repeated] = (),
 ) -> Recorded:
     """Stores what the dashboard shows, as of ``now`` and the hours before it: that many alerts
     of each severity (from Wazuh, OPNsense and ntopng in turn, a few minutes apart, the most
     serious first), that many connections the firewall refused from each address, a steady
     speed in megabits a second for each interface of the firewall over the last three hours,
-    that many devices seen for the first time half an hour ago, and a collector of the firewall
-    in each of the states given."""
+    that many devices seen for the first time half an hour ago, a collector of the firewall
+    in each of the states given, and the alerts that a program keeps reporting (``repeated``)."""
     events = [
         _alert(severity, number, now)
         for number, severity in enumerate(
@@ -105,6 +116,7 @@ def activity(
             start=1,
         )
     ]
+    events += [_repeat(item, number, now) for item in repeated for number in range(item.times)]
     refused = [
         _refusal(address, number, now)
         for address, count in blocked.items()
@@ -162,6 +174,23 @@ def _alert(severity: Severity, number: int, now: datetime) -> NewEvent:
         signature=f"e2e.{severity.name.lower()}",
         src_address="198.51.100.20",
         dst_address="192.168.1.20",
+    )
+
+
+def _repeat(item: Repeated, number: int, now: datetime) -> NewEvent:
+    """The ``number``th time a program reported the same alert, from one of three addresses to one
+    of five."""
+    return NewEvent(
+        source=item.source,
+        connection="e2e",
+        kind="alert",
+        severity=item.severity,
+        occurred_at=now - timedelta(seconds=30 * (number + 1)),
+        identity=(f"e2e-repeated-{item.source}-{item.signature}-{number}",),
+        summary=f"{item.signature} {number + 1}",
+        signature=item.signature,
+        src_address=f"198.51.100.{20 + number % 3}",
+        dst_address=f"192.168.1.{20 + number % 5}",
     )
 
 

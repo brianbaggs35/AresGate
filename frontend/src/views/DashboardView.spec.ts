@@ -5,7 +5,7 @@ import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
-import { alert, dashboard, incidentMark } from '@/test/dashboard'
+import { alert, dashboard, incidentMark, noisySignature, sourceAlerts } from '@/test/dashboard'
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
@@ -53,6 +53,13 @@ function busy() {
       },
     ],
     devices: { total: 14, new: 2 },
+    noise: {
+      sources: [
+        sourceAlerts({ total: 7, serious: 4 }),
+        sourceAlerts({ source: 'wazuh', total: 2, serious: 0 }),
+      ],
+      signatures: [noisySignature({ count: 7 })],
+    },
   })
 }
 
@@ -375,6 +382,38 @@ describe('DashboardView', () => {
     it('say so when nothing was blocked', async () => {
       const { text } = await open({ dashboard: dashboard() })
       expect(text('sources-card')).toContain('Nothing was blocked')
+    })
+  })
+
+  describe('what is making the noise', () => {
+    it('lists the alerts that were reported most, under the charts', async () => {
+      const { find, text } = await open()
+
+      expect(text('noise-card')).toContain('What is making the noise')
+      expect(text('noise-card')).toContain('in the last 24 hours')
+      expect(find('noise-name').text()).toBe('Blacklisted flow')
+      expect(find('noise-count').text()).toContain('7')
+    })
+
+    it('is left out when there were no alerts', async () => {
+      const { find } = await open({ dashboard: dashboard() })
+
+      expect(find('noise-card').exists()).toBe(false)
+    })
+
+    it('says what was remembered when an alert is quieted, and asks again', async () => {
+      const give = vi.spyOn(verdictsApi, 'giveVerdict').mockResolvedValue(given({ id: 9 }))
+      const { find, fetchDashboard } = await open()
+
+      await find('noise-quiet').trigger('click')
+      await flushPromises()
+      await flushPromises()
+
+      expect(give).toHaveBeenCalledTimes(1)
+      expect(document.querySelector('[data-test="judged-text"]')?.textContent).toBe(
+        'Remembered: “Blacklisted flow” is low priority.',
+      )
+      expect(fetchDashboard).toHaveBeenCalledTimes(2)
     })
   })
 

@@ -581,6 +581,7 @@ for (const theme of ['light', 'dark'] as const) {
       // The list of latest alerts is as long as it gets, with the incidents' alerts among them.
       await expect(dashboard.alertRows).toHaveCount(8)
       await expect(dashboard.needsYouCards).toHaveCount(2)
+      await expect(dashboard.noiseItems.first()).toBeVisible()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       await expectAccessible(page)

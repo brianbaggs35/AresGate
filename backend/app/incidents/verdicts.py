@@ -71,6 +71,25 @@ def _weight(rule: VerdictRule) -> tuple[int, int]:
     return sum(item is not None for item in named), STRENGTH[rule.verdict]
 
 
+def standing(
+    rules: Sequence[VerdictRule], source: str, signature: str | None
+) -> VerdictRule | None:
+    """The rule that says what the owner thinks of an alert that a program gave this signature,
+    whichever address it comes from. A rule that names an address says it of the alerts about that
+    address only, so it is not one of them."""
+    return max(
+        (
+            rule
+            for rule in rules
+            if rule.address is None
+            and rule.source in (None, source)
+            and rule.signature in (None, signature)
+        ),
+        key=_weight,
+        default=None,
+    )
+
+
 def judge(signal: Signal, rules: Sequence[VerdictRule]) -> VerdictRule | None:
     """The rule that decides what is said of a signal, or none if the owner has said nothing."""
     return max((rule for rule in rules if matches(rule, signal)), key=_weight, default=None)

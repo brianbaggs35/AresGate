@@ -107,6 +107,40 @@ class TestWhichRuleDecides:
         assert verdicts.judge(signal(), [quiet, low, loud]) is loud
 
 
+class TestWhatTheOwnerThinksOfAnAlert:
+    def test_it_is_none_when_nothing_has_been_said(self) -> None:
+        assert verdicts.standing([], "ntopng", "Blacklisted flow") is None
+        assert verdicts.standing([rule(source="wazuh")], "ntopng", "Blacklisted flow") is None
+
+    def test_a_rule_for_the_signature_says_it_of_every_alert_like_it(self) -> None:
+        by_signature = rule("low_priority", signature="Blacklisted flow")
+        by_both = rule("not_suspicious", source="ntopng", signature="Blacklisted flow")
+        by_both.id = 2
+        by_source = rule("low_priority", source="ntopng")
+        by_source.id = 3
+
+        assert verdicts.standing([by_signature], "ntopng", "Blacklisted flow") is by_signature
+        assert verdicts.standing([by_signature], "wazuh", "Blacklisted flow") is by_signature
+        assert verdicts.standing([by_source], "ntopng", "Blacklisted flow") is by_source
+        # The one that names more is the one that is meant.
+        assert verdicts.standing([by_signature, by_both], "ntopng", "Blacklisted flow") is by_both
+
+    def test_a_rule_for_one_address_does_not_say_it_of_all_of_them(self) -> None:
+        here = rule("not_suspicious", address=ATTACKER, signature="Blacklisted flow")
+
+        assert verdicts.standing([here], "ntopng", "Blacklisted flow") is None
+
+    def test_an_alert_without_a_signature_is_only_what_a_rule_for_the_program_is_about(
+        self,
+    ) -> None:
+        named = rule("low_priority", source="ntopng", signature="Blacklisted flow")
+        everything = rule("low_priority", source="ntopng")
+        everything.id = 2
+
+        assert verdicts.standing([named], "ntopng", None) is None
+        assert verdicts.standing([named, everything], "ntopng", None) is everything
+
+
 class TestWhatTheVerdictsSayOfAnIncident:
     def test_muted_counts_the_signals_that_are_not_suspicious_or_low_priority(self) -> None:
         assert verdicts.muted({}) == 0

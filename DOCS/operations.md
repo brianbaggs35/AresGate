@@ -550,6 +550,15 @@ right), each compared with the same length of time before it. From the top:
   become one with a count. They are `marks` in the dashboard's answer.
 - **Alerts by severity** for each hour (or six hours), the **addresses refused most**, and the
   **latest alerts** with who reported each. Every chart can be shown as a table.
+- **What is making the noise.** Where the alerts come from: the program that reported most of
+  them, how many of its alerts were high or critical and how many (of all) were between two
+  addresses on your own network (private, shared, link-local and unique-local ranges), then the
+  six alerts that were reported most often, each with how many times and what share, the worst
+  severity, from how many addresses to how many, and when. A page full of "serious alerts" is
+  usually one or two chatty rules, and this shows which. **Quiet this** gives a *low priority*
+  [verdict](#verdicts) for that alert from that program, whichever address it comes from, with
+  an *Undo* for ten seconds (and it stays in Settings > Verdicts to take back); **See in logs**
+  opens the Logs page on it. They are `noise` in the dashboard's answer.
 
 The page asks again every 30 seconds while it is open and in view, and when you come back to its
 tab after longer than that. If a refresh fails it keeps what it has and says so. The numbers

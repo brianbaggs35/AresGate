@@ -131,6 +131,15 @@ class AccountRequest(BaseModel):
     password: str = factories.DEFAULT_PASSWORD
 
 
+class RepeatedRequest(BaseModel):
+    """An alert that a program keeps reporting."""
+
+    source: str = Field(max_length=32)
+    signature: str = Field(max_length=256)
+    severity: Literal["info", "low", "medium", "high", "critical"] = "medium"
+    count: int = Field(ge=1, le=500)
+
+
 class ActivityRequest(BaseModel):
     """What the dashboard has to show. All of it is optional: none at all is a quiet network."""
 
@@ -144,6 +153,8 @@ class ActivityRequest(BaseModel):
     devices: int = 0
     # A collector of the firewall in each of these states, to say how collecting is going.
     collectors: list[factories.CollectorState] = []
+    # Alerts that a program keeps reporting, which the dashboard says make the noise.
+    repeated: list[RepeatedRequest] = Field(default=[], max_length=20)
 
 
 class ActivityRecord(BaseModel):
@@ -167,6 +178,12 @@ def make_activity(body: ActivityRequest, db: Db, settings: SettingsDep) -> Activ
         traffic=body.traffic,
         devices=body.devices,
         collectors=body.collectors,
+        repeated=[
+            factories.Repeated(
+                item.source, item.signature, Severity[item.severity.upper()], item.count
+            )
+            for item in body.repeated
+        ],
     )
     db.commit()
     return ActivityRecord(**stored._asdict())
