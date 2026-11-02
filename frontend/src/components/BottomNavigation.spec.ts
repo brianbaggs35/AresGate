@@ -81,7 +81,7 @@ describe('BottomNavigation', () => {
         [...(inSheet('more-sheet')?.querySelectorAll('a') ?? [])].map((place) =>
           place.textContent.trim(),
         ),
-      ).toEqual(['Integrations', 'Interfaces', 'Status', 'Settings'])
+      ).toEqual(['Integrations', 'Interfaces', 'AI usage', 'Status', 'Settings'])
       expect(inSheet('nav-status')?.getAttribute('href')).toBe('/status')
     })
 
@@ -119,7 +119,7 @@ describe('BottomNavigation', () => {
       expect(wrapper.find('[data-test="nav-more"]').attributes('aria-expanded')).toBe('false')
     })
 
-    it.each(['/status', '/settings/account', '/settings/activity'])(
+    it.each(['/ai-usage', '/status', '/settings/account', '/settings/activity'])(
       'is marked as the place that is open on %s',
       async (route) => {
         const { wrapper } = await open(route)

@@ -93,11 +93,11 @@ def reached(db: Session, now: datetime) -> str | None:
             return (
                 f"The daily AI spending limit ({dollars(limit.limit_micros)}) is used up. "
                 "Requests start again when spending in the last 24 hours falls below it. "
-                "Raise it under Settings > AI usage."
+                "Raise it on the AI usage page."
             )
         return (
             f"The monthly AI spending limit ({dollars(limit.limit_micros)}) is used up. "
-            "Requests start again next month. Raise it under Settings > AI usage."
+            "Requests start again next month. Raise it on the AI usage page."
         )
     return None
 

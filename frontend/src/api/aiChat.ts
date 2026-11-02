@@ -22,7 +22,7 @@ export interface ChatMessage {
   created_at: string
   lookups: ChatLookup[]
   cites: ChatCite[]
-  /** The requests to the provider that made it, to read under Settings > AI usage. */
+  /** The requests to the provider that made it, to read on the AI usage page. */
   call_ids: number[]
 }
 

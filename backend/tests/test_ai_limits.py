@@ -106,7 +106,7 @@ class TestWhatStopsRequests:
 
         assert said == (
             "The daily AI spending limit ($1.00) is used up. Requests start again when spending "
-            "in the last 24 hours falls below it. Raise it under Settings > AI usage."
+            "in the last 24 hours falls below it. Raise it on the AI usage page."
         )
 
     def test_the_month_says_so_and_when_it_ends(self, session: Session) -> None:
@@ -117,7 +117,7 @@ class TestWhatStopsRequests:
 
         assert said == (
             "The monthly AI spending limit ($5.00) is used up. Requests start again next month. "
-            "Raise it under Settings > AI usage."
+            "Raise it on the AI usage page."
         )
 
 

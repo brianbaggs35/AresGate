@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 
-/** Settings > AI usage: what AI took and cost, the spending limits and every request. */
+/** AI usage: what AI took and cost, the spending limits, the level and every request. */
 export class AiUsagePage {
   readonly card: Locator
   /** Shown before AI was ever asked anything. */
@@ -17,6 +17,7 @@ export class AiUsagePage {
   readonly requests: Locator
   readonly more: Locator
   readonly download: Locator
+  readonly refresh: Locator
   readonly dialog: Locator
   readonly error: Locator
 
@@ -34,12 +35,13 @@ export class AiUsagePage {
     this.requests = page.getByTestId('call')
     this.more = page.getByTestId('calls-more')
     this.download = page.getByTestId('download')
+    this.refresh = page.getByTestId('refresh')
     this.dialog = page.getByTestId('call-dialog')
     this.error = page.getByTestId('usage-error')
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/settings/ai-usage')
+    await this.page.goto('/ai-usage')
   }
 
   /** The button of a range: 7d, 30d or 90d. */

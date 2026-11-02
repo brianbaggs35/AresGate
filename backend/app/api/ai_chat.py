@@ -50,7 +50,7 @@ class MessageOut(BaseModel):
     created_at: AwareDatetime
     lookups: list[LookupOut]
     cites: list[CiteOut]
-    # The requests to the provider that made it, to open under Settings > AI usage.
+    # The requests to the provider that made it, to open on the AI usage page.
     call_ids: list[int]
 
 

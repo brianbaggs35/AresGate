@@ -6,10 +6,10 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 
 /** The places in the menu, by the names of their routes. */
 export type Place =
-  'home' | 'incidents' | 'assistant' | 'logs' | 'integrations' | 'status' | 'settings'
+  'home' | 'incidents' | 'assistant' | 'logs' | 'integrations' | 'ai-usage' | 'status' | 'settings'
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
-const BEHIND_MORE: readonly Place[] = ['integrations', 'status', 'settings']
+const BEHIND_MORE: readonly Place[] = ['integrations', 'ai-usage', 'status', 'settings']
 
 /**
  * What's around every page: the logo, which links home, the menu (at the side on a computer or
@@ -24,6 +24,7 @@ export class AppShell {
   readonly logsLink: Locator
   readonly integrationsLink: Locator
   readonly assistantLink: Locator
+  readonly aiUsageLink: Locator
   readonly statusLink: Locator
   readonly settingsLink: Locator
   /** A phone's button for the places that do not fit in the bar, and the sheet it opens. */
@@ -64,6 +65,7 @@ export class AppShell {
     this.logsLink = page.getByTestId('nav-logs')
     this.integrationsLink = page.getByTestId('nav-integrations')
     this.assistantLink = page.getByTestId('nav-assistant')
+    this.aiUsageLink = page.getByTestId('nav-ai-usage')
     this.statusLink = page.getByTestId('nav-status')
     this.settingsLink = page.getByTestId('nav-settings')
     this.moreButton = page.getByTestId('nav-more')

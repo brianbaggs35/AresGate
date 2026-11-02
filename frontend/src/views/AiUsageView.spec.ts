@@ -20,7 +20,7 @@ async function open(answer: usageApi.Usage | Error = usage()) {
   const mounted = await mountWithPlugins(AiUsageView, {
     signedIn: 'admin',
     withApp: true,
-    route: '/settings/ai-usage',
+    route: '/ai-usage',
   })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -42,8 +42,29 @@ describe('AiUsageView', () => {
     expect(wrapper.find('[data-test="usage-loading"]').exists()).toBe(true)
   })
 
+  it('is a page of its own, titled as one, with the range and Refresh beside the title', async () => {
+    const { find, text } = await open()
+
+    expect(text('page-heading')).toBe('AI usage')
+    expect(find('page-description').text()).toContain('The costs are estimates')
+    expect(find('range').exists()).toBe(true)
+    expect(find('refresh').exists()).toBe(true)
+    // The title is the page's, so no card repeats it.
+    expect(find('usage-card').find('[data-test="section-title"]').exists()).toBe(false)
+  })
+
+  it('keeps the title while it asks, and offers the range only once it has an answer', async () => {
+    vi.spyOn(usageApi, 'fetchUsage').mockReturnValue(new Promise(() => {}))
+    const { wrapper } = await mountWithPlugins(AiUsageView, { signedIn: 'admin' })
+
+    expect(wrapper.find('[data-test="page-heading"]').text()).toBe('AI usage')
+    expect(wrapper.find('[data-test="range"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="refresh"]').exists()).toBe(false)
+  })
+
   it('says when the numbers could not be had, and asks again', async () => {
     const { find, fetchIt, text } = await open(offline())
+    expect(find('page-heading').text()).toBe('AI usage')
     expect(text('usage-error')).toContain("Can't reach AresGate.")
     fetchIt.mockResolvedValue(usage())
 

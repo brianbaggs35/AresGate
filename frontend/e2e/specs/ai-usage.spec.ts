@@ -9,21 +9,55 @@ const CALLS = [
   { about: 'incident 5', ok: false, error: "It didn't answer in time.", hours_ago: 50 },
 ]
 
-test.describe('Settings > AI usage', () => {
-  test('is a page of the settings that says AI has not been asked, before it has', async ({
+test.describe('AI usage', () => {
+  test('is a place in the menu that says AI has not been asked, before it has', async ({
+    page,
+    dashboard,
+    shell,
+    aiUsage,
+  }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
+
+    await shell.goTo('ai-usage')
+
+    await expect(page).toHaveURL('/ai-usage')
+    await expect(page).toHaveTitle('AI usage · AresGate')
+    await shell.expectCurrent('ai-usage')
+    await expect(page.getByTestId('page-heading')).toHaveText('AI usage')
+    await expect(aiUsage.never).toContainText("AI hasn't been asked anything yet")
+    await aiUsage.never.getByRole('link', { name: 'Set up an AI provider' }).click()
+    await expect(page).toHaveURL('/settings/ai')
+  })
+
+  test('is no longer a page of Settings, and the old address leads here', async ({
     page,
     settings,
     aiUsage,
   }) => {
     await settings.goto()
+    await expect(settings.nav).toBeVisible()
+    await expect(settings.nav.getByRole('link', { name: 'AI usage' })).toHaveCount(0)
+    await expect(settings.aiLink).toBeVisible()
 
-    await settings.aiUsageLink.click()
+    await page.goto('/settings/ai-usage?x=1')
 
-    await expect(page).toHaveURL('/settings/ai-usage')
-    await expect(settings.aiUsageLink).toHaveAttribute('aria-current', 'page')
-    await expect(aiUsage.never).toContainText("AI hasn't been asked anything yet")
-    await aiUsage.never.getByRole('link', { name: 'Set up an AI provider' }).click()
-    await expect(page).toHaveURL('/settings/ai')
+    await expect(page).toHaveURL('/ai-usage?x=1')
+    await expect(page.getByTestId('page-heading')).toHaveText('AI usage')
+    await expect(aiUsage.never).toBeVisible()
+  })
+
+  test('is found in the command palette by what it is for', async ({ page, dashboard, shell }) => {
+    await dashboard.goto()
+    await expect(dashboard.banner).toBeVisible()
+    await shell.openPaletteWithKeys()
+
+    await shell.paletteSearch.fill('spending')
+    await expect(shell.paletteRows).toHaveText(['AI usage'])
+    await shell.chooseCommand('spending')
+
+    await expect(page).toHaveURL('/ai-usage')
+    await expect(shell.palette).toBeHidden()
   })
 
   test('adds up what was asked, what it took and what it cost', async ({ harness, aiUsage }) => {

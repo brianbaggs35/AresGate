@@ -76,6 +76,23 @@ describe('router', () => {
     expect(document.title).toBe('Status · AresGate')
   })
 
+  it('shows the AI usage page, which is not a page of Settings, under its own title', async () => {
+    const page = await visit('/ai-usage')
+    expect(page.name).toBe('ai-usage')
+    expect(pageTitle(page)).toBe('AI usage')
+    expect(document.title).toBe('AI usage · AresGate')
+  })
+
+  it('sends the old address of the AI usage page, from before it left Settings, to the new one', async () => {
+    expect((await visit('/settings/ai-usage')).name).toBe('ai-usage')
+  })
+
+  it('keeps what an old AI usage address asked for', async () => {
+    const page = await visit('/settings/ai-usage?x=1#top')
+    expect(page.name).toBe('ai-usage')
+    expect(page.fullPath).toBe('/ai-usage?x=1#top')
+  })
+
   it('shows the settings pages under one title', async () => {
     for (const [path, name] of [
       ['/settings/account', 'settings-account'],
@@ -83,7 +100,6 @@ describe('router', () => {
       ['/settings/activity', 'settings-activity'],
       ['/settings/verdicts', 'settings-verdicts'],
       ['/settings/ai', 'settings-ai'],
-      ['/settings/ai-usage', 'settings-ai-usage'],
       ['/settings/data', 'settings-data'],
     ] as const) {
       const page = await visit(path)

@@ -29,8 +29,10 @@ import BarChart from '@/charts/BarChart.vue'
 import AiLevelCard from '@/components/AiLevelCard.vue'
 import AiLimitsCard from '@/components/AiLimitsCard.vue'
 import AiCallsTable from '@/components/AiCallsTable.vue'
+import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import StatTile from '@/components/StatTile.vue'
 import { changeOf } from '@/dashboard'
@@ -38,10 +40,10 @@ import { formatCount, formatFigure } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * Settings > AI usage: what AI has been asked to do, how many tokens that took and what it cost,
- * by day, provider, model and use; what took the most; how the month is going; the spending
- * limits; how much AI is used without being asked; and every request, to see exactly what a
- * provider was sent. Costs are estimates.
+ * AI usage, a place in the menu of its own: what AI has been asked to do, how many tokens that
+ * took and what it cost, by day, provider, model and use; what took the most; how the month is
+ * going; the spending limits; how much AI is used without being asked; and every request, to see
+ * exactly what a provider was sent. Costs are estimates. Which AI to use is chosen in Settings > AI.
  */
 const session = useSessionStore()
 
@@ -131,20 +133,12 @@ onMounted(load)
 </script>
 
 <template>
-  <LoadError
-    v-if="loadError && !usage"
-    :message="loadError"
-    :loading="loading"
-    data-test="usage-error"
-    @retry="load"
-  />
-  <template v-else-if="usage">
-    <SectionCard
+  <AppPage width="wide" class="ai-usage">
+    <PageHeader
       title="AI usage"
       description="What AI has been asked to do, how much that took and what it cost. The costs are estimates."
-      data-test="usage-card"
     >
-      <template #actions>
+      <template v-if="usage" #actions>
         <v-btn-toggle
           :model-value="range"
           mandatory
@@ -175,37 +169,45 @@ onMounted(load)
           Refresh
         </v-btn>
       </template>
+    </PageHeader>
 
-      <v-alert v-if="loadError" type="warning" variant="tonal" class="mb-4" data-test="usage-stale">
+    <LoadError
+      v-if="loadError && !usage"
+      :message="loadError"
+      :loading="loading"
+      data-test="usage-error"
+      @retry="load"
+    />
+    <template v-else-if="usage">
+      <v-alert v-if="loadError" type="warning" variant="tonal" data-test="usage-stale">
         {{ loadError }} What is shown is from before.
       </v-alert>
 
-      <EmptyState
-        v-if="!usage.ever"
-        title="AI hasn't been asked anything yet"
-        description="Once an AI provider is set up and turned on, every request it is asked shows up here, with the tokens it took and what it cost."
-        :icon="Sparkles"
-        data-test="usage-never"
-      >
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :to="{ name: 'settings-ai' }"
-          data-test="usage-setup"
+      <v-card v-if="!usage.ever" class="pa-5 pa-sm-6" data-test="usage-card">
+        <EmptyState
+          title="AI hasn't been asked anything yet"
+          description="Once an AI provider is set up and turned on, every request it is asked shows up here, with the tokens it took and what it cost."
+          :icon="Sparkles"
+          data-test="usage-never"
         >
-          Set up an AI provider
-        </v-btn>
-      </EmptyState>
-      <div v-else class="tiles">
+          <v-btn
+            color="primary"
+            variant="tonal"
+            :to="{ name: 'settings-ai' }"
+            data-test="usage-setup"
+          >
+            Set up an AI provider
+          </v-btn>
+        </EmptyState>
+      </v-card>
+      <div v-else class="tiles" data-test="usage-card">
         <StatTile
-          flat
           label="This month"
           :value="formatMoney(usage.month.spent_micros)"
           :hint="monthTile"
           data-test="tile-month"
         />
         <StatTile
-          flat
           label="Cost"
           :value="formatMoney(usage.totals.cost_micros)"
           :hint="`In ${words.long}`"
@@ -213,7 +215,6 @@ onMounted(load)
           data-test="tile-cost"
         />
         <StatTile
-          flat
           label="Tokens"
           :value="formatTokens(tokensOf(usage.totals))"
           :hint="`${cachedShare(usage.totals)}% of what was sent was already cached`"
@@ -221,7 +222,6 @@ onMounted(load)
           data-test="tile-tokens"
         />
         <StatTile
-          flat
           label="Requests"
           :value="formatFigure(usage.totals.calls)"
           :hint="
@@ -231,183 +231,183 @@ onMounted(load)
           data-test="tile-requests"
         />
       </div>
-    </SectionCard>
 
-    <AiLevelCard :level="usage.level" :levels="usage.levels" @changed="levelChanged" />
+      <AiLevelCard :level="usage.level" :levels="usage.levels" @changed="levelChanged" />
 
-    <template v-if="usage.ever">
-      <v-alert type="info" variant="tonal" density="compact" data-test="usage-estimate">
-        Costs are estimates, worked out from the prices on each provider's own pricing page as they
-        were on {{ usage.prices.as_of }}:
-        <template v-for="(source, index) in usage.prices.sources" :key="source.url">
-          <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.provider }}</a
-          ><template v-if="index < usage.prices.sources.length - 1">, </template>
-        </template>
-        . Prices change, so what you are billed can differ.
-        <template v-if="usage.totals.unpriced > 0">
-          {{ formatCount(usage.totals.unpriced) }}
-          {{ usage.totals.unpriced === 1 ? 'request used' : 'requests used' }} a model with no known
-          price: they are in the tokens, not in the cost.
-        </template>
-      </v-alert>
+      <template v-if="usage.ever">
+        <v-alert type="info" variant="tonal" density="compact" data-test="usage-estimate">
+          Costs are estimates, worked out from the prices on each provider's own pricing page as
+          they were on {{ usage.prices.as_of }}:
+          <template v-for="(source, index) in usage.prices.sources" :key="source.url">
+            <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.provider }}</a
+            ><template v-if="index < usage.prices.sources.length - 1">, </template>
+          </template>
+          . Prices change, so what you are billed can differ.
+          <template v-if="usage.totals.unpriced > 0">
+            {{ formatCount(usage.totals.unpriced) }}
+            {{ usage.totals.unpriced === 1 ? 'request used' : 'requests used' }} a model with no
+            known price: they are in the tokens, not in the cost.
+          </template>
+        </v-alert>
 
-      <AiLimitsCard :limits="usage.limits" @changed="limitsChanged" />
+        <AiLimitsCard :limits="usage.limits" @changed="limitsChanged" />
 
-      <SectionCard
-        title="Usage by day"
-        :description="`What each kind of use took on each day of ${words.long}.`"
-        data-test="daily-card"
-      >
-        <template #actions>
-          <v-btn-toggle
-            v-model="metric"
-            mandatory
-            divided
-            density="comfortable"
-            variant="outlined"
-            color="primary"
-            aria-label="What to show"
-            data-test="metric"
-          >
-            <v-btn
-              v-for="option in METRICS"
-              :key="option.key"
-              :value="option.key"
-              :data-test="`metric-${option.key}`"
-            >
-              {{ option.label }}
-            </v-btn>
-          </v-btn-toggle>
-        </template>
-        <BarChart
-          :title="`${metricName} by day`"
-          :caption="`${metricName} on each day of ${words.long}, by what the AI was used for.`"
-          category-label="Day"
-          orientation="vertical"
-          stacked
-          :whole="metric !== 'cost'"
-          :categories="categories"
-          :series="daily"
-          :format="formatMetric(metric)"
-          :loading="loading"
-          empty-title="Nothing in this time"
-          :empty-description="`No requests were made in ${words.long}.`"
-          data-test="daily-chart"
-        />
-      </SectionCard>
-
-      <SectionCard
-        title="Where it goes"
-        :description="`${metricName} in ${words.long}, by provider, model or use.`"
-        data-test="groups-card"
-      >
-        <template #actions>
-          <v-btn-toggle
-            v-model="grouping"
-            mandatory
-            divided
-            density="comfortable"
-            variant="outlined"
-            color="primary"
-            aria-label="Group by"
-            data-test="grouping"
-          >
-            <v-btn
-              v-for="option in GROUPINGS"
-              :key="option.key"
-              :value="option.key"
-              :data-test="`grouping-${option.key}`"
-            >
-              {{ option.label }}
-            </v-btn>
-          </v-btn-toggle>
-        </template>
-        <BarChart
-          :title="`${metricName} by ${grouping}`"
-          category-label="Name"
-          :whole="metric !== 'cost'"
-          :categories="groups.map(({ label }) => label)"
-          :series="groupBars"
-          :format="formatMetric(metric)"
-          :loading="loading"
-          empty-title="Nothing in this time"
-          :empty-description="`No requests were made in ${words.long}.`"
-          data-test="groups-chart"
-        />
-        <ul
-          v-if="groups.some(({ unpriced }) => unpriced > 0)"
-          class="mt-3 text-body-medium text-medium-emphasis"
-          data-test="groups-unpriced"
+        <SectionCard
+          title="Usage by day"
+          :description="`What each kind of use took on each day of ${words.long}.`"
+          data-test="daily-card"
         >
-          <li v-for="group in groups.filter(({ unpriced }) => unpriced > 0)" :key="group.key">
-            {{ group.label }}: {{ costWords(group.cost_micros, group.unpriced) }}
-          </li>
-        </ul>
-      </SectionCard>
-
-      <SectionCard
-        title="What took the most"
-        :description="`What the AI was asked about that took the most in ${words.long}.`"
-        data-test="top-card"
-      >
-        <EmptyState
-          v-if="usage.top.length === 0"
-          title="Nothing in particular"
-          description="Requests that are about something, such as an incident, are listed here."
-          data-test="top-empty"
-        />
-        <ol v-else class="top">
-          <li
-            v-for="consumer in usage.top"
-            :key="`${consumer.purpose}-${consumer.about}`"
-            class="top__item"
-            data-test="top-item"
-          >
-            <div class="top__main">
-              <router-link
-                v-if="consumer.incident_id !== null"
-                :to="{ name: 'incident', params: { id: consumer.incident_id } }"
-                class="text-label-large"
-                data-test="top-link"
+          <template #actions>
+            <v-btn-toggle
+              v-model="metric"
+              mandatory
+              divided
+              density="comfortable"
+              variant="outlined"
+              color="primary"
+              aria-label="What to show"
+              data-test="metric"
+            >
+              <v-btn
+                v-for="option in METRICS"
+                :key="option.key"
+                :value="option.key"
+                :data-test="`metric-${option.key}`"
               >
-                {{ purposeLabel(consumer.purpose) }}: {{ consumer.about }}
-              </router-link>
-              <span v-else class="text-label-large">
-                {{ purposeLabel(consumer.purpose) }}: {{ consumer.about }}
-              </span>
-              <span class="text-body-medium text-medium-emphasis">
-                {{ formatCount(consumer.calls) }}
-                {{ consumer.calls === 1 ? 'request' : 'requests' }} ·
-                {{ formatTokens(consumer.tokens) }} tokens
-              </span>
-            </div>
-            <span class="text-body-large tabular-nums">{{
-              formatMoney(consumer.cost_micros)
-            }}</span>
-          </li>
-        </ol>
-      </SectionCard>
+                {{ option.label }}
+              </v-btn>
+            </v-btn-toggle>
+          </template>
+          <BarChart
+            :title="`${metricName} by day`"
+            :caption="`${metricName} on each day of ${words.long}, by what the AI was used for.`"
+            category-label="Day"
+            orientation="vertical"
+            stacked
+            :whole="metric !== 'cost'"
+            :categories="categories"
+            :series="daily"
+            :format="formatMetric(metric)"
+            :loading="loading"
+            empty-title="Nothing in this time"
+            :empty-description="`No requests were made in ${words.long}.`"
+            data-test="daily-chart"
+          />
+        </SectionCard>
 
-      <AiCallsTable :range="range" :refreshed="refreshed" />
-
-      <div class="download">
-        <v-btn
-          variant="tonal"
-          :prepend-icon="Download"
-          :href="usageCsvUrl(range)"
-          download
-          data-test="download"
+        <SectionCard
+          title="Where it goes"
+          :description="`${metricName} in ${words.long}, by provider, model or use.`"
+          data-test="groups-card"
         >
-          Download {{ words.long }} as a spreadsheet
-        </v-btn>
-        <span class="text-body-medium text-medium-emphasis">
-          A CSV file of every request: when, what for, the model, the tokens and the estimated cost.
-          It holds nothing that was sent or said.
-        </span>
-      </div>
+          <template #actions>
+            <v-btn-toggle
+              v-model="grouping"
+              mandatory
+              divided
+              density="comfortable"
+              variant="outlined"
+              color="primary"
+              aria-label="Group by"
+              data-test="grouping"
+            >
+              <v-btn
+                v-for="option in GROUPINGS"
+                :key="option.key"
+                :value="option.key"
+                :data-test="`grouping-${option.key}`"
+              >
+                {{ option.label }}
+              </v-btn>
+            </v-btn-toggle>
+          </template>
+          <BarChart
+            :title="`${metricName} by ${grouping}`"
+            category-label="Name"
+            :whole="metric !== 'cost'"
+            :categories="groups.map(({ label }) => label)"
+            :series="groupBars"
+            :format="formatMetric(metric)"
+            :loading="loading"
+            empty-title="Nothing in this time"
+            :empty-description="`No requests were made in ${words.long}.`"
+            data-test="groups-chart"
+          />
+          <ul
+            v-if="groups.some(({ unpriced }) => unpriced > 0)"
+            class="mt-3 text-body-medium text-medium-emphasis"
+            data-test="groups-unpriced"
+          >
+            <li v-for="group in groups.filter(({ unpriced }) => unpriced > 0)" :key="group.key">
+              {{ group.label }}: {{ costWords(group.cost_micros, group.unpriced) }}
+            </li>
+          </ul>
+        </SectionCard>
+
+        <SectionCard
+          title="What took the most"
+          :description="`What the AI was asked about that took the most in ${words.long}.`"
+          data-test="top-card"
+        >
+          <EmptyState
+            v-if="usage.top.length === 0"
+            title="Nothing in particular"
+            description="Requests that are about something, such as an incident, are listed here."
+            data-test="top-empty"
+          />
+          <ol v-else class="top">
+            <li
+              v-for="consumer in usage.top"
+              :key="`${consumer.purpose}-${consumer.about}`"
+              class="top__item"
+              data-test="top-item"
+            >
+              <div class="top__main">
+                <router-link
+                  v-if="consumer.incident_id !== null"
+                  :to="{ name: 'incident', params: { id: consumer.incident_id } }"
+                  class="text-label-large"
+                  data-test="top-link"
+                >
+                  {{ purposeLabel(consumer.purpose) }}: {{ consumer.about }}
+                </router-link>
+                <span v-else class="text-label-large">
+                  {{ purposeLabel(consumer.purpose) }}: {{ consumer.about }}
+                </span>
+                <span class="text-body-medium text-medium-emphasis">
+                  {{ formatCount(consumer.calls) }}
+                  {{ consumer.calls === 1 ? 'request' : 'requests' }} ·
+                  {{ formatTokens(consumer.tokens) }} tokens
+                </span>
+              </div>
+              <span class="text-body-large tabular-nums">{{
+                formatMoney(consumer.cost_micros)
+              }}</span>
+            </li>
+          </ol>
+        </SectionCard>
+
+        <AiCallsTable :range="range" :refreshed="refreshed" />
+
+        <div class="download">
+          <v-btn
+            variant="tonal"
+            :prepend-icon="Download"
+            :href="usageCsvUrl(range)"
+            download
+            data-test="download"
+          >
+            Download {{ words.long }} as a spreadsheet
+          </v-btn>
+          <span class="text-body-medium text-medium-emphasis">
+            A CSV file of every request: when, what for, the model, the tokens and the estimated
+            cost. It holds nothing that was sent or said.
+          </span>
+        </div>
+      </template>
     </template>
-  </template>
-  <v-skeleton-loader v-else type="article, article" data-test="usage-loading" />
+    <v-skeleton-loader v-else type="article, article" data-test="usage-loading" />
+  </AppPage>
 </template>
 
 <style scoped>
