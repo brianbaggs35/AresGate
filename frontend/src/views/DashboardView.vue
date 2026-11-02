@@ -10,6 +10,7 @@ import BarChart from '@/charts/BarChart.vue'
 import { severityColor } from '@/charts/palette'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import FilteredNote from '@/components/FilteredNote.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import NeedsYouLane from '@/components/NeedsYouLane.vue'
@@ -25,12 +26,13 @@ import {
   changeOf,
   collectionOf,
   marksOf,
+  needsYouLink,
+  needsYouQuery,
   postureOf,
   sumBuckets,
   type Collection,
 } from '@/dashboard'
 import { formatCount, formatFigure } from '@/format'
-import { DEFAULT_VIEW, queryOf } from '@/incidents'
 import { usePolling } from '@/polling'
 import { SEVERITIES, SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
@@ -40,15 +42,6 @@ import type { Judged } from '@/verdicts'
 const REFRESH_SECONDS = 30
 /** How many incidents the lane under the hero shows. The rest are a click away. */
 const LANE_SIZE = 3
-/** What needs a decision: the incidents the Incidents page opens on, the most serious first. */
-const NEEDS_YOU = {
-  ...queryOf(
-    { view: DEFAULT_VIEW, severity: null, confidence: 0, q: '', quieted: false },
-    LANE_SIZE,
-  ),
-  order: 'priority',
-} as const
-
 const session = useSessionStore()
 
 const range = ref<DashboardWindow>('24h')
@@ -71,17 +64,27 @@ async function load(quiet = false) {
   const mine = ++latest
   if (!quiet) loading.value = true
   try {
-    const [dashboard, collectors, incidents] = await session.call(() =>
-      Promise.all([
+    const [dashboard, collectors, incidents] = await session.call(async () => {
+      const [counted, reporting] = await Promise.all([
         fetchDashboard(range.value),
         fetchCollectors(),
-        fetchIncidents(NEEDS_YOU).catch(() => null),
-      ]),
-    )
+      ])
+      // The lane lists what the banner counted, so it asks for the same thing: the floor and the
+      // window are the dashboard's. With nothing that needs the owner there is nothing to list.
+      const { attention, window: windowInfo } = counted
+      const found =
+        attention.needs_you > 0
+          ? await fetchIncidents(needsYouQuery(attention, windowInfo.start, LANE_SIZE)).catch(
+              () => undefined,
+            )
+          : null
+      return [counted, reporting, found] as const
+    })
     if (mine !== latest) return
     data.value = dashboard
     collection.value = collectionOf(collectors)
-    if (incidents) needsYou.value = incidents
+    // `undefined` is a lane that could not be read, which keeps the one on screen.
+    if (incidents !== undefined) needsYou.value = incidents
     updatedAt.value = new Date()
     loadError.value = null
   } catch (error) {
@@ -113,7 +116,12 @@ const view = computed(() => {
 })
 
 const posture = computed(() =>
-  postureOf(view.value.shown.alerts, collection.value as Collection, view.value.shown.window.key),
+  postureOf(
+    view.value.shown.alerts,
+    view.value.shown.attention,
+    collection.value as Collection,
+    view.value.shown.window.key,
+  ),
 )
 const postureAction = computed(() => {
   if (posture.value.state === 'setup')
@@ -125,11 +133,13 @@ const postureAction = computed(() => {
 
 const alertsTile = computed(() => {
   const { shown, windowInfo, bucketName } = view.value
-  const { total, previous, highest } = shown.alerts
-  let tone: 'good' | 'neutral' | 'warning' | 'bad' = 'neutral'
-  if (total === 0) tone = 'good'
-  else if (highest === 'high' || highest === 'critical') tone = 'bad'
-  else if (highest === 'medium') tone = 'warning'
+  const { total, previous } = shown.alerts
+  const { urgent, needs_you: needing } = shown.attention
+  // The tone is of what needs the owner, as the banner above it is, and not of the worst alert:
+  // thousands of alerts filed into incidents nobody needs to look at are no reason for red.
+  let tone: 'good' | 'warning' | 'bad' = 'good'
+  if (urgent > 0) tone = 'bad'
+  else if (needing > 0) tone = 'warning'
   return {
     value: formatFigure(total),
     tone,
@@ -315,10 +325,18 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         />
       </StatusHero>
 
+      <FilteredNote
+        v-if="data.attention.incidents > 0"
+        :attention="data.attention"
+        :since="data.window.start"
+        :last-words="lastWords"
+      />
+
       <NeedsYouLane
         v-if="needsYou?.items.length"
         :incidents="needsYou.items"
         :total="needsYou.total"
+        :to="needsYouLink(data.attention, data.window.start)"
         @judged="judged"
       />
 

@@ -33,6 +33,15 @@ def test_an_install_with_nothing_stored_still_has_a_dashboard(
     assert body["alerts"]["highest"] is None
     assert set(body["alerts"]["by_severity"]) == {"info", "low", "medium", "high", "critical"}
     assert body["noise"] == {"sources": [], "signatures": []}
+    assert body["attention"] == {
+        "incidents": 0,
+        "floor": 35,
+        "handled": 0,
+        "muted": 0,
+        "unsure": 0,
+        "needs_you": 0,
+        "urgent": 0,
+    }
     assert body["recent_alerts"] == []
     assert body["blocked"] == {"total": 0, "previous": 0, "per_bucket": [0] * 24, "top_sources": []}
     assert body["traffic"] == []
@@ -213,3 +222,29 @@ def test_where_the_alerts_come_from_is_told_with_what_the_owner_said_of_each(
     unnamed = next(item for item in rest if item["source"] == "unheard-of")
     assert unnamed["signature"] is None
     assert unnamed["source_name"] == "unheard-of"
+
+
+def test_what_needs_the_owner_is_told_apart_from_what_was_filtered_out(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    now = utcnow()
+    session.add_all(
+        [
+            incident("203.0.113.1", now, confidence=80),
+            incident("203.0.113.2", now, confidence=40),
+            incident("203.0.113.3", now, confidence=10),
+            incident("203.0.113.4", now, confidence=90, verdict="low_priority"),
+            incident("203.0.113.5", now, confidence=90, status="resolved"),
+        ]
+    )
+    session.commit()
+
+    assert client.get(BASE).json()["attention"] == {
+        "incidents": 5,
+        "floor": 35,
+        "handled": 1,
+        "muted": 1,
+        "unsure": 1,
+        "needs_you": 2,
+        "urgent": 1,
+    }

@@ -691,3 +691,85 @@ class TestMarkedIncidents:
 
     def test_with_none_there_are_none(self, session: Session) -> None:
         assert self.mark(session) == []
+
+
+class TestAttention:
+    def seen(self, session: Session, *incidents: Incident) -> dashboard.Attention:
+        session.add_all(incidents)
+        session.commit()
+        return dashboard.attention(session, dashboard.window("24h", NOW))
+
+    def test_a_quiet_network_has_none(self, session: Session) -> None:
+        assert self.seen(session) == dashboard.Attention(0, 35, 0, 0, 0, 0, 0)
+
+    def test_each_incident_is_counted_once_for_why_it_is_asked_about_or_why_it_is_not(
+        self, session: Session
+    ) -> None:
+        recently = NOW - timedelta(hours=2)
+
+        found = self.seen(
+            session,
+            # Asked about: sure enough, and one of them highly sure.
+            incident("203.0.113.1", recently, confidence=35),
+            incident("203.0.113.2", recently, confidence=64, status="investigating"),
+            incident("203.0.113.3", recently, confidence=65),
+            incident("203.0.113.4", recently, confidence=100, verdict="threat"),
+            # Not sure enough.
+            incident("203.0.113.5", recently, confidence=34),
+            incident("203.0.113.6", recently, confidence=0),
+            # Called quiet, whatever they say of themselves.
+            incident("203.0.113.7", recently, confidence=90, verdict="not_suspicious"),
+            incident("203.0.113.8", recently, confidence=90, verdict="low_priority"),
+            # Dealt with, whatever else is true of them.
+            incident("203.0.113.9", recently, confidence=90, status="resolved"),
+            incident("203.0.113.10", recently, confidence=10, status="dismissed"),
+            incident(
+                "203.0.113.11", recently, confidence=90, status="dismissed", verdict="low_priority"
+            ),
+        )
+
+        assert found == dashboard.Attention(
+            incidents=11, floor=35, handled=3, muted=2, unsure=2, needs_you=4, urgent=2
+        )
+        assert found.handled + found.muted + found.unsure + found.needs_you == found.incidents
+
+    def test_only_the_incidents_going_on_in_the_window_are_counted(self, session: Session) -> None:
+        win = dashboard.window("24h", NOW)
+
+        found = self.seen(
+            session,
+            # Began before the window and was still going on when it started: in.
+            incident(
+                "203.0.113.1", win.start - timedelta(hours=3), win.start + timedelta(minutes=5)
+            ),
+            # Ended just before it, and began just after it ends: out.
+            incident(
+                "203.0.113.2", win.start - timedelta(hours=3), win.start - timedelta(minutes=5)
+            ),
+            incident("203.0.113.3", win.end, win.end + timedelta(hours=1)),
+            # Began in the bucket that is still filling: in.
+            incident("203.0.113.4", win.end - timedelta(minutes=20)),
+        )
+
+        assert (found.incidents, found.needs_you) == (2, 2)
+
+    def test_the_floor_can_be_set_and_a_floor_above_high_asks_only_for_what_it_allows(
+        self, session: Session
+    ) -> None:
+        recently = NOW - timedelta(hours=2)
+        session.add_all(
+            [
+                incident("203.0.113.1", recently, confidence=20),
+                incident("203.0.113.2", recently, confidence=70),
+                incident("203.0.113.3", recently, confidence=90),
+            ]
+        )
+        session.commit()
+        win = dashboard.window("24h", NOW)
+
+        low = dashboard.attention(session, win, floor=20)
+        high = dashboard.attention(session, win, floor=80)
+
+        assert (low.floor, low.needs_you, low.urgent, low.unsure) == (20, 3, 2, 0)
+        # A confidence of 70 is high, but under this floor it is still not enough.
+        assert (high.floor, high.needs_you, high.urgent, high.unsure) == (80, 1, 1, 2)

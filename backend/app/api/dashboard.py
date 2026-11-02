@@ -143,9 +143,28 @@ class NoiseOut(BaseModel):
     signatures: list[NoisySignatureOut]
 
 
+class AttentionOut(BaseModel):
+    """What the incidents of the window come to: how many need the owner, and why each of the
+    others was filtered out. Every incident is in one of the four."""
+
+    incidents: int
+    # The confidence an incident needs, at least, to be asked about.
+    floor: int
+    # Resolved or dismissed already.
+    handled: int
+    # Called not suspicious or low priority by a verdict.
+    muted: int
+    # Below the floor in confidence.
+    unsure: int
+    # The rest: they need the owner, and how many of those AresGate is highly confident of.
+    needs_you: int
+    urgent: int
+
+
 class DashboardOut(BaseModel):
     window: WindowOut
     alerts: AlertsOut
+    attention: AttentionOut
     noise: NoiseOut
     recent_alerts: list[AlertOut]
     blocked: BlockedOut
@@ -229,6 +248,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
     found = dashboard.alerts(db, win)
     refused = dashboard.blocked(db, win)
     people = dashboard.devices(db, win)
+    needing = dashboard.attention(db, win)
     return DashboardOut(
         window=WindowOut(
             key=win.key,
@@ -244,6 +264,15 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             by_severity={
                 SEVERITY_NAMES[level]: counts for level, counts in found.by_severity.items()
             },
+        ),
+        attention=AttentionOut(
+            incidents=needing.incidents,
+            floor=needing.floor,
+            handled=needing.handled,
+            muted=needing.muted,
+            unsure=needing.unsure,
+            needs_you=needing.needs_you,
+            urgent=needing.urgent,
         ),
         noise=_noise(db, win),
         recent_alerts=[_alert(event) for event in dashboard.recent_alerts(db, win)],

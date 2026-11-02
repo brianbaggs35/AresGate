@@ -1,4 +1,5 @@
 import type {
+  Attention,
   Dashboard,
   DashboardAlert,
   DashboardWindow,
@@ -48,6 +49,7 @@ export function dashboard(
         critical: none(buckets),
       },
     },
+    attention: attention(),
     noise: { sources: [], signatures: [] },
     recent_alerts: [],
     blocked: { total: 0, previous: 0, per_bucket: none(buckets), top_sources: [] },
@@ -118,6 +120,20 @@ export function noisySignature(changes: Partial<NoisySignature> = {}): NoisySign
     last_at: new Date(END - 5 * 60_000).toISOString(),
     verdict: null,
     verdict_rule_id: null,
+    ...changes,
+  }
+}
+
+/** The incidents of a window when none were going on, with whatever is given changed. */
+export function attention(changes: Partial<Attention> = {}): Attention {
+  return {
+    incidents: 0,
+    floor: 35,
+    handled: 0,
+    muted: 0,
+    unsure: 0,
+    needs_you: 0,
+    urgent: 0,
     ...changes,
   }
 }
