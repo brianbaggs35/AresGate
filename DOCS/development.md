@@ -166,6 +166,45 @@ devices there were.
   together, and a time ahead of now is taken as now.
 - The OPNsense lease searches share `app/collectors/opnsense/leases.py`: a collector for another
   DHCP server only needs its path and what makes a lease current.
+- **Say how you list them.** `context.record_devices(sightings, via)` takes the way as its second
+  argument, one of the constants of `app/devices/ways.py` (`ARP`, `DHCP`, `HOSTS`, `AGENT`; an
+  unknown one raises `ValueError`, since a collector chose it). The integration is the collector's
+  own. `device_sources` keeps a row for each device, integration and way with when it was first
+  and last listed, and the Assets page reads it for who listed a device and when. A way says
+  whether it is **presence** (the ARP table, ntopng's hosts and a Wazuh agent can only list what
+  is on the network now; a DHCP lease outlasts the device), which decides whether the asset is
+  online. A new way is added to `WAYS` with its label and whether it is presence.
+- **Machines with no hardware address.** A program that lists these (Wazuh's agents) makes a
+  `NewHost.of(key, seen_at, state=..., online=..., address=..., hostname=...)` for each, keyed by
+  what the program calls it, and calls `await context.record_hosts(hosts, via, complete=...)`.
+  They are kept in `host_listings`, one row for each integration, connection and key. With
+  `complete=True` (the run saw everything the program has) the rows of that connection that were
+  not in it are deleted, so an agent that was removed leaves the page.
+
+## The assets inventory
+
+`app/assets` puts together what the collectors stored for the Assets page (`GET /api/assets`).
+Nothing is merged in the database: `inventory.load()` reads the devices, their addresses,
+`device_sources`, `host_listings` and the interfaces and builds the assets each time, so a late
+lease or agent merges when it arrives, and each machine merged into a device records what it was
+matched by.
+
+- **Status.** `online` is a listing by a presence way in the last ten minutes, `recent` any
+  listing in the last day, `away` otherwise; a device with no `device_sources` rows (from before
+  they were kept) goes by when it was last listed. **New** is first listed in the last seven
+  days and later than a day after the first asset was listed (`watching_since`), so the network
+  as it was found is not news. A private hardware address has the locally administered bit set.
+- **Merging a machine.** By address first (the device that had the address last), then by a short
+  host name (lowercase, without its domain) that exactly one device has; common names such as
+  `localhost` or `ubuntu` are not enough. Interfaces are the ones whose networks hold one of the
+  asset's current addresses (seen within an hour of its newest).
+- **Search** (`search.py`) runs over the whole inventory in memory: every word has to be in the
+  name, maker, an address, the hardware address (with and without colons, and read with hyphens)
+  or the name of a program that lists it. The facets (programs, interfaces, new, not identified)
+  count the whole inventory so a button says what it would find; the state counts follow every
+  other choice.
+- **Adding a source of devices** means adding it to `SUPPLIERS` (integration, the connections it
+  needs and its ways) so the page can say whether it is connected and what it lists.
 
 ## Interfaces: the parts of the network
 

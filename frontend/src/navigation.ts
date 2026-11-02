@@ -4,6 +4,7 @@ import {
   ChartColumn,
   HeartPulse,
   LayoutDashboard,
+  MonitorSmartphone,
   Network,
   Plug,
   ScrollText,
@@ -31,6 +32,7 @@ export const navItems: readonly NavItem[] = [
   { route: 'incidents', title: 'Incidents', icon: Siren },
   { route: 'assistant', title: 'Assistant', icon: Bot },
   { route: 'logs', title: 'Logs', icon: ScrollText },
+  { route: 'assets', title: 'Assets', icon: MonitorSmartphone },
   { route: 'integrations', title: 'Integrations', icon: Plug },
   { route: 'interfaces', title: 'Interfaces', icon: Network },
   {

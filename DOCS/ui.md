@@ -201,6 +201,34 @@ opens `AiCallDialog`). An answer that could not be made is a warning with a link
 is shown at once and a spinner says it can take a minute. Wording and the starting questions are in
 `src/chat.ts`.
 
+## Assets
+
+The Assets page lists every device the connected programs can see (`GET /api/assets`), built from
+the parts above: a `PageHeader`, the search (`AssetSearch`), the choices, a list of `AssetCard`s,
+and at the end `AssetSuppliers`, which says where the assets come from and why a device may be
+missing. What the list is narrowed to lives in the route's query (`status`, `q`, repeated `source`,
+`interface`, `new`, `unidentified`, `sort`), never in component state, so a link or the back
+button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
+
+- **A card** says who it is (the name, then the maker and hardware address, or for a machine with
+  none the program and how it is doing), whether it is there, its addresses, the programs that
+  list it (`AssetSources`: "OPNsense · ARP table, DHCP leases · 2 minutes ago", and for a
+  machine merged by guess, "matched by address") and the interfaces it is on. Flags say only what
+  is worth noticing: new this week, a private hardware address, nothing says what it is. The
+  state is always an icon and its words (`AssetStatusChip`: online, seen recently, not seen for
+  a while), and the bar on the card's side repeats it in color. A card lays itself out by its own
+  width (a container query): in columns on a computer, one thing under another on a phone.
+- **The choices.** The states are a row of toggle buttons with how many each holds (counts
+  respect the other choices) that scrolls sideways on a phone instead of wrapping. The programs,
+  *New this week* and *Not identified* are buttons with `aria-pressed` and their counts over the
+  whole inventory, so each says what it would find; *Interface* is a select that appears only
+  when an interface has networks to tell which assets are on it. *Clear filters* leaves the state
+  and the order alone. Slash goes to the search from anywhere but a field.
+- **Nothing to show** says why and what to do: nothing narrowed matches (*Clear filters*); no
+  asset is in that state; no program that lists devices is connected (leads to Integrations); one
+  is connected but has listed nothing yet (leads to Status). More assets than a page are asked for
+  with *Show more*, and the page asks again every 30 seconds for as many as are shown.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

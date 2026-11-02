@@ -32,6 +32,7 @@ describe('navigation', () => {
       'incidents',
       'assistant',
       'logs',
+      'assets',
       'integrations',
       'interfaces',
       'ai-usage',

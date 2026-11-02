@@ -372,6 +372,7 @@ test.describe('layout on a phone', () => {
     ]) {
       expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
     }
+    await expect(shell.assetsLink).toHaveCount(0)
     await expect(shell.integrationsLink).toHaveCount(0)
     await expect(shell.aiUsageLink).toHaveCount(0)
     await expect(shell.statusLink).toHaveCount(0)
@@ -380,6 +381,7 @@ test.describe('layout on a phone', () => {
 
     await expect(shell.moreSheet).toBeVisible()
     await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(shell.assetsLink).toBeVisible()
     await expect(shell.integrationsLink).toBeVisible()
     await expect(shell.aiUsageLink).toBeVisible()
     await expect(shell.statusLink).toBeVisible()

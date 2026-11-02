@@ -1,0 +1,49 @@
+import { fetchAssets } from '@/api/assets'
+import * as client from '@/api/client'
+
+describe('fetchAssets', () => {
+  it('asks for everything when nothing is asked', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+
+    await fetchAssets()
+
+    expect(get).toHaveBeenCalledWith('/assets')
+  })
+
+  it('asks for what was chosen, and repeats a source for each', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+
+    await fetchAssets({
+      q: 'laptop',
+      status: 'online',
+      sources: ['opnsense', 'wazuh'],
+      interface: 4,
+      new: true,
+      unidentified: true,
+      sort: 'name',
+      limit: 30,
+      offset: 60,
+    })
+
+    const [path] = get.mock.calls[0] as [string]
+    const params = new URLSearchParams(path.split('?')[1])
+    expect(path.startsWith('/assets?')).toBe(true)
+    expect(params.get('q')).toBe('laptop')
+    expect(params.get('status')).toBe('online')
+    expect(params.getAll('source')).toEqual(['opnsense', 'wazuh'])
+    expect(params.get('interface')).toBe('4')
+    expect(params.get('new')).toBe('true')
+    expect(params.get('unidentified')).toBe('true')
+    expect(params.get('sort')).toBe('name')
+    expect(params.get('limit')).toBe('30')
+    expect(params.get('offset')).toBe('60')
+  })
+
+  it('leaves out what is not narrowed', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+
+    await fetchAssets({ q: '', new: false, unidentified: false, offset: 0, limit: 10 })
+
+    expect(get).toHaveBeenCalledWith('/assets?limit=10')
+  })
+})

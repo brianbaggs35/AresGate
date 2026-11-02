@@ -121,6 +121,31 @@ Every release's notes are here, newest first. The format follows
   the sheet shows what they would have done with the last 24 hours: how many messages, what was
   left out and why, and the newest few that would have been sent. Nothing is sent yet: the sender
   that uses these rules is the next slice.
+- **An Assets page: every device the connected programs can see, as one list.** It is in the menu
+  after Logs (behind More on a phone). OPNsense lists the devices of its ARP table and DHCP
+  leases, ntopng the hosts it knows the hardware address of, and Wazuh its agents; what they say
+  about one device is put together when the page asks, so a device two of them list is shown
+  once, and it says which programs listed it and how ("OPNsense: ARP table, DHCP leases"). A
+  Wazuh agent has no hardware address, so it is matched to the device that had its address, else
+  to the one device whose name is the same, and the card says which; one nothing matches is an
+  asset of its own. Each asset says whether it is **online** (listed in the last ten minutes by
+  something that can only list what is there now: the ARP table, an ntopng host or an agent that
+  is in touch), **seen recently** (listed in the last day, as a DHCP lease alone is, since a lease
+  outlasts the device) or **not seen for a while**; whether it is **new** (first listed in the
+  last week, not counting the devices found on the first day, which are the network as it was);
+  whether its hardware address is a **private** one the device made up; and whether anything says
+  what it is. Search finds words in the name, maker, addresses (a hardware address with colons,
+  hyphens or neither) and the programs that list it; you can narrow the list by state, by
+  program, by interface (by the networks of Interfaces), to what is new and to what is not
+  identified, and order it by when it was listed, name, address or when it was first listed. What
+  is chosen is in the address of the page, so a link or the back button brings it back. With no
+  program connected that can list devices, the page says so and leads to Integrations; with one
+  connected that has not listed any, it leads to Status. See [DOCS/ui.md](DOCS/ui.md#assets).
+- **Which program listed a device is now stored.** `device_sources` keeps, for every device, each
+  program and way that has listed it with the first and last time, and `host_listings` keeps the
+  machines a program lists without a hardware address (Wazuh's agents). Collectors say how they
+  list with `context.record_devices(sightings, via)` and `context.record_hosts(hosts, via)`; see
+  [DOCS/development.md](DOCS/development.md#storing-devices-from-a-collector).
 
 ## 0.0.5
 

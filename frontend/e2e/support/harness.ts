@@ -146,6 +146,56 @@ export interface EventsRecord {
   events: number
 }
 
+/** One way an integration listed a device, and how long ago. Left out, it is the firewall's ARP
+ * table, a minute ago. */
+export interface AssetListing {
+  source?: string
+  via?: 'arp' | 'dhcp' | 'hosts' | 'agent'
+  minutes_ago?: number
+}
+
+/** A device as the integrations that list it left it, as `createAssets()` stores it. All of it is
+ * optional. */
+export interface AssetDeviceRequest {
+  hostname?: string
+  /** Its hardware address; made up when it isn't given. */
+  mac?: string
+  vendor?: string
+  /** The addresses it has now. */
+  addresses?: string[]
+  /** Addresses it had before, which it is no longer listed at. */
+  earlier?: string[]
+  /** Who listed it and when. The first is how it was first listed. */
+  listed?: AssetListing[]
+  /** How long ago it was first listed. A month by default, so it is not new. */
+  first_seen_hours?: number
+}
+
+/** A machine with no hardware address, such as a Wazuh agent, which the page merges into the
+ * device that has its address or its name, or lists on its own. */
+export interface AssetHostRequest {
+  key: string
+  hostname?: string
+  address?: string
+  state?: string
+  online?: boolean
+  minutes_ago?: number
+  source?: string
+  connection?: string
+  via?: string
+}
+
+export interface AssetsRequest {
+  devices?: AssetDeviceRequest[]
+  hosts?: AssetHostRequest[]
+}
+
+/** How many devices and machines `createAssets()` stored. */
+export interface AssetsRecord {
+  devices: number
+  hosts: number
+}
+
 /** What a program reports about one of its ports, as discovery finds it and as the Interfaces
  * page leaves it. Left out, it is OPNsense's, with no name: a whole connection. */
 export interface FeedRequest {
@@ -387,6 +437,14 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/events', { data: { events } })
       .then((response) => readJson<EventsRecord>(response, 'Making events'))
+  }
+
+  /** Stores devices, and the machines that integrations list without a hardware address, as the
+   * integrations would have left them, for the Assets page to show. */
+  createAssets(request: AssetsRequest): Promise<AssetsRecord> {
+    return this.api
+      .post('/api/__test__/factories/assets', { data: request })
+      .then((response) => readJson<AssetsRecord>(response, 'Making assets'))
   }
 
   /** Makes feeds, and the interfaces they are placed on, as the Interfaces page leaves them. */
