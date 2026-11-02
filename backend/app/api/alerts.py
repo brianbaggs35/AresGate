@@ -1,7 +1,7 @@
 """Alerts: the places AresGate sends word of what it finds. Their addresses only go in: no route
 here returns one, and a failed request doesn't quote what was sent."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
@@ -9,13 +9,18 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, Str
 from sqlalchemy.orm import Session
 
 from app.alerts import destinations, discord
+from app.alerts import rules as alert_rules
 from app.alerts.destinations import NameTaken, Unusable
 from app.alerts.discord import InvalidWebhook
+from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.api.integrations import RecorderDep
 from app.audit import Action, Outcome
+from app.events.event import Severity
+from app.incidents import episode
+from app.integrations import registry
 from app.integrations.service import Status
-from app.models import AlertDestination, utcnow
+from app.models import AlertDestination, Incident, utcnow
 
 # Everything here is for someone who is signed in.
 router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(signed_in)])
@@ -23,6 +28,43 @@ router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(sign
 DestinationId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
 Address = Annotated[SecretStr, Field(min_length=1, max_length=discord.MAX_URL)]
+
+
+Activity = Literal["scan", "brute_force"]
+Detail = Literal["brief", "standard", "full"]
+Minute = Annotated[int, Field(ge=0, le=alert_rules.MINUTES_A_DAY - 1)]
+
+
+class RulesModel(BaseModel):
+    """What a destination is told about, and when (see app/alerts/rules.py). Every field is
+    always given: the page edits the whole set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_severity: Annotated[int, Field(ge=1, le=4)]
+    min_confidence: Annotated[int, Field(ge=0, le=100)]
+    sources: Annotated[list[Annotated[str, StringConstraints(max_length=32)]], Field(max_length=16)]
+    activities: Annotated[list[Activity], Field(max_length=2)]
+    quiet_hours: bool
+    quiet_from: Minute
+    quiet_until: Minute
+    quiet_critical: bool
+    time_zone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+    max_per_hour: Annotated[int, Field(ge=1, le=60)]
+    detail: Detail
+    again_when_worse: bool
+
+
+class ChoiceOut(BaseModel):
+    key: str
+    name: str
+
+
+class ChoicesOut(BaseModel):
+    """What the rules can name, for the page to offer."""
+
+    sources: list[ChoiceOut]
+    activities: list[ChoiceOut]
 
 
 class DestinationOut(BaseModel):
@@ -38,6 +80,7 @@ class DestinationOut(BaseModel):
     last_attempt_at: AwareDatetime | None
     last_success_at: AwareDatetime | None
     last_error: str | None
+    rules: RulesModel
     created_at: AwareDatetime
     updated_at: AwareDatetime
 
@@ -47,6 +90,35 @@ class DestinationsOut(BaseModel):
     max_destinations: int
     # The addresses a webhook may be at, for the page to say.
     hosts: list[str]
+    choices: ChoicesOut
+
+
+class LeftOutOut(BaseModel):
+    reason: alert_rules.Reason
+    text: str
+    count: int
+
+
+class ExampleOut(BaseModel):
+    id: int
+    title: str
+    severity: SeverityName
+    confidence: int
+    last_seen_at: AwareDatetime
+
+
+class PreviewOut(BaseModel):
+    """What a set of rules would have done in the last day."""
+
+    hours: int
+    considered: int
+    would_send: int
+    held: int
+    busiest_hour: int
+    over_limit: int
+    truncated: bool
+    left_out: list[LeftOutOut]
+    examples: list[ExampleOut]
 
 
 class DestinationIn(BaseModel):
@@ -77,6 +149,23 @@ def _invalid(*location: str, message: str) -> dict[str, object]:
     return {"type": "value_error", "loc": ["body", *location], "msg": message}
 
 
+def _rules_model(row: AlertDestination) -> RulesModel:
+    return RulesModel(
+        min_severity=row.min_severity,
+        min_confidence=row.min_confidence,
+        sources=list(row.sources),
+        activities=[cast("Activity", item) for item in row.activities],
+        quiet_hours=row.quiet_hours,
+        quiet_from=row.quiet_from,
+        quiet_until=row.quiet_until,
+        quiet_critical=row.quiet_critical,
+        time_zone=row.time_zone,
+        max_per_hour=row.max_per_hour,
+        detail=cast("Detail", row.detail),
+        again_when_worse=row.again_when_worse,
+    )
+
+
 def _out(row: AlertDestination, *, has_address: bool) -> DestinationOut:
     return DestinationOut(
         id=row.id,
@@ -89,6 +178,7 @@ def _out(row: AlertDestination, *, has_address: bool) -> DestinationOut:
         last_attempt_at=row.last_attempt_at,
         last_success_at=row.last_success_at,
         last_error=row.last_error,
+        rules=_rules_model(row),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -113,6 +203,14 @@ def list_destinations(db: Db) -> DestinationsOut:
         items=[_out(row, has_address=row.id in addressed) for row in destinations.listing(db)],
         max_destinations=destinations.MAX_DESTINATIONS,
         hosts=list(discord.HOSTS),
+        choices=ChoicesOut(
+            sources=[
+                ChoiceOut(key=key, name=known.name) for key, known in registry.INTEGRATIONS.items()
+            ],
+            activities=[
+                ChoiceOut(key=key, name=name) for key, name in episode.ACTIVITY_NAMES.items()
+            ],
+        ),
     )
 
 
@@ -268,3 +366,111 @@ def test_destination(
         problem = sent if isinstance(sent, str) else sent.problem
         message = problem or "The message didn't get through."
     return TestOut(ok=ok, message=message, destination=_one(db, row))
+
+
+def _checked(body: RulesModel) -> alert_rules.Rules:
+    """The rules the page sent, if they make sense; otherwise a 422 on the field that doesn't."""
+    unknown = sorted(set(body.sources) - set(registry.INTEGRATIONS))
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [_invalid("sources", message=f"AresGate has no program called {unknown[0]}.")],
+        )
+    if alert_rules.zone_of(body.time_zone) is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [_invalid("time_zone", message="That isn't a time zone, such as Europe/Berlin.")],
+        )
+    if body.quiet_hours and body.quiet_from == body.quiet_until:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [
+                _invalid(
+                    "quiet_until", message="Quiet hours need an end that differs from the start."
+                )
+            ],
+        )
+    return alert_rules.Rules(
+        min_severity=body.min_severity,
+        min_confidence=body.min_confidence,
+        sources=tuple(sorted(set(body.sources))),
+        activities=tuple(sorted(set(body.activities))),
+        quiet=alert_rules.Quiet(
+            body.quiet_from, body.quiet_until, body.time_zone, body.quiet_critical
+        )
+        if body.quiet_hours
+        else None,
+        max_per_hour=body.max_per_hour,
+        detail=body.detail,
+        again_when_worse=body.again_when_worse,
+    )
+
+
+@router.put("/destinations/{destination_id}/rules")
+def change_rules(
+    destination_id: DestinationId,
+    body: RulesModel,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> DestinationOut:
+    """Replaces what a destination is told about, and when."""
+    row = _find(db, destination_id)
+    rules = _checked(body)
+    row.min_severity = rules.min_severity
+    row.min_confidence = rules.min_confidence
+    row.sources = list(rules.sources)
+    row.activities = list(rules.activities)
+    row.quiet_hours = body.quiet_hours
+    row.quiet_from = body.quiet_from
+    row.quiet_until = body.quiet_until
+    row.quiet_critical = body.quiet_critical
+    row.time_zone = body.time_zone
+    row.max_per_hour = rules.max_per_hour
+    row.detail = rules.detail
+    row.again_when_worse = rules.again_when_worse
+    row.updated_at = utcnow()
+    record_audit(
+        db,
+        request,
+        Action.ALERT_RULES_CHANGED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"destination": row.name},
+    )
+    db.commit()
+    return _one(db, row)
+
+
+def _example(incident: Incident) -> ExampleOut:
+    return ExampleOut(
+        id=incident.id,
+        title=incident.title,
+        severity=SEVERITY_NAMES[Severity(incident.severity)],
+        confidence=incident.confidence,
+        last_seen_at=incident.last_seen_at,
+    )
+
+
+@router.post("/destinations/{destination_id}/preview")
+def preview_rules(destination_id: DestinationId, body: RulesModel, db: Db) -> PreviewOut:
+    """What these rules would have sent in the last day, without saving them or sending anything,
+    so that they can be tuned before they are used."""
+    _find(db, destination_id)
+    rules = _checked(body)
+    result = alert_rules.preview(db, rules, utcnow())
+    return PreviewOut(
+        hours=result.hours,
+        considered=result.considered,
+        would_send=result.would_send,
+        held=result.held,
+        busiest_hour=result.busiest_hour,
+        over_limit=result.over_limit,
+        truncated=result.truncated,
+        left_out=[
+            LeftOutOut(reason=reason, text=alert_rules.explain(reason, rules), count=count)
+            for reason, count in result.left_out.items()
+            if count
+        ],
+        examples=[_example(incident) for incident in result.examples],
+    )

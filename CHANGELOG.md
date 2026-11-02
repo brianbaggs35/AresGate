@@ -91,10 +91,22 @@ Every release's notes are here, newest first. The format follows
   every time it is used. Only `discord.com` and `discordapp.com` webhook addresses are accepted,
   and the request goes through the same network guard as AI providers (the internet only, no
   redirects, the certificate verified). Messages are sent so that nothing in them can ping
-  `@everyone`, a role or a person. This is the first slice: the rules for what is sent, the
-  sender with its delivery log and a daily digest come next. See
-  [DOCS/alerts.md](DOCS/alerts.md), which also says what was read from Discord's documentation
-  and what was inferred.
+  `@everyone`, a role or a person. This is the first slice: the sender with its delivery log and
+  a daily digest come next. See [DOCS/alerts.md](DOCS/alerts.md), which also says what was read
+  from Discord's documentation and what was inferred.
+- **Rules for what each alert destination is told about.** Each destination has a **Rules** sheet
+  (a side sheet, the whole screen on a phone). A new destination hears only of what is medium or
+  worse and what AresGate is at least 65% sure of. The rules can raise or lower both, limit it to
+  incidents certain programs saw or kinds of activity (scanning, brute force), set quiet hours (a
+  start, an end, a time zone, and whether critical threats still get through; what came in is
+  held until they end, not dropped), cap messages an hour (the rest are said in one summary), ask
+  for a new message when an incident gets worse, and choose how much a message says (brief,
+  standard or full; only full names devices on your network). An incident you called not
+  suspicious or low priority, or resolved or dismissed, is never sent, whatever the rules say; one
+  you called a real threat skips the severity and confidence floors. While you change the rules,
+  the sheet shows what they would have done with the last 24 hours: how many messages, what was
+  left out and why, and the newest few that would have been sent. Nothing is sent yet: the sender
+  that uses these rules is the next slice.
 
 ## 0.0.5
 

@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { FlaskConical, Pencil, Trash2 } from '@lucide/vue'
+import { FlaskConical, Pencil, SlidersHorizontal, Trash2 } from '@lucide/vue'
 import { computed, useId } from 'vue'
 
-import type { Destination } from '@/api/alerts'
+import type { Choices, Destination } from '@/api/alerts'
 import StatusChip from '@/components/StatusChip.vue'
+import { describeRules } from '@/alertRules'
 import { KINDS, lastResult, maskedAddress } from '@/alerts'
 import { formatDateTime } from '@/format'
 
 /**
  * One place alerts are sent: its name, what kind it is, whether it works, a masked version of its
- * address (the address itself is a secret that is never shown again) and the buttons to test it,
- * change it, turn it off or remove it. It only asks; what the buttons do is up to the page.
+ * address (the address itself is a secret that is never shown again), what it is told about in
+ * words, and the buttons to test it, set its rules, change it, turn it off or remove it. It only asks; what the buttons do is up to the page.
  */
 const props = defineProps<{
   destination: Destination
+  /** What its rules can name, to say them in words. */
+  choices: Choices
   /** Something is being done to it, so its buttons wait. */
   busy?: boolean
   /** The test message is being sent. */
@@ -21,6 +24,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   test: []
+  rules: []
   edit: []
   remove: []
   toggle: [enabled: boolean]
@@ -69,6 +73,10 @@ const titleId = useId()
       <template v-else>{{ lastResult(destination) }}</template>
     </p>
 
+    <p class="destination__rules text-body-medium" data-test="destination-rules">
+      {{ describeRules(destination.rules, choices) }}
+    </p>
+
     <div class="destination__actions">
       <v-btn
         variant="tonal"
@@ -80,6 +88,15 @@ const titleId = useId()
         @click="emit('test')"
       >
         Send test message
+      </v-btn>
+      <v-btn
+        variant="text"
+        :prepend-icon="SlidersHorizontal"
+        :disabled="busy"
+        data-test="destination-rules-edit"
+        @click="emit('rules')"
+      >
+        Rules
       </v-btn>
       <v-btn
         variant="text"
@@ -148,7 +165,8 @@ const titleId = useId()
   margin-inline-start: auto;
 }
 
-.destination__address {
+.destination__address,
+.destination__rules {
   margin: 0;
   overflow-wrap: anywhere;
 }

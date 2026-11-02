@@ -5,11 +5,13 @@ import { computed, onMounted, ref } from 'vue'
 import {
   addDestination,
   changeDestination,
+  changeRules,
   fetchDestinations,
   removeDestination,
   testDestination,
   type Destination,
   type Destinations,
+  type Rules,
 } from '@/api/alerts'
 import { ApiError, errorMessage } from '@/api/client'
 import { problemsByField } from '@/ai'
@@ -20,13 +22,15 @@ import DestinationDialog from '@/components/DestinationDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RulesDialog from '@/components/RulesDialog.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import { useSessionStore } from '@/stores/session'
 
 /**
  * Where AresGate tells the owner about threats. For now that is Discord: each destination is a
  * webhook for one channel, kept encrypted and never shown again, with a button that sends a real
- * test message. Adding, changing, turning off and removing a destination all happen here.
+ * test message, and rules for what each one is told about and when. Adding, changing, setting
+ * the rules of, turning off and removing a destination all happen here.
  */
 const session = useSessionStore()
 
@@ -48,6 +52,13 @@ const confirming = ref(false)
 const saving = ref(false)
 const problems = ref<Record<string, string>>({})
 const formFailure = ref<string | null>(null)
+
+/** The destination whose rules are open, which the sheet keeps showing while it fades out. */
+const ruling = ref<Destination | null>(null)
+const rulesOpen = ref(false)
+const rulesSaving = ref(false)
+const rulesProblems = ref<Record<string, string>>({})
+const rulesFailure = ref<string | null>(null)
 
 // These are only read once the list has loaded: the page shows nothing that uses them before.
 const items = computed(() => (listing.value as Destinations).items)
@@ -90,6 +101,35 @@ function edit(destination: Destination) {
   problems.value = {}
   formFailure.value = null
   editing.value = true
+}
+
+function rules(destination: Destination) {
+  begin()
+  ruling.value = destination
+  rulesProblems.value = {}
+  rulesFailure.value = null
+  rulesOpen.value = true
+}
+
+async function saveRules(answer: Rules) {
+  const destination = ruling.value as Destination
+  rulesSaving.value = true
+  rulesProblems.value = {}
+  rulesFailure.value = null
+  try {
+    const saved = await session.change((token) => changeRules(destination.id, answer, token))
+    replace(saved)
+    notice.value = `Saved what ${saved.name} is told.`
+    rulesOpen.value = false
+  } catch (error) {
+    if (error instanceof ApiError && error.problems.length > 0) {
+      rulesProblems.value = problemsByField(error.problems)
+    } else {
+      rulesFailure.value = errorMessage(error)
+    }
+  } finally {
+    rulesSaving.value = false
+  }
 }
 
 function ask(destination: Destination) {
@@ -226,9 +266,11 @@ onMounted(load)
           v-for="item in items"
           :key="item.id"
           :destination="item"
+          :choices="listing.choices"
           :busy="working === item.id || testing === item.id"
           :testing="testing === item.id"
           @test="test(item)"
+          @rules="rules(item)"
           @edit="edit(item)"
           @remove="ask(item)"
           @toggle="toggle(item, $event)"
@@ -265,6 +307,16 @@ onMounted(load)
       :problems="problems"
       :failure="formFailure"
       @save="save"
+    />
+    <RulesDialog
+      v-if="listing && ruling"
+      v-model="rulesOpen"
+      :destination="ruling"
+      :choices="listing.choices"
+      :busy="rulesSaving"
+      :problems="rulesProblems"
+      :failure="rulesFailure"
+      @save="saveRules"
     />
     <ConfirmDialog
       v-model="confirming"

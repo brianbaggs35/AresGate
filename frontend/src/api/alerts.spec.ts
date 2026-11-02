@@ -1,11 +1,14 @@
 import {
   addDestination,
   changeDestination,
+  changeRules,
   fetchDestinations,
+  previewRules,
   removeDestination,
   testDestination,
 } from '@/api/alerts'
 import * as client from '@/api/client'
+import { rules } from '@/test/alerts'
 
 describe('alerts', () => {
   it('lists the destinations', async () => {
@@ -43,5 +46,19 @@ describe('alerts', () => {
 
     await expect(testDestination(4, 'a-token')).resolves.toEqual({ ok: true })
     expect(post).toHaveBeenCalledWith('/alerts/destinations/4/test', undefined, 'a-token')
+  })
+
+  it('replaces the rules of one, with the sign-in token', async () => {
+    const put = vi.spyOn(client, 'apiPut').mockResolvedValue({ id: 4 })
+
+    await expect(changeRules(4, rules(), 'a-token')).resolves.toEqual({ id: 4 })
+    expect(put).toHaveBeenCalledWith('/alerts/destinations/4/rules', rules(), 'a-token')
+  })
+
+  it('asks what rules would have sent, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ would_send: 2 })
+
+    await expect(previewRules(4, rules(), 'a-token')).resolves.toEqual({ would_send: 2 })
+    expect(post).toHaveBeenCalledWith('/alerts/destinations/4/preview', rules(), 'a-token')
   })
 })

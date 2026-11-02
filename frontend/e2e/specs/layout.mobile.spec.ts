@@ -552,6 +552,49 @@ test.describe('layout on a phone', () => {
           .toBeGreaterThanOrEqual(44)
       }
     })
+
+    test('the rules fill the screen, fit it with quiet hours on, and have buttons big enough to tap', async ({
+      page,
+      harness,
+      alerts,
+    }) => {
+      await harness.createIncidents([
+        { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], signals: 4 },
+        { address: '8.8.8.8', severity: 'high', programs: ['opnsense'], signals: 3 },
+      ])
+      await alerts.goto()
+      await alerts.addDestination(
+        'A security channel with a rather long name for a phone',
+        `https://discord.com/api/webhooks/${id}/${token}`,
+      )
+      const card = alerts.destinations.first()
+      await expect(card.getByTestId('destination-rules-edit')).toBeVisible()
+      const rulesButton = await card.getByTestId('destination-rules-edit').boundingBox()
+      expect(rulesButton?.height).toBeGreaterThanOrEqual(44)
+
+      await card.getByTestId('destination-rules-edit').click()
+      await expect(alerts.rules).toBeVisible()
+      await expect(alerts.previewSummary).toBeVisible()
+      const viewport = page.viewportSize()
+      // The whole screen, as the instructions are, and it grows into place as it opens.
+      await expect
+        .poll(async () => {
+          const box = await alerts.rules.boundingBox()
+          return box !== null && box.x <= 1 && box.width >= (viewport?.width ?? 0) - 1
+        })
+        .toBe(true)
+      await alerts.quiet.check()
+      await expect(alerts.quietFrom).toBeVisible()
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+      for (const button of [alerts.rulesSave, alerts.rulesCancel, alerts.rulesClose]) {
+        await expect
+          .poll(async () => (await button.boundingBox())?.height)
+          .toBeGreaterThanOrEqual(44)
+      }
+      // The buttons that save are on the screen, above the bar along the bottom.
+      const save = await alerts.rulesSave.boundingBox()
+      expect((save?.y ?? 0) + (save?.height ?? 0)).toBeLessThanOrEqual(viewport?.height ?? 0)
+    })
   })
 
   test.describe('the setup instructions', () => {

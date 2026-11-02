@@ -1,5 +1,40 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import type { Status } from '@/api/integrations'
+
+export type Detail = 'brief' | 'standard' | 'full'
+
+/** What a destination is told about, and when. The page always sends and receives the whole set. */
+export interface Rules {
+  /** The least serious it is told of, from 1 (low) to 4 (critical). */
+  min_severity: number
+  /** The least AresGate is sure, from 0 to 100. */
+  min_confidence: number
+  /** The programs it is told of, or none chosen for any. */
+  sources: string[]
+  /** The kinds of activity, `scan` and `brute_force`, or none chosen for any. */
+  activities: string[]
+  quiet_hours: boolean
+  /** Minutes after midnight in `time_zone`. */
+  quiet_from: number
+  quiet_until: number
+  /** Whether a critical incident is still sent in quiet hours. */
+  quiet_critical: boolean
+  time_zone: string
+  max_per_hour: number
+  detail: Detail
+  again_when_worse: boolean
+}
+
+/** Something the rules can name, with what it is called. */
+export interface Choice {
+  key: string
+  name: string
+}
+
+export interface Choices {
+  sources: Choice[]
+  activities: Choice[]
+}
 
 /** A place alerts are sent: a channel on the owner's Discord server, reached with a webhook. The
  * webhook's address is a secret that only goes in, so nothing here holds it. */
@@ -17,6 +52,7 @@ export interface Destination {
   last_attempt_at: string | null
   last_success_at: string | null
   last_error: string | null
+  rules: Rules
   created_at: string
   updated_at: string
 }
@@ -27,6 +63,41 @@ export interface Destinations {
   max_destinations: number
   /** The hosts a webhook's address may be at. */
   hosts: string[]
+  /** What the rules can name. */
+  choices: Choices
+}
+
+/** Why incidents would have been left out, with the number. */
+export interface LeftOut {
+  reason: 'muted' | 'settled' | 'severity' | 'confidence' | 'source' | 'activity'
+  text: string
+  count: number
+}
+
+export interface PreviewExample {
+  id: number
+  title: string
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical'
+  confidence: number
+  last_seen_at: string
+}
+
+/** What a set of rules would have done in the last day. */
+export interface RulesPreview {
+  hours: number
+  /** The incidents going on in that time. */
+  considered: number
+  would_send: number
+  /** Of those, how many quiet hours would have held back until they ended. */
+  held: number
+  /** The most that would have come in one hour, and how many the limit an hour would catch. */
+  busiest_hour: number
+  over_limit: number
+  /** There were more incidents than could be looked at. */
+  truncated: boolean
+  left_out: LeftOut[]
+  /** The newest few that would have been sent. */
+  examples: PreviewExample[]
 }
 
 /** What a test message found. */
@@ -79,4 +150,14 @@ export function testDestination(id: number, csrfToken: string): Promise<Destinat
     undefined,
     csrfToken,
   )
+}
+
+/** Replaces what a destination is told about, and when. */
+export function changeRules(id: number, rules: Rules, csrfToken: string): Promise<Destination> {
+  return apiPut<Destination>(`/alerts/destinations/${id.toString()}/rules`, rules, csrfToken)
+}
+
+/** What these rules would have sent in the last day. Nothing is saved or sent. */
+export function previewRules(id: number, rules: Rules, csrfToken: string): Promise<RulesPreview> {
+  return apiPost<RulesPreview>(`/alerts/destinations/${id.toString()}/preview`, rules, csrfToken)
 }

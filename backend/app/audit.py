@@ -76,6 +76,7 @@ class Action(StrEnum):
     ALERT_DESTINATION_CHANGED = "alerts.destination_changed"
     ALERT_DESTINATION_REMOVED = "alerts.destination_removed"
     ALERT_DESTINATION_TESTED = "alerts.destination_tested"
+    ALERT_RULES_CHANGED = "alerts.rules_changed"
     KEY_ROTATED = "system.secret_key_rotated"
     EVENTS_PURGED = "audit.events_purged"
 

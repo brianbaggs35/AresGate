@@ -224,6 +224,142 @@ test.describe('alerts page', () => {
     await expect(alerts.failure).toContainText("Can't reach AresGate.")
   })
 
+  test.describe('what one is told', () => {
+    test.beforeEach(async ({ harness }) => {
+      // Four incidents going on: a critical and a high one, a medium one that was resolved,
+      // and a low one.
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'critical',
+          programs: ['wazuh', 'opnsense', 'crowdsec'],
+          signals: 8,
+          ban: true,
+          minutes_ago: 4,
+        },
+        { address: '8.8.8.8', severity: 'high', programs: ['wazuh', 'opnsense'], signals: 3 },
+        { address: '1.1.1.1', severity: 'medium', programs: ['ntopng'], status: 'resolved' },
+        { address: '9.9.9.9', severity: 'low', programs: ['opnsense'] },
+      ])
+    })
+
+    test('starts with what is serious and sure, and shows the card in words', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      const card = alerts.destination('Security')
+
+      await expect(card.getByTestId('destination-rules')).toContainText(
+        'Tells you about incidents that are medium or worse, when AresGate is at least 65% sure.',
+      )
+      await alerts.openRules('Security')
+
+      await expect(alerts.rulesTitle).toHaveText('What Security is told')
+      await expect(alerts.severity).toContainText('Medium or worse')
+      await expect(alerts.confidence).toContainText('High: 65% or more')
+      await expect(alerts.rulesSave).toBeDisabled()
+    })
+
+    test('shows what the rules would have sent, and changes it as they change', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await expect(alerts.previewSummary).toContainText('out of 4 incidents going on')
+
+      await alerts.choose(alerts.severity, 'Critical only')
+      await alerts.choose(alerts.confidence, 'Any, however unsure')
+
+      await expect(alerts.previewSummary).toContainText('would have sent 1 message, out of 4')
+      await expect(alerts.previewLeftOut).toContainText('Less serious than critical: 2')
+      await expect(alerts.previewLeftOut).toContainText('Already resolved or dismissed: 1')
+      await expect(alerts.previewExamples.getByRole('link')).toHaveCount(1)
+      await expect(alerts.previewExamples).toContainText('93.184.216.34')
+    })
+
+    test('keeps what was chosen, in the card and across a visit', async ({ alerts, page }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+
+      await alerts.choose(alerts.severity, 'High or worse')
+      await alerts.choose(alerts.sources, 'Wazuh')
+      await page.keyboard.press('Escape')
+      await alerts.choose(alerts.rate, '3')
+      await alerts.again.uncheck()
+      await alerts.detail('Brief').check()
+      await alerts.rulesSave.click()
+
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await expect(alerts.rules).toHaveCount(0)
+      const summary = alerts.destination('Security').getByTestId('destination-rules')
+      await expect(summary).toContainText('high or worse')
+      await expect(summary).toContainText('Only from Wazuh')
+      await expect(summary).toContainText('At most 3 messages an hour')
+
+      await page.reload()
+      await alerts.openRules('Security')
+      await expect(alerts.severity).toContainText('High or worse')
+      await expect(alerts.sources).toContainText('Wazuh')
+      await expect(alerts.again).not.toBeChecked()
+      await expect(alerts.detail('Brief')).toBeChecked()
+    })
+
+    test('shows the quiet hours when they are on, and will not save an empty one', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await expect(alerts.quietFrom).toHaveCount(0)
+
+      await alerts.quiet.check()
+      await alerts.quietFrom.fill('23:00')
+      await alerts.quietUntil.fill('23:00')
+      await expect(alerts.rulesSave).toBeDisabled()
+      await alerts.quietUntil.fill('06:30')
+      await alerts.rulesSave.click()
+
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await expect(alerts.destination('Security').getByTestId('destination-rules')).toContainText(
+        'Quiet from 23:00 to 06:30',
+      )
+    })
+
+    test('forgets changes that were not saved', async ({ alerts }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await alerts.choose(alerts.severity, 'Critical only')
+
+      await alerts.rulesCancel.click()
+      await expect(alerts.rules).toHaveCount(0)
+      await alerts.openRules('Security')
+
+      await expect(alerts.severity).toContainText('Medium or worse')
+    })
+
+    test('says why the rules could not be kept, and why a preview could not be made', async ({
+      alerts,
+      page,
+    }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await page.route('**/api/alerts/destinations/*/preview', (route) => route.abort())
+      await alerts.openRules('Security')
+      await expect(alerts.previewFailure).toContainText("Can't reach AresGate.")
+
+      await page.route('**/api/alerts/destinations/*/rules', (route) => route.abort())
+      await alerts.choose(alerts.severity, 'Critical only')
+      await alerts.rulesSave.click()
+
+      await expect(alerts.rulesFailure).toContainText("Can't reach AresGate.")
+      await expect(alerts.rules).toBeVisible()
+    })
+  })
+
   test('records what was done in the activity, without the address', async ({ alerts, page }) => {
     await alerts.goto()
     await alerts.addDestination('Security', ADDRESS)
