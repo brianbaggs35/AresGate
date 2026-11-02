@@ -70,6 +70,8 @@ class Entry(BaseModel):
     detail: str = ""
     # Nothing has passed through it yet.
     quiet: bool = False
+    # It only carries a machine's traffic to itself, which normally has nothing worth reading.
+    loopback: bool = False
 
 
 class Condition(BaseModel):
@@ -318,10 +320,16 @@ NTOPNG = IntegrationDef(
                     key="interface_id",
                     label="Interfaces",
                     kind=FieldKind.LOOKUP,
-                    default=0,
+                    # ntopng numbers its interfaces itself, with gaps and not always from 0, so
+                    # there is no number that can be assumed: empty reads every interface it lists
+                    # but the loopback.
+                    default="",
                     minimum=0,
                     maximum=999,
-                    help="The interfaces ntopng watches that AresGate reads (their ifid).",
+                    help=(
+                        "The interfaces ntopng watches that AresGate reads (their ifid). Leave it "
+                        "empty to read every one except the loopback."
+                    ),
                     action="Fetch interfaces",
                     multiple=True,
                 ),

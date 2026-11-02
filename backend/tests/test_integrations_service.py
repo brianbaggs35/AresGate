@@ -503,7 +503,7 @@ def test_a_secret_left_blank_in_a_draft_is_the_one_kept(
     target = draft(session, settings, ntopng_draft(secrets={}, options={"auth": "token"}))
 
     assert target.secrets == {"token": "kept-token-123"}
-    assert target.options == {"auth": "token", "interface_id": "0"}
+    assert target.options == {"auth": "token", "interface_id": ""}
 
 
 def test_a_draft_that_cannot_be_used_says_what_is_wrong_by_field(

@@ -56,7 +56,7 @@ class Alerts(Collector):
     async def collect(self, context: Context) -> Outcome:
         ports = await names(context)
         events: list[NewEvent] = []
-        for ifid in interfaces(context):
+        for ifid in await interfaces(context):
             flows = await _records(context, FLOWS, ifid)
             hosts = await _records(context, HOSTS, ifid)
             found = parse("flow", flows, ports.get(ifid)) + parse("host", hosts, ports.get(ifid))

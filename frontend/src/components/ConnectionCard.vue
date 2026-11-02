@@ -31,6 +31,10 @@ const props = defineProps<{
   /** What is wrong with each field, as the API said: by field name, or under `connection` for
    * the connection as a whole. */
   problems: Readonly<Record<string, string>>
+  /** Counts the tests that have been run. A field that lists what the system has asks it again
+   * after a test that passed, so the list matches what the test found. A failed test may have been
+   * a refused login, which would only be refused again. */
+  refresh?: number
 }>()
 const draft = defineModel<ConnectionDraft>({ required: true })
 const emit = defineEmits<{
@@ -44,6 +48,10 @@ const tls = ref<{ review: () => Promise<void> } | null>(null)
 
 const definition = computed(() => props.connection.definition)
 const saved = computed(() => props.connection.url !== null)
+/** Changes after each test that passed, which is when a field that lists asks again. */
+const listAgain = computed(() =>
+  props.connection.status === 'connected' ? props.refresh : undefined,
+)
 const fields = computed(() => activeFields(definition.value, draft.value.options))
 const id = (field: string) => fieldId(definition.value.key, field)
 const urlHint = computed(() =>
@@ -190,6 +198,7 @@ defineExpose({ reviewCertificate })
             :field="field"
             :draft="draft"
             :saved="saved"
+            :refresh="listAgain"
             :error-messages="problems[field.key]"
             @asked="emit('asked')"
           />

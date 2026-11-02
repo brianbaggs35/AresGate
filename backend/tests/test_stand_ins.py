@@ -61,6 +61,44 @@ class TestNtopng:
         assert answer.status == 302
 
 
+class TestNtopngNumberedLikeAFirewalls:
+    """An OPNsense firewall's ntopng numbers its interfaces from 1, with gaps, and lists the
+    loopback."""
+
+    login: ClassVar[dict[str, str]] = {"authorization": "Token right-token"}
+    handler = staticmethod(
+        stand_ins.ntopng(
+            "right-token",
+            interface=stand_ins.sample_ntopng_interface(),
+            listed=stand_ins._NTOPNG_FIREWALL,  # pyright: ignore[reportPrivateUsage]
+            busy_ids=("1", "2"),
+        )
+    )
+
+    def test_it_lists_its_interfaces_by_the_ids_it_gave_them(self) -> None:
+        answer = self.handler(seen("/lua/rest/v2/get/ntopng/interfaces.lua", **self.login))
+
+        assert [(item["ifid"], item["ifname"], item["name"]) for item in body(answer)["rsp"]] == [
+            (1, "igc0", "WAN"),
+            (2, "igc1", "LAN"),
+            (3, "lo0", "lo0"),
+            (6, "ovpns1", "ovpns1"),
+        ]
+
+    def test_it_has_no_interface_0_and_refuses_it_with_a_400(self) -> None:
+        answer = self.handler(seen("/lua/rest/v2/get/interface/data.lua?ifid=0", **self.login))
+
+        assert answer.status == 400
+        assert body(answer)["rc_str"] == "INVALID_INTERFACE"
+
+    def test_the_busy_interfaces_have_data_and_the_others_have_seen_nothing(self) -> None:
+        busy = self.handler(seen("/lua/rest/v2/get/interface/data.lua?ifid=2", **self.login))
+        quiet = self.handler(seen("/lua/rest/v2/get/interface/data.lua?ifid=6", **self.login))
+
+        assert body(busy)["rsp"]["ifname"] == "eth0"
+        assert body(quiet)["rsp"]["bytes"] == 0
+
+
 class TestNtopngReadings:
     now = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
     login: ClassVar[dict[str, str]] = {"authorization": "Token right-token"}
@@ -914,6 +952,19 @@ class TestDiscord:
 
 
 class TestStandIns:
+    def test_ntopng_can_be_started_numbered_like_a_firewalls(self, running: StandIns) -> None:
+        plain = running.start("ntopng", token="a-token")
+        firewall = running.start("ntopng", token="a-token", firewall=True)
+
+        def listed(url: str) -> list[int]:
+            _, text = fetch(
+                url + "/lua/rest/v2/get/ntopng/interfaces.lua", Authorization="Token a-token"
+            )
+            return [item["ifid"] for item in json.loads(text)["rsp"]]
+
+        assert listed(plain.url) == [0, 1]
+        assert listed(firewall.url) == [1, 2, 3, 6]
+
     def test_ntopng_and_crowdsec_answer_over_plain_http(self, running: StandIns) -> None:
         ntopng = running.start("ntopng", token="a-token")
         crowdsec = running.start("crowdsec", api_key="a-key")

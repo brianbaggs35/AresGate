@@ -92,7 +92,12 @@ async def ntopng_live(
         return str(failure)
     if isinstance(listed, probes.Verdict):
         return listed.message
-    read = chosen_numbers(target.options["interface_id"])
+    saved = chosen_numbers(target.options["interface_id"])
+    read = (
+        [item for item in listed if item.ifid in saved]
+        if saved
+        else probes.default_interfaces(listed)
+    )
     return [
         Found(
             target.integration,
@@ -101,8 +106,7 @@ async def ntopng_live(
             item.name if item.name != item.ifname else "",
             item.source,
         )
-        for item in listed
-        if item.ifid in read
+        for item in read
     ]
 
 

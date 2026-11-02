@@ -20,17 +20,18 @@ async function open(connection: Connection = ntopngApi(), problems: Record<strin
   const draft = reactive(draftFrom(connection))
   const asked = ref(0)
   const trusted = vi.fn()
+  const refresh = ref(0)
   const card = ref<{ reviewCertificate: () => Promise<void> } | null>(null)
   const host = defineComponent({
     components: { ConnectionCard },
-    setup: () => ({ connection, draft, problems, asked, trusted, card }),
+    setup: () => ({ connection, draft, problems, asked, trusted, refresh, card }),
     template:
-      '<ConnectionCard ref="card" v-model="draft" integration="ntopng" :connection="connection" :problems="problems" @asked="asked += 1" @trusted="trusted" />',
+      '<ConnectionCard ref="card" v-model="draft" integration="ntopng" :connection="connection" :problems="problems" :refresh="refresh" @asked="asked += 1" @trusted="trusted" />',
   })
   const mounted = await mountWithPlugins(host, { signedIn: 'admin' })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const input = (selector: string) => find(selector).find('input')
-  return { ...mounted, draft, asked, trusted, card, find, input }
+  return { ...mounted, draft, asked, trusted, refresh, card, find, input }
 }
 
 const [, zenarmor] = opnsense().connections
@@ -124,7 +125,7 @@ describe('ConnectionCard', () => {
       const lookUp = vi.spyOn(integrationsApi, 'lookUpField').mockResolvedValue({
         ok: true,
         message: 'ntopng lists 1 interface.',
-        entries: [{ value: '2', label: 'eth2', detail: '', quiet: false }],
+        entries: [{ value: '2', label: 'eth2', detail: '', quiet: false, loopback: false }],
       })
       const { wrapper, find, draft, asked } = await open(
         ntopngApi({ url: 'http://x', secrets_set: ['token'] }),
@@ -137,11 +138,47 @@ describe('ConnectionCard', () => {
       expect(find('field-interface_id').find('input[id]').attributes('id')).toBe('api-interface_id')
       expect(wrapper.findComponent(LookupField).props('saved')).toBe(true)
       expect(asked.value).toBe(1)
-      expect(draft.options.interface_id).toBe('0')
+      expect(draft.options.interface_id).toBe('')
 
       wrapper.findComponent(VSelect).vm.$emit('update:modelValue', '2')
       await flushPromises()
       expect(draft.options.interface_id).toBe('2')
+    })
+
+    describe('a field that lists, after a test', () => {
+      const saved = (status: 'connected' | 'problem') =>
+        ntopngApi({ url: 'http://x', secrets_set: ['token'], status })
+
+      const spy = () =>
+        vi.spyOn(integrationsApi, 'lookUpField').mockResolvedValue({
+          ok: true,
+          message: 'ntopng lists 1 interface.',
+          entries: [{ value: '2', label: 'eth2', detail: '', quiet: false, loopback: false }],
+        })
+
+      it('asks again when the test passed, so the list matches what it found', async () => {
+        const lookUp = spy()
+        const { refresh } = await open(saved('connected'))
+        await flushPromises()
+        expect(lookUp).toHaveBeenCalledOnce()
+
+        refresh.value += 1
+        await flushPromises()
+
+        expect(lookUp).toHaveBeenCalledTimes(2)
+      })
+
+      it('does not ask again when the test failed, which may have been a refused login', async () => {
+        const lookUp = spy()
+        const { refresh } = await open(saved('problem'))
+        await flushPromises()
+        expect(lookUp).toHaveBeenCalledOnce()
+
+        refresh.value += 1
+        await flushPromises()
+
+        expect(lookUp).toHaveBeenCalledOnce()
+      })
     })
 
     it('does not mark a field as a number, or limit it, unless it is one', async () => {

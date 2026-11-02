@@ -62,7 +62,9 @@ async function open(
   const lookUp = vi.spyOn(integrationsApi, 'lookUpField').mockResolvedValue({
     ok: true,
     message: 'ntopng lists 1 interface.',
-    entries: [{ value: '0', label: 'eth0', detail: 'live packet capture', quiet: false }],
+    entries: [
+      { value: '0', label: 'eth0', detail: 'live packet capture', quiet: false, loopback: false },
+    ],
   })
   const calls = vi
     .spyOn(integrationsApi, 'fetchCalls')
@@ -282,7 +284,7 @@ describe('IntegrationView', () => {
             tls_mode: 'system',
             tls_ca_pem: null,
             tls_fingerprint: null,
-            options: { auth: 'token', interface_id: '0' },
+            options: { auth: 'token', interface_id: '' },
             disabled_modules: [],
             secrets: { token: 'a-token' },
           },
@@ -315,7 +317,9 @@ describe('IntegrationView', () => {
       opened.test.mockResolvedValue(passed())
       await fillIn(opened)
       await opened.submit()
-      expect(opened.calls).toHaveBeenCalledTimes(2)
+      // The page loaded it once, and the test made requests, and so did the list of interfaces
+      // asked for again to match what it found.
+      expect(opened.calls).toHaveBeenCalledTimes(3)
     })
 
     it('lists the interfaces of a connection that is saved, and reloads the log for it', async () => {
@@ -489,7 +493,7 @@ describe('IntegrationView', () => {
       await opened.type('field-password', 'a-password')
       await opened.submit()
       const sent = opened.save.mock.calls[0]?.[1]?.api
-      expect(sent?.options).toEqual({ auth: 'basic', username: 'reader', interface_id: '0' })
+      expect(sent?.options).toEqual({ auth: 'basic', username: 'reader', interface_id: '' })
       expect(sent?.secrets).toEqual({ password: 'a-password' })
     })
   })
@@ -510,8 +514,58 @@ describe('IntegrationView', () => {
       expect(opened.save).not.toHaveBeenCalled()
       expect(opened.find('report').text()).toContain('The test passed')
       // The log was loaded when the page opened, again for the interfaces it asked for, and after
-      // the test.
-      expect(opened.calls).toHaveBeenCalledTimes(3)
+      // the test, and again for the interfaces asked for to match what the test found.
+      expect(opened.calls).toHaveBeenCalledTimes(4)
+    })
+
+    it('asks ntopng for its interfaces again, to match what the test found', async () => {
+      const opened = await open(working())
+      opened.test.mockResolvedValue(passed())
+      expect(opened.lookUp).toHaveBeenCalledOnce()
+
+      await opened.click('test')
+
+      expect(opened.lookUp).toHaveBeenCalledTimes(2)
+    })
+
+    it('offers to mend a choice that ntopng no longer has, and then saves and tests it', async () => {
+      const gone = working()
+      gone.connections[0]!.options = { auth: 'token', interface_id: '0' }
+      const opened = await open(gone)
+      opened.lookUp.mockResolvedValue({
+        ok: true,
+        message: 'ntopng lists 2 interfaces.',
+        entries: [
+          { value: '1', label: 'WAN (igc0)', detail: '', quiet: false, loopback: false },
+          { value: '3', label: 'lo0', detail: '', quiet: false, loopback: true },
+        ],
+      })
+      opened.test.mockResolvedValue({
+        ok: false,
+        checks: [
+          {
+            connection: 'api',
+            ok: false,
+            message: 'ntopng answered, but has no interface with ID 0.',
+            certificate_problem: false,
+          },
+        ],
+        integration: gone,
+      })
+      await opened.click('test')
+
+      expect(opened.find('lookup-gone').text()).toContain('Use WAN (igc0)')
+      await opened.click('lookup-mend')
+
+      expect(opened.find('lookup-gone').exists()).toBe(false)
+      expect(opened.find('unsaved').exists()).toBe(true)
+      opened.save.mockResolvedValue(working())
+      opened.test.mockResolvedValue(passed())
+      await opened.submit()
+      expect(opened.save.mock.calls[0]?.[1]?.api?.options).toEqual({
+        auth: 'token',
+        interface_id: '1',
+      })
     })
 
     it('says why it could not be run', async () => {

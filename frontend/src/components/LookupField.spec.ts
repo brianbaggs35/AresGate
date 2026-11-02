@@ -17,12 +17,14 @@ const wan: LookupEntry = {
   label: 'eth0',
   detail: 'live packet capture · 41 hosts, 120 flows, 912.3 MB seen',
   quiet: false,
+  loopback: false,
 }
 const lan: LookupEntry = {
   value: '1',
   label: 'LAN (eth1)',
   detail: 'live packet capture · no traffic seen yet',
   quiet: true,
+  loopback: false,
 }
 const listed = (entries: LookupEntry[] = [lan, wan]): LookupResult => ({
   ok: true,
@@ -52,12 +54,21 @@ async function open({
   draft.url = url
   draft.options.interface_id = chosen
   const asked = ref(0)
+  const refresh = ref(0)
   const host = defineComponent({
     components: { LookupField },
-    setup: () => ({ draft, definition: connection.definition, field, saved, asked, problem }),
+    setup: () => ({
+      draft,
+      definition: connection.definition,
+      field,
+      saved,
+      asked,
+      refresh,
+      problem,
+    }),
     template: `<LookupField v-model="draft.options.interface_id" integration="ntopng"
       :definition="definition" :field="field" :draft="draft" id="api-interface_id" :saved="saved"
-      :error-messages="problem" @asked="asked += 1" />`,
+      :refresh="refresh" :error-messages="problem" @asked="asked += 1" />`,
   })
   const mounted = await mountWithPlugins(host, { signedIn: 'admin' })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -65,7 +76,7 @@ async function open({
     await find(selector).trigger('click')
     await flushPromises()
   }
-  return { ...mounted, draft, asked, find, click }
+  return { ...mounted, draft, asked, refresh, find, click }
 }
 
 describe('LookupField', () => {
@@ -200,9 +211,26 @@ describe('LookupField', () => {
       const { draft, find } = await open({ saved: true, chosen: '7' })
 
       expect(draft.options.interface_id).toBe('7')
-      expect(find('lookup-gone').text()).toBe(
+      expect(find('lookup-gone').text()).toContain(
         "The saved choice (ID 7) isn't on the list REST API gave now. Choose one from it.",
       )
+    })
+
+    it('offers to choose the one that has seen traffic instead, and does so in one click', async () => {
+      const { draft, find, click } = await open({ saved: true, chosen: '7' })
+
+      expect(find('lookup-mend').text()).toBe('Use eth0')
+      await click('lookup-mend')
+
+      expect(draft.options.interface_id).toBe('0')
+      expect(find('lookup-gone').exists()).toBe(false)
+    })
+
+    it('has no button to mend a choice when the list is empty', async () => {
+      lookUp.mockResolvedValue({ ok: true, message: 'Nothing listed.', entries: [] })
+      const { find } = await open({ saved: true, chosen: '7' })
+
+      expect(find('lookup-mend').exists()).toBe(false)
     })
 
     it('does not make a choice when the list is empty', async () => {
@@ -304,8 +332,20 @@ describe('LookupField', () => {
   })
 
   describe('where several can be chosen', () => {
-    const dmz: LookupEntry = { value: '2', label: 'DMZ (eth2)', detail: '', quiet: false }
-    const guest: LookupEntry = { value: '3', label: 'Guest (eth3)', detail: '', quiet: true }
+    const dmz: LookupEntry = {
+      value: '2',
+      label: 'DMZ (eth2)',
+      detail: '',
+      quiet: false,
+      loopback: false,
+    }
+    const guest: LookupEntry = {
+      value: '3',
+      label: 'Guest (eth3)',
+      detail: '',
+      quiet: true,
+      loopback: false,
+    }
 
     it('shows each one chosen by name', async () => {
       const { find } = await open({ multiple: true, saved: true, chosen: '0,1' })
@@ -359,18 +399,24 @@ describe('LookupField', () => {
       expect(draft.options.interface_id).toBe('1,9')
     })
 
-    it('chooses every interface that has seen traffic when none chosen is on the list', async () => {
+    it('chooses every interface when none chosen is on the list', async () => {
       lookUp.mockResolvedValue(listed([lan, dmz, wan]))
       const { draft, click } = await open({ multiple: true, chosen: '7' })
       await click('lookup-fetch')
-      expect(draft.options.interface_id).toBe('0,2')
+      expect(draft.options.interface_id).toBe('0,1,2')
     })
 
-    it('chooses the first one when none has seen anything', async () => {
+    it('chooses every interface when none is chosen at all', async () => {
+      const { draft, click } = await open({ multiple: true, chosen: '' })
+      await click('lookup-fetch')
+      expect(draft.options.interface_id).toBe('0,1')
+    })
+
+    it('chooses every one even when none has seen anything', async () => {
       lookUp.mockResolvedValue(listed([{ ...lan, value: '4' }, guest]))
       const { draft, click } = await open({ multiple: true, chosen: '7' })
       await click('lookup-fetch')
-      expect(draft.options.interface_id).toBe('4')
+      expect(draft.options.interface_id).toBe('3,4')
     })
 
     it('chooses no more than the API takes', async () => {
@@ -389,17 +435,44 @@ describe('LookupField', () => {
       const { draft, find } = await open({ multiple: true, saved: true, chosen: '0,7' })
 
       expect(draft.options.interface_id).toBe('0,7')
-      expect(find('lookup-gone').text()).toBe(
+      expect(find('lookup-gone').text()).toContain(
         "The saved choice (ID 7) isn't on the list REST API gave now. Take it off, or choose from the list.",
       )
+    })
+
+    it('takes off the saved choice that has gone and keeps the others, in one click', async () => {
+      const { draft, find, click } = await open({ multiple: true, saved: true, chosen: '0,7' })
+
+      expect(find('lookup-mend').text()).toBe('Take it off')
+      await click('lookup-mend')
+
+      expect(draft.options.interface_id).toBe('0')
+      expect(find('lookup-gone').exists()).toBe(false)
+    })
+
+    it('chooses what the list suggests when every saved choice has gone, in one click', async () => {
+      const { draft, find, click } = await open({ multiple: true, saved: true, chosen: '7,9' })
+
+      expect(find('lookup-mend').text()).toBe('Use LAN (eth1) and eth0')
+      await click('lookup-mend')
+
+      expect(draft.options.interface_id).toBe('0,1')
+      expect(find('lookup-gone').exists()).toBe(false)
     })
 
     it('says so when several of the saved choices have gone', async () => {
       const { find } = await open({ multiple: true, saved: true, chosen: '7,9' })
 
-      expect(find('lookup-gone').text()).toBe(
+      expect(find('lookup-gone').text()).toContain(
         "The saved choices (IDs 7, 9) aren't on the list REST API gave now. Take them off, or choose from the list.",
       )
+    })
+
+    it('says to take them all off, when some stay on the list', async () => {
+      lookUp.mockResolvedValue(listed([lan, wan, dmz]))
+      const { find } = await open({ multiple: true, saved: true, chosen: '0,7,9' })
+
+      expect(find('lookup-mend').text()).toBe('Take them off')
     })
 
     it('warns about one that has seen nothing, and asks to choose another only when all are quiet', async () => {
@@ -426,6 +499,171 @@ describe('LookupField', () => {
     it('is not warned about when the ones chosen have seen traffic', async () => {
       const { find } = await open({ multiple: true, saved: true, chosen: '0' })
       expect(find('lookup-quiet').exists()).toBe(false)
+    })
+  })
+
+  describe('a loopback', () => {
+    const lo0: LookupEntry = {
+      value: '3',
+      label: 'lo0',
+      detail: 'loopback, normally not useful · live packet capture · no traffic seen yet',
+      quiet: false,
+      loopback: true,
+    }
+    const lo1: LookupEntry = { ...lo0, value: '4', label: 'lo1' }
+
+    it('is left out of what is chosen for a connection that is not saved yet', async () => {
+      lookUp.mockResolvedValue(listed([lan, lo0, wan]))
+      const { draft, click } = await open({ multiple: true, chosen: '' })
+      await click('lookup-fetch')
+      expect(draft.options.interface_id).toBe('0,1')
+    })
+
+    it('is chosen when it is the only interface there is', async () => {
+      lookUp.mockResolvedValue(listed([lo0]))
+      const { draft, click } = await open({ multiple: true, chosen: '' })
+      await click('lookup-fetch')
+      expect(draft.options.interface_id).toBe('3')
+    })
+
+    it('is left out where only one can be chosen too', async () => {
+      lookUp.mockResolvedValue(listed([lo0, lan]))
+      const { draft, click } = await open({ chosen: '7' })
+      await click('lookup-fetch')
+      expect(draft.options.interface_id).toBe('1')
+    })
+
+    it('is said to be normally not worth reading when it is chosen', async () => {
+      lookUp.mockResolvedValue(listed([lan, lo0, wan]))
+      const { find } = await open({ multiple: true, saved: true, chosen: '0,3' })
+
+      expect(find('lookup-loopback').text()).toBe(
+        'lo0 is the loopback, which normally has nothing worth reading.',
+      )
+    })
+
+    it('is said to be one of several loopbacks when more are chosen', async () => {
+      lookUp.mockResolvedValue(listed([lo0, lo1, wan]))
+      const { find } = await open({ multiple: true, saved: true, chosen: '3,4' })
+
+      expect(find('lookup-loopback').text()).toBe(
+        'lo0 and lo1 are loopbacks, which normally have nothing worth reading.',
+      )
+    })
+
+    it('is not mentioned when it is not chosen', async () => {
+      lookUp.mockResolvedValue(listed([lan, lo0, wan]))
+      const { find } = await open({ multiple: true, saved: true, chosen: '0' })
+      expect(find('lookup-loopback').exists()).toBe(false)
+    })
+
+    it('is not offered when a saved choice has gone', async () => {
+      lookUp.mockResolvedValue(listed([lan, lo0, wan]))
+      const { draft, find, click } = await open({ multiple: true, saved: true, chosen: '9' })
+
+      expect(find('lookup-mend').text()).toBe('Use LAN (eth1) and eth0')
+      await click('lookup-mend')
+      expect(draft.options.interface_id).toBe('0,1')
+    })
+  })
+
+  describe('with nothing chosen', () => {
+    const lo0: LookupEntry = {
+      value: '3',
+      label: 'lo0',
+      detail: '',
+      quiet: false,
+      loopback: true,
+    }
+
+    it('says what is read instead, once the list is known', async () => {
+      lookUp.mockResolvedValue(listed([lan, lo0, wan]))
+      const { find } = await open({ multiple: true, saved: true, chosen: '' })
+
+      expect(find('lookup-default').text()).toBe(
+        'Nothing is chosen, so AresGate reads LAN (eth1) and eth0. lo0 is the loopback, which normally has nothing worth reading.',
+      )
+      expect(find('lookup-gone').exists()).toBe(false)
+    })
+
+    it('has no word about a loopback when the list has none', async () => {
+      const { find } = await open({ multiple: true, saved: true, chosen: '' })
+
+      expect(find('lookup-default').text()).toBe(
+        'Nothing is chosen, so AresGate reads LAN (eth1) and eth0.',
+      )
+    })
+
+    it('says nothing until the list is known', async () => {
+      const { find } = await open({ multiple: true, chosen: '' })
+      expect(find('lookup-default').exists()).toBe(false)
+    })
+
+    it('says nothing when something is chosen', async () => {
+      const { find } = await open({ multiple: true, saved: true, chosen: '0' })
+      expect(find('lookup-default').exists()).toBe(false)
+    })
+
+    it('says nothing where only one can be chosen, since one must be', async () => {
+      const { find } = await open({ saved: true, chosen: '' })
+      expect(find('lookup-default').exists()).toBe(false)
+    })
+  })
+
+  describe('when told to ask again', () => {
+    it('asks again, for a connection that is saved, so the list matches what a test found', async () => {
+      const { refresh, asked } = await open({ saved: true })
+      expect(lookUp).toHaveBeenCalledOnce()
+
+      refresh.value += 1
+      await flushPromises()
+
+      expect(lookUp).toHaveBeenCalledTimes(2)
+      expect(asked.value).toBe(2)
+    })
+
+    it('does not ask without an address', async () => {
+      const { refresh, find } = await open({ saved: true, url: '  ' })
+      expect(lookUp).not.toHaveBeenCalled()
+
+      refresh.value += 1
+      await flushPromises()
+
+      expect(lookUp).not.toHaveBeenCalled()
+      expect(find('lookup-gone').exists()).toBe(false)
+    })
+
+    it('does not ask when the count goes back to nothing, which is a failed test', async () => {
+      const { refresh } = await open({ saved: true })
+      refresh.value = 1
+      await flushPromises()
+      expect(lookUp).toHaveBeenCalledTimes(2)
+
+      refresh.value = 0
+      await flushPromises()
+
+      expect(lookUp).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not ask for a connection that is not saved', async () => {
+      const { refresh } = await open()
+      refresh.value += 1
+      await flushPromises()
+      expect(lookUp).not.toHaveBeenCalled()
+    })
+
+    it('does not ask again while it is still asking', async () => {
+      let answer: (result: LookupResult) => void = () => undefined
+      lookUp.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+      const { refresh } = await open({ saved: true })
+      expect(lookUp).toHaveBeenCalledOnce()
+
+      refresh.value += 1
+      await flushPromises()
+      expect(lookUp).toHaveBeenCalledOnce()
+
+      answer(listed())
+      await flushPromises()
     })
   })
 

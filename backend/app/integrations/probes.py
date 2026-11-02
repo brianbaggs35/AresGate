@@ -8,13 +8,19 @@ facts (a version, an interface name) with control characters removed.
 """
 
 import re
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
 from app import audit
 from app.integrations.client import ApiClient, CallFailed, Reply, Target
-from app.integrations.registry import OPNSENSE_MODULES, Entry, ModuleState, chosen_numbers
+from app.integrations.registry import (
+    MAX_CHOSEN,
+    OPNSENSE_MODULES,
+    Entry,
+    ModuleState,
+    chosen_numbers,
+)
 
 # What a system is asked about, small enough to say nothing about the person's network: CrowdSec
 # is asked whether this address (from the range reserved for documentation) is banned.
@@ -190,6 +196,11 @@ NTOPNG_INTERFACE = "/lua/rest/v2/get/interface/data.lua"
 MAX_DETAILED = 20
 
 
+# What systems call an interface that only carries a machine's traffic to itself: ``lo`` on Linux,
+# ``lo0`` on the BSDs (OPNsense among them).
+_LOOPBACK = re.compile(r"lo\d*")
+
+
 @dataclass(frozen=True)
 class NtopngInterface:
     """One interface of ntopng's list: its ``ifid``, its name in the system, the name ntopng shows
@@ -205,6 +216,12 @@ class NtopngInterface:
         if self.name and self.ifname and self.name != self.ifname:
             return f"{self.name} ({self.ifname})"
         return self.ifname or self.name or f"Interface {self.ifid}"
+
+    @property
+    def loopback(self) -> bool:
+        """The interface only carries the machine's traffic to itself, so it has nothing of the
+        network in it. ntopng gives no flag for it, only the system's name for the interface."""
+        return _LOOPBACK.fullmatch(self.ifname) is not None
 
 
 @dataclass(frozen=True)
@@ -315,59 +332,130 @@ async def ntopng_traffic(client: ApiClient, target: Target, ifid: int) -> Traffi
     return _traffic_of(data) if data else None
 
 
-def interface_names(found: list[NtopngInterface]) -> str:
-    """The interfaces as a sentence needs them: ``ID 0: wan, ID 1: LAN (eth1)``."""
-    return ", ".join(f"ID {item.ifid}: {item.label}" for item in found) or "none"
+def default_interfaces(listed: Sequence[NtopngInterface]) -> list[NtopngInterface]:
+    """The interfaces that are read when none is chosen: every one ntopng lists but the loopback,
+    which has nothing of the network in it (at most as many as can be chosen). Where a loopback is
+    all there is, it is read, since there would be nothing else to."""
+    real = [item for item in listed if not item.loopback]
+    return (real or list(listed))[:MAX_CHOSEN]
+
+
+def interface_names(found: Sequence[NtopngInterface]) -> str:
+    """The interfaces as a sentence needs them: ``ID 0: wan, ID 1: LAN (eth1), ID 3: lo0
+    (loopback)``."""
+    return (
+        ", ".join(
+            f"ID {item.ifid}: {item.label}{' (loopback)' if item.loopback else ''}"
+            for item in found
+        )
+        or "none"
+    )
+
+
+def _numbers(ifids: Sequence[int]) -> str:
+    """Interface IDs as a sentence needs them: ``ID 1``, ``IDs 1 and 2``, ``IDs 1, 2 and 6``."""
+    numbers = [str(ifid) for ifid in ifids]
+    if len(numbers) == 1:
+        return f"ID {numbers[0]}"
+    return f"IDs {', '.join(numbers[:-1])} and {numbers[-1]}"
+
+
+def _loopback_note(found: Sequence[NtopngInterface]) -> str:
+    """Why a loopback isn't worth reading, for any among them, or nothing."""
+    names = [item.ifname for item in found if item.loopback]
+    if not names:
+        return ""
+    if len(names) == 1:
+        return f"{names[0]} is the loopback, which normally has nothing worth reading."
+    which = f"{', '.join(names[:-1])} and {names[-1]}"
+    return f"{which} are loopbacks, which normally have nothing worth reading."
+
+
+def _suggestion(listed: Sequence[NtopngInterface]) -> str:
+    """What to choose from a list of interfaces, for someone whose choice isn't on it."""
+    usual = default_interfaces(listed)
+    text = (
+        f"Choose the ones to read under Interfaces. Suggested: "
+        f"{_numbers([item.ifid for item in usual])}."
+    )
+    note = _loopback_note([item for item in listed if item not in usual])
+    return f"{text} {note}" if note else text
+
+
+def _by_default(listed: Sequence[NtopngInterface], chosen: Sequence[NtopngInterface]) -> str:
+    """Says what is read when no interface is chosen."""
+    lead = "No interface is chosen, so AresGate reads"
+    left = [item for item in listed if item not in chosen]
+    if not left:
+        return f"{lead} every one ntopng lists."
+    if any(not item.loopback for item in left):
+        return f"{lead} the first {len(chosen)} of the {len(listed)} ntopng lists."
+    return f"{lead} every one ntopng lists but the loopback."
 
 
 async def ntopng(client: ApiClient, target: Target) -> Verdict:
     """The interfaces ntopng monitors, which also shows the interfaces chosen exist, and whether
-    each has seen anything."""
+    each has seen anything. With none chosen, it says which are read instead."""
     listed = await ntopng_interfaces(client, target)
     if isinstance(listed, Verdict):
         return listed
+    if not listed:
+        return Verdict(
+            False, "ntopng answered, but lists no interfaces, so there is nothing to read."
+        )
     wanted = chosen_numbers(target.options["interface_id"])
     known = {item.ifid: item for item in listed}
-    missing = [ifid for ifid in wanted if ifid not in known]
-    if missing:
-        which = (
-            f"interface with ID {missing[0]}"
-            if len(missing) == 1
-            else (f"interfaces with IDs {', '.join(str(ifid) for ifid in missing)}")
-        )
-        return Verdict(
-            False,
-            f"ntopng answered, but has no {which}. It has: {interface_names(listed)}.",
-        )
-    seen = [(known[ifid], await ntopng_traffic(client, target, ifid)) for ifid in wanted]
-    if len(seen) == 1:
+    if missing := [ifid for ifid in wanted if ifid not in known]:
+        return _no_such_interfaces(missing, listed)
+    chosen = [known[ifid] for ifid in wanted] or default_interfaces(listed)
+    seen = [(item, await ntopng_traffic(client, target, item.ifid)) for item in chosen]
+    if wanted and len(seen) == 1:
         return _one_interface(*seen[0])
     sentences: list[str] = []
-    for chosen, traffic in seen:
-        sentence = f"Interface {chosen.ifid} is {chosen.label}"
+    for port, traffic in seen:
+        sentence = f"Interface {port.ifid} is {port.label}"
         if traffic is not None:
             sentence += (
                 " and hasn't seen any traffic yet" if traffic.quiet else f": {traffic.describe()}"
             )
         sentences.append(f"{sentence}.")
-    message = f"ntopng answered. {' '.join(sentences)}"
+    lead = "" if wanted else f" {_by_default(listed, chosen)}"
+    message = f"ntopng answered.{lead} {' '.join(sentences)}"
     if any(traffic is not None and traffic.quiet for _, traffic in seen):
         message += " Nothing comes in from an interface until it has seen traffic."
+    if note := _loopback_note(chosen):
+        message += f" {note}"
     return Verdict(True, message)
+
+
+def _no_such_interfaces(missing: Sequence[int], listed: Sequence[NtopngInterface]) -> Verdict:
+    """The interfaces that were chosen and ntopng doesn't have, with the ones it does have and
+    which to choose."""
+    which = (
+        f"interface with ID {missing[0]}"
+        if len(missing) == 1
+        else f"interfaces with IDs {', '.join(str(ifid) for ifid in missing)}"
+    )
+    return Verdict(
+        False,
+        f"ntopng answered, but has no {which}. It has: {interface_names(listed)}. "
+        f"{_suggestion(listed)}",
+    )
 
 
 def _one_interface(chosen: NtopngInterface, traffic: Traffic | None) -> Verdict:
     """The verdict for a connection that reads one interface."""
     message = f"ntopng answered. Interface {chosen.ifid} is {chosen.label}"
+    note = f" {_loopback_note([chosen])}" if chosen.loopback else ""
     if traffic is None:
-        return Verdict(True, f"{message}.")
+        return Verdict(True, f"{message}.{note}")
     if traffic.quiet:
         return Verdict(
             True,
             f"{message}, but it hasn't seen any traffic yet, so there is nothing to read from it "
-            "until it does. If it isn't the interface you mean, choose another.",
+            f"until it does. If it isn't the interface you mean, choose another.{note}",
         )
-    return Verdict(True, f"{message}: {traffic.describe()}.")
+    return Verdict(True, f"{message}: {traffic.describe()}.{note}")
 
 
 async def ntopng_interface_lookup(client: ApiClient, target: Target) -> Lookup:
@@ -384,7 +472,13 @@ async def ntopng_interface_lookup(client: ApiClient, target: Target) -> Lookup:
             await ntopng_traffic(client, target, item.ifid) if position < MAX_DETAILED else None
         )
         detail = " · ".join(
-            part for part in (item.source, traffic.describe() if traffic else "") if part
+            part
+            for part in (
+                "loopback, normally not useful" if item.loopback else "",
+                item.source,
+                traffic.describe() if traffic else "",
+            )
+            if part
         )
         entries.append(
             Entry(
@@ -392,6 +486,7 @@ async def ntopng_interface_lookup(client: ApiClient, target: Target) -> Lookup:
                 label=item.label,
                 detail=detail,
                 quiet=traffic is not None and traffic.quiet,
+                loopback=item.loopback,
             )
         )
     return Lookup(True, f"ntopng lists {_count_of(len(entries), 'interface')}.", tuple(entries))

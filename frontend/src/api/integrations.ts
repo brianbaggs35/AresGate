@@ -186,6 +186,8 @@ export interface LookupEntry {
   detail: string
   /** Nothing has passed through it yet. */
   quiet: boolean
+  /** It only carries the machine's traffic to itself, which normally has nothing worth reading. */
+  loopback: boolean
 }
 
 /** What a system listed when it was asked for the choices of a field, or why it couldn't say. */

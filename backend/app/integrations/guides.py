@@ -362,9 +362,12 @@ NTOPNG = Guide(
                     detail=(
                         "Enter ntopng's address, with the port of its web interface (3000 unless "
                         "you changed it). Then press Fetch interfaces: it lists the interfaces "
-                        "ntopng watches, with what each has seen, and you choose each one "
-                        "AresGate reads. Username and password, instead of the token, use HTTP "
-                        "basic authentication."
+                        "ntopng watches, with their ID and what each has seen, and you choose each "
+                        "one AresGate reads. ntopng numbers its interfaces itself, not always from "
+                        "0, so go by the names. Choose none and AresGate reads every one except "
+                        "the loopback (lo or lo0), which only carries the machine's traffic to "
+                        "itself. Username and password, instead of the token, use HTTP basic "
+                        "authentication."
                     ),
                     fills=(
                         Fill(label=ADDRESS, value="http://192.168.1.2:3000"),

@@ -56,6 +56,33 @@ def two_interfaces(answers: dict[tuple[str, str], object]) -> Callable[[Seen], A
     return handle
 
 
+# An OPNsense firewall's ntopng: it numbers its interfaces from 1, with gaps, and the loopback is
+# among them.
+FIREWALL = [
+    {"ifid": 1, "ifname": "igc0", "name": "WAN", "is_packet_interface": True},
+    {"ifid": 2, "ifname": "igc1", "name": "LAN", "is_packet_interface": True},
+    {"ifid": 3, "ifname": "lo0", "name": "lo0", "is_packet_interface": True},
+    {"ifid": 6, "ifname": "ovpns1", "name": "ovpns1", "is_packet_interface": True},
+]
+
+
+def firewall(answers: dict[tuple[str, str], object]) -> Callable[[Seen], Answer]:
+    """The firewall's ntopng, which answers each request by its path and ifid, and refuses an
+    interface it doesn't have with a 400, as ntopng does."""
+
+    def handle(seen: Seen) -> Answer:
+        if seen.path == INTERFACES:
+            return wrapped(FIREWALL)
+        if asked_about(seen) not in {str(item["ifid"]) for item in FIREWALL}:
+            return Answer(
+                status=400, body=json.dumps({"rc": -2, "rc_str": "INVALID_INTERFACE", "rsp": {}})
+            )
+        nothing: dict[str, Any] = {"records": []} if seen.path in (FLOWS, HOSTS) else {}
+        return wrapped(answers.get((seen.path, asked_about(seen)), nothing))
+
+    return handle
+
+
 def alert(row: str, host: str, **changes: Any) -> dict[str, Any]:
     record: dict[str, Any] = {
         "row_id": row,
@@ -285,6 +312,110 @@ class TestHosts:
         collect(settings, engine, Hosts())
 
         assert health(session).last_error == probes.unexpected("ntopng").message
+
+
+class TestNothingChosen:
+    """A connection with no interface chosen reads every one ntopng lists but the loopback, which
+    it asks ntopng for, since ntopng numbers its interfaces itself and not always from 0."""
+
+    def test_the_alerts_of_every_interface_but_the_loopback_are_read(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        started = serve(
+            firewall(
+                {
+                    (HOSTS, "1"): {"records": [alert("1", "192.168.1.41")]},
+                    (HOSTS, "6"): {"records": [alert("1", "10.8.0.2")]},
+                }
+            )
+        )
+        connect(session, settings, started.url, interface_id="")
+
+        collect(settings, engine, Alerts())
+
+        assert health(session).last_error is None
+        assert kept(session) == [("igc0", "192.168.1.41"), ("ovpns1", "10.8.0.2")]
+        asked = {asked_about(item) for item in started.seen if item.path != INTERFACES}
+        assert asked == {"1", "2", "6"}
+
+    def test_the_traffic_of_every_interface_but_the_loopback_is_kept(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        other = BUSY | {"ifname": "igc1", "bytes_download": 70}
+        started = serve(
+            firewall(
+                {(DATA, "1"): BUSY | {"ifname": "igc0"}, (DATA, "2"): other, (DATA, "6"): QUIET}
+            )
+        )
+        connect(session, settings, started.url, interface_id="")
+
+        collect(settings, engine, InterfaceTraffic())
+
+        assert health(session).last_error is None
+        assert series(session) == [
+            ("interface.bytes_in", "igc0", 9.0),
+            ("interface.bytes_in", "igc1", 70.0),
+        ]
+        assert {asked_about(item) for item in started.seen if item.path == DATA} == {"1", "2", "6"}
+
+    def test_the_hosts_of_every_interface_but_the_loopback_are_read(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        started = serve(firewall({(HOST_LIST, number): {"data": []} for number in "126"}))
+        connect(session, settings, started.url, interface_id="")
+
+        collect(settings, engine, Hosts())
+
+        asked = [asked_about(item) for item in started.seen if item.path == HOST_LIST]
+        assert asked == ["1", "2", "6"]
+
+    def test_a_loopback_that_is_the_only_interface_is_read(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        def handle(seen: Seen) -> Answer:
+            if seen.path == INTERFACES:
+                return wrapped([{"ifid": 0, "ifname": "lo"}])
+            return wrapped({"data": []})
+
+        started = serve(handle)
+        connect(session, settings, started.url, interface_id="")
+
+        collect(settings, engine, Hosts())
+
+        assert [asked_about(item) for item in started.seen if item.path == HOST_LIST] == ["0"]
+
+    def test_a_ntopng_that_will_not_list_its_interfaces_says_why_nothing_is_read(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        connect(session, settings, serve(lambda seen: Answer(status=302)).url, interface_id="")
+
+        collect(settings, engine, Hosts())
+
+        assert health(session).last_error == probes.NTOPNG_LOGIN_REFUSED
+
+    def test_a_ntopng_that_lists_no_interfaces_has_nothing_to_read(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        connect(session, settings, serve(lambda seen: wrapped([])).url, interface_id="")
+
+        collect(settings, engine, Hosts())
+
+        assert (
+            health(session).last_error == "ntopng lists no interfaces, so there is nothing to read."
+        )
+
+    def test_a_saved_0_that_ntopng_does_not_have_is_named_with_the_loopback_flagged(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        connect(session, settings, serve(firewall({})).url, interface_id=0)
+
+        collect(settings, engine, Hosts())
+
+        assert health(session).last_error == (
+            "ntopng has no interface 0, so it refused the request. It has: ID 1: WAN (igc0), "
+            "ID 2: LAN (igc1), ID 3: lo0 (loopback), ID 6: ovpns1. Choose the interfaces to "
+            "read under Interfaces in the connection's settings."
+        )
 
 
 def test_a_connection_saved_before_several_could_be_chosen_reads_its_one_interface() -> None:

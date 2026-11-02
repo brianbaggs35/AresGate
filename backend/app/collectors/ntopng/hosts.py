@@ -47,7 +47,7 @@ class Hosts(Collector):
 
     async def collect(self, context: Context) -> Outcome:
         found: list[Mapping[str, object]] = []
-        for ifid in interfaces(context):
+        for ifid in await interfaces(context):
             query = {"ifid": str(ifid), "mode": "local", "all": "true"}
             answer = probes.as_object(await read(context, PATH, query))
             rows = probes.as_array(answer.get("data")) if answer else None

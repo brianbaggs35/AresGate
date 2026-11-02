@@ -240,6 +240,9 @@ export interface StandInRequest {
   /** Discord's: the `id/token` of the one webhook it knows. Alerts are sent to it instead of to
    * Discord while it runs. */
   webhook?: string
+  /** ntopng: it numbers its interfaces like one on an OPNsense firewall (WAN 1, LAN 2, the
+   * loopback 3, a VPN 6), not from 0. */
+  firewall?: boolean
 }
 
 /** A server on the test machine that answers like an integration. */

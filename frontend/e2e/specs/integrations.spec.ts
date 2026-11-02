@@ -176,16 +176,18 @@ test.describe('integrations', () => {
       await integration.save.click()
 
       await expect(integration.report).toContainText('The test passed')
+      // Nothing was chosen, so it reads every interface ntopng lists.
       await expect(integration.report).toContainText(
-        'ntopng answered. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen.',
+        'ntopng answered. No interface is chosen, so AresGate reads every one ntopng lists. Interface 0 is eth0: 41 hosts (18 local), 212 flows, 1.0 GB seen.',
       )
       await expect(integration.status).toHaveText('Connected')
       await expect(integration.save).toHaveText('Save and test')
       await expect(integration.connectionStatus('api')).toHaveText('Connected')
       await expect(integration.lastSuccess).toContainText('Last successful call')
       // The log has the requests, newest first, with their paths and no query string, and how
-      // they went: the interfaces ntopng has, then what the chosen one has seen.
-      await expect(integration.logCalls).toHaveCount(2)
+      // they went: the interfaces ntopng has, then what each has seen (the test), and the same
+      // again for the list under Interfaces, which is asked for again after a test that passed.
+      await expect(integration.logCalls).toHaveCount(6)
       await expect(integration.logCalls.first()).toContainText(
         '/lua/rest/v2/get/interface/data.lua',
       )
@@ -230,8 +232,10 @@ test.describe('integrations', () => {
       await integration.lookupFetch('api').click()
 
       await expect(integration.lookupMessage('api')).toHaveText('ntopng lists 2 interfaces.')
+      // Nothing was chosen, so both are, and the quiet one is said to have seen nothing.
       await expect(integration.lookupSelect('api')).toContainText('eth0')
-      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+      await expect(integration.lookupSelect('api')).toContainText('LAN (eth1)')
+      await expect(integration.lookupQuiet('api')).toBeVisible()
       // Each is named, with its ID, where its traffic comes from and what it has seen.
       await integration.lookupSelect('api').click()
       const options = page.getByRole('option')
@@ -242,7 +246,15 @@ test.describe('integrations', () => {
       )
       await expect(options.nth(1)).toContainText('LAN (eth1)')
       await expect(options.nth(1)).toContainText('ID 1 · live packet capture · no traffic seen yet')
-      // More than one can be chosen: LAN joins eth0, and is said to have seen nothing.
+      // More than one can be chosen: LAN comes off, and joins again.
+      await options.nth(1).click()
+      await page.keyboard.press('Escape')
+      await expect(integration.lookupSelect('api')).not.toContainText('LAN (eth1)')
+      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+      // The list has closed before it is opened again, so the option isn't still moving.
+      await expect(options).toHaveCount(0)
+      await integration.lookupSelect('api').locator('.v-field').click()
+      await expect(options).toHaveCount(2)
       await options.nth(1).click()
       await page.keyboard.press('Escape')
       await expect(integration.lookupSelect('api')).toContainText('eth0')
@@ -280,7 +292,7 @@ test.describe('integrations', () => {
       await expect(integration.report).not.toContainText('Interface 1')
     })
 
-    test('starts on the interfaces that have seen traffic when the default is not there', async ({
+    test('starts on every interface but the loopback when nothing is chosen', async ({
       page,
       harness,
       integration,
@@ -295,9 +307,16 @@ test.describe('integrations', () => {
             ok: true,
             message: 'ntopng lists 3 interfaces.',
             entries: [
-              { value: '5', label: 'quiet', detail: 'no traffic seen yet', quiet: true },
-              { value: '6', label: 'busy', detail: '3 hosts', quiet: false },
-              { value: '7', label: 'busier', detail: '9 hosts', quiet: false },
+              {
+                value: '5',
+                label: 'quiet',
+                detail: 'no traffic seen yet',
+                quiet: true,
+                loopback: false,
+              },
+              { value: '6', label: 'busy', detail: '3 hosts', quiet: false, loopback: false },
+              { value: '7', label: 'busier', detail: '9 hosts', quiet: false, loopback: false },
+              { value: '8', label: 'lo0', detail: 'loopback', quiet: false, loopback: true },
             ],
           },
         }),
@@ -307,8 +326,98 @@ test.describe('integrations', () => {
 
       await expect(integration.lookupSelect('api')).toContainText('busy')
       await expect(integration.lookupSelect('api')).toContainText('busier')
-      await expect(integration.lookupSelect('api')).not.toContainText('quiet')
-      await expect(integration.lookupQuiet('api')).toHaveCount(0)
+      await expect(integration.lookupSelect('api')).toContainText('quiet')
+      await expect(integration.lookupSelect('api')).not.toContainText('lo0')
+      await expect(integration.lookupQuiet('api')).toBeVisible()
+    })
+
+    test('works with a ntopng that numbers its interfaces from 1, and mends an old choice of 0 in one click', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN, firewall: true })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+
+      // Nothing is chosen, so it reads every interface but the loopback, which has no ID 0 to
+      // trip over.
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.report).toContainText(
+        'No interface is chosen, so AresGate reads every one ntopng lists but the loopback.',
+      )
+      await expect(integration.report).toContainText('Interface 1 is WAN (igc0)')
+      await expect(integration.report).toContainText('Interface 2 is LAN (igc1)')
+      await expect(integration.report).toContainText('Interface 6 is ovpns1')
+      await expect(integration.report).not.toContainText('lo0')
+      // The field says the same once the list is known, without pressing Fetch interfaces.
+      await expect(integration.lookupDefault('api')).toContainText(
+        'Nothing is chosen, so AresGate reads WAN (igc0), LAN (igc1), and ovpns1. lo0 is the loopback, which normally has nothing worth reading.',
+      )
+
+      // The loopback can still be chosen, and is said to be normally not worth reading.
+      await integration.lookupSelect('api').click()
+      const options = page.getByRole('option')
+      await expect(options).toHaveCount(4)
+      await expect(options.nth(2)).toContainText('lo0')
+      await expect(options.nth(2)).toContainText('loopback, normally not useful')
+      await options.nth(2).click()
+      await page.keyboard.press('Escape')
+      await expect(integration.lookupLoopback('api')).toHaveText(
+        'lo0 is the loopback, which normally has nothing worth reading.',
+      )
+    })
+
+    test('says what ntopng has when the saved choice is 0, and mends it in one click', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN, firewall: true })
+      // What a connection saved before there was no default of 0 holds.
+      await page.route('**/api/integrations/ntopng', async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback()
+        const body = route.request().postDataJSON() as {
+          connections: { api: { options: Record<string, string> } }
+        }
+        body.connections.api.options.interface_id = '0'
+        return route.continue({ postData: JSON.stringify(body) })
+      })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+
+      // The test names what ntopng has, flags the loopback, and says which to choose.
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.report).toContainText(
+        'ntopng answered, but has no interface with ID 0. It has: ID 1: WAN (igc0), ID 2: LAN (igc1), ID 3: lo0 (loopback), ID 6: ovpns1.',
+      )
+      await expect(integration.report).toContainText('Suggested: IDs 1, 2 and 6.')
+      await expect(integration.status).toHaveText('Problem')
+
+      // The next visit lists the interfaces at once, and offers to choose them in one click.
+      await page.unroute('**/api/integrations/ntopng')
+      await page.reload()
+      await expect(integration.lookupGone('api')).toContainText(
+        "The saved choice (ID 0) isn't on the list REST API gave now.",
+      )
+      await expect(integration.lookupMend('api')).toHaveText(
+        'Use WAN (igc0), LAN (igc1), and ovpns1',
+      )
+      await integration.lookupMend('api').click()
+      await expect(integration.lookupGone('api')).toHaveCount(0)
+      await expect(integration.lookupSelect('api')).toContainText('WAN (igc0)')
+      await expect(integration.lookupSelect('api')).toContainText('ovpns1')
+      await expect(integration.lookupSelect('api')).not.toContainText('lo0')
+
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.report).toContainText('Interface 1 is WAN (igc0)')
+      await expect(integration.report).toContainText('Interface 6 is ovpns1')
+      await expect(integration.status).toHaveText('Connected')
     })
 
     test('says why the interfaces could not be listed, and what to fix first', async ({
@@ -332,7 +441,7 @@ test.describe('integrations', () => {
         'ntopng redirected to its login page',
       )
       await expect(integration.lookupMessage('api')).toHaveCount(0)
-      await expect(integration.lookupSelect('api')).toContainText('ID 0')
+      await expect(integration.lookupSelect('api')).not.toContainText('ID ')
 
       // The right one clears it.
       await integration.field('api', 'token').fill(TOKEN)
@@ -404,11 +513,12 @@ test.describe('integrations', () => {
       await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
       // The collectors' requests are in the log with the ones made from this page: the check
-      // (the interfaces, then what the chosen one has seen, from the page and again from the
-      // collector), and for every other collector, its own. The alerts collector also asks for
-      // the interfaces' names, which it keeps with each alert.
+      // (the interfaces, then what each has seen, from the page, again for the list under
+      // Interfaces and again from the collector), and for every other collector, its own. With
+      // no interface chosen each asks which ntopng has, and the alerts collector asks again for
+      // the names it keeps with each alert.
       await integration.logRefresh.click()
-      await expect(integration.logCalls).toHaveCount(9)
+      await expect(integration.logCalls).toHaveCount(21)
     })
 
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({
@@ -500,8 +610,9 @@ test.describe('integrations', () => {
       await expect(integration.report).toContainText('The test passed')
       await expect(integration.status).toHaveText('Connected')
       await expect(integration.lastError('api')).toHaveCount(0)
-      // The refused token made one request, and the one that works two.
-      await expect(integration.logCalls).toHaveCount(3)
+      // The refused token made one request, and the one that works six (what the test asks and
+      // what the list under Interfaces asks, which is the interfaces and each one's traffic).
+      await expect(integration.logCalls).toHaveCount(7)
     })
 
     test('reaches an address it is not allowed to, and says why in the field', async ({
@@ -607,7 +718,7 @@ test.describe('integrations', () => {
       await expect(integration.disconnect).toHaveCount(0)
       await expect(integration.test).toHaveCount(0)
       // What it logged stays in the log.
-      await expect(integration.logCalls).toHaveCount(2)
+      await expect(integration.logCalls).toHaveCount(6)
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Not connected')
     })
@@ -662,7 +773,7 @@ test.describe('integrations', () => {
       await integration.address('api').fill(ntopng.url)
       await integration.field('api', 'token').fill(TOKEN)
       await integration.save.click()
-      await expect(integration.logCalls).toHaveCount(2)
+      await expect(integration.logCalls).toHaveCount(6)
       let fail = true
       await page.route('**/api/integrations/ntopng/calls*', (route) =>
         fail ? route.abort() : route.continue(),
@@ -675,7 +786,7 @@ test.describe('integrations', () => {
       fail = false
       await integration.logRefresh.click()
       await expect(integration.logError).toHaveCount(0)
-      await expect(integration.logCalls).toHaveCount(2)
+      await expect(integration.logCalls).toHaveCount(6)
     })
   })
 

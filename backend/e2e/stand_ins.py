@@ -317,22 +317,28 @@ def ntopng(
     interface: Mapping[str, object] | None = None,
     flow_alerts: Sequence[Mapping[str, object]] = (),
     host_alerts: Sequence[Mapping[str, object]] = (),
+    *,
+    listed: Sequence[Mapping[str, object]] = (),
+    busy_ids: Collection[str] = ("0",),
 ) -> Handler:
     """ntopng's REST API with one authentication token. A login it refuses is sent to its login
     page, as ntopng does, not answered with a 401, and so is anything it doesn't have. Every
-    answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has two interfaces: ``0``
-    (``eth0``) carries everything given here, and ``1`` (``eth1``, named LAN) has seen nothing.
-    An interface it doesn't have is refused with a 400, as ntopng does. It gives the hosts of the
-    local network when asked for ``mode=local``, and the alerts that began between the times asked
-    for, newest first and no more than ``length``."""
+    answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has two interfaces unless
+    ``listed`` says otherwise: ``0`` (``eth0``) carries everything given here, and ``1`` (``eth1``,
+    named LAN) has seen nothing. The interfaces whose ID is among ``busy_ids`` carry everything
+    given here, and the others have seen nothing. An interface it doesn't have is refused with a
+    400, as ntopng does. It gives the hosts of the local network when asked for ``mode=local``, and
+    the alerts that began between the times asked for, newest first and no more than ``length``."""
+    interfaces = listed or _NTOPNG_INTERFACES
+    known = [[str(item["ifid"])] for item in interfaces]
 
     def handle(seen: Seen) -> Answer:
         if seen.headers.get("authorization") != f"Token {token}":
             return Answer(status=302, headers={"Location": "/lua/login.lua"})
         query = parse_qs(urlsplit(seen.target).query)
         if seen.path == "/lua/rest/v2/get/ntopng/interfaces.lua":
-            return _ntopng_answer(_NTOPNG_INTERFACES)
-        busy = query.get("ifid") == ["0"]
+            return _ntopng_answer(interfaces)
+        busy = query.get("ifid", [""])[0] in busy_ids
         answers: dict[str, Callable[[], Answer]] = {
             "/lua/rest/v2/get/host/active.lua": lambda: _ntopng_hosts(query, hosts if busy else ()),
             "/lua/rest/v2/get/interface/data.lua": lambda: _ntopng_answer(
@@ -347,7 +353,7 @@ def ntopng(
         }
         if seen.path not in answers:
             return Answer(status=302, headers={"Location": "/lua/login.lua"})
-        if query.get("ifid") not in (["0"], ["1"]):
+        if query.get("ifid") not in known:
             return _ntopng_answer({}, "INVALID_INTERFACE", -2, status=400)
         return answers[seen.path]()
 
@@ -372,6 +378,24 @@ _NTOPNG_INTERFACES = [
         "is_pcap_interface": False,
         "is_zmq_interface": False,
     },
+]
+# The interfaces of an OPNsense firewall's ntopng: numbered from 1, with gaps, and the loopback
+# among them.
+_NTOPNG_FIREWALL = [
+    {
+        "ifid": ifid,
+        "ifname": ifname,
+        "name": name,
+        "is_packet_interface": True,
+        "is_pcap_interface": False,
+        "is_zmq_interface": False,
+    }
+    for ifid, ifname, name in (
+        (1, "igc0", "WAN"),
+        (2, "igc1", "LAN"),
+        (3, "lo0", "lo0"),
+        (6, "ovpns1", "ovpns1"),
+    )
 ]
 _NTOPNG_QUIET = {
     "ifid": "1",
@@ -1663,6 +1687,7 @@ class StandIns:
         models: Collection[str] = (),
         paid: Collection[str] = (),
         webhook: str = "",
+        firewall: bool = False,
     ) -> Running:
         now = datetime.now(UTC)
         handlers: dict[Kind, Handler] = {
@@ -1672,6 +1697,8 @@ class StandIns:
                 sample_ntopng_interface(),
                 sample_ntopng_flow_alerts(now),
                 sample_ntopng_host_alerts(now),
+                listed=_NTOPNG_FIREWALL if firewall else (),
+                busy_ids=("1", "2") if firewall else ("0",),
             ),
             "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
             "opnsense": opnsense(
