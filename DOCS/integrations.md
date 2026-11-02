@@ -214,6 +214,10 @@ hosts ntopng lists, adds the ones it knows the MAC address of
 - **Randomized addresses.** A phone or laptop that uses a different hardware address for each
   network, or changes it from time to time to keep from being followed, appears as a new device
   each time it does.
+- **The Assets page.** It shows these devices with the ones ntopng lists and Wazuh's agents,
+  each with the programs that listed it: the ARP table makes a device "online" (a device is only
+  online when something that can only list what is on the network now has listed it in the last
+  ten minutes), while a lease only makes it "seen recently", since a lease outlasts the device.
 
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
@@ -402,6 +406,13 @@ a role that may read agents, such as `agents_readonly`. A user without one signs
 trouble, and the API answers 200 with an empty list instead of refusing, so the manager's own
 agent `000` missing from the list is how the connection test and the Agents collector tell, and
 say so, rather than counting zero agents every minute.
+
+Each agent is also listed on the [Assets page](ui.md#assets) as a machine, by the name and IP
+address Wazuh has for it (the manager gives no hardware address): an active agent was heard from
+now, another when it last reported in, and one that never has (`pending`, `never_connected`) is
+not listed. The page matches it to the device that had its address, or else to the one device
+that has the same short host name, and says so on the card; an agent that matches no device is an
+asset of its own. If the manager lists every agent, the ones it no longer lists are removed.
 
 ### Where this comes from, and what isn't tried
 

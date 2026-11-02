@@ -6,6 +6,7 @@ import { ActivityPage } from './pages/activity-page'
 import { AiSettingsPage } from './pages/ai-settings-page'
 import { AiUsagePage } from './pages/ai-usage-page'
 import { AlertsPage } from './pages/alerts-page'
+import { AssetsPage } from './pages/assets-page'
 import { AssistantPage } from './pages/assistant-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
@@ -55,6 +56,8 @@ export interface AresGateFixtures {
   assistant: AssistantPage
   /** Where alerts are sent. */
   alerts: AlertsPage
+  /** The devices the connected programs can see, as one list. */
+  assets: AssetsPage
   status: StatusPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
@@ -180,6 +183,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
   },
   assistant: async ({ page }, use) => {
     await use(new AssistantPage(page))
+  },
+
+  assets: async ({ page }, use) => {
+    await use(new AssetsPage(page))
   },
 
   status: async ({ page }, use) => {

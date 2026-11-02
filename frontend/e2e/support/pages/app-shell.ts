@@ -10,6 +10,7 @@ export type Place =
   | 'incidents'
   | 'assistant'
   | 'logs'
+  | 'assets'
   | 'integrations'
   | 'ai-usage'
   | 'alerts'
@@ -17,7 +18,14 @@ export type Place =
   | 'settings'
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
-const BEHIND_MORE: readonly Place[] = ['integrations', 'ai-usage', 'alerts', 'status', 'settings']
+const BEHIND_MORE: readonly Place[] = [
+  'assets',
+  'integrations',
+  'ai-usage',
+  'alerts',
+  'status',
+  'settings',
+]
 
 /**
  * What's around every page: the logo, which links home, the menu (at the side on a computer or
@@ -30,6 +38,7 @@ export class AppShell {
   readonly dashboardLink: Locator
   readonly incidentsLink: Locator
   readonly logsLink: Locator
+  readonly assetsLink: Locator
   readonly integrationsLink: Locator
   readonly assistantLink: Locator
   readonly aiUsageLink: Locator
@@ -71,6 +80,7 @@ export class AppShell {
     this.dashboardLink = page.getByTestId('nav-home')
     this.incidentsLink = page.getByTestId('nav-incidents')
     this.logsLink = page.getByTestId('nav-logs')
+    this.assetsLink = page.getByTestId('nav-assets')
     this.integrationsLink = page.getByTestId('nav-integrations')
     this.assistantLink = page.getByTestId('nav-assistant')
     this.aiUsageLink = page.getByTestId('nav-ai-usage')

@@ -19,6 +19,64 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the assets have no WCAG 2.2 AA problems', async ({ page, harness, assets, shell }) => {
+      await harness.createAssets({
+        devices: [
+          {
+            hostname: 'laptop',
+            mac: '00:11:22:0a:0b:0c',
+            vendor: 'Example Devices Inc.',
+            addresses: ['192.168.1.20', '192.168.1.21', '192.168.1.22', '192.168.1.23'],
+            listed: [
+              { source: 'opnsense', via: 'arp', minutes_ago: 1 },
+              { source: 'ntopng', via: 'hosts', minutes_ago: 1 },
+            ],
+          },
+          {
+            hostname: 'phone',
+            mac: '02:aa:bb:cc:dd:ee',
+            addresses: ['192.168.1.9'],
+            listed: [{ source: 'opnsense', via: 'dhcp', minutes_ago: 30 }],
+            first_seen_hours: 30,
+          },
+          {
+            hostname: 'camera',
+            addresses: ['192.168.20.40'],
+            listed: [{ source: 'opnsense', via: 'arp', minutes_ago: 3 * 24 * 60 }],
+            first_seen_hours: 24 * 50,
+          },
+          { mac: '00:11:22:0a:0b:0e' },
+        ],
+        hosts: [{ key: '002', hostname: 'laptop', address: '192.168.1.20' }, { key: '003' }],
+      })
+      await assets.goto()
+      await expect(assets.cards).toHaveCount(5)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // A state chosen, the choices that narrow the list on, and a search with nothing in it.
+      await assets.view('online').click()
+      await assets.newOnly.click()
+      await expectAccessible(page)
+      await assets.find('no such device')
+      await expect(assets.emptyTitle).toHaveText('Nothing matches')
+      await expectAccessible(page)
+    })
+
+    test('the assets of a network with nothing connected have no WCAG 2.2 AA problems', async ({
+      page,
+      assets,
+      shell,
+    }) => {
+      await assets.goto()
+      await expect(assets.emptyTitle).toHaveText('No devices yet')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+    })
+
     test('the incidents, and the page of one, have no WCAG 2.2 AA problems', async ({
       page,
       harness,

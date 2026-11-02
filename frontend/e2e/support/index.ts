@@ -5,6 +5,11 @@ export {
   Harness,
   type AiCallRequest,
   type AiCallsRecord,
+  type AssetDeviceRequest,
+  type AssetHostRequest,
+  type AssetListing,
+  type AssetsRecord,
+  type AssetsRequest,
   type ApiCoverage,
   type BaselineData,
   type EventRequest,
@@ -23,6 +28,7 @@ export {
 export { ActivityPage } from './pages/activity-page'
 export { AiSettingsPage } from './pages/ai-settings-page'
 export { AiUsagePage } from './pages/ai-usage-page'
+export { AssetsPage } from './pages/assets-page'
 export { AssistantPage } from './pages/assistant-page'
 export { DataPage } from './pages/data-page'
 export { AppShell, type Place, type ThemeChoice } from './pages/app-shell'

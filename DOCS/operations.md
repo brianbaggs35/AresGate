@@ -309,10 +309,16 @@ has had. A device has the host name and the maker of its network card that were 
 when it was first and last seen; an address has the same two times. A device that was seen again
 is updated, not added, and an address that changed hands is in the rows of both devices, the
 one seen with it last having it now. The collectors that fill them are OPNsense's
-[ARP table and DHCP leases](integrations.md#devices).
+[ARP table and DHCP leases](integrations.md#devices) and ntopng's
+[hosts](integrations.md#hosts-and-the-devices-among-them). Two more tables say who listed them:
+`device_sources` has a row for each device and each program and way that has listed it (with the
+first and last time), and `host_listings` has a row for each machine a program lists without a
+hardware address, such as a Wazuh [agent](integrations.md#agents). The Assets page reads all of
+them.
 
-- **How long they're kept.** Until you remove them: there is no retention period for devices yet,
-  and nothing reads them yet either.
+- **How long they're kept.** Until you remove them: there is no retention period for devices yet.
+  The machines of `host_listings` are the exception: a program that lists everything it has
+  forgets the ones that are gone, so an agent you remove from Wazuh leaves the page.
 - **How much room they take.** A few hundred bytes for each device and address, so a home network
   of a hundred devices is a few tens of kilobytes. A device that changes its hardware address
   often is a new device each time, which adds up very slowly.
