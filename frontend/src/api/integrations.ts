@@ -83,6 +83,9 @@ export interface Connection {
   last_attempt_at: string | null
   last_success_at: string | null
   last_error: string | null
+  /** Whether the last failure was about the system's certificate, which can be reviewed and
+   * trusted from the page. */
+  certificate_problem: boolean
 }
 
 export interface IntegrationSummary {
@@ -163,6 +166,8 @@ export interface Check {
   connection: string
   ok: boolean
   message: string
+  /** Whether it failed over the system's certificate. */
+  certificate_problem: boolean
 }
 
 /** How a test went, and the integration as it is now. */
@@ -190,7 +195,7 @@ export interface LookupResult {
   entries: LookupEntry[]
 }
 
-/** The certificate a system presents. */
+/** A certificate, as a system presents it. */
 export interface Certificate {
   /** SHA-256, as pairs of hexadecimal digits separated by colons. */
   fingerprint: string
@@ -199,6 +204,26 @@ export interface Certificate {
   not_before: string
   not_after: string
   names: string[]
+  /** Whether it names itself as its issuer: nobody else vouches for it. */
+  self_signed: boolean
+}
+
+/** What a system presents: its own certificate, which is the one that is pinned, then the others
+ * it sent with it, and what the connection's way of checking makes of it. */
+export interface CertificateReview extends Certificate {
+  issuers: Certificate[]
+  /** Whether the connection, as it is set to check, would accept the certificate. */
+  accepted: boolean
+  /** Why it would or wouldn't, in words. */
+  verdict: string
+}
+
+/** How a connection is set to check a certificate, so that a lookup can say whether it would
+ * accept the one it finds. */
+export interface CertificateChoice {
+  mode: TlsMode
+  authority: string
+  fingerprint: string
 }
 
 /** One request AresGate made to an integration. */
@@ -273,13 +298,24 @@ export function lookUpField(
   return apiPost<LookupResult>(path(key, rest), settings, csrfToken)
 }
 
-/** The certificate that the system at an address presents, to pin or to compare. */
+/** The certificate that the system at an address presents, with whether the way of checking
+ * chosen would accept it, to trust (pin) or to compare. */
 export function lookUpCertificate(
   key: string,
   url: string,
+  choice: CertificateChoice,
   csrfToken: string,
-): Promise<Certificate> {
-  return apiPost<Certificate>(path(key, '/certificate'), { url }, csrfToken)
+): Promise<CertificateReview> {
+  return apiPost<CertificateReview>(
+    path(key, '/certificate'),
+    {
+      url,
+      tls_mode: choice.mode,
+      tls_ca_pem: choice.mode === 'ca' ? choice.authority : null,
+      tls_fingerprint: choice.mode === 'pinned' ? choice.fingerprint.trim() : null,
+    },
+    csrfToken,
+  )
 }
 
 /** The newest calls first. */

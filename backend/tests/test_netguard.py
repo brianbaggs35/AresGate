@@ -9,7 +9,7 @@ import httpcore2
 import httpx2
 import pytest
 
-from app.integrations import netguard
+from app.integrations import certdiag, netguard
 from app.integrations.client import in_chain
 from app.integrations.netguard import (
     HOME_NETWORK,
@@ -535,9 +535,12 @@ def test_the_certificate_pinned_is_trusted_and_anything_else_is_not(serve: Serve
     assert len(server.seen) == 1
 
     other = make_certificate()
-    with pytest.raises(Refused, match="isn't the pinned one") as refused:
+    with pytest.raises(Refused, match="has changed") as refused:
         fetch(server, mode="pinned", pin=other.fingerprint)
+    # It says both, and that the certificate changed, so that it can be reviewed and trusted again.
     assert certificate.fingerprint in str(refused.value)
+    assert other.fingerprint in str(refused.value)
+    assert certdiag.is_about_a_certificate(str(refused.value))
     # The request, with its key, was never sent to a system that isn't the one pinned.
     assert len(server.seen) == 1
 
@@ -559,43 +562,54 @@ def test_a_missingpeer_certificate_does_not_match_the_pin() -> None:
     assert netguard.peer_certificate(Bare()) is None
 
 
-def test_the_certificate_a_system_presents_can_be_looked_at(serve: Serve) -> None:
+def test_the_certificate_a_system_presents_can_be_described(serve: Serve) -> None:
     certificate = make_certificate("fw.example")
     server = serve(ok, certificate)
     origin = netguard.parse_origin(server.url, allow_http=False)
 
-    found = asyncio.run(netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin))
+    [der] = asyncio.run(netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin))
+    found = netguard.describe_certificate(der)
 
     assert found.fingerprint == certificate.fingerprint
     assert found.subject == "CN=fw.example"
     assert found.issuer == "CN=fw.example"
     assert found.names == ["fw.example", "127.0.0.1"]
     assert found.not_before < found.not_after
+    assert found.self_signed
     assert server.seen == []
 
 
-def test_looking_at_a_certificate_respects_the_allowed_addresses(serve: Serve) -> None:
+def test_a_certificate_that_another_issued_is_not_self_signed(serve: Serve) -> None:
+    chain = make_chain()
+
+    found = netguard.describe_certificate(chain.leaf.der)
+
+    assert not found.self_signed
+    assert found.issuer == "CN=Test Intermediate"
+
+
+def test_a_secure_connection_respects_the_allowed_addresses(serve: Serve) -> None:
     server = serve(ok, make_certificate())
     origin = netguard.parse_origin(server.url, allow_http=False)
 
-    lookup = netguard.look_up_certificate(HOME_NETWORK, origin)
+    lookup = netguard.present(HOME_NETWORK, origin)
 
     with pytest.raises(Refused, match="isn't a private network address"):
         asyncio.run(lookup)
 
 
-def test_looking_at_a_certificate_says_when_nothing_answers(serve: Serve) -> None:
+def test_a_secure_connection_says_when_nothing_answers(serve: Serve) -> None:
     server = serve(ok, make_certificate())
     origin = netguard.parse_origin(server.url, allow_http=False)
     server.stop()
 
-    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+    lookup = netguard.present(HOME_NETWORK_AND_LOOPBACK, origin)
 
     with pytest.raises(Refused, match="Couldn't make a secure connection"):
         asyncio.run(lookup)
 
 
-def test_looking_at_a_certificate_says_when_nothing_answers_in_time(
+def test_a_secure_connection_says_when_nothing_answers_in_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def connect_tcp(*_: Any, **__: Any) -> None:
@@ -604,7 +618,7 @@ def test_looking_at_a_certificate_says_when_nothing_answers_in_time(
     monkeypatch.setattr(GuardedBackend, "connect_tcp", connect_tcp)
 
     origin = Origin("https", "192.168.1.1", 443)
-    lookup = netguard.look_up_certificate(HOME_NETWORK, origin)
+    lookup = netguard.present(HOME_NETWORK, origin)
 
     with pytest.raises(Refused, match="didn't answer in time"):
         asyncio.run(lookup)
@@ -614,27 +628,25 @@ def test_a_plain_web_server_has_no_certificate_to_look_at(serve: Serve) -> None:
     server = serve(ok)
     origin = Origin("https", "127.0.0.1", server.port)
 
-    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+    lookup = netguard.look_up_chain(HOME_NETWORK_AND_LOOPBACK, origin)
 
     with pytest.raises(Refused, match="Couldn't make a secure connection"):
         asyncio.run(lookup)
 
 
-def no_certificate(stream: httpcore2.AsyncNetworkStream) -> None:
-    return None
-
-
-def test_a_system_that_presents_no_certificate_is_refused(
-    serve: Serve, monkeypatch: pytest.MonkeyPatch
+def test_a_secure_connection_that_checks_the_certificate_refuses_one_it_cannot_trust(
+    serve: Serve,
 ) -> None:
     server = serve(ok, make_certificate())
     origin = netguard.parse_origin(server.url, allow_http=False)
-    monkeypatch.setattr(netguard, "peer_certificate", no_certificate)
 
-    lookup = netguard.look_up_certificate(HOME_NETWORK_AND_LOOPBACK, origin)
+    checked = netguard.present(
+        HOME_NETWORK_AND_LOOPBACK, origin, netguard.tls_context("system", None)
+    )
 
-    with pytest.raises(Refused, match="didn't present a certificate"):
-        asyncio.run(lookup)
+    with pytest.raises(Refused) as refused:
+        asyncio.run(checked)
+    assert in_chain(refused.value, ssl.SSLCertVerificationError)
 
 
 def test_every_certificate_a_system_presents_can_be_looked_at(serve: Serve) -> None:

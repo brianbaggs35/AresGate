@@ -131,6 +131,7 @@ def served(**changes: Any) -> Found:
         "not_before": NOW - timedelta(days=60),
         "not_after": NOW + timedelta(days=30, hours=3),
         "names": ["aresgate.example", "localhost"],
+        "self_signed": False,
     }
     return Found(**{**base, **changes})
 
@@ -154,7 +155,9 @@ def test_the_certificate_nginx_presents_says_who_made_it_and_when_it_ends() -> N
 
 def test_a_certificate_that_signed_itself_says_so() -> None:
     found = status.certificate_info(
-        "localhost", now=NOW, look_up=lambda *_: served(issuer="CN=aresgate.example")
+        "localhost",
+        now=NOW,
+        look_up=lambda *_: served(issuer="CN=aresgate.example", self_signed=True),
     )
 
     assert found is not None

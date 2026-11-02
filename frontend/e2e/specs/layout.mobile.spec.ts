@@ -487,6 +487,45 @@ test.describe('layout on a phone', () => {
       expect(await overflow(page)).toBeLessThanOrEqual(0)
     })
 
+    test('a certificate that fails a test is reviewed and trusted on the screen, with nothing sideways', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: 'a-key',
+        api_secret: 'a-secret',
+        services: [],
+      })
+      await integration.goto('opnsense')
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill('a-key')
+      await integration.field('api', 'api_secret').fill('a-secret')
+      await integration.save.click()
+      await expect(integration.reviewCertificate('api')).toBeVisible()
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+
+      await integration.reviewFromReport().click()
+
+      await expect(integration.found('api')).toBeVisible()
+      await expect(integration.found('api')).toBeInViewport()
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+      // The buttons are the width of the screen, one under the other, easy to press.
+      const viewport = page.viewportSize()
+      const trustAndTest = await integration.trustAndTest('api').boundingBox()
+      const trust = await integration.trust('api').boundingBox()
+      expect(trustAndTest?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.7)
+      expect(trust?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.7)
+      expect(trust?.y).toBeGreaterThan((trustAndTest?.y ?? 0) + (trustAndTest?.height ?? 0) - 1)
+      expect(trustAndTest?.height).toBeGreaterThanOrEqual(36)
+      // The long fingerprint wraps instead of pushing the page wider.
+      const fingerprint = await integration.foundFingerprint('api').boundingBox()
+      expect((fingerprint?.x ?? 0) + (fingerprint?.width ?? 0)).toBeLessThanOrEqual(
+        viewport?.width ?? 0,
+      )
+    })
+
     test('keeps the buttons and the end of the page clear of the bottom bar', async ({
       shell,
       integration,

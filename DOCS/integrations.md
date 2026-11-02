@@ -571,15 +571,48 @@ Every integration is reached the same way, and a few rules are not settings:
   are link-local.
 - **No redirects and no proxy.** A redirect is reported as the answer it is, not followed, so an
   integration can't bounce AresGate to another address.
-- **Certificates are verified.** HTTPS addresses are checked against the system's trusted
-  authorities. A product with its own certificate (OPNsense, Wazuh) has two ways to be trusted,
-  under **Certificate** on its page:
-  - **Pasted authority.** Paste the PEM certificate of the authority that signed it. It is
-    accepted as OpenSSL's tools make it, even without a key usage extension (the checks
-    on the signatures, the dates and the name are the same as for any other certificate).
-  - **Pinned fingerprint.** Click **Look up the certificate**, compare the SHA-256 fingerprint it
-    shows with the one in the product (OPNsense: **System, Trust, Certificates**), then click
-    **Trust this certificate**. The connection then only accepts that exact certificate.
+- **Certificates are verified, and never skipped.** HTTPS addresses are checked against the
+  system's trusted authorities, or in one of two other ways, chosen under **Certificate** on the
+  integration's page. A product with its own certificate (OPNsense, Wazuh) needs one of them:
+  - **The certificates this computer trusts.** For a certificate from a public authority, such as
+    Let's Encrypt.
+  - **A certificate authority I paste.** Paste the PEM certificate of the authority that signed it.
+    It is accepted as OpenSSL's tools make it, even without a key usage extension (the checks on
+    the signatures, the dates and the name are the same as for any other certificate).
+  - **Only this exact certificate.** The SHA-256 fingerprint of one certificate, typed in or
+    filled in by looking the certificate up (next section). Nothing else is accepted, even if it
+    looks valid.
+
+### Trusting the certificate a system presents
+
+You don't need to know which of those to choose, or to find a fingerprint. On any integration's
+page, under **Certificate**, click **Look up the certificate** (it works whichever way is chosen,
+and needs only the address). AresGate connects, takes the certificate the system presents (nothing
+is sent over the connection, so no key goes anywhere) and shows it:
+
+- who it is for (subject and issuer), the names it lists, when it is good for, and whether it is
+  **Self-signed** or **Expired**;
+- its SHA-256 fingerprint, to compare with the one the system itself shows (OPNsense: **System,
+  Trust, Certificates**; or, for a certificate file you have, `openssl x509 -noout -fingerprint -sha256 -in <file>`);
+- the other certificates it sent with it, if any, which vouch for it;
+- whether the way of checking chosen would accept it as it is, and, if not, why, in the words of
+  the section below.
+
+**Trust this certificate** pins it: the connection then accepts that exact certificate and no
+other, whatever it is. That is the choice for a system that makes its own certificate, and it is
+there for you to take even for one that has expired or names someone else, since the decision is
+yours. Nothing is skipped: the fingerprint is compared before a request is sent, so a key never
+goes to a system that is not the one trusted.
+
+You rarely have to look for the button. When a test fails over a certificate, the failure says so
+and has **Review the certificate** (on the connection's card, and in the report of the test), and
+**Trust and test** there trusts the certificate, saves what is filled in and tests again. Wazuh
+has two connections, the manager and the indexer, each with its own certificate: do it for each.
+
+If a pinned system later presents a different certificate (it was renewed, or replaced, or
+something else answers at that address), the test fails with "The certificate has changed", naming
+both fingerprints, and **Review the certificate** shows the new one beside the same decision. If
+you didn't change anything on the system, don't trust it.
 
 ### When a certificate that looks valid isn't trusted
 
@@ -595,19 +628,22 @@ and says which it is, naming the authority:
   Let's Encrypt, `fullchain.pem` instead of `cert.pem`). Or, in AresGate, paste the missing
   authority's certificate under **Certificate**, **A certificate authority I paste**: the
   intermediate is enough, you don't need the root. The message gives the address the
-  certificate itself names for it, if it names one. Pinning the fingerprint works too, and is the
-  only choice for a certificate nothing vouches for.
+  certificate itself names for it, if it names one. Trusting the certificate as it is (the
+  section above) works too, and is the only choice for a certificate nothing vouches for.
 - **Signed by an authority this computer doesn't trust.** The message says where the chain it
-  sent ends. Paste that authority's certificate (or add it to the one pasted), or pin.
+  sent ends. Paste that authority's certificate (or add it to the one pasted), or trust the
+  certificate as it is.
 - **Sent alone by an authority that doesn't say where to get its certificate.** Public
   authorities' certificates usually say, so this is probably an authority of the system's own,
   such as the one Wazuh's certificate tool makes for the indexer, and it is named in the message.
-  Paste that authority's certificate or pin; the `fullchain.pem` advice is for a public one.
+  Paste that authority's certificate or trust the certificate as it is; the `fullchain.pem` advice
+  is for a public one.
 - **Also named in words:** a certificate that vouches for itself, one that has expired (and
   when), one that isn't valid yet (check the clocks), and one made for other names than the one
   in the address, which are listed. Use one of them in the address, since a certificate for a
-  name isn't accepted for an IP address. A certificate that names nothing at all can only be
-  pinned.
+  name isn't accepted for an IP address, or trust the certificate as it is. A certificate that
+  names nothing at all can only be trusted as it is (pinned). Every one of these messages ends
+  with that way out, and the review shows the same words with the button below.
 
 The image carries Wolfi's `ca-certificates-bundle`, and its smoke test fails if Python finds no
 certificate authority in it (`python -m app.cli trust-store` shows how many).

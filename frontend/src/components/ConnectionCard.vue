@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { TriangleAlert } from '@lucide/vue'
-import { computed } from 'vue'
+import { ShieldAlert, TriangleAlert } from '@lucide/vue'
+import { computed, nextTick, ref } from 'vue'
 
 import type { Connection } from '@/api/integrations'
 import LookupField from '@/components/LookupField.vue'
@@ -33,8 +33,14 @@ const props = defineProps<{
   problems: Readonly<Record<string, string>>
 }>()
 const draft = defineModel<ConnectionDraft>({ required: true })
-/** A field asked the system for its choices, which is a request the log of requests has. */
-const emit = defineEmits<{ asked: [] }>()
+const emit = defineEmits<{
+  /** A field asked the system for its choices, which is a request the log of requests has. */
+  asked: []
+  /** A certificate was trusted, and whether to save and test the connection straight after. */
+  trusted: [test: boolean]
+}>()
+
+const tls = ref<{ review: () => Promise<void> } | null>(null)
 
 const definition = computed(() => props.connection.definition)
 const saved = computed(() => props.connection.url !== null)
@@ -49,6 +55,17 @@ const urlHint = computed(() =>
 function secret(key: string): string {
   return draft.value.secrets[key] ?? ''
 }
+
+/** Whether the last failure is one that looking at the certificate may cure. */
+const reviewable = computed(() => props.connection.certificate_problem && usesTls(draft.value.url))
+
+/** Looks up the certificate the system presents and shows it, for a button elsewhere on the page
+ * (a failed test says what is wrong with it and offers this). */
+async function reviewCertificate() {
+  await nextTick()
+  await tls.value?.review()
+}
+defineExpose({ reviewCertificate })
 </script>
 
 <template>
@@ -100,6 +117,16 @@ function secret(key: string): string {
         data-test="connection-last-error"
       >
         {{ connection.last_error }}
+        <div v-if="reviewable" class="mt-3">
+          <v-btn
+            color="primary"
+            :prepend-icon="ShieldAlert"
+            data-test="connection-review-certificate"
+            @click="reviewCertificate"
+          >
+            Review the certificate
+          </v-btn>
+        </div>
       </v-alert>
       <p
         v-else-if="connection.last_success_at"
@@ -203,6 +230,7 @@ function secret(key: string): string {
 
       <TlsSettings
         v-if="usesTls(draft.url)"
+        ref="tls"
         v-model:mode="draft.tlsMode"
         v-model:authority="draft.tlsCaPem"
         v-model:fingerprint="draft.tlsFingerprint"
@@ -211,7 +239,9 @@ function secret(key: string): string {
         :id-prefix="definition.key"
         :problems="problems"
         :note="definition.certificate_note"
+        :can-test="saved"
         class="connection__section"
+        @trusted="emit('trusted', $event)"
       />
 
       <ModuleList

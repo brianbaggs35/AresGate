@@ -1163,6 +1163,57 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(integration.address('zenarmor')).toBeVisible()
       await expectAccessible(page)
     })
+
+    test('a certificate that is looked up, one that fails a test and one that has changed have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      shell,
+    }) => {
+      const firewall = await harness.standIn({
+        kind: 'opnsense',
+        api_key: 'a-key',
+        api_secret: 'a-secret',
+        services: [],
+      })
+      await integration.goto('opnsense')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await integration.address('api').fill(firewall.url)
+      await integration.field('api', 'api_key').fill('a-key')
+      await integration.field('api', 'api_secret').fill('a-secret')
+
+      // Looked up before anything is saved: the certificate, why it isn't accepted, the button.
+      await integration.lookUp('api').click()
+      await expect(integration.verdict('api')).toBeVisible()
+      await expect(integration.trust('api')).toBeVisible()
+      await expectAccessible(page)
+
+      // A test that fails over it, with the way to review it where the failure is said.
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test failed')
+      await expect(integration.reviewCertificate('api')).toBeVisible()
+      await expect(integration.reviewFromReport()).toBeVisible()
+      await expectAccessible(page)
+
+      // Reviewed from there, ready to be trusted and tested, then trusted.
+      await integration.reviewCertificate('api').click()
+      await expect(integration.trustAndTest('api')).toBeVisible()
+      await expectAccessible(page)
+      await integration.trustAndTest('api').click()
+      await expect(integration.trusted('api')).toBeVisible()
+      await expect(integration.report).toContainText('The test passed')
+      await expectAccessible(page)
+
+      // The certificate changes: the failure, and the new one beside the same decision.
+      const trusted = await integration.fingerprint('api').inputValue()
+      await integration.fingerprint('api').fill(trusted.replace(/[0-9a-f]/gi, '0'))
+      await integration.save.click()
+      await expect(integration.report).toContainText('The certificate has changed')
+      await integration.reviewFromReport().click()
+      await expect(integration.verdict('api')).toContainText('The certificate has changed')
+      await expectAccessible(page)
+    })
   })
 }
 

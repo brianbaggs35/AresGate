@@ -230,6 +230,34 @@ export class IntegrationPage {
     return this.connection(connection).getByTestId('tls-trust')
   }
 
+  /** ... trusting it and testing in one step ... */
+  trustAndTest(connection: string): Locator {
+    return this.connection(connection).getByTestId('tls-trust-test')
+  }
+
+  /** ... what the way of checking makes of it, and what kind of certificate it is ... */
+  verdict(connection: string): Locator {
+    return this.connection(connection).getByTestId('tls-verdict')
+  }
+
+  selfSigned(connection: string): Locator {
+    return this.connection(connection).getByTestId('tls-self-signed')
+  }
+
+  /** ... and the buttons a failed test has for reviewing it, on the card and in the report. */
+  reviewCertificate(connection: string): Locator {
+    return this.connection(connection).getByTestId('connection-review-certificate')
+  }
+
+  /** The button in the report of a test, for the check whose connection is named (or the only
+   * one, if none is). */
+  reviewFromReport(label?: string): Locator {
+    const checks = this.report.getByTestId('check')
+    return (label ? checks.filter({ hasText: label }) : checks).getByTestId(
+      'check-review-certificate',
+    )
+  }
+
   trusted(connection: string): Locator {
     return this.connection(connection).getByTestId('tls-trusted')
   }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, ExternalLink, FlaskConical, Plug, Unplug } from '@lucide/vue'
+import { BookOpen, ExternalLink, FlaskConical, Plug, ShieldAlert, Unplug } from '@lucide/vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -66,6 +66,8 @@ const tests = ref(0)
 const guideOpen = ref(false)
 
 const summary = ref<HTMLElement | null>(null)
+/** The card of each connection, by its key, for pointing a failed test at its certificate. */
+const cards = ref<Record<string, InstanceType<typeof ConnectionCard>>>({})
 
 const connected = computed(() => integration.value?.status !== 'not_connected')
 const changed = computed(() => JSON.stringify(drafts.value) !== untouched.value)
@@ -177,6 +179,19 @@ async function save(current: Integration) {
   }
   const why = await runTest()
   if (why) failure.value = `Saved, but the test couldn't run. ${why}`
+}
+
+/** Looks at the certificate a connection's system presents, from the report of a failed test. */
+function reviewCertificate(connection: string) {
+  void cards.value[connection]?.reviewCertificate()
+}
+
+/** A certificate was trusted: with it, saves what is filled in and tests again. */
+async function trusted(current: Integration, test: boolean) {
+  if (!test) return
+  // The form takes the new settings first.
+  await nextTick()
+  await save(current)
 }
 
 async function disconnect(current: Integration) {
@@ -301,11 +316,16 @@ onMounted(load)
         <ConnectionCard
           v-for="connection in integration.connections"
           :key="connection.definition.key"
+          :ref="
+            (card) =>
+              (cards[connection.definition.key] = card as InstanceType<typeof ConnectionCard>)
+          "
           v-model="drafts[connection.definition.key]!"
           :integration="integration.key"
           :connection="connection"
           :problems="problems[connection.definition.key] ?? {}"
           @asked="requests += 1"
+          @trusted="trusted(integration, $event)"
         />
 
         <v-alert
@@ -321,6 +341,18 @@ onMounted(load)
                 >{{ connectionLabels(integration)[check.connection] }}:</strong
               >
               {{ check.message }}
+              <div v-if="!check.ok && check.certificate_problem" class="mt-2">
+                <v-btn
+                  size="small"
+                  variant="flat"
+                  color="primary"
+                  :prepend-icon="ShieldAlert"
+                  data-test="check-review-certificate"
+                  @click="reviewCertificate(check.connection)"
+                >
+                  Review the certificate
+                </v-btn>
+              </div>
             </li>
           </ul>
         </v-alert>

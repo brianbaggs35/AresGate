@@ -404,8 +404,10 @@ class _PinnedStream(httpcore2.AsyncNetworkStream):
         if not hmac.compare_digest(presented, self._pin):
             await secured.aclose()
             raise Refused(
-                f"The certificate it presented isn't the pinned one. Its fingerprint is "
-                f"{presented}. If the certificate was renewed, pin the new one."
+                f"The certificate has changed: this system now presents {presented}, not the "
+                f"certificate you trusted ({self._pin}). If you renewed or replaced it, review "
+                "it under Certificate and trust the new one. If you didn't, something else may "
+                "be answering at this address."
             )
         return secured
 
@@ -471,6 +473,8 @@ class CertificateInfo:
     not_before: datetime
     not_after: datetime
     names: list[str]
+    # Whether it names itself as its issuer, which is how a certificate nobody vouches for looks.
+    self_signed: bool
 
 
 def describe_certificate(der: bytes) -> CertificateInfo:
@@ -488,40 +492,31 @@ def describe_certificate(der: bytes) -> CertificateInfo:
         not_before=certificate.not_valid_before_utc.astimezone(UTC),
         not_after=certificate.not_valid_after_utc.astimezone(UTC),
         names=names[:20],
+        self_signed=certificate.issuer == certificate.subject,
     )
 
 
-async def _present(policy: AddressPolicy, origin: Origin) -> httpcore2.AsyncNetworkStream:
-    """A connection to the system, encrypted, with whatever certificate it presents accepted."""
+async def present(
+    policy: AddressPolicy, origin: Origin, context: ssl.SSLContext | None = None
+) -> httpcore2.AsyncNetworkStream:
+    """A connection to the system, encrypted. Whatever certificate it presents is accepted,
+    unless a context that checks it is given, which then raises ``Refused`` (caused by the
+    ``ssl.SSLCertVerificationError``) for one it doesn't accept."""
     where = f"{origin.host}:{origin.port}"
     try:
         stream = await GuardedBackend(policy).connect_tcp(origin.host, origin.port, LOOKUP_TIMEOUT)
-        return await stream.start_tls(_unverified_context(), origin.host, LOOKUP_TIMEOUT)
+        return await stream.start_tls(context or _unverified_context(), origin.host, LOOKUP_TIMEOUT)
     except httpcore2.ConnectTimeout as error:
         raise Refused(f"{where} didn't answer in time.") from error
     except httpcore2.ConnectError as error:
         raise Refused(f"Couldn't make a secure connection to {where}.") from error
 
 
-async def look_up_certificate(policy: AddressPolicy, origin: Origin) -> CertificateInfo:
-    """Connects, takes the certificate the system presents and hangs up, without sending
-    anything. Whatever is presented is accepted, because this is how someone gets to see it and
-    decide whether to trust it."""
-    secured = await _present(policy, origin)
-    try:
-        der = peer_certificate(secured)
-    finally:
-        await secured.aclose()
-    if der is None:
-        raise Refused(f"{origin.host} didn't present a certificate.")
-    return describe_certificate(der)
-
-
 async def look_up_chain(policy: AddressPolicy, origin: Origin) -> list[bytes]:
     """Every certificate the system presents (DER), its own first, taken the way a certificate is
     looked up: nothing is sent, and whatever is presented is accepted, because this is for saying
     why a certificate wasn't trusted. Raises ``Refused`` if it can't be done."""
-    secured = await _present(policy, origin)
+    secured = await present(policy, origin)
     try:
         ssl_object = secured.get_extra_info("ssl_object")
         chain = ssl_object.get_unverified_chain() if ssl_object else None

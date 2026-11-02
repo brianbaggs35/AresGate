@@ -61,14 +61,41 @@ describe('integrations', () => {
     expect(post).toHaveBeenCalledWith('/integrations/wazuh/test', undefined, TOKEN)
   })
 
-  it('looks up the certificate at an address', async () => {
+  it('looks up the certificate at an address, with how the connection is set to check it', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ fingerprint: 'AA:BB' })
-    await expect(lookUpCertificate('opnsense', 'https://192.168.1.1', TOKEN)).resolves.toEqual({
-      fingerprint: 'AA:BB',
-    })
+    const none = { mode: 'system' as const, authority: 'ignored', fingerprint: 'ignored' }
+    await expect(
+      lookUpCertificate('opnsense', 'https://192.168.1.1', none, TOKEN),
+    ).resolves.toEqual({ fingerprint: 'AA:BB' })
     expect(post).toHaveBeenCalledWith(
       '/integrations/opnsense/certificate',
-      { url: 'https://192.168.1.1' },
+      { url: 'https://192.168.1.1', tls_mode: 'system', tls_ca_pem: null, tls_fingerprint: null },
+      TOKEN,
+    )
+
+    const authority = { mode: 'ca' as const, authority: '-----BEGIN', fingerprint: 'ignored' }
+    await lookUpCertificate('opnsense', 'https://192.168.1.1', authority, TOKEN)
+    expect(post).toHaveBeenLastCalledWith(
+      '/integrations/opnsense/certificate',
+      {
+        url: 'https://192.168.1.1',
+        tls_mode: 'ca',
+        tls_ca_pem: '-----BEGIN',
+        tls_fingerprint: null,
+      },
+      TOKEN,
+    )
+
+    const pinned = { mode: 'pinned' as const, authority: 'ignored', fingerprint: ' AA:BB ' }
+    await lookUpCertificate('opnsense', 'https://192.168.1.1', pinned, TOKEN)
+    expect(post).toHaveBeenLastCalledWith(
+      '/integrations/opnsense/certificate',
+      {
+        url: 'https://192.168.1.1',
+        tls_mode: 'pinned',
+        tls_ca_pem: null,
+        tls_fingerprint: 'AA:BB',
+      },
       TOKEN,
     )
   })

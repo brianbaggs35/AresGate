@@ -110,7 +110,10 @@ class TestAnAuthorityOfTheSystemsOwn:
             "and doesn't say where to get Wazuh's certificate"
         )
         assert "That looks like an authority of the system's own, not Let's Encrypt." in message
-        assert "paste Wazuh's certificate under Certificate, or pin its fingerprint" in message
+        assert (
+            "paste Wazuh's certificate under Certificate, or review its certificate under "
+            "Certificate and trust it"
+        ) in message
         assert "If it should be a public certificate, serve the whole chain" in message
         assert len(message) <= client_module.MAX_ERROR
 
@@ -213,11 +216,13 @@ class TestAChainFromAnAuthorityNotTrusted:
         assert "paste Test Root's certificate under Certificate" in message
 
 
-def test_a_certificate_that_vouches_for_itself_can_be_pinned(serve: Serve) -> None:
+def test_a_certificate_that_vouches_for_itself_can_be_reviewed_and_trusted(serve: Serve) -> None:
     message = refused(make_certificate(), serve)
 
-    assert message.startswith("The certificate isn't trusted: it vouches for itself")
-    assert "pin the certificate's fingerprint under Certificate" in message
+    assert message == (
+        "The certificate isn't trusted: it vouches for itself and nobody else does. If it is "
+        "the right system, review its certificate under Certificate and trust it."
+    )
 
 
 def test_an_expired_certificate_says_when_it_expired(serve: Serve) -> None:
@@ -226,7 +231,10 @@ def test_an_expired_certificate_says_when_it_expired(serve: Serve) -> None:
 
     message = refused(chain.full, serve, mode="ca", ca_pem=chain.root_pem)
 
-    assert message == f"The certificate expired on {ended}. Renew it on that system."
+    assert message == (
+        f"The certificate expired on {ended}. Renew it on that system, or if you know better, "
+        "review its certificate under Certificate and trust it as it is."
+    )
 
 
 def test_a_certificate_that_is_not_valid_yet_says_when_it_will_be(serve: Serve) -> None:
@@ -237,7 +245,8 @@ def test_a_certificate_that_is_not_valid_yet_says_when_it_will_be(serve: Serve) 
 
     assert message == (
         f"The certificate isn't valid until {starts}. "
-        "If that date has passed, check the clocks of both computers."
+        "If that date has passed, check the clocks of both computers, or review its "
+        "certificate under Certificate and trust it as it is."
     )
 
 
@@ -250,7 +259,7 @@ def test_a_certificate_for_other_names_says_which(serve: Serve) -> None:
     assert message == (
         "The certificate is for nas.example, nas.home.arpa, a.example, b.example and 1 more, "
         "not for 127.0.0.1. Use one of those names in the address (it has to reach this system), "
-        "or pin the certificate's fingerprint under Certificate."
+        "or review its certificate under Certificate and trust it."
     )
 
 
@@ -266,8 +275,8 @@ def test_a_chain_that_cannot_be_looked_at_again_gets_what_openssl_said(
 
     assert message == (
         "The certificate isn't trusted (unable to get local issuer certificate). If it is the "
-        "right system, paste the certificate authority that signed it or pin the certificate's "
-        "fingerprint, under Certificate."
+        "right system, review its certificate under Certificate and trust it, or paste the "
+        "certificate authority that signed it."
     )
 
 
@@ -364,3 +373,46 @@ class TestReadingWhatWasPresented:
         message = certdiag.explain(error(certdiag.HOSTNAME_MISMATCH), presented, "ca", "nas")
 
         assert message.startswith("The certificate is for no name AresGate can read, not for nas.")
+
+
+ALL_REASONS = [
+    certdiag.EXPIRED,
+    certdiag.NOT_YET_VALID,
+    certdiag.SELF_SIGNED,
+    certdiag.SELF_SIGNED_IN_CHAIN,
+    certdiag.NO_ISSUER,
+    certdiag.NO_FIRST_ISSUER,
+    certdiag.HOSTNAME_MISMATCH,
+    certdiag.ADDRESS_MISMATCH,
+    7,
+]
+
+
+class TestSayingHowToTrustTheCertificate:
+    @pytest.mark.parametrize("code", ALL_REASONS)
+    @pytest.mark.parametrize("mode", ["system", "ca"])
+    def test_every_reason_is_about_a_certificate_and_offers_to_trust_it(
+        self, code: int, mode: str
+    ) -> None:
+        presented = certdiag.read_chain([make_chain().full.der, make_chain().leaf.der])
+
+        message = certdiag.explain(error(code), presented, mode, "h")
+
+        assert certdiag.is_about_a_certificate(message)
+        assert "review its certificate under Certificate and trust it" in message
+
+    @pytest.mark.parametrize("code", ALL_REASONS)
+    def test_where_the_certificate_is_in_view_it_says_to_trust_it_below(self, code: int) -> None:
+        presented = certdiag.read_chain([make_certificate().der])
+
+        message = certdiag.explain(
+            error(code), presented, "system", "h", trust=certdiag.TRUST_BELOW
+        )
+
+        assert "trust it below" in message
+        assert "review its certificate" not in message
+
+    def test_a_certificate_that_could_not_be_looked_at_offers_it_too(self) -> None:
+        message = certdiag.explain(error(certdiag.SELF_SIGNED), None, "system", "h")
+
+        assert "review its certificate under Certificate and trust it" in message
