@@ -248,6 +248,45 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the noise filters, and an incident with signals set aside, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      noiseFilters,
+      incidents,
+      incident,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        { address: '93.184.216.34', severity: 'high', programs: ['wazuh'], signals: 2 },
+        { address: '8.8.8.8', severity: 'low', programs: ['wazuh'], signals: 1 },
+        { address: '192.168.1.77', severity: 'high', programs: ['wazuh'], signals: 2 },
+      ])
+      await noiseFilters.goto()
+      await expect(noiseFilters.sources).toHaveCount(1)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // Everything changed at once, with what it would do worked out.
+      await noiseFilters.floorSlider.focus()
+      await page.keyboard.press('ArrowRight')
+      await noiseFilters.chooseFloor('Wazuh', 'High and up')
+      await noiseFilters.insideSwitch.check()
+      await expect(noiseFilters.effectTable).toBeVisible()
+      await expect(noiseFilters.figure('set-aside').after).toHaveText('4')
+      await expectAccessible(page)
+
+      await noiseFilters.save.click()
+      await expect(noiseFilters.saved).toBeVisible()
+      await expectAccessible(page)
+
+      // An incident whose signals were set aside, with the chip that says by which filter.
+      await incidents.goto('?address=8.8.8.8')
+      await incidents.cards.first().click()
+      await expect(incident.signals.getByTestId('signal-filtered')).toHaveCount(1)
+      await expectAccessible(page)
+    })
+
     test('the logs, a search of them and the sheet for an event have no WCAG 2.2 AA problems', async ({
       page,
       harness,

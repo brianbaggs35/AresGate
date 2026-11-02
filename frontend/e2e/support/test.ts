@@ -19,6 +19,7 @@ import { LogsPage } from './pages/logs-page'
 import { DashboardPage } from './pages/dashboard-page'
 import { SecurityPage } from './pages/security-page'
 import { SettingsPage } from './pages/settings-page'
+import { NoiseFiltersPage } from './pages/noise-filters-page'
 import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
 import { SignInsPage } from './pages/sign-ins-page'
@@ -61,6 +62,8 @@ export interface AresGateFixtures {
   status: StatusPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
+  /** The settings page for what is set aside without a verdict, and how sure it has to be. */
+  noiseFilters: NoiseFiltersPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
@@ -195,6 +198,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   verdicts: async ({ page }, use) => {
     await use(new VerdictsPage(page))
+  },
+
+  noiseFilters: async ({ page }, use) => {
+    await use(new NoiseFiltersPage(page))
   },
 
   signInElsewhere: async ({ browser, baseURL, baseline }, use) => {

@@ -20,10 +20,12 @@ An incident has exactly one *standing*, the first of these that is true:
 counting and listing many. A test holds the two to agreeing, so change them together.
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from sqlalchemy import ColumnElement, and_, false, or_
+from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy.orm import Session
 
 from app.incidents import rules
 from app.incidents.verdicts import MUTING
@@ -86,3 +88,31 @@ def clauses(floor: int = NEEDS_YOU_FROM) -> dict[Standing, ColumnElement[bool]]:
 def urgent_clause(floor: int = NEEDS_YOU_FROM) -> ColumnElement[bool]:
     """``urgent`` as SQL."""
     return and_(clauses(floor)[Standing.NEEDS_YOU], Incident.confidence >= URGENT_FROM)
+
+
+@dataclass(frozen=True)
+class Tally:
+    """How many of the incidents that are going on stand each way."""
+
+    muted: int
+    unsure: int
+    needs_you: int
+    urgent: int
+
+    @property
+    def active(self) -> int:
+        return self.muted + self.unsure + self.needs_you
+
+
+def tally(db: Session, floor: int = NEEDS_YOU_FROM) -> Tally:
+    """Counts the incidents that are going on by their standing, at that floor."""
+    by = clauses(floor)
+    row = db.execute(
+        select(
+            func.count().filter(by[Standing.MUTED]),
+            func.count().filter(by[Standing.UNSURE]),
+            func.count().filter(by[Standing.NEEDS_YOU]),
+            func.count().filter(urgent_clause(floor)),
+        )
+    ).one()
+    return Tally(*row)

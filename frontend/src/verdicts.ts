@@ -52,9 +52,13 @@ export function mutedIn(incident: Pick<Incident, 'verdict_counts'>): number {
   return fine + low
 }
 
-/** What the verdicts say of an incident, in a sentence for the panel about it. */
-export function standing(incident: Pick<Incident, 'verdict' | 'verdict_counts' | 'signal_count'>) {
+/** What the verdicts and the noise filters say of an incident, in a sentence for the panel about
+ * it. */
+export function standing(
+  incident: Pick<Incident, 'verdict' | 'verdict_counts' | 'signal_count' | 'filtered_count'>,
+) {
   const muted = mutedIn(incident)
+  const filtered = incident.filtered_count
   if (incident.verdict === 'threat') {
     return 'You said it is a real threat, so AresGate is certain of it.'
   }
@@ -64,9 +68,24 @@ export function standing(incident: Pick<Incident, 'verdict' | 'verdict_counts' |
       'will not raise an alarm for it.'
     )
   }
+  if (filtered > 0 && muted + filtered === incident.signal_count) {
+    return (
+      'Every signal in it was left out by a verdict you gave or your noise filters, so AresGate ' +
+      'is sure of nothing and will not raise an alarm for it.'
+    )
+  }
+  const count = incident.signal_count.toString()
+  if (muted > 0 && filtered > 0) {
+    return (
+      `${muted.toString()} of its ${count} signals match a verdict you gave and ` +
+      `${filtered.toString()} were set aside by your noise filters, so none of those are counted.`
+    )
+  }
   if (muted > 0) {
-    const count = incident.signal_count.toString()
     return `${muted.toString()} of its ${count} signals match a verdict you gave and are not counted.`
+  }
+  if (filtered > 0) {
+    return `${filtered.toString()} of its ${count} signals were set aside by your noise filters and are not counted.`
   }
   return "You haven't said anything about it yet."
 }

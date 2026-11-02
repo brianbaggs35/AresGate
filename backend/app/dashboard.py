@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import ColumnElement, Interval, and_, cast, func, literal, or_, select
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy import ColumnElement, Interval, and_, func, literal, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
 from app.incidents.attention import NEEDS_YOU_FROM, Standing, clauses, urgent_clause
+from app.incidents.filters import inside_clause
 from app.incidents.verdicts import MUTING
 from app.models import Device, Event, Incident, MetricSample, MetricSeries
 from app.models.base import UTCDateTime
@@ -38,17 +38,6 @@ TOP_SOURCES = 8
 # as serious in it: the same as the banner has always said.
 NOISY_SIGNATURES = 6
 SERIOUS_FROM = Severity.HIGH
-# The addresses that are on a network of the owner's, or can't be anywhere else: private, shared
-# (carrier-grade NAT), link-local and unique local ones.
-INSIDE = (
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "100.64.0.0/10",
-    "169.254.0.0/16",
-    "fc00::/7",
-    "fe80::/10",
-)
 # How many incidents are marked on the charts, and how serious one has to be to be marked: a
 # chart with a flag for every low-severity scan says nothing.
 MARKED_INCIDENTS = 12
@@ -173,11 +162,6 @@ def alerts(db: Session, win: Window) -> Alerts:
     )
 
 
-def _inside(column: InstrumentedAttribute[IPv4Address | IPv6Address | None]) -> ColumnElement[bool]:
-    """Whether an address is one of the owner's own kind (see ``INSIDE``)."""
-    return or_(*(column.op("<<=")(cast(net, INET)) for net in INSIDE))
-
-
 @dataclass(frozen=True)
 class SourceAlerts:
     """What one program reported as alerts in a window."""
@@ -200,7 +184,9 @@ def alerts_by_source(db: Session, win: Window) -> list[SourceAlerts]:
             Event.source,
             count,
             func.count().filter(Event.severity >= SERIOUS_FROM),
-            func.count().filter(and_(_inside(Event.src_address), _inside(Event.dst_address))),
+            func.count().filter(
+                and_(inside_clause(Event.src_address), inside_clause(Event.dst_address))
+            ),
         )
         .where(IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end)
         .group_by(Event.source)

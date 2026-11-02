@@ -36,18 +36,28 @@ const noun = (count: number) => (count === 1 ? 'incident' : 'incidents')
         out.
       </span>
     </h2>
-    <ul v-if="reasons.length" class="filtered__reasons" aria-label="Why they were filtered out">
-      <li v-for="reason in reasons" :key="reason.key">
-        <v-chip
-          variant="outlined"
-          :to="reason.to"
-          :data-test="`filtered-${reason.key}`"
-          :aria-label="`${formatCount(reason.count)} ${reason.label}: see them`"
-        >
-          {{ formatCount(reason.count) }} {{ reason.label }}
-        </v-chip>
-      </li>
-    </ul>
+    <div class="filtered__row">
+      <ul v-if="reasons.length" class="filtered__reasons" aria-label="Why they were filtered out">
+        <li v-for="reason in reasons" :key="reason.key">
+          <v-chip
+            variant="outlined"
+            :to="reason.to"
+            :data-test="`filtered-${reason.key}`"
+            :aria-label="`${formatCount(reason.count)} ${reason.label}: see them`"
+          >
+            {{ formatCount(reason.count) }} {{ reason.label }}
+          </v-chip>
+        </li>
+      </ul>
+      <v-btn
+        variant="text"
+        size="small"
+        :to="{ name: 'settings-noise-filters' }"
+        data-test="filtered-settings"
+      >
+        Change what is filtered
+      </v-btn>
+    </div>
   </section>
 </template>
 
@@ -69,6 +79,13 @@ const noun = (count: number) => (count === 1 ? 'incident' : 'incidents')
 .filtered__title > svg {
   flex: none;
   margin-top: 0.15rem;
+}
+
+.filtered__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
 }
 
 .filtered__reasons {

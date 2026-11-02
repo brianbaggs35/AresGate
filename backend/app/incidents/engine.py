@@ -19,8 +19,10 @@ worked. Nothing here needs the analyst, which reads and extends incidents later.
 
 The owner's verdicts (see ``verdicts.py``) are applied as each signal joins. One they have called
 not suspicious or low priority is kept in the timeline and counted, but leaves everything the
-incident says about itself to the signals that are not. ``reapply`` does it again for the
-incidents that are not over after a verdict is given, changed or taken back.
+incident says about itself to the signals that are not. So is one that their noise filters set
+aside (see ``filters.py``), when no verdict is about it: a verdict outranks a filter.
+``reapply`` does it again for the incidents that are not over after a verdict or a filter is
+given, changed or taken back.
 """
 
 from collections.abc import Sequence
@@ -32,7 +34,8 @@ from sqlalchemy import ColumnElement, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
-from app.incidents import episode, rules, verdicts
+from app.incidents import episode, filters, rules, verdicts
+from app.incidents.filters import Filters
 from app.incidents.subject import Address, Signal, addresses_of, subject_of
 from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
 
@@ -147,6 +150,7 @@ def _start(db: Session, event: Event, subject: str) -> Incident:
         last_seen_at=event.occurred_at,
         signal_count=0,
         verdict_counts={},
+        filtered_count=0,
         block=episode.block_of_subject(subject),
         waves=0,
     )
@@ -157,12 +161,25 @@ def _start(db: Session, event: Event, subject: str) -> Incident:
     return incident
 
 
+def _decide(
+    signal: Signal, verdict_rules: Sequence[VerdictRule], noise: Filters
+) -> tuple[VerdictRule | None, str | None]:
+    """What the owner has said of a signal: the verdict rule that is about it or, if none is, the
+    noise filter that sets it aside. Never both: a verdict outranks a filter."""
+    rule = verdicts.judge(signal, verdict_rules)
+    return rule, None if rule else filters.judge(signal, noise)
+
+
 def _join(
-    db: Session, incident: Incident, event: Event, verdict_rules: Sequence[VerdictRule]
+    db: Session,
+    incident: Incident,
+    event: Event,
+    verdict_rules: Sequence[VerdictRule],
+    noise: Filters,
 ) -> None:
     """Adds a signal to an incident, and what it changes in the summary."""
     previous = incident.last_seen_at if incident.signal_count else None
-    rule = verdicts.judge(event, verdict_rules)
+    rule, filtered_by = _decide(event, verdict_rules, noise)
     verdict = rule.verdict if rule else None
     if incident.signal_count < MAX_SIGNALS:
         db.add(
@@ -182,20 +199,28 @@ def _join(
                 protocol=event.protocol,
                 verdict=verdict,
                 verdict_rule_id=rule.id if rule else None,
+                filtered_by=filtered_by,
             )
         )
-    _absorb(incident, event, verdict)
+    _absorb(incident, event, verdict, filtered_by is not None)
     incident.waves = episode.next_wave(incident.waves, previous, event.occurred_at)
 
 
-def _absorb(incident: Incident, signal: Signal, verdict: str | None) -> None:
+def _absorb(
+    incident: Incident, signal: Signal, verdict: str | None, filtered: bool = False
+) -> None:
     """What a signal changes in an incident's summary. Every signal is counted and moves the
-    times, but one the owner called not suspicious or low priority changes nothing else, unless
-    every signal so far was such a one: then the incident is described by them, as it has to be
-    by something, until a signal that counts turns up and takes over."""
-    counting = incident.signal_count - verdicts.muted(incident.verdict_counts)
-    muted = verdict in verdicts.MUTING
+    times, but one the owner called not suspicious or low priority, or whose noise filters set
+    aside, changes nothing else, unless every signal so far was such a one: then the incident is
+    described by them, as it has to be by something, until a signal that counts turns up and takes
+    over."""
+    counting = (
+        incident.signal_count - verdicts.muted(incident.verdict_counts) - incident.filtered_count
+    )
+    muted = filtered or verdict in verdicts.MUTING
     incident.signal_count += 1
+    if filtered:
+        incident.filtered_count += 1
     incident.first_seen_at = min(incident.first_seen_at, signal.occurred_at)
     incident.last_seen_at = max(incident.last_seen_at, signal.occurred_at)
     if verdict is not None:
@@ -232,6 +257,7 @@ def _with(known: list[Address], new: list[Address], subject: str) -> list[Addres
 def _score(incident: Incident) -> None:
     others = [address for address in incident.addresses if str(address) != incident.subject]
     muted = verdicts.muted(incident.verdict_counts)
+    filtered = incident.filtered_count
     incident.verdict = verdicts.rollup(incident.verdict_counts, incident.signal_count)
     facts = rules.Facts(
         subject=incident.subject,
@@ -239,10 +265,11 @@ def _score(incident: Incident) -> None:
         top_source=incident.top_source,
         top_summary=incident.top_summary,
         sources=incident.sources,
-        signal_count=incident.signal_count - muted,
+        signal_count=incident.signal_count - muted - filtered,
         banned=incident.banned,
         others=len(others),
         muted=muted,
+        filtered=filtered,
         threats=incident.verdict_counts.get(verdicts.THREAT, 0),
         block=incident.block
         if episode.neighbours_of(incident.subject, incident.block, incident.addresses)
@@ -257,7 +284,11 @@ def _score(incident: Incident) -> None:
 def _shape(incident: Incident, signals: Sequence[IncidentSignal]) -> None:
     """Works out what an incident from before episodes were known has of them, from its signals
     as they were judged, and nothing else of it."""
-    counting = [signal for signal in signals if signal.verdict not in verdicts.MUTING] or signals
+    counting = [
+        signal
+        for signal in signals
+        if signal.verdict not in verdicts.MUTING and signal.filtered_by is None
+    ] or signals
     incident.block = episode.block_of_subject(incident.subject)
     # No signals at all can't happen, but a zero would have it looked at again for ever.
     incident.waves = episode.waves_of([signal.occurred_at for signal in signals]) if signals else 1
@@ -306,7 +337,11 @@ def _fits(one: Incident, other: Incident) -> bool:
 
 
 def _merge(
-    db: Session, keep: Incident, drop: Incident, verdict_rules: Sequence[VerdictRule]
+    db: Session,
+    keep: Incident,
+    drop: Incident,
+    verdict_rules: Sequence[VerdictRule],
+    noise: Filters,
 ) -> None:
     """Folds one incident into the other: its signals (so their verdicts), its times and the last
     time its status was changed. Everything else is worked out again from the signals."""
@@ -321,7 +356,7 @@ def _merge(
     keep.status_changed_at = max(changed) if changed else None
     db.delete(drop)
     db.flush()
-    _rebuild(db, keep, verdict_rules)
+    _rebuild(db, keep, verdict_rules, noise)
     # What an incident that outgrew its timeline saw is counted, if not listed.
     if keep.signal_count < total:
         keep.signal_count = total
@@ -329,7 +364,10 @@ def _merge(
 
 
 def _consolidate(
-    db: Session, touched: dict[int, Incident], verdict_rules: Sequence[VerdictRule]
+    db: Session,
+    touched: dict[int, Incident],
+    verdict_rules: Sequence[VerdictRule],
+    noise: Filters,
 ) -> int:
     """Merges each incident that was touched with the ones of the same block and status that are
     one episode with it, the oldest keeping the rest. Incidents of another status are left as
@@ -349,7 +387,7 @@ def _consolidate(
             if other is None:
                 break
             keep, drop = sorted((current, other), key=lambda item: (item.first_seen_at, item.id))
-            _merge(db, keep, drop, verdict_rules)
+            _merge(db, keep, drop, verdict_rules, noise)
             touched.pop(drop.id, None)
             touched[keep.id] = keep
             current = keep
@@ -363,6 +401,7 @@ def correlate(db: Session, now: datetime) -> Result:
     if not db.scalar(select(func.pg_try_advisory_xact_lock(LOCK))):
         return Result(skipped=True)
     verdict_rules = verdicts.load(db)
+    noise = filters.load(db)
     old = _backfill(db)
     events = db.scalars(
         select(Event)
@@ -393,12 +432,12 @@ def correlate(db: Session, now: datetime) -> Result:
         if incident is None:
             incident = _start(db, event, subject)
             created += 1
-        _join(db, incident, event, verdict_rules)
+        _join(db, incident, event, verdict_rules, noise)
         touched[incident.id] = incident
     filed = len(touched)
     for incident in touched.values():
         _score(incident)
-    merged = _consolidate(db, {**{item.id: item for item in old}, **touched}, verdict_rules)
+    merged = _consolidate(db, {**{item.id: item for item in old}, **touched}, verdict_rules, noise)
     if events:
         _move_cursor(db, events[-1].id)
     return Result(
@@ -410,8 +449,11 @@ def correlate(db: Session, now: datetime) -> Result:
     )
 
 
-def _rebuild(db: Session, incident: Incident, verdict_rules: Sequence[VerdictRule]) -> None:
-    """Works an incident's summary out again from its signals, judged by the rules as they are."""
+def _rebuild(
+    db: Session, incident: Incident, verdict_rules: Sequence[VerdictRule], noise: Filters
+) -> None:
+    """Works an incident's summary out again from its signals, judged by the rules and the
+    filters as they are."""
     signals = db.scalars(
         select(IncidentSignal)
         .where(IncidentSignal.incident_id == incident.id)
@@ -421,11 +463,12 @@ def _rebuild(db: Session, incident: Incident, verdict_rules: Sequence[VerdictRul
     _describe(incident, signals[0])
     incident.signal_count = 0
     incident.verdict_counts = {}
+    incident.filtered_count = 0
     for signal in signals:
-        rule = verdicts.judge(signal, verdict_rules)
+        rule, signal.filtered_by = _decide(signal, verdict_rules, noise)
         signal.verdict = rule.verdict if rule else None
         signal.verdict_rule_id = rule.id if rule else None
-        _absorb(incident, signal, signal.verdict)
+        _absorb(incident, signal, signal.verdict, signal.filtered_by is not None)
     # What an incident that outgrew its timeline saw after it is not there to be read again, but
     # it was seen, and the incident still ends when it did.
     incident.first_seen_at = min(first, incident.first_seen_at)
@@ -436,18 +479,20 @@ def _rebuild(db: Session, incident: Incident, verdict_rules: Sequence[VerdictRul
 
 def hold(db: Session) -> None:
     """Waits for a run that is under way, and keeps the next from starting, until the caller
-    commits. What a verdict is, and what the incidents say because of it, then change together."""
+    commits. What a verdict or a filter is, and what the incidents say because of it, then change
+    together."""
     db.execute(select(func.pg_advisory_xact_lock(LOCK)))
 
 
 def reapply(db: Session) -> None:
     """Judges the signals of the incidents that are not over again, after the owner gave, changed
-    or took back a verdict. One that is over is history and keeps what was said at the time. The
-    caller commits, with the verdict.
+    or took back a verdict, or changed the noise filters. One that is over is history and keeps
+    what was said at the time. The caller commits, with the verdict or the filters.
 
     An incident with more signals than it lists (``MAX_SIGNALS``) is judged by the ones it lists,
     and counts those."""
     hold(db)
     verdict_rules = verdicts.load(db)
+    noise = filters.load(db)
     for incident in db.scalars(select(Incident).where(Incident.status != "resolved")).all():
-        _rebuild(db, incident, verdict_rules)
+        _rebuild(db, incident, verdict_rules, noise)

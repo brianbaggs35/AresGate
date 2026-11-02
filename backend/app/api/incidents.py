@@ -117,6 +117,9 @@ class IncidentOut(BaseModel):
     # signals they all called not suspicious or low priority is as sure as 0.
     verdict: Verdict | None
     verdict_counts: dict[Verdict, int]
+    # How many of its signals the owner's noise filters set aside, which are listed and counted
+    # like the ones a verdict leaves out.
+    filtered_count: int
     # What kind of activity it was, where its signals say: scanning, brute force.
     activities: list[Activity]
     # How many bursts its signals came in, with at least a quarter of an hour of quiet between them.
@@ -156,6 +159,8 @@ class SignalOut(BaseModel):
     # What the owner's verdicts said of it, and the rule they said it by while that exists.
     verdict: Verdict | None
     verdict_rule_id: int | None
+    # Which noise filter set it aside, if one did and no verdict was about it.
+    filtered_by: Literal["inside", "severity"] | None
 
 
 class DeviceOut(BaseModel):
@@ -415,6 +420,7 @@ def _incident(
         status_changed_at=incident.status_changed_at,
         verdict=cast(Verdict | None, incident.verdict),
         verdict_counts=cast(dict[Verdict, int], incident.verdict_counts),
+        filtered_count=incident.filtered_count,
         activities=cast(list[Activity], incident.activities),
         waves=max(incident.waves, 1),
         port_count=len(incident.ports),
@@ -440,6 +446,7 @@ def _signal(signal: IncidentSignal) -> SignalOut:
         protocol=signal.protocol,
         verdict=cast(Verdict | None, signal.verdict),
         verdict_rule_id=signal.verdict_rule_id,
+        filtered_by=cast(Literal["inside", "severity"] | None, signal.filtered_by),
     )
 
 

@@ -4,6 +4,33 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Noise filters, in Settings.** A new **Settings > Noise filters** page decides what AresGate asks
+  you about without a verdict from you. *How sure before it asks you* is the confidence an
+  incident has to reach (1 to 100, 35 until you change it) for the dashboard's sentence, the Needs
+  you lane and the filtered-out counts, with what the number means in words. *What each program has
+  to be worth* sets, for each program that reported an alert in the last week (with what it
+  reported by severity beside it), the lowest severity that counts: everything it reports, medium
+  and up, high and up or critical only. *Inside your network* sets aside alerts whose source and
+  destination are both private addresses (10.x, 172.16 to 172.31, 192.168.x, 100.64.x, link-local
+  and unique local ones). A signal set aside is kept, listed in the incident's timeline with a chip
+  that says which filter did it (*Set aside: under this program's severity*, *Set aside: inside
+  your network*), counted in its signals, and adds nothing to how serious or how sure the
+  incident is, as with a verdict; an incident made only of such signals is sure of nothing and says
+  why. Your verdicts come first (a signal one is about is judged by it, even a real threat), and a
+  program's ban is never set aside. The page works out what saving would do as you change it (the
+  incidents that need you, those filtered out and the alerts set aside, now and with the
+  settings as they are on the page) by judging the incidents that are going on as the settings
+  would and putting them back, so the figures are what saving does. Saving judges them again at
+  once; incidents that are over keep what was said at the time. Each change is in Settings >
+  Activity. The API is `GET` and `PUT /api/noise-filters` and `POST /api/noise-filters/preview`;
+  the rules are in `app/incidents/filters.py`, and the dashboard asks for the saved floor.
+  This adds a migration (`0027`, `noise_settings`, `incident_signals.filtered_by` and
+  `incidents.filtered_count`).
+
 ## 0.0.6
 
 ### Added

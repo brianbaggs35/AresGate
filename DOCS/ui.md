@@ -93,6 +93,17 @@ a switch that shows how many; `quieted` is in the route's query like the other c
 Settings page (`VerdictsView`) is where verdicts are reviewed, changed (`VerdictDialog`) and
 taken back (`ConfirmDialog`, which says how many signals are judged again).
 
+Settings > Noise filters (`NoiseFiltersView`) keeps a draft beside what is kept, so the page never
+shows a half-saved state: four cards edit it (`NoiseFloorCard`, a slider that says its number and
+its word, `NoiseSourcesCard`, a select for each program with what it reported this week beside
+it, `NoiseInsideCard`, a switch, and a link to the verdicts) and `NoiseEffect` shows what it would
+do beside what is so now, with *Save* and *Discard changes*. The question is asked a moment after
+the last change (a slider being dragged is one question, and an answer to an older one is
+dropped), and `role="status"` makes a screen reader say the answer. The figures are the server's
+(`POST /api/noise-filters/preview`), never worked out in the browser. A signal a filter set aside
+is the same hollow dot as one a verdict leaves out, with a chip that says which filter did it
+(`SET_ASIDE` in `src/noiseFilters.ts`), and the incident's *Your verdict* line says how many.
+
 An incident card in the list is a link to the incident with the three verdict buttons under it,
 not in it (a link can't hold buttons), in a `<fieldset>` with a hidden legend. A verdict from a
 card is about the incident's address, or where it names none the first alert in it, which only

@@ -23,6 +23,7 @@ describe('SettingsNav', () => {
       '/settings/sign-ins',
       '/settings/activity',
       '/settings/verdicts',
+      '/settings/noise-filters',
       '/settings/ai',
       '/settings/data',
     ])
@@ -31,6 +32,7 @@ describe('SettingsNav', () => {
       'Sign-ins',
       'Activity',
       'Verdicts',
+      'Noise filters',
       'AI',
       'Data',
     ])
@@ -56,6 +58,7 @@ describe('SettingsNav', () => {
       '/settings/sign-ins',
       '/settings/activity',
       '/settings/verdicts',
+      '/settings/noise-filters',
       '/settings/ai',
       '/settings/data',
     ])
@@ -64,6 +67,7 @@ describe('SettingsNav', () => {
       'Sign-ins',
       'Activity',
       'Verdicts',
+      'Noise filters',
       'AI',
       'Data',
     ])

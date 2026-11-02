@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban } from '@lucide/vue'
+import { Ban, ListFilter } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import type { Signal } from '@/api/incidents'
@@ -7,6 +7,7 @@ import SeverityChip from '@/components/SeverityChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatCount } from '@/format'
 import { flowOf } from '@/incidents'
+import { SET_ASIDE } from '@/noiseFilters'
 import { SEVERITY } from '@/severity'
 import { isMuting } from '@/verdicts'
 
@@ -41,8 +42,9 @@ const rows = computed(() =>
       flow: flowOf(signal),
       // A ban is the one kind that isn't an alert: say so.
       ban: signal.kind === 'decision',
-      // One the owner called not suspicious or low priority is listed, but doesn't count.
-      quiet: signal.verdict !== null && isMuting(signal.verdict),
+      // One the owner called not suspicious or low priority, or whose noise filters set aside, is
+      // listed, but doesn't count.
+      quiet: (signal.verdict !== null && isMuting(signal.verdict)) || signal.filtered_by !== null,
       // What the program called it, when that isn't just what it said.
       name: signal.signature && signal.signature !== signal.summary ? signal.signature : null,
     }
@@ -83,6 +85,14 @@ const unlisted = computed(() => props.total - props.signals.length)
               }}</v-chip>
               <SeverityChip :severity="row.signal.severity" size="small" />
               <VerdictChip v-if="row.signal.verdict" :verdict="row.signal.verdict" size="small" />
+              <v-chip
+                v-if="row.signal.filtered_by"
+                size="small"
+                variant="outlined"
+                :prepend-icon="ListFilter"
+                data-test="signal-filtered"
+                >{{ SET_ASIDE[row.signal.filtered_by] }}</v-chip
+              >
               <v-chip
                 v-if="row.ban"
                 size="small"

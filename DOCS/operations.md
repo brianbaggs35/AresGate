@@ -532,6 +532,49 @@ Secrets are blanked out before anything is written (see
 [Security](security.md#how-it-is-hardened-today)). That is a safety net: if you find one in a log,
 please [report it](../SECURITY.md).
 
+### Noise filters
+
+Verdicts are how you tell AresGate things one at a time. **Settings > Noise filters** narrows
+what it asks about without a verdict from you, in three ways, and says what each would do before
+you keep it.
+
+- **How sure before it asks you.** The confidence an incident has to reach to *need you*, from 1
+  to 100 (35, medium confidence, until you change it; 65 and up is *high*). The dashboard's
+  sentence, its Needs you lane and its counts of what was filtered out all go by it, and so will
+  whatever later decides what is worth a message (`filters.load(db).confidence_floor`, with
+  `app/incidents/attention.py` taking it as `floor`).
+- **What each program has to be worth.** For each program, the lowest severity that counts:
+  everything it reports (the default, which for the engine means low and up), medium and up, high
+  and up, or critical only. Programs are listed once they have reported an alert in the last week,
+  with how many by severity, so you can see what a floor would set aside. A program that reports
+  mostly low alerts and the occasional high one is the case this is for.
+- **Inside your network.** Set aside alerts whose source and destination are both addresses that
+  can only be on a network of yours: private (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), shared
+  (100.64.0.0/10), link-local and unique local (fc00::/7, fe80::/10). It is off by default,
+  because a device attacking another one is sometimes the very thing to hear about.
+
+A signal that a filter sets aside is a **signal set aside**, which works like one a verdict
+leaves out: it is kept in the incident's timeline (with a chip saying which filter did it),
+counted in the incident's signals, and adds nothing to its severity, programs, addresses, ban or
+confidence. An incident made only of such signals is sure of nothing (confidence 0) and says why
+in its reasons. Three rules keep it honest:
+
+- **Your verdicts come first.** A signal a verdict is about is judged by the verdict (even a real
+  threat that a filter would have set aside), and is not also marked as filtered.
+- **A ban is never set aside**, whatever the filters say: it is a program's decision that
+  something was an attack.
+- **Nothing is deleted.** Changing a filter judges the signals of the incidents that are going on
+  again, at once, so what they say and what the dashboard counts follow it; taking a filter off
+  brings every signal back. An incident that is resolved is history and keeps what was said at
+  the time.
+
+*What this changes*, at the foot of the page, asks the server (`POST /api/noise-filters/preview`)
+what the settings as they are on the page would do: the incidents that need you, those filtered
+out and the alerts set aside, now and then. It judges the incidents that are going on as the
+settings would, counts, and rolls it back, so the figures are what saving does (a test holds the
+two to agreeing) and nothing is kept until you press *Save*. Each change is a record in Settings
+> Activity with what it was and what it became.
+
 ## The dashboard
 
 The first page of the web app, for the last 24 hours or the last 7 days (the buttons at the top

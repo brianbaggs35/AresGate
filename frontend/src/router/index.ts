@@ -154,6 +154,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/VerdictsView.vue'),
       },
       {
+        path: 'noise-filters',
+        name: 'settings-noise-filters',
+        component: () => import('@/views/NoiseFiltersView.vue'),
+      },
+      {
         path: 'ai',
         name: 'settings-ai',
         component: () => import('@/views/AiSettingsView.vue'),

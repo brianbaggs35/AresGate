@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     ForeignKey,
     Identity,
@@ -85,6 +86,10 @@ class Incident(Base):
     # suspicious or low priority is listed and counted in ``signal_count``, but everything above
     # (the severity, the programs, the addresses) is about the ones that are not.
     verdict_counts: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    # How many of the signals the owner's noise filters set aside (see app/incidents/filters.py),
+    # which are none of the above: they are not a verdict, and a verdict outranks a filter. They
+    # are listed and counted like a muted one and leave everything else to the rest.
+    filtered_count: Mapped[int] = mapped_column(Integer, default=0)
     # What the verdicts say of the incident as a whole: a real threat if any signal is, not
     # suspicious or low priority if every signal is, and none otherwise.
     verdict: Mapped[str | None] = mapped_column(String(16), default=None)
@@ -133,3 +138,30 @@ class IncidentSignal(Base):
     verdict_rule_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("verdict_rules.id", ondelete="SET NULL"), default=None
     )
+    # Which of the owner's noise filters set it aside (``inside``, ``severity``; see
+    # app/incidents/filters.py), when it did and no verdict decided otherwise. Like a verdict it
+    # is listed in the timeline and counted, and leaves what the incident says to the rest.
+    filtered_by: Mapped[str | None] = mapped_column(String(16), default=None)
+
+
+class NoiseSettings(Base):
+    """How AresGate narrows what it asks about without anyone's verdict: how sure it has to be of
+    an incident to ask, and which signals it sets aside. There is only ever one row, and none until
+    the owner first saves (the defaults are in app/incidents/filters.py)."""
+
+    __tablename__ = "noise_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        CheckConstraint("confidence_floor BETWEEN 1 AND 100", name="confidence_floor"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
+    # How sure AresGate has to be of an incident (0 to 100) for it to be asked about.
+    confidence_floor: Mapped[int] = mapped_column(SmallInteger, default=35)
+    # Whether signals between two addresses on the owner's own network are set aside, unless a
+    # program banned something.
+    quiet_inside: Mapped[bool] = mapped_column(Boolean, default=False)
+    # For a program, the lowest severity (on the scale in app/events/event.py) that counts as a
+    # signal. A program that is not here has the engine's own minimum.
+    source_floors: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

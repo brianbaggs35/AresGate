@@ -721,10 +721,12 @@ test.describe('layout on a phone', () => {
     signIns,
     activity,
     verdicts,
+    noiseFilters,
     aiSettings,
     harness,
     data,
   }) => {
+    await harness.createIncidents([{ address: '93.184.216.34', programs: ['wazuh'], signals: 2 }])
     await harness.createVerdicts([
       { verdict: 'not_suspicious', address: '93.184.216.34', note: 'a long reason '.repeat(8) },
     ])
@@ -733,6 +735,7 @@ test.describe('layout on a phone', () => {
       ['sign-ins', () => signIns.goto(), signIns.thisBrowser],
       ['activity', () => activity.goto(), activity.entries.first()],
       ['verdicts', () => verdicts.goto(), verdicts.rows.first()],
+      ['noise filters', () => noiseFilters.goto(), noiseFilters.sources.first()],
       [
         'ai',
         async () => {
@@ -778,6 +781,33 @@ test.describe('layout on a phone', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('the noise filters keep the controls as big as a thumb, with the program and its choice one above the other', async ({
+    harness,
+    noiseFilters,
+    page,
+  }) => {
+    await harness.createIncidents([{ address: '93.184.216.34', programs: ['wazuh'], signals: 2 }])
+    await noiseFilters.goto()
+    await noiseFilters.insideSwitch.check()
+    await expect(noiseFilters.effectTable).toBeVisible()
+
+    const choice = await noiseFilters.source('Wazuh').getByTestId('source-floor').boundingBox()
+    const name = await noiseFilters.source('Wazuh').getByRole('heading').boundingBox()
+    const save = await noiseFilters.save.boundingBox()
+    const viewport = page.viewportSize()
+
+    expect(choice?.height).toBeGreaterThanOrEqual(44)
+    expect(save?.height).toBeGreaterThanOrEqual(44)
+    // The choice has the whole width, below the program's name.
+    expect(choice?.y).toBeGreaterThan((name?.y ?? 0) + (name?.height ?? 0))
+    expect((choice?.x ?? 0) + (choice?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0)
   })
 
   test('draws a chart within the card, and keeps what a tap reads on the screen', async ({

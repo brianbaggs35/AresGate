@@ -40,6 +40,7 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     status_changed_at: null,
     verdict: null,
     verdict_counts: {},
+    filtered_count: 0,
     activities: [],
     waves: 1,
     port_count: 0,
@@ -105,6 +106,7 @@ export function signal(changes: Partial<Signal> = {}): Signal {
     protocol: 'tcp',
     verdict: null,
     verdict_rule_id: null,
+    filtered_by: null,
     ...changes,
   }
 }
