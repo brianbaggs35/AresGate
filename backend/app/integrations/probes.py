@@ -411,14 +411,7 @@ async def ntopng(client: ApiClient, target: Target) -> Verdict:
     seen = [(item, await ntopng_traffic(client, target, item.ifid)) for item in chosen]
     if wanted and len(seen) == 1:
         return _one_interface(*seen[0])
-    sentences: list[str] = []
-    for port, traffic in seen:
-        sentence = f"Interface {port.ifid} is {port.label}"
-        if traffic is not None:
-            sentence += (
-                " and hasn't seen any traffic yet" if traffic.quiet else f": {traffic.describe()}"
-            )
-        sentences.append(f"{sentence}.")
+    sentences = [_interface_sentence(port, traffic) for port, traffic in seen]
     lead = "" if wanted else f" {_by_default(listed, chosen)}"
     message = f"ntopng answered.{lead} {' '.join(sentences)}"
     if any(traffic is not None and traffic.quiet for _, traffic in seen):
@@ -426,6 +419,16 @@ async def ntopng(client: ApiClient, target: Target) -> Verdict:
     if note := _loopback_note(chosen):
         message += f" {note}"
     return Verdict(True, message)
+
+
+def _interface_sentence(port: NtopngInterface, traffic: Traffic | None) -> str:
+    """What one interface is, and what it has seen, as a sentence."""
+    sentence = f"Interface {port.ifid} is {port.label}"
+    if traffic is None:
+        return f"{sentence}."
+    if traffic.quiet:
+        return f"{sentence} and hasn't seen any traffic yet."
+    return f"{sentence}: {traffic.describe()}."
 
 
 def _no_such_interfaces(missing: Sequence[int], listed: Sequence[NtopngInterface]) -> Verdict:
