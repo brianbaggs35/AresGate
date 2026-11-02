@@ -63,25 +63,19 @@ defineExpose({ focus })
       </div>
     </div>
 
-    <p
-      v-if="trusted"
-      class="review__verdict review__verdict--good"
-      role="status"
-      data-test="tls-trusted"
-    >
+    <output v-if="trusted" class="review__verdict review__verdict--good" data-test="tls-trusted">
       <ShieldCheck :size="20" aria-hidden="true" />
       <span>This certificate is the one trusted.</span>
-    </p>
-    <p
+    </output>
+    <output
       v-else-if="verdict"
       class="review__verdict"
       :class="{ 'review__verdict--good': verdict.accepted }"
-      role="status"
       data-test="tls-verdict"
     >
       <component :is="verdict.accepted ? ShieldCheck : ShieldAlert" :size="20" aria-hidden="true" />
       <span>{{ verdict.text }}</span>
-    </p>
+    </output>
 
     <dl class="review__details text-body-medium">
       <dt>Subject</dt>
