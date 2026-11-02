@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only
 
 from app.events.event import Severity
-from app.incidents import episode, verdicts
+from app.incidents import verdicts
 from app.models import AlertDestination, Incident
 
 Reason = Literal["muted", "settled", "severity", "confidence", "source", "activity"]
@@ -41,7 +41,6 @@ REASONS: Final[tuple[Reason, ...]] = (
 # The status of an incident the owner has dealt with.
 SETTLED: Final = ("resolved", "dismissed")
 SEVERITY_WORDS: Final = {1: "low", 2: "medium", 3: "high", 4: "critical"}
-ACTIVITIES: Final = tuple(episode.ACTIVITY_NAMES)
 MINUTES_A_DAY: Final = 24 * 60
 # A preview goes through at most this many incidents, newest first.
 PREVIEW_LIMIT: Final = 2000
@@ -184,19 +183,17 @@ def decide(rules: Rules, incident: Incident, now: datetime) -> Decision:
 
 def explain(reason: Reason, rules: Rules) -> str:
     """Why an incident was left out, in words."""
-    match reason:
-        case "muted":
-            return "You called it not suspicious or low priority"
-        case "settled":
-            return "Already resolved or dismissed"
-        case "severity":
-            return f"Less serious than {SEVERITY_WORDS.get(rules.min_severity, 'chosen')}"
-        case "confidence":
-            return f"AresGate is less than {rules.min_confidence}% sure"
-        case "source":
-            return "None of the programs you chose reported it"
-        case _:  # "activity", the last of them
-            return "Not one of the kinds of activity you chose"
+    if reason == "muted":
+        return "You called it not suspicious or low priority"
+    if reason == "settled":
+        return "Already resolved or dismissed"
+    if reason == "severity":
+        return f"Less serious than {SEVERITY_WORDS.get(rules.min_severity, 'chosen')}"
+    if reason == "confidence":
+        return f"AresGate is less than {rules.min_confidence}% sure"
+    if reason == "source":
+        return "None of the programs you chose reported it"
+    return "Not one of the kinds of activity you chose"
 
 
 @dataclass(frozen=True)
