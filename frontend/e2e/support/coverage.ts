@@ -28,7 +28,7 @@ export const webCoverageOptions: CoverageReportOptions = {
   // The raw data is kept so shards and servers can be merged afterwards: merge-coverage.ts.
   reports: ['v8', 'lcovonly', 'console-summary', 'raw'],
   // Only AresGate's own scripts, not the browser's.
-  entryFilter: (entry) => new URL(entry.url).pathname.startsWith('/assets/'),
+  entryFilter: (entry) => new URL(entry.url).pathname.startsWith('/static/'),
   // Only the web app's source, not the libraries bundled with it.
   sourceFilter: (sourcePath) => sourcePath.startsWith('src/'),
 }
