@@ -35,14 +35,9 @@ const sentence = computed(() => (props.preview ? changeSentence(props.preview) :
     data-test="effect-card"
   >
     <v-progress-linear v-if="loading" indeterminate class="mb-4" aria-label="Working it out" />
-    <p
-      v-if="sentence"
-      class="effect__sentence text-title-medium"
-      role="status"
-      data-test="effect-sentence"
-    >
+    <output v-if="sentence" class="effect__sentence text-title-medium" data-test="effect-sentence">
       {{ sentence }}
-    </p>
+    </output>
     <table v-if="rows.length" class="effect__table" data-test="effect-table">
       <thead>
         <tr>
@@ -118,6 +113,7 @@ const sentence = computed(() => (props.preview ? changeSentence(props.preview) :
 }
 
 .effect__sentence {
+  display: block;
   margin: 0 0 1rem;
 }
 
