@@ -639,7 +639,8 @@ jobs:
             new_code="&sinceLeakPeriod=true"
           fi
           sonar() {
-            curl -sS -H "Authorization: Bearer $SONAR_TOKEN" "https://sonarcloud.io/api/$1&$scope"
+            local path="$1"
+            curl -sS -H "Authorization: Bearer $SONAR_TOKEN" "https://sonarcloud.io/api/$path&$scope"
           }
           # Prints the heading and the lines piped in, or nothing when there are none.
           section() {
