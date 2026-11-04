@@ -210,11 +210,17 @@ class TestNoiseFilters:
     def test_the_total_counts_the_signals_of_both_kinds_that_were_left_out(self) -> None:
         assessment = rules.assess(facts(signal_count=1, muted=2, filtered=3))
 
-        assert [reason.text for reason in assessment.reasons[-2:]] == [
+        muted_reason = (
             "Left out: 2 of its 6 signals match a verdict you gave "
-            "(not suspicious or low priority).",
+            "(not suspicious or low priority)."
+        )
+        filtered_reason = (
             "Left out: 3 of its 6 signals were set aside by your noise filters "
-            "(Settings, Noise filters).",
+            "(Settings, Noise filters)."
+        )
+        assert [reason.text for reason in assessment.reasons[-2:]] == [
+            muted_reason,
+            filtered_reason,
         ]
 
 
