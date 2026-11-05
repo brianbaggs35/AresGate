@@ -12,6 +12,7 @@ from app.events.event import Severity
 from app.incidents import filters, verdicts
 from app.integrations import registry
 from app.models import Event, Incident, utcnow
+from app.threats import settings as threat_settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(signed_in)])
 
@@ -47,8 +48,14 @@ class CountOut(BaseModel):
 
 
 class AlertsOut(BaseModel):
+    """How many alerts there were: each counted once, however many times it was reported and by
+    however many programs (``reports`` has the times, ``duplicates`` how many another program had
+    already reported)."""
+
     total: int
     previous: int
+    reports: int
+    duplicates: int
     # The most serious alert there was, or None when there were none.
     highest: SeverityName | None
     # How many of each severity in each bucket.
@@ -156,7 +163,9 @@ class AttentionOut(BaseModel):
     muted: int
     # Below the floor in confidence.
     unsure: int
-    # The rest: they need the owner, and how many of those AresGate is highly confident of.
+    # Set aside by an AI that judged them background.
+    cleared: int
+    # The rest: they need the owner, and how many of those are threats: highly likely to be real.
     needs_you: int
     urgent: int
 
@@ -248,7 +257,9 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
     found = dashboard.alerts(db, win)
     refused = dashboard.blocked(db, win)
     people = dashboard.devices(db, win)
-    needing = dashboard.attention(db, win, filters.load(db).confidence_floor)
+    floor = filters.load(db).confidence_floor
+    tuning = threat_settings.load(db)
+    needing = dashboard.attention(db, win, floor, tuning)
     return DashboardOut(
         window=WindowOut(
             key=win.key,
@@ -260,6 +271,8 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
         alerts=AlertsOut(
             total=found.total,
             previous=found.previous,
+            reports=found.reports,
+            duplicates=found.duplicates,
             highest=SEVERITY_NAMES[found.highest] if found.highest is not None else None,
             by_severity={
                 SEVERITY_NAMES[level]: counts for level, counts in found.by_severity.items()
@@ -271,6 +284,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             handled=needing.handled,
             muted=needing.muted,
             unsure=needing.unsure,
+            cleared=needing.cleared,
             needs_you=needing.needs_you,
             urgent=needing.urgent,
         ),
@@ -290,7 +304,10 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             for item in dashboard.traffic(db, win)
         ],
         devices=DevicesOut(total=people.total, new=people.new),
-        marks=[_mark(incident) for incident in dashboard.marked_incidents(db, win)],
+        marks=[
+            _mark(incident)
+            for incident in dashboard.marked_incidents(db, win, floor=floor, tuning=tuning)
+        ],
     )
 
 

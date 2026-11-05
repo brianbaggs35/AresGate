@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.incidents import engine
 from app.models import utcnow
+from app.threats import families
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ def correlate_once(new_session: Callable[[], Session]) -> engine.Result:
     """One run of the engine, saved."""
     with new_session() as db:
         result = engine.correlate(db, utcnow())
+        # The incidents it made or said differently join their families, and are told what those
+        # have been judged.
+        families.assign(db)
         db.commit()
     if result.events or result.merged:
         logger.info(

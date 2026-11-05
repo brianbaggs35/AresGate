@@ -84,6 +84,9 @@ class Question:
     about: str | None = None
     schema: Mapping[str, object] | None = None
     max_tokens: int = 1024
+    # What is the same for every question about a threat (app/ai/brief.py), made with the redactor
+    # and put first in the prompt, ahead of ``system``, so that a provider that caches keeps it.
+    start: Callable[[Redactor], str] | None = None
     # The addresses (or networks) of the home on the internet, shown as WAN_n.
     own: Sequence[str] = ()
     names: Sequence[str] = ()
@@ -144,12 +147,15 @@ def effective_level(definition: ProviderDef, chosen: str) -> Level:
     return level
 
 
-def system_for(level: Level, system: str) -> str:
+def system_for(level: Level, system: str, start: str = "") -> str:
     """The start of every prompt: the notice about evidence, what the stand-ins are (where there
-    are any), and then what this question needs."""
+    are any), what is the same for all questions of its kind if there is any, and then what this
+    question needs."""
     parts = [redaction.DATA_NOTICE]
     if level is not Level.LOCAL:
         parts.append(redaction.GLOSSARY)
+    if start:
+        parts.append(start)
     return "\n\n".join([*parts, system])
 
 
@@ -201,13 +207,14 @@ def prepare(
         secrets=[key] if key else [],
     )
     prompt = redactor.finish(question.build(redactor))
+    start = redactor.finish(question.start(redactor)) if question.start else ""
     return Prepared(
         question=question,
         definition=definition,
         model=row.model,
         target=target,
         level=level,
-        system=system_for(level, question.system),
+        system=system_for(level, question.system, start),
         prompt=prompt,
         redactor=redactor,
     )

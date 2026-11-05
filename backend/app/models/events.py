@@ -72,6 +72,9 @@ class Event(Base):
     iface: Mapped[str | None] = mapped_column(String(64), default=None)
     # A hash of what makes it this event at the source, to tell one read twice from two events.
     fingerprint: Mapped[str] = mapped_column(String(64))
+    # The id of an alert another program had already reported about the same flow moments before
+    # (see app/events/twins.py): the same alert seen twice, counted once. Both are kept.
+    twin_of: Mapped[int | None] = mapped_column(BigInteger, default=None)
     # The program's own record of it, as it gave it (cut down if it was very large).
     raw: Mapped[dict[str, Any] | None] = mapped_column(JSONB, default=None)
 

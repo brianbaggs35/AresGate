@@ -38,6 +38,7 @@ from app.incidents import episode, filters, rules, verdicts
 from app.incidents.filters import Filters
 from app.incidents.subject import Address, Signal, addresses_of, subject_of
 from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
+from app.threats import families, stages
 
 # The kinds of event that can be part of an incident, and how serious one has to be.
 KINDS: Final = ("alert", "decision")
@@ -138,6 +139,7 @@ def _describe(incident: Incident, first: Signal) -> None:
     incident.addresses = []
     incident.activities = []
     incident.ports = []
+    incident.stages = []
     incident.banned = False
 
 
@@ -151,6 +153,8 @@ def _start(db: Session, event: Event, subject: str) -> Incident:
         signal_count=0,
         verdict_counts={},
         filtered_count=0,
+        duplicate_count=0,
+        stages=[],
         block=episode.block_of_subject(subject),
         waves=0,
     )
@@ -181,6 +185,7 @@ def _join(
     previous = incident.last_seen_at if incident.signal_count else None
     rule, filtered_by = _decide(event, verdict_rules, noise)
     verdict = rule.verdict if rule else None
+    duplicate = event.twin_of is not None
     if incident.signal_count < MAX_SIGNALS:
         db.add(
             IncidentSignal(
@@ -200,29 +205,44 @@ def _join(
                 verdict=verdict,
                 verdict_rule_id=rule.id if rule else None,
                 filtered_by=filtered_by,
+                duplicate=duplicate,
             )
         )
-    _absorb(incident, event, verdict, filtered_by is not None)
+    _absorb(incident, event, verdict, filtered_by is not None, duplicate)
     incident.waves = episode.next_wave(incident.waves, previous, event.occurred_at)
 
 
 def _absorb(
-    incident: Incident, signal: Signal, verdict: str | None, filtered: bool = False
+    incident: Incident,
+    signal: Signal,
+    verdict: str | None,
+    filtered: bool = False,
+    duplicate: bool = False,
 ) -> None:
     """What a signal changes in an incident's summary. Every signal is counted and moves the
     times, but one the owner called not suspicious or low priority, or whose noise filters set
     aside, changes nothing else, unless every signal so far was such a one: then the incident is
     described by them, as it has to be by something, until a signal that counts turns up and takes
-    over."""
+    over.
+
+    A duplicate (the same alert another program reported moments before) is counted on its own,
+    not as a signal, and adds only what it brings that the first didn't: the program that agrees,
+    a higher severity. One whose first was set aside, or that came before anything counted, adds
+    nothing."""
     counting = (
         incident.signal_count - verdicts.muted(incident.verdict_counts) - incident.filtered_count
     )
     muted = filtered or verdict in verdicts.MUTING
+    incident.first_seen_at = min(incident.first_seen_at, signal.occurred_at)
+    incident.last_seen_at = max(incident.last_seen_at, signal.occurred_at)
+    if duplicate:
+        incident.duplicate_count += 1
+        if not muted and counting:
+            _inform(incident, signal)
+        return
     incident.signal_count += 1
     if filtered:
         incident.filtered_count += 1
-    incident.first_seen_at = min(incident.first_seen_at, signal.occurred_at)
-    incident.last_seen_at = max(incident.last_seen_at, signal.occurred_at)
     if verdict is not None:
         incident.verdict_counts = {
             **incident.verdict_counts,
@@ -232,6 +252,11 @@ def _absorb(
         return
     if not muted and not counting and incident.signal_count > 1:
         _describe(incident, signal)
+    _inform(incident, signal)
+
+
+def _inform(incident: Incident, signal: Signal) -> None:
+    """What a signal that counts adds to what the incident says of itself."""
     if signal.severity > incident.severity:
         incident.severity = signal.severity
         incident.top_source = signal.source
@@ -244,6 +269,7 @@ def _absorb(
     if activity is not None and activity not in incident.activities:
         incident.activities = sorted({*incident.activities, activity})
     incident.ports = episode.with_ports(incident.ports, signal.dst_port)
+    incident.stages = stages.with_stage(incident.stages, signal)
 
 
 def _with(known: list[Address], new: list[Address], subject: str) -> list[Address]:
@@ -279,6 +305,11 @@ def _score(incident: Incident) -> None:
     incident.confidence = assessment.confidence
     incident.reasons = assessment.as_json()
     incident.title = rules.title_of(facts)
+    key = families.key_of(incident)
+    if incident.family_key != key:
+        # Said differently now: it is another kind of thing, and its family follows.
+        incident.family_key = key
+        incident.family_id = None
 
 
 def _shape(incident: Incident, signals: Sequence[IncidentSignal]) -> None:
@@ -464,11 +495,12 @@ def _rebuild(
     incident.signal_count = 0
     incident.verdict_counts = {}
     incident.filtered_count = 0
+    incident.duplicate_count = 0
     for signal in signals:
         rule, signal.filtered_by = _decide(signal, verdict_rules, noise)
         signal.verdict = rule.verdict if rule else None
         signal.verdict_rule_id = rule.id if rule else None
-        _absorb(incident, signal, signal.verdict, signal.filtered_by is not None)
+        _absorb(incident, signal, signal.verdict, signal.filtered_by is not None, signal.duplicate)
     # What an incident that outgrew its timeline saw after it is not there to be read again, but
     # it was seen, and the incident still ends when it did.
     incident.first_seen_at = min(first, incident.first_seen_at)

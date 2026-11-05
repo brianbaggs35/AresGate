@@ -211,6 +211,9 @@ class IncidentRequest(BaseModel):
     waves: int = Field(default=1, ge=1, le=10)
     ports: list[Annotated[int, Field(ge=1, le=65_535)]] = Field(default=[], max_length=50)
     scan: bool = False
+    exploit: bool = False
+    compromise: bool = False
+    twin: str | None = Field(default=None, max_length=32)
 
 
 class IncidentsRequest(BaseModel):
@@ -249,6 +252,9 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 waves=min(item.waves, item.signals),
                 ports=item.ports,
                 scan=item.scan,
+                exploit=item.exploit,
+                compromise=item.compromise,
+                twin=item.twin,
             )
             for item in body.incidents
         ],

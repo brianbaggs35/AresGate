@@ -25,15 +25,16 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.ai import gateway, service
+from app.ai import brief, gateway, service
 from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
 from app.events.event import Severity
-from app.incidents import queries
+from app.incidents import attention, filters, occurrences, queries
 from app.incidents.verdicts import MUTING
 from app.models import CLASSES, AiCall, AiTriage, Incident, IncidentSignal
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
+from app.threats import calls, settings
 
 PURPOSE: Final = "triage"
 MAX_SIGNALS: Final = 30
@@ -54,9 +55,7 @@ detection systems and the traffic monitors. Say what you make of it, as an exper
 the owner, who is technical but busy.
 
 Judge only from the evidence you are given. Do not invent facts, products or addresses: if the \
-evidence does not show something, say that it does not. Most traffic from the internet to a home \
-network is automated scanning and password guessing that never succeeds and is not worth waking \
-anyone for; say so when that is what this is.
+evidence does not show something, say that it does not.
 
 Choose one classification:
 - compromise: evidence that something on the home network is infected, has been taken over or has \
@@ -154,7 +153,10 @@ def _end(address: object, port: int | None) -> str:
     return f"{address}:{port}" if port else str(address)
 
 
-def _signal_line(signal: IncidentSignal) -> str:
+def signal_line(occurrence: occurrences.Occurrence) -> str:
+    """One line for a kind of signal: when it happened, or when it began and ended and how many
+    times, and what it said."""
+    signal = occurrence.first
     where = ""
     if signal.src_address or signal.dst_address:
         where = (
@@ -165,20 +167,23 @@ def _signal_line(signal: IncidentSignal) -> str:
     what = signal.signature or signal.summary
     severity = Severity(signal.severity).name.lower()
     when = signal.occurred_at.strftime("%Y-%m-%d %H:%M:%S")
+    if occurrence.count > 1:
+        when = f"{when} to {occurrence.last_at:%Y-%m-%d %H:%M:%S}, {occurrence.count} times,"
     verdict = f" [owner: {signal.verdict}]" if signal.verdict else ""
     return f"{when} {signal.source} {signal.kind} {severity}: {what}{where}{protocol}{verdict}"
 
 
 def _timeline(signals: list[IncidentSignal]) -> list[str]:
-    """One line for each signal; of a long incident the first and the last, which tell how it
-    began and where it stands."""
-    if len(signals) <= MAX_SIGNALS:
-        return [_signal_line(signal) for signal in signals]
-    left = len(signals) - MAX_SIGNALS
+    """One line for each kind of signal, which repeats are folded into; of a long incident the
+    first and the last, which tell how it began and where it stands."""
+    found = occurrences.group(signals)
+    if len(found) <= MAX_SIGNALS:
+        return [signal_line(item) for item in found]
+    left = len(found) - MAX_SIGNALS
     return [
-        *(_signal_line(signal) for signal in signals[:FIRST_SIGNALS]),
-        f"... {left} more in between ...",
-        *(_signal_line(signal) for signal in signals[FIRST_SIGNALS - MAX_SIGNALS :]),
+        *(signal_line(item) for item in found[:FIRST_SIGNALS]),
+        f"... {left} more kinds in between ...",
+        *(signal_line(item) for item in found[FIRST_SIGNALS - MAX_SIGNALS :]),
     ]
 
 
@@ -243,6 +248,7 @@ def _span(span: timedelta) -> str:
 def question_for(db: Session, incident: Incident) -> Question:
     """The question to ask about an incident."""
     hostnames = [device.hostname for _, device in queries.devices(db, incident) if device.hostname]
+    tuning = settings.load(db)
     return Question(
         purpose=PURPOSE,
         system=SYSTEM,
@@ -251,6 +257,7 @@ def question_for(db: Session, incident: Incident) -> Question:
         schema=SCHEMA,
         max_tokens=900,
         names=hostnames,
+        start=lambda redactor: brief.start(redactor, tuning),
     )
 
 
@@ -350,6 +357,8 @@ def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: d
         .where(AiTriage.incident_id == incident.id)
         .execution_options(populate_existing=True)
     ).one()
+    # What it thinks of this incident now outranks what was thought of its family.
+    calls.sync(db, [incident.id])
     return Read(kept)
 
 
@@ -374,14 +383,23 @@ class Policy:
     # An incident it has read is read again when it has this many times the signals it had then
     # (and at least ``PAUSE`` has passed); None never reads one twice.
     growth: float | None
+    # Whether it reads incidents that AresGate's rules are unsure of. The quiet ones are judged
+    # by their family instead (app/ai/families.py), which costs a tenth as much.
+    reads_unsure: bool = False
+    # What it does for families: how many batches of them it judges in an hour (none at 0), the
+    # fewest incidents a family has to have to be worth judging, and how much a family has to
+    # grow before it is judged again (None: never).
+    family_batches: int = 0
+    family_min: int = 0
+    family_growth: float | None = None
 
 
 POLICIES: Final[dict[str, Policy]] = {
     "very_low": Policy(None, 0, None),
-    "low": Policy(Severity.HIGH, 6, None),
-    "medium": Policy(Severity.MEDIUM, 20, 4.0),
-    "high": Policy(Severity.LOW, 60, 2.0),
-    "maximum": Policy(Severity.INFO, 150, 1.5),
+    "low": Policy(Severity.HIGH, 6, None, False, 1, 20, None),
+    "medium": Policy(Severity.MEDIUM, 20, 4.0, False, 2, 5, 4.0),
+    "high": Policy(Severity.LOW, 60, 2.0, True, 4, 3, 2.0),
+    "maximum": Policy(Severity.INFO, 150, 1.5, True, 8, 2, 1.5),
 }
 # At most this many in one run, so a burst of new incidents is read steadily and not all at once.
 PER_RUN: Final = 5
@@ -412,6 +430,13 @@ def plan(db: Session, now: datetime) -> list[int]:
         AiCall.about == func.concat("incident ", Incident.id),
         AiCall.occurred_at >= now - PAUSE,
     )
+    tuning = settings.load(db)
+    by = attention.clauses(filters.load(db).confidence_floor, tuning)
+    # Incidents the rules are unsure of, or that an AI has already set aside as background, are not
+    # read one by one: that is what families are for.
+    skipped = by[attention.Standing.AI_CLEARED]
+    if not policy.reads_unsure:
+        skipped = or_(skipped, by[attention.Standing.UNSURE])
     unread = AiTriage.incident_id.is_(None)
     wanted = unread
     if policy.growth is not None:
@@ -429,6 +454,7 @@ def plan(db: Session, now: datetime) -> list[int]:
             or_(Incident.verdict.is_(None), Incident.verdict.not_in(MUTING)),
             wanted,
             ~asked_lately,
+            ~skipped,
         )
         .order_by(
             Incident.severity.desc(), Incident.confidence.desc(), Incident.last_seen_at.desc()

@@ -295,11 +295,25 @@ class TestPreviewingThem:
         ).json()
 
         assert body["now"] == {
-            "incidents": {"active": 4, "needs_you": 2, "urgent": 0, "unsure": 2, "muted": 0},
+            "incidents": {
+                "active": 4,
+                "needs_you": 2,
+                "urgent": 0,
+                "unsure": 2,
+                "cleared": 0,
+                "muted": 0,
+            },
             "set_aside": {"total": 0, "inside": 0, "severity": 0, "by_source": {}},
         }
         assert body["after"] == {
-            "incidents": {"active": 4, "needs_you": 0, "urgent": 0, "unsure": 4, "muted": 0},
+            "incidents": {
+                "active": 4,
+                "needs_you": 0,
+                "urgent": 0,
+                "unsure": 4,
+                "cleared": 0,
+                "muted": 0,
+            },
             "set_aside": {"total": 2, "inside": 1, "severity": 1, "by_source": {"wazuh": 2}},
         }
 
@@ -351,6 +365,7 @@ class TestPreviewingThem:
             "needs_you": found.needs_you,
             "urgent": found.urgent,
             "unsure": found.unsure,
+            "cleared": found.cleared,
             "muted": found.muted,
         }
         aside = session.scalars(

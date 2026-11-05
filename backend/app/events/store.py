@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.events import retention
+from app.events import retention, twins
 from app.events.event import NewEvent
 from app.models import Event
 from app.partitions import EVENTS
@@ -40,7 +40,11 @@ def record(db: Session, settings: Settings, events: Sequence[NewEvent], now: dat
         .on_conflict_do_nothing(index_elements=["source", "fingerprint", "occurred_at"])
         .returning(Event.id)
     )
-    return len(db.execute(statement, rows).all())
+    stored = [event_id for (event_id,) in db.execute(statement, rows).all()]
+    if stored:
+        times = [row["occurred_at"] for row in rows]
+        twins.mark(db, stored, min(times), max(times))
+    return len(stored)
 
 
 def record_unseen(
