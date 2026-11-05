@@ -20,6 +20,7 @@ from tests.test_incidents_engine import (
     run,
     store,
 )
+from tests.test_threats_overview import kind
 
 BASE = "/api/incidents/bulk"
 UNDO = f"{BASE}/undo"
@@ -211,6 +212,23 @@ class TestChangingStatuses:
         assert asked.json()["incidents"] == 1
         assert rest.json()["incidents"] == 2
         assert {i.status for i in found(session)} == {"resolved", "dismissed"}
+
+    def test_what_matches_can_be_the_ones_in_a_lane_or_of_a_kind(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        threats = kind(session, 2, "ET EXPLOIT threat", confidence=90)
+        kind(session, 1, "ET SCAN unsure", confidence=10)
+
+        asked = change(
+            client,
+            csrf_token,
+            matching={"lane": ["threat"], "family": threats.id},
+            status="resolved",
+        )
+        rest = change(client, csrf_token, matching={"lane": ["background"]}, status="dismissed")
+
+        assert (asked.json()["incidents"], rest.json()["incidents"]) == (2, 1)
+        assert {i.status for i in session.scalars(select(Incident))} == {"resolved", "dismissed"}
 
     def test_it_will_not_change_more_than_can_be_looked_over(
         self,

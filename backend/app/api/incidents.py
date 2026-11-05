@@ -349,6 +349,9 @@ class Matching(BaseModel):
     since: AwareDatetime | None = None
     q: str = ""
     tz: str | None = None
+    # Only those in these lanes, and of this kind (see ``list_incidents``).
+    lane: list[LaneName] = []
+    family: int | None = Field(default=None, ge=1, le=2**63 - 1)
 
 
 class BulkIn(BaseModel):
@@ -789,7 +792,10 @@ def _picked(db: Db, body: BulkIn) -> list[Incident]:
                 min_confidence=matching.min_confidence,
                 address=matching.address,
                 since=matching.since,
-                extra=asked.conditions(),
+                extra=[
+                    *asked.conditions(),
+                    *_in_lanes(_judging(db), list(matching.lane), matching.family),
+                ],
             ),
             limit=bulk.MAX_INCIDENTS,
         )
