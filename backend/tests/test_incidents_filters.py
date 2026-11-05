@@ -223,13 +223,13 @@ class TestWhatTheEngineDoes:
         run(session)
 
         (incident,) = incidents(session)
-        assert incident.signal_count == 3
+        assert incident.signal_count == 2
         assert incident.filtered_count == 1
         assert incident.severity == Severity.CRITICAL
         assert incident.sources == ["opnsense", "wazuh"]
         assert [signal.filtered_by for signal in signals(session)] == [None, "severity", None]
         assert incident.reasons[-1]["rule"] == "filtered"
-        assert incident.reasons[-1]["text"].startswith("Left out: 1 of its 3 signals")
+        assert incident.reasons[-1]["text"].startswith("Left out: 1 of its 2 signals")
 
     def test_what_is_between_two_devices_is_set_aside_when_asked(
         self, session: Session, settings: Settings

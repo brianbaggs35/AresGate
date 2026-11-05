@@ -282,9 +282,22 @@ class TestWhatTheAiIsAsked:
 
         assert "ET SCAN 9" in said
         assert "ET SCAN 10 " not in said
-        assert "... 15 more in between ..." in said
+        assert "... 15 more kinds in between ..." in said
         assert "ET SCAN 25" in said
         assert "ET SCAN 44" in said
+
+    def test_the_same_thing_said_again_and_again_is_one_line_with_how_often(
+        self, session: Session
+    ) -> None:
+        found = incident(session, signal_count=40)
+        signals(session, found, 40, signature="ET SCAN same", summary="same")
+        signals(session, found, 1, signature="ET SCAN once", summary="once")
+
+        said = self.prompt(session, found)
+
+        assert said.count("ET SCAN same") == 1
+        assert ", 40 times, opnsense alert" in said
+        assert said.count("ET SCAN once") == 1
 
     def test_a_signal_says_where_from_and_to_and_what_the_owner_said_of_it(
         self, session: Session

@@ -159,6 +159,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "host_listings": 0,
         "event_retention": 0,
         "events": 0,
+        "incident_families": 0,
         "incident_signals": 0,
         "incidents": 0,
         "integration_api_calls": 0,
@@ -175,6 +176,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "recovery_codes": 0,
         "saved_searches": 0,
         "system_info": len(BASELINE_SYSTEM_INFO),
+        "threat_settings": 0,
         "totp_credentials": 0,
         "user_sessions": 0,
         "users": 1,
@@ -200,6 +202,9 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
     assert response.json() == {
         "fixture": "baseline",
         "tables_emptied": [
+            "incident_signals",
+            "ai_triage",
+            "incidents",
             "user_sessions",
             "totp_credentials",
             "recovery_codes",
@@ -207,15 +212,15 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "passkey_challenges",
             "metric_samples",
             "interface_feeds",
-            "incident_signals",
+            "incident_families",
             "device_sources",
             "device_addresses",
-            "ai_triage",
             "ai_settings",
             "ai_messages",
             "worker_beats",
             "verdict_rules",
             "users",
+            "threat_settings",
             "system_info",
             "saved_searches",
             "noise_settings",
@@ -225,7 +230,6 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "interfaces",
             "integration_connections",
             "integration_api_calls",
-            "incidents",
             "host_listings",
             "events",
             "event_retention",
@@ -986,6 +990,41 @@ def test_a_bot_sweeping_from_a_block_in_waves_is_one_incident(e2e: TestClient) -
     assert detail["grouping"][0].startswith("Signals from 3 addresses of 8.8.4.0/24")
 
 
+def test_an_incident_can_go_on_to_exploit_and_compromise_and_be_seen_by_two_programs(
+    e2e: TestClient,
+) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {
+                    "address": "8.8.4.4",
+                    "scan": True,
+                    "signals": 2,
+                    "exploit": True,
+                    "compromise": True,
+                    "twin": "opnsense",
+                },
+                {"address": "1.1.1.1", "scan": True, "signals": 3},
+            ]
+        },
+    )
+
+    # Two scans and the two things it went on to do, and the scans again from the other program.
+    assert made.json() == {"signals": 2 + 2 + 2 + 3, "incidents": 2}
+    sign_in(e2e)
+    listed = {item["subject"]: item for item in e2e.get("/api/incidents").json()["items"]}
+    chain = listed["8.8.4.4"]
+    assert chain["stages"] == ["recon", "access", "foothold"]
+    assert chain["lane"] == "threat"
+    assert chain["duplicates"] == 2
+    assert listed["1.1.1.1"]["stages"] == ["recon"]
+    assert listed["1.1.1.1"]["duplicates"] == 0
+    assert chain["family_id"] is not None
+    assert e2e.get("/api/threats/overview").json()["funnel"]["duplicates"] == 2
+
+
 def test_events_can_be_made_to_order_for_the_logs(e2e: TestClient) -> None:
     e2e.post("/api/__test__/database/clean")
     made = e2e.post(
@@ -1214,6 +1253,7 @@ def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
         {"ports": [0]},
         {"ports": [65_536]},
         {"ports": list(range(1, 52))},
+        {"twin": "x" * 33},
     ],
 )
 def test_an_incident_that_cannot_be_made_is_refused(

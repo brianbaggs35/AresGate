@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import ColumnElement, Interval, and_, func, literal, or_, select
+from sqlalchemy import ColumnElement, Interval, and_, distinct, func, literal, or_, select, tuple_
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
 from app.incidents.attention import NEEDS_YOU_FROM, Standing, clauses, urgent_clause
 from app.incidents.filters import inside_clause
-from app.incidents.verdicts import MUTING
 from app.models import Device, Event, Incident, MetricSample, MetricSeries
 from app.models.base import UTCDateTime
+from app.threats.settings import Tuning
 
 # The firewall's byte counters, which only rise until the firewall restarts.
 TRAFFIC_SOURCE = "opnsense"
@@ -30,6 +30,20 @@ TRAFFIC_OUT = "interface.bytes_out"
 # connection the firewall refused. The firewall's log gives a block the lowest severity above
 # info and a pass none.
 IS_ALERT = Event.kind == "alert"
+# An alert that is the first of its kind, not one another program reported moments after it
+# (app/events/twins.py).
+IS_ORIGINAL = and_(IS_ALERT, Event.twin_of.is_(None))
+# What makes one alert the same as another: the program, the words and the two ends. The same thing
+# said again in the same stretch of time is one alert that happened many times
+# (app/incidents/occurrences.py), not many.
+_SAME = tuple_(
+    Event.source,
+    func.coalesce(Event.signature, Event.summary),
+    Event.src_address,
+    Event.dst_address,
+    Event.dst_port,
+    Event.protocol,
+)
 IS_BLOCK = and_(Event.kind == "firewall", Event.severity >= Severity.LOW)
 
 RECENT_ALERTS = 8
@@ -129,37 +143,63 @@ def blocked(db: Session, win: Window) -> Counted:
 
 @dataclass(frozen=True)
 class Alerts:
-    """The alerts in a window, by how serious they are."""
+    """The alerts in a window, by how serious they are. An alert is counted once for each stretch
+    of time it happened in (a bucket of the window), however many times it was reported in it, and
+    once if several programs reported it: ``reports`` is how many reports there were."""
 
     total: int
     previous: int
     # For each severity, how many in each bucket.
     by_severity: dict[Severity, list[int]]
     highest: Severity | None
+    # How many times programs reported alerts, the repeats and the duplicates included.
+    reports: int = 0
+    # How many of those another program had already reported.
+    duplicates: int = 0
 
 
 def alerts(db: Session, win: Window) -> Alerts:
     bucket = _binned(win, Event.occurred_at, win.bucket)
     rows = db.execute(
-        select(bucket, Event.severity, func.count())
-        .where(IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+        select(bucket, Event.severity, func.count(distinct(_SAME)))
+        .where(IS_ORIGINAL, Event.occurred_at >= win.start, Event.occurred_at < win.end)
         .group_by(bucket, Event.severity)
     ).all()
     by_severity = {level: [0] * len(win.buckets()) for level in Severity}
     for start, severity, count in rows:
         by_severity[Severity(severity)][(start - win.start) // win.bucket] += count
     present = [level for level, counts in by_severity.items() if any(counts)]
-    previous = db.scalar(
-        select(func.count()).where(
-            IS_ALERT, Event.occurred_at >= win.previous_start, Event.occurred_at < win.start
+    previous = _previous_alerts(db, win)
+    reports, duplicates = db.execute(
+        select(func.count(), func.count().filter(Event.twin_of.is_not(None))).where(
+            IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end
         )
-    )
+    ).one()
     return Alerts(
         total=sum(sum(counts) for counts in by_severity.values()),
-        previous=previous or 0,
+        previous=previous,
         by_severity=by_severity,
         highest=max(present, default=None),
+        reports=reports,
+        duplicates=duplicates,
     )
+
+
+def _previous_alerts(db: Session, win: Window) -> int:
+    """How many alerts there were in the window before, counted the same way: once for each of its
+    buckets that they were reported in."""
+    bucket = _binned(win, Event.occurred_at, win.bucket)
+    per_bucket = (
+        select(func.count(distinct(_SAME)).label("n"))
+        .where(
+            IS_ORIGINAL,
+            Event.occurred_at >= win.previous_start,
+            Event.occurred_at < win.start,
+        )
+        .group_by(bucket, Event.severity)
+        .subquery()
+    )
+    return db.scalar(select(func.coalesce(func.sum(per_bucket.c.n), 0))) or 0
 
 
 @dataclass(frozen=True)
@@ -271,18 +311,25 @@ def recent_alerts(db: Session, win: Window, limit: int = RECENT_ALERTS) -> list[
     return list(
         db.scalars(
             select(Event)
-            .where(IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+            .where(IS_ORIGINAL, Event.occurred_at >= win.start, Event.occurred_at < win.end)
             .order_by(Event.occurred_at.desc(), Event.id.desc())
             .limit(limit)
         )
     )
 
 
-def marked_incidents(db: Session, win: Window, limit: int = MARKED_INCIDENTS) -> list[Incident]:
+def marked_incidents(
+    db: Session,
+    win: Window,
+    limit: int = MARKED_INCIDENTS,
+    floor: int = NEEDS_YOU_FROM,
+    tuning: Tuning | None = None,
+) -> list[Incident]:
     """The incidents worth a flag on the charts, in the order they began: those that were going on
-    in the window and are serious enough, whose owner has not dismissed them or said they are not
-    suspicious or low priority. If there are more than there is room for, the most serious are
-    kept, then the surest and the most recent."""
+    in the window and are serious enough, that are not background (the owner's verdicts and the
+    AI's judgement leave them out) and have not been dismissed. If there are more than there is
+    room for, the most serious are kept, then the surest and the most recent."""
+    by = clauses(floor, tuning)
     chosen = (
         select(Incident)
         .where(
@@ -290,7 +337,7 @@ def marked_incidents(db: Session, win: Window, limit: int = MARKED_INCIDENTS) ->
             Incident.last_seen_at >= win.start,
             Incident.status != "dismissed",
             Incident.severity >= MARKED_FROM,
-            or_(Incident.verdict.is_(None), Incident.verdict.not_in(MUTING)),
+            ~or_(by[Standing.MUTED], by[Standing.UNSURE], by[Standing.AI_CLEARED]),
         )
         .order_by(
             Incident.severity.desc(), Incident.confidence.desc(), Incident.last_seen_at.desc()
@@ -315,30 +362,35 @@ class Attention:
     muted: int
     # Not sure enough: AresGate's confidence in them is below the floor.
     unsure: int
-    # What is left: they need the owner. How many of those AresGate is highly confident of.
+    # Set aside by an AI that judged them background (noise or a probe) and was sure.
+    cleared: int
+    # What is left: they need the owner. How many of those are threats: highly likely to be real.
     needs_you: int
     urgent: int
 
 
-def attention(db: Session, win: Window, floor: int = NEEDS_YOU_FROM) -> Attention:
+def attention(
+    db: Session, win: Window, floor: int = NEEDS_YOU_FROM, tuning: Tuning | None = None
+) -> Attention:
     """How many of the incidents that were going on in a window need the owner, and how many were
     filtered out, by the reason. The Needs you lane and the Incidents page ask for the same ones
     (open or investigating, no quiet verdict, at least the floor in confidence, going on since the
     window began), so the number on the banner is the number they list."""
     going = and_(Incident.first_seen_at < win.end, Incident.last_seen_at >= win.start)
-    by = clauses(floor)
+    by = clauses(floor, tuning)
     row = db.execute(
         select(
             func.count(),
             func.count().filter(by[Standing.HANDLED]),
             func.count().filter(by[Standing.MUTED]),
             func.count().filter(by[Standing.UNSURE]),
+            func.count().filter(by[Standing.AI_CLEARED]),
             func.count().filter(by[Standing.NEEDS_YOU]),
-            func.count().filter(urgent_clause(floor)),
+            func.count().filter(urgent_clause(floor, tuning)),
         ).where(going)
     ).one()
-    total, handled, muted, unsure, needs_you, urgent = row
-    return Attention(total, floor, handled, muted, unsure, needs_you, urgent)
+    total, handled, muted, unsure, cleared, needs_you, urgent = row
+    return Attention(total, floor, handled, muted, unsure, cleared, needs_you, urgent)
 
 
 @dataclass(frozen=True)

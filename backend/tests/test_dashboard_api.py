@@ -39,6 +39,7 @@ def test_an_install_with_nothing_stored_still_has_a_dashboard(
         "handled": 0,
         "muted": 0,
         "unsure": 0,
+        "cleared": 0,
         "needs_you": 0,
         "urgent": 0,
     }
@@ -245,6 +246,7 @@ def test_what_needs_the_owner_is_told_apart_from_what_was_filtered_out(
         "handled": 1,
         "muted": 1,
         "unsure": 1,
+        "cleared": 0,
         "needs_you": 2,
         "urgent": 1,
     }

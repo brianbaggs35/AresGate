@@ -5,6 +5,7 @@ work on any session, so the backend's own tests can use them too.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 from ipaddress import ip_address
 from typing import Any, Literal, NamedTuple
@@ -36,6 +37,7 @@ from app.models import (
 )
 from app.security import passwords
 from app.security.accounts import normalize_username
+from app.threats import families
 
 DEFAULT_VALUE = "an e2e value"
 DEFAULT_PASSWORD = "an e2e password for testing"  # nosec B105: made up, for test accounts
@@ -281,6 +283,13 @@ class IncidentSpec(NamedTuple):
     # The ports the signals touch, in turn; only the ssh port when empty.
     ports: Sequence[int] = ()
     scan: bool = False
+    # What the scanner went on to do: try an exploit, and a sign that it worked. Either makes the
+    # incident more than scanning (a chain of stages), which is never background.
+    exploit: bool = False
+    compromise: bool = False
+    # A second program that reports every alert a couple of seconds after the first, as the same
+    # thing seen twice.
+    twin: str | None = None
 
 
 class IncidentsRecorded(NamedTuple):
@@ -318,6 +327,7 @@ def incidents(
     record_devices(session, sightings, now, source="opnsense", via="arp")
     session.flush()
     incident_engine.correlate(session, now)
+    families.assign(session)
     session.flush()
     for spec, address in zip(specs, addresses, strict=True):
         if spec.status != "open":
@@ -350,25 +360,45 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
         port = spec.ports[signal % len(spec.ports)] if spec.ports else 22
         # The first is the strongest; the others are medium, or low once that is the strongest.
         severity = spec.severity if signal == 0 else min(spec.severity, Severity.MEDIUM)
-        events.append(
-            NewEvent(
-                source=program,
-                connection=_CONNECTIONS.get(program, "e2e"),
-                kind="alert",
-                severity=severity,
-                occurred_at=last - gap * later_waves - _STEP * later_in_wave,
-                identity=(f"e2e-incident-{number}-{signal}",),
-                summary=f"{program.capitalize()} saw {source} try ssh",
-                signature="ET SCAN Potential SSH Scan"
-                if spec.scan or signal > 0
-                else "Brute force on ssh",
-                src_address=source,
-                src_port=40_000 + signal,
-                dst_address=spec.device,
-                dst_port=port,
-                protocol="tcp",
-            )
+        reported = NewEvent(
+            source=program,
+            connection=_CONNECTIONS.get(program, "e2e"),
+            kind="alert",
+            severity=severity,
+            occurred_at=last - gap * later_waves - _STEP * later_in_wave,
+            identity=(f"e2e-incident-{number}-{signal}",),
+            summary=f"{program.capitalize()} saw {source} try ssh",
+            signature="ET SCAN Potential SSH Scan"
+            if spec.scan or signal > 0
+            else "Brute force on ssh",
+            src_address=source,
+            src_port=40_000 + signal,
+            dst_address=spec.device,
+            dst_port=port,
+            protocol="tcp",
         )
+        events.append(reported)
+        if spec.twin:
+            events.append(_twin(reported, spec.twin, f"e2e-incident-{number}-{signal}-twin"))
+    for step, (words, severity, port) in enumerate(_WENT_ON):
+        if (spec.exploit, spec.compromise)[step]:
+            events.append(
+                NewEvent(
+                    source=spec.programs[0],
+                    connection=_CONNECTIONS.get(spec.programs[0], "e2e"),
+                    kind="alert",
+                    severity=severity,
+                    occurred_at=last + timedelta(seconds=step + 1),
+                    identity=(f"e2e-incident-{number}-went-on-{step}",),
+                    summary=f"{words}: {address} to {spec.device}:{port}",
+                    signature=words,
+                    src_address=address,
+                    src_port=41_000 + step,
+                    dst_address=spec.device,
+                    dst_port=port,
+                    protocol="tcp",
+                )
+            )
     banned_at = last + timedelta(seconds=30)
     if spec.ban:
         events.append(_ban(number, address, spec.ban_left, banned_at))
@@ -387,6 +417,26 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
         for place in range(spec.dropped)
     )
     return events
+
+
+# What a scanner goes on to do, in the order of IncidentSpec's flags: the words, how serious, and
+# the port.
+_WENT_ON = (
+    ("ET EXPLOIT Apache Log4j RCE Attempt (CVE-2021-44228)", Severity.HIGH, 8080),
+    ("ET MALWARE Cobalt Strike Beacon Observed", Severity.CRITICAL, 443),
+)
+
+
+def _twin(event: NewEvent, program: str, identity: str) -> NewEvent:
+    """The same alert as another program reports it, a couple of seconds later."""
+    return replace(
+        event,
+        source=program,
+        connection=_CONNECTIONS.get(program, "e2e"),
+        occurred_at=event.occurred_at + timedelta(seconds=2),
+        identity=(identity,),
+        summary=f"{program.capitalize()} saw {event.src_address} try ssh",
+    )
 
 
 def _ban(number: int, address: str, left: str, at: datetime) -> NewEvent:

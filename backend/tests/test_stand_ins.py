@@ -776,6 +776,29 @@ class TestAiProviders:
         assert "HOST_7" in said["story"]
         assert body["stop_reason"] == "end_turn"
 
+    def test_anthropic_judges_each_family_it_is_asked_about(self) -> None:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        schema: dict[str, object] = {
+            "format": {"type": "json_schema", "schema": {"properties": {"families": {}}}}
+        }
+        asked: dict[str, object] = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 900,
+            "output_config": schema,
+            "messages": [
+                {"role": "user", "content": "Families to judge:\n\nF1: a scan\n  x\n\nF2: another"}
+            ],
+        }
+
+        body = json.loads(self.anthropic(post("/v1/messages", asked, **good)).body)
+
+        said = json.loads(body["content"][0]["text"])
+        assert [(each["id"], each["classification"]) for each in said["families"]] == [
+            ("F1", "probe"),
+            ("F2", "probe"),
+        ]
+        assert body["stop_reason"] == "end_turn"
+
     def chat(self, content: str) -> dict[str, Any]:
         good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
         schema: dict[str, object] = {

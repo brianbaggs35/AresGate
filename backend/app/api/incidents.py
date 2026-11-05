@@ -1,6 +1,7 @@
 """Incidents: the alerts, bans and other signals from every integration that belong together,
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
+from dataclasses import dataclass
 from typing import Annotated, Literal, Self, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -12,7 +13,7 @@ from pydantic import (
     IPvAnyAddress,
     model_validator,
 )
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, or_, select
 
 from app.ai import catalog, triage
 from app.api import asking
@@ -22,9 +23,24 @@ from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
 from app.audit import Action, Outcome
 from app.events.event import Severity
-from app.incidents import bulk, engine, episode, queries, response, rules, search
+from app.incidents import (
+    attention,
+    bulk,
+    engine,
+    episode,
+    filters,
+    occurrences,
+    queries,
+    response,
+    rules,
+    search,
+)
+from app.incidents.attention import Lane
 from app.incidents.queries import Order
-from app.models import AiTriage, Incident, IncidentSignal, utcnow
+from app.models import AiTriage, Incident, IncidentFamily, IncidentSignal, utcnow
+from app.threats import explain
+from app.threats import settings as threat_settings
+from app.threats.settings import Tuning
 
 router = APIRouter(prefix="/incidents", tags=["incidents"], dependencies=[Depends(signed_in)])
 
@@ -32,6 +48,11 @@ Status = Literal["open", "investigating", "resolved", "dismissed"]
 Verdict = Literal["not_suspicious", "low_priority", "threat"]
 Activity = Literal["scan", "brute_force"]
 Classification = Literal["compromise", "attack", "probe", "noise", "unclear"]
+# Where an incident goes on the Threats page (app/incidents/attention.py).
+LaneName = Literal["threat", "suspect", "background"]
+Stage = Literal["recon", "access", "foothold"]
+# Whose word the call on an incident is: the owner's, the AI's reading of it or of its family.
+Basis = Literal["owner", "reading", "family"]
 # What to ask for to get the incidents nobody has given a verdict to.
 VerdictFilter = Literal["none", "not_suspicious", "low_priority", "threat"]
 MAX_PAGE = 200
@@ -90,6 +111,14 @@ class GlanceOut(BaseModel):
     confidence: int
 
 
+class CallOut(BaseModel):
+    """What is made of an incident beyond the rules, and whose word it is."""
+
+    classification: Classification
+    confidence: int
+    basis: Basis
+
+
 class IncidentOut(BaseModel):
     id: int
     title: str
@@ -133,6 +162,18 @@ class IncidentOut(BaseModel):
     neighbours: int
     # What the AI made of it, if it has read it (``IncidentDetail.reading`` has the rest).
     ai: GlanceOut | None
+    # Where it goes: a threat (highly likely to be real), a suspect (worth a look) or background
+    # (AresGate isn't sure, or an AI judged it noise or a probe). None for one that is dismissed,
+    # resolved or called not suspicious or low priority by the owner.
+    lane: LaneName | None
+    # How many of its signals another program had already reported (so they count once).
+    duplicates: int
+    # How far it got along the path of an attack: scanning, trying a flaw, a sign it worked.
+    stages: list[Stage]
+    # The kind of incident it is (see ``FamilyBrief``) and what is thought of it, by the owner or
+    # an AI: the word of the owner on the family, then the AI's reading of it, then its family's.
+    family_id: int | None
+    call: CallOut | None
 
 
 class ReasonOut(BaseModel):
@@ -161,6 +202,8 @@ class SignalOut(BaseModel):
     verdict_rule_id: int | None
     # Which noise filter set it aside, if one did and no verdict was about it.
     filtered_by: Literal["inside", "severity"] | None
+    # Whether another program had already reported the same thing a moment before (it counts once).
+    duplicate: bool
 
 
 class DeviceOut(BaseModel):
@@ -193,6 +236,35 @@ class ReadingOut(BaseModel):
     signals_read: int
 
 
+class OccurrenceOut(BaseModel):
+    """Signals that say the same thing the same way, as one that happened ``count`` times."""
+
+    signal: SignalOut
+    count: int
+    last_at: AwareDatetime
+    duplicates: int
+
+
+class FamilyBrief(BaseModel):
+    """A kind of incident: the ones that a program reported in the same words about the same sort of
+    place (see app/threats/families.py), and what is thought of all of them."""
+
+    id: int
+    label: str
+    source: str
+    source_name: str
+    reach: Literal["internet", "network", "rule"]
+    # The owner's word: ``background`` sets the kind aside, ``watch`` never does.
+    owner_call: Literal["background", "watch"] | None
+    # What an AI made of the family as a whole, how sure it was and why.
+    classification: Classification | None
+    confidence: int | None
+    reason: str | None
+    judged_at: AwareDatetime | None
+    # How many incidents of the family are going on.
+    incidents: int
+
+
 class IncidentDetail(IncidentOut):
     # Why AresGate is as sure as it is: the reasons and their points add up to the confidence.
     reasons: list[ReasonOut]
@@ -207,6 +279,11 @@ class IncidentDetail(IncidentOut):
     # None for an incident about a rule.
     blocked: int | None
     reading: ReadingOut | None
+    # Why it is in the lane it is in, a fact to a line.
+    why: list[str]
+    # The signals grouped by what they say, in the order each first happened.
+    occurrences: list[OccurrenceOut]
+    family: FamilyBrief | None
 
 
 class TermOut(BaseModel):
@@ -399,9 +476,33 @@ def _reading(read: AiTriage | None) -> ReadingOut | None:
     )
 
 
+@dataclass(frozen=True)
+class Judging:
+    """What decides the lane an incident is in: how sure it takes for an incident to be asked
+    about, and the owner's threat detection settings."""
+
+    floor: int
+    tuning: Tuning
+
+
+def _judging(db: Db) -> Judging:
+    return Judging(filters.load(db).confidence_floor, threat_settings.load(db))
+
+
+def _call(incident: Incident) -> CallOut | None:
+    if incident.ai_class is None or incident.ai_confidence is None or incident.ai_basis is None:
+        return None
+    return CallOut(
+        classification=cast(Classification, incident.ai_class),
+        confidence=incident.ai_confidence,
+        basis=cast(Basis, incident.ai_basis),
+    )
+
+
 def _incident(
-    incident: Incident, done: response.Response, read: AiTriage | None = None
+    incident: Incident, done: response.Response, judging: Judging, read: AiTriage | None = None
 ) -> IncidentOut:
+    lane = attention.lane_of(incident, judging.floor, judging.tuning)
     return IncidentOut(
         id=incident.id,
         title=incident.title,
@@ -427,6 +528,11 @@ def _incident(
         ports_capped=len(incident.ports) >= episode.MAX_PORTS,
         neighbours=episode.neighbours_of(incident.subject, incident.block, incident.addresses),
         ai=_glance(read),
+        lane=lane.value if lane else None,
+        duplicates=incident.duplicate_count,
+        stages=cast(list[Stage], incident.stages),
+        family_id=incident.family_id,
+        call=_call(incident),
     )
 
 
@@ -447,14 +553,54 @@ def _signal(signal: IncidentSignal) -> SignalOut:
         verdict=cast(Verdict | None, signal.verdict),
         verdict_rule_id=signal.verdict_rule_id,
         filtered_by=cast(Literal["inside", "severity"] | None, signal.filtered_by),
+        duplicate=signal.duplicate,
+    )
+
+
+def _family(db: Db, incident: Incident) -> FamilyBrief | None:
+    if incident.family_id is None:
+        return None
+    family = db.get(IncidentFamily, incident.family_id)
+    if family is None:  # pragma: no cover - a family is only deleted with its incidents
+        return None
+    return brief_of(family, size(db, family.id))
+
+
+def size(db: Db, family_id: int) -> int:
+    """How many incidents of a family are going on."""
+    return (
+        db.scalar(
+            select(func.count()).where(
+                Incident.family_id == family_id, Incident.status.in_(attention.ACTIVE)
+            )
+        )
+        or 0
+    )
+
+
+def brief_of(family: IncidentFamily, incidents: int) -> FamilyBrief:
+    return FamilyBrief(
+        id=family.id,
+        label=family.label,
+        source=family.source,
+        source_name=rules.name_of(family.source),
+        reach=cast(Literal["internet", "network", "rule"], family.reach),
+        owner_call=cast(Literal["background", "watch"] | None, family.owner_call),
+        classification=cast(Classification | None, family.ai_class),
+        confidence=family.ai_confidence,
+        reason=family.ai_reason,
+        judged_at=family.judged_at,
+        incidents=incidents,
     )
 
 
 def _detail(db: Db, incident: Incident) -> IncidentDetail:
     done = response.of(db, [incident])[incident.id]
     read = db.get(AiTriage, incident.id)
+    judging = _judging(db)
+    seen = queries.signals(db, incident)
     return IncidentDetail(
-        **_incident(incident, done, read).model_dump(),
+        **_incident(incident, done, judging, read).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
             subject=incident.subject,
@@ -466,7 +612,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             port_count=len(incident.ports),
         ),
         ports=incident.ports,
-        signals=[_signal(signal) for signal in queries.signals(db, incident)],
+        signals=[_signal(signal) for signal in seen],
         devices=[
             DeviceOut(
                 id=device.id,
@@ -479,6 +625,17 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         ],
         blocked=None if done.state == "no_address" else done.tally.blocked,
         reading=_reading(read),
+        why=explain.why(incident, judging.floor, judging.tuning),
+        occurrences=[
+            OccurrenceOut(
+                signal=_signal(each.first),
+                count=each.count,
+                last_at=each.last_at,
+                duplicates=each.duplicates,
+            )
+            for each in occurrences.group(seen)
+        ],
+        family=_family(db, incident),
     )
 
 
@@ -509,6 +666,19 @@ def _minimum(name: SeverityName | None) -> Severity | None:
     return next(level for level, known in SEVERITY_NAMES.items() if known == name)
 
 
+def _in_lanes(
+    judging: Judging, lanes: list[LaneName] | None, family: int | None
+) -> list[ColumnElement[bool]]:
+    """What an incident has to be to be in the lanes asked for, and the family, if one was."""
+    found: list[ColumnElement[bool]] = []
+    if lanes:
+        by = attention.lane_clauses(judging.floor, judging.tuning)
+        found.append(or_(*(by[Lane(name)] for name in set(lanes))))
+    if family is not None:
+        found.append(Incident.family_id == family)
+    return found
+
+
 @router.get("")
 def list_incidents(
     db: Db,
@@ -535,6 +705,14 @@ def list_incidents(
         str | None,
         Query(description="The time zone the person is in, such as America/Halifax."),
     ] = None,
+    lane: Annotated[
+        list[LaneName] | None,
+        Query(
+            description="Only those in this lane (threat, suspect or background), which are "
+            "incidents that are going on. Repeat it for several."
+        ),
+    ] = None,
+    family: Annotated[int | None, Query(ge=1, le=2**63 - 1, description="Only this kind.")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     order: Annotated[
@@ -545,6 +723,7 @@ def list_incidents(
     """Incidents, the ones that were going most recently first unless asked for the most
     serious and surest first."""
     asked = _ask(db, q, tz)
+    judging = _judging(db)
     with asking.in_time(db):
         page = queries.search(
             db,
@@ -555,7 +734,7 @@ def list_incidents(
                 min_confidence=min_confidence,
                 address=address,
                 since=since,
-                extra=asked.conditions(),
+                extra=[*asked.conditions(), *_in_lanes(judging, lane, family)],
             ),
             limit=limit,
             offset=offset,
@@ -572,7 +751,7 @@ def list_incidents(
     return IncidentPage(
         total=page.total,
         items=[
-            _incident(incident, done[incident.id], read.get(incident.id))
+            _incident(incident, done[incident.id], judging, read.get(incident.id))
             for incident in page.incidents
         ],
         terms=[

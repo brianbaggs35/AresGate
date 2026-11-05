@@ -147,7 +147,7 @@ class TestFilingAnAlert:
         (incident,) = incidents(session)
         assert incident.sources == ["crowdsec", "opnsense", "wazuh"]
         assert incident.banned
-        assert incident.signal_count == 3
+        assert incident.signal_count == 2
         # The strongest signal is worth 40, two more programs 30, the ban 20.
         assert incident.confidence == 90
         assert [reason["rule"] for reason in incident.reasons] == [
@@ -744,8 +744,8 @@ class TestWhenTheOwnerChangesTheirMind:
         after = self.reapply(session)
 
         assert (after.confidence, after.verdict) == (0, "not_suspicious")
-        assert after.verdict_counts == {"not_suspicious": 2}
-        assert after.signal_count == 2
+        assert after.verdict_counts == {"not_suspicious": 1}
+        assert after.signal_count == 1
         assert {signal.verdict_rule_id for signal in signals(session)} == {rule.id}
 
     def test_one_that_is_taken_back_counts_again(
@@ -857,7 +857,7 @@ class TestWhenTheOwnerChangesTheirMind:
         run(session)
 
         (incident,) = incidents(session)
-        assert incident.signal_count == 3
+        assert incident.signal_count == 2
         assert incident.verdict == "not_suspicious"
         assert incident.confidence == 0
 

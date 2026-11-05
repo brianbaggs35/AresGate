@@ -1224,6 +1224,27 @@ def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
     )
 
 
+def _judgement_of_families(asked: Mapping[str, Any]) -> str | None:
+    """What an analyst would answer to a request to judge families of incidents (one that asks for
+    a JSON schema with ``families``): each is routine scanning, which the prompt numbers F1, F2."""
+    if "families" not in _schema_properties(asked):
+        return None
+    numbers = re.findall(r"^(F\d+):", _prompt_of(asked), re.MULTILINE)
+    return json.dumps(
+        {
+            "families": [
+                {
+                    "id": number,
+                    "classification": "probe",
+                    "confidence": 92,
+                    "reason": "Internet scanners looking for open ports; nothing answered.",
+                }
+                for number in numbers
+            ]
+        }
+    )
+
+
 def _lookup(tool: str) -> dict[str, Any]:
     return {"tool": tool, "id": None, "name": None, "hours": None, "limit": None}
 
@@ -1268,7 +1289,11 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
         asked = json.loads(seen.body)
         if asked.get("model") not in models or not isinstance(asked.get("max_tokens"), int):
             return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
-        reading = _reading_of_an_incident(asked) or _answer_of_the_assistant(asked)
+        reading = (
+            _reading_of_an_incident(asked)
+            or _judgement_of_families(asked)
+            or _answer_of_the_assistant(asked)
+        )
         return _json(
             {
                 "id": "msg_stand_in",

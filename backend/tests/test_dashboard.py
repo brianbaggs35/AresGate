@@ -671,14 +671,38 @@ class TestMarkedIncidents:
 
         assert sorted(found) == ["open", "resolved", "threat"]
 
+    def test_the_ones_that_are_background_are_left_out(self, session: Session) -> None:
+        found = self.mark(
+            session,
+            incident("unsure", NOW - HOUR, confidence=10),
+            incident("a probe", NOW - HOUR, ai_class="probe", ai_confidence=95),
+            incident(
+                "sure it is a probe, and critical",
+                NOW - HOUR,
+                ai_class="probe",
+                ai_confidence=95,
+                severity=int(Severity.CRITICAL),
+            ),
+            incident("not sure it is a probe", NOW - HOUR, ai_class="probe", ai_confidence=60),
+            incident("an attack", NOW - HOUR, ai_class="attack", ai_confidence=95),
+            incident("open", NOW - HOUR),
+        )
+
+        assert sorted(found) == [
+            "an attack",
+            "not sure it is a probe",
+            "open",
+            "sure it is a probe, and critical",
+        ]
+
     def test_when_there_are_too_many_the_most_serious_and_surest_are_kept(
         self, session: Session
     ) -> None:
         session.add_all(
             [
-                incident("critical", NOW - HOUR, severity=int(Severity.CRITICAL), confidence=10),
+                incident("critical", NOW - HOUR, severity=int(Severity.CRITICAL), confidence=40),
                 incident("sure", NOW - 2 * HOUR, confidence=90),
-                incident("unsure", NOW - 3 * HOUR, confidence=20),
+                incident("less sure", NOW - 3 * HOUR, confidence=36),
                 incident("medium", NOW - 4 * HOUR, severity=int(Severity.MEDIUM), confidence=99),
             ]
         )
@@ -687,7 +711,7 @@ class TestMarkedIncidents:
 
         found = dashboard.marked_incidents(session, win, limit=3)
 
-        assert [one.subject for one in found] == ["unsure", "sure", "critical"]
+        assert [one.subject for one in found] == ["less sure", "sure", "critical"]
 
     def test_with_none_there_are_none(self, session: Session) -> None:
         assert self.mark(session) == []
@@ -700,7 +724,7 @@ class TestAttention:
         return dashboard.attention(session, dashboard.window("24h", NOW))
 
     def test_a_quiet_network_has_none(self, session: Session) -> None:
-        assert self.seen(session) == dashboard.Attention(0, 35, 0, 0, 0, 0, 0)
+        assert self.seen(session) == dashboard.Attention(0, 35, 0, 0, 0, 0, 0, 0)
 
     def test_each_incident_is_counted_once_for_why_it_is_asked_about_or_why_it_is_not(
         self, session: Session
@@ -729,9 +753,29 @@ class TestAttention:
         )
 
         assert found == dashboard.Attention(
-            incidents=11, floor=35, handled=3, muted=2, unsure=2, needs_you=4, urgent=2
+            incidents=11, floor=35, handled=3, muted=2, unsure=2, cleared=0, needs_you=4, urgent=2
         )
         assert found.handled + found.muted + found.unsure + found.needs_you == found.incidents
+
+    def test_what_an_ai_set_aside_is_counted_on_its_own(self, session: Session) -> None:
+        recently = NOW - timedelta(hours=2)
+
+        found = self.seen(
+            session,
+            incident("203.0.113.1", recently, ai_class="probe", ai_confidence=90),
+            incident("203.0.113.2", recently, ai_class="noise", ai_confidence=80),
+            incident("203.0.113.3", recently, ai_class="probe", ai_confidence=79),
+            incident("203.0.113.4", recently, ai_class="attack", ai_confidence=90),
+            incident(
+                "203.0.113.5",
+                recently,
+                ai_class="probe",
+                ai_confidence=99,
+                severity=int(Severity.CRITICAL),
+            ),
+        )
+
+        assert (found.cleared, found.needs_you, found.urgent) == (2, 3, 1)
 
     def test_only_the_incidents_going_on_in_the_window_are_counted(self, session: Session) -> None:
         win = dashboard.window("24h", NOW)

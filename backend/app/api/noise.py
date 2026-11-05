@@ -18,6 +18,7 @@ from app.incidents.filters import Filters
 from app.integrations import registry
 from app.models import Incident, IncidentSignal, NoiseSettings, VerdictRule
 from app.models.base import utcnow
+from app.threats import settings as threat_settings
 
 router = APIRouter(
     prefix="/noise-filters", tags=["noise filters"], dependencies=[Depends(signed_in)]
@@ -82,6 +83,7 @@ class TallyOut(BaseModel):
     needs_you: int
     urgent: int
     unsure: int
+    cleared: int
     muted: int
 
 
@@ -161,7 +163,7 @@ def _shown(db: Db) -> NoiseOut:
 
 def _effect(db: Db, floor: int) -> EffectOut:
     """What the filters do to the incidents that are going on, as they are stored."""
-    found = attention.tally(db, floor)
+    found = attention.tally(db, floor, threat_settings.load(db))
     rows = db.execute(
         select(IncidentSignal.source, IncidentSignal.filtered_by, func.count())
         .join(Incident, Incident.id == IncidentSignal.incident_id)
@@ -179,6 +181,7 @@ def _effect(db: Db, floor: int) -> EffectOut:
             needs_you=found.needs_you,
             urgent=found.urgent,
             unsure=found.unsure,
+            cleared=found.cleared,
             muted=found.muted,
         ),
         set_aside=SetAsideOut(

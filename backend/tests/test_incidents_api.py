@@ -15,6 +15,8 @@ from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.incidents import episode, queries, search
 from app.models import AuditEvent, Device, DeviceAddress, Incident, User
+from app.threats import settings as threat_settings
+from app.threats.settings import Tuning
 from tests.helpers import OTHER_ORIGIN, new_event
 from tests.test_incidents_engine import (
     ATTACKER,
@@ -29,6 +31,7 @@ from tests.test_incidents_engine import (
     store,
 )
 from tests.test_incidents_response import SCENARIO, decision, stopped, turned_away
+from tests.test_threats_overview import kind
 
 BASE = "/api/incidents"
 MINUTE = timedelta(minutes=1)
@@ -133,7 +136,7 @@ class TestListing:
         assert attack["confidence"] == 90
         assert attack["confidence_level"] == "high"
         assert attack["status"] == "open"
-        assert attack["signal_count"] == 3
+        assert attack["signal_count"] == 2
         assert attack["sources"] == [
             {"key": "crowdsec", "name": "CrowdSec"},
             {"key": "opnsense", "name": "OPNsense"},
@@ -719,7 +722,7 @@ class TestOne:
         # One just before, one during and one just after, but not the one hours before, nor
         # another address's, nor one of no importance. They are no part of the incident itself.
         assert body["blocked"] == 3
-        assert body["signal_count"] == 3
+        assert body["signal_count"] == 2
 
     def test_an_incident_about_a_rule_has_no_blocks_to_count(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings
@@ -950,3 +953,147 @@ class TestSayingWhatIsBeingDone:
         assert response.status_code == 403
         session.expire_all()
         assert incident.status == "open"
+
+
+class TestLanes:
+    """Which lane each incident is in, and asking for the incidents of one."""
+
+    def seed(self, session: Session) -> dict[str, Incident]:
+        kind(session, 1, "ET EXPLOIT threat", confidence=90)
+        kind(session, 2, "ET SCAN suspect", confidence=50)
+        kind(session, 1, "ET SCAN unsure", confidence=10)
+        kind(session, 1, "ET SCAN quiet", confidence=90, verdict="low_priority")
+        return {
+            each.top_summary.split(" from ")[0]: each for each in session.scalars(select(Incident))
+        }
+
+    def test_each_incident_says_where_it_is_and_what_is_thought_of_it(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        self.seed(session)
+
+        by_words = {item["title"]: item for item in listed(client, limit=10)}
+        lanes = sorted(item["lane"] or "none" for item in by_words.values())
+
+        assert lanes == ["background", "none", "suspect", "suspect", "threat"]
+        for item in by_words.values():
+            assert item["duplicates"] == 0
+            assert item["stages"] == []
+            assert item["family_id"] is not None
+            assert item["call"] is None
+
+    def test_one_lane_can_be_asked_for(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        self.seed(session)
+
+        def subjects(**params: Any) -> int:
+            return len(listed(client, limit=10, **params))
+
+        assert subjects(lane="threat") == 1
+        assert subjects(lane="suspect") == 2
+        assert subjects(lane="background") == 1
+        assert subjects(lane=["threat", "suspect"]) == 3
+        assert subjects(lane=["threat", "threat"]) == 1
+
+    def test_the_total_and_the_counts_follow_the_lane(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        self.seed(session)
+
+        body = client.get(BASE, params={"lane": "suspect"}).json()
+
+        assert body["total"] == 2
+        assert sum(item["count"] for item in body["facets"]["sources"]) == 2
+
+    def test_a_kind_can_be_asked_for(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.seed(session)
+        suspect = found["ET SCAN suspect"]
+
+        assert len(listed(client, family=suspect.family_id)) == 2
+        assert listed(client, family=4040) == []
+
+    def test_a_lane_it_does_not_know_is_refused(self, client: TestClient, csrf_token: str) -> None:
+        assert client.get(BASE, params={"lane": "other"}).status_code == 422
+
+    def test_the_settings_decide_the_lane(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        self.seed(session)
+        threat_settings.save(session, Tuning(threat_from=95))
+        session.commit()
+
+        assert len(listed(client, lane="threat")) == 0
+
+    def test_an_incident_is_shown_with_why_it_is_where_it_is_and_its_kind(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.seed(session)
+        threat = found["ET EXPLOIT threat"]
+        family = threat.family_id
+
+        body = client.get(f"{BASE}/{threat.id}").json()
+
+        assert body["lane"] == "threat"
+        assert body["why"] == ["AresGate's rules are 90% sure it is a real attack."]
+        assert body["family"]["id"] == family
+        assert body["family"]["incidents"] == 1
+        assert body["family"]["label"] == "ET EXPLOIT threat from <address>"
+        assert body["family"]["owner_call"] is None
+        assert body["occurrences"] == []
+
+    def test_an_incident_with_no_family_has_none(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.seed(session)["ET EXPLOIT threat"]
+        found.family_id = None
+        session.commit()
+
+        body = client.get(f"{BASE}/{found.id}").json()
+
+        assert body["family"] is None
+        assert body["family_id"] is None
+
+    def test_what_an_ai_made_of_it_is_shown_with_whose_word_it_is(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.seed(session)["ET SCAN unsure"]
+        found.ai_class = "probe"
+        found.ai_confidence = 91
+        found.ai_basis = "family"
+        found.stages = ["recon"]
+        found.duplicate_count = 3
+        session.commit()
+
+        body = client.get(f"{BASE}/{found.id}").json()
+
+        assert body["call"] == {"classification": "probe", "confidence": 91, "basis": "family"}
+        assert body["stages"] == ["recon"]
+        assert body["duplicates"] == 3
+
+    def test_signals_are_grouped_by_what_they_say(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, severity=Severity.HIGH, signature="ET SCAN x"),
+            alert(NOW + MINUTE, n=2, severity=Severity.HIGH, signature="ET SCAN x"),
+            alert(NOW + 2 * MINUTE, n=3, severity=Severity.HIGH, signature="ET SCAN x"),
+            alert(
+                NOW + 3 * MINUTE, n=4, source="opnsense", connection="api", signature="ET SCAN x"
+            ),
+        )
+        run(session)
+        [only] = listed(client)
+
+        body = client.get(f"{BASE}/{only['id']}").json()
+
+        assert len(body["signals"]) == 4
+        assert [(each["count"], each["signal"]["source"]) for each in body["occurrences"]] == [
+            (3, "wazuh"),
+            (1, "opnsense"),
+        ]
+        assert body["occurrences"][0]["last_at"] > body["occurrences"][0]["signal"]["occurred_at"]
