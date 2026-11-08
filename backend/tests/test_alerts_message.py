@@ -24,6 +24,7 @@ def incident(**changes: Any) -> Incident:
         "signal_count": 12,
         "sources": ["opnsense", "wazuh"],
         "activities": ["scan"],
+        "stages": [],
         "top_source": "wazuh",
         "top_summary": "ET SCAN Potential SSH Scan from 93.184.216.5 to 192.168.1.20",
         "verdict": None,
@@ -141,6 +142,43 @@ class TestAnIncident:
         )
 
         assert sent["allowed_mentions"] == {"parse": []}
+
+    def test_it_sets_out_how_sure_and_how_serious_beside_its_words(self) -> None:
+        shown = say(incident())
+
+        assert field_values(shown) == {
+            "How sure": "80%",
+            "How serious": "High",
+            "Seen from": "`93.184.216.5`",
+        }
+
+    def test_brief_leaves_the_address_out_of_the_facts(self) -> None:
+        assert "Seen from" not in field_values(say(incident(), detail="brief"))
+
+    def test_an_attack_that_went_through_stages_says_how_far(self) -> None:
+        shown = say(incident(stages=["recon", "access"]))
+
+        assert field_values(shown)["How far it got"] == "Looking around → **Trying to get in**"
+
+    def test_it_gives_the_reasons_in_place_of_the_bare_confidence(self) -> None:
+        shown = say(incident(), why=["Reason one.", "Reason two."])
+
+        lines = shown["description"].split("\n")
+        assert lines[:4] == ["**Why AresGate thinks so**", "• Reason one.", "• Reason two.", ""]
+        assert "is 80% sure" not in shown["description"]
+        assert "Reported by" in shown["description"]
+
+    def test_a_worse_incident_says_so_before_the_reasons(self) -> None:
+        shown = say(incident(), reason="worse", why=["Reason one."])
+
+        lines = shown["description"].split("\n")
+        assert lines[0] == "It has got worse since the last message about it."
+        assert lines[1] == "**Why AresGate thinks so**"
+
+    def test_it_gives_the_reasons_whatever_the_level(self) -> None:
+        for detail in ("brief", "standard", "full"):
+            shown = say(incident(), detail=detail, why=["Reason one."])
+            assert "• Reason one." in shown["description"], detail
 
 
 class TestASummary:

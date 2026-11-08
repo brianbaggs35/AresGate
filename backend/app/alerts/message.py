@@ -96,28 +96,55 @@ def _programs(incident: Incident) -> str:
     return ", ".join([*names[:-2], " and ".join(names[-2:])]) if names else "a program"
 
 
+def _facts(incident: Incident, detail: str) -> list[discord.Field]:
+    """The facts a message sets out beside its words: how far an attack got, how sure AresGate is,
+    how serious it is and, above the brief level, where on the internet it came from."""
+    fields: list[discord.Field] = []
+    path = _stage_path(incident)
+    if path:
+        fields.append(("How far it got", path, False))
+    fields.append(("How sure", f"{incident.confidence}%", True))
+    fields.append(
+        ("How serious", SEVERITY_WORDS.get(incident.severity, "unusual").capitalize(), True)
+    )
+    outside = _outside(incident.subject) if detail != "brief" else None
+    if outside:
+        fields.append(("Seen from", f"`{outside}`", True))
+    return fields
+
+
 def incident_message(
     incident: Incident,
     *,
     reason: str,
     detail: str,
     origin: str,
+    why: Sequence[str] = (),
     devices: Sequence[Device] = (),
     sample: bool = False,
     at: datetime,
 ) -> dict[str, object]:
-    """The message for an incident that is new to a destination, got worse or was reopened."""
+    """The message for an incident that is new to a destination, got worse or was reopened.
+    ``why`` is what puts the incident where it is on the Threats page, one fact to a line (see
+    ``app.threats.explain``): a channel that is told of more than threats can then see how much
+    the incident is worth getting up for."""
     headline = _headline(incident, detail)
     title = {
         "worse": f"Got worse: {headline}",
         "reopened": f"Reopened: {headline}",
     }.get(reason, headline)
     sure = f"AresGate is {incident.confidence}% sure this is a real attack."
-    lines = [f"You said it is a real threat. {sure}" if incident.verdict == "threat" else sure]
+    lines: list[str] = []
     if reason == "worse":
-        lines.insert(0, "It has got worse since the last message about it.")
+        lines.append("It has got worse since the last message about it.")
     elif reason == "reopened":
-        lines.insert(0, "You had dealt with this, and it is open again.")
+        lines.append("You had dealt with this, and it is open again.")
+    if why:
+        lines.extend(["**Why AresGate thinks so**", *_bullets(why), ""])
+    elif incident.verdict == "threat":
+        lines.append(f"You said it is a real threat. {sure}")
+    else:
+        lines.append(sure)
     if detail != "brief":
         lines.append(f"Reported by {_programs(incident)}, {incident.signal_count} signals so far.")
     if detail == "full":
@@ -133,6 +160,7 @@ def incident_message(
         color=_COLORS.get(incident.severity, discord.BLUE),
         footer="AresGate · sample alert" if sample else "AresGate · alert",
         link=url,
+        fields=_facts(incident, detail),
         at=at,
     )
 
@@ -223,17 +251,7 @@ def threat_message(
         lines.extend(["", "**Why AresGate thinks so**", *_bullets(why)])
     url = link_to(origin, incident.id)
     lines.extend(["", f"[Open the incident]({url}) to see what was seen and why."])
-    fields: list[discord.Field] = []
-    path = _stage_path(incident)
-    if path:
-        fields.append(("How far it got", path, False))
-    fields.append(("How sure", f"{incident.confidence}%", True))
-    fields.append(
-        ("How serious", SEVERITY_WORDS.get(incident.severity, "unusual").capitalize(), True)
-    )
-    outside = _outside(incident.subject) if detail != "brief" else None
-    if outside:
-        fields.append(("Seen from", f"`{outside}`", True))
+    fields = _facts(incident, detail)
     if detail == "full":
         if devices:
             named = ", ".join(_code(f"{name} ({address})", 80) for address, name in devices[:5])
@@ -323,5 +341,12 @@ def sample_message(
             at=at,
         )
     return incident_message(
-        found, reason=reason, detail=detail, origin=origin, devices=devices, sample=True, at=at
+        found,
+        reason=reason,
+        detail=detail,
+        origin=origin,
+        why=explain.why(found, 35, Tuning()),
+        devices=devices,
+        sample=True,
+        at=at,
     )

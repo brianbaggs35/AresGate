@@ -656,7 +656,12 @@ class TestTheSampleAlert:
 
         [embed] = json.loads(server.seen[0].body)["embeds"]
         assert embed["title"] == "High-severity scanning"
-        assert "fields" not in embed
+        assert "**Why AresGate thinks so**" in embed["description"]
+        assert [item["name"] for item in embed["fields"]] == [
+            "How far it got",
+            "How sure",
+            "How serious",
+        ]
 
     def test_a_webhook_that_is_not_taken_is_a_problem_in_words(
         self, client: TestClient, csrf_token: str, serve: Serve, app: FastAPI
