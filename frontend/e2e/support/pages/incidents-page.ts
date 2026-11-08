@@ -9,6 +9,7 @@ export class IncidentsPage {
   readonly views: Locator
   /** The ways to narrow the list. */
   readonly severity: Locator
+  readonly lane: Locator
   readonly confidence: Locator
   readonly clear: Locator
   /** The search box, the terms of it that were understood, the panel of ways to search and the
@@ -66,6 +67,7 @@ export class IncidentsPage {
     this.heading = page.getByTestId('page-heading')
     this.views = page.getByTestId('views')
     this.severity = page.getByTestId('filter-severity')
+    this.lane = page.getByTestId('filter-lane')
     this.confidence = page.getByTestId('filter-confidence')
     this.searchField = page.getByTestId('search')
     this.searchBox = page.getByRole('textbox', { name: 'Search incidents' })

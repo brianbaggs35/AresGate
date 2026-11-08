@@ -75,7 +75,7 @@ test.describe('logs', () => {
   }) => {
     await page.goto('/')
 
-    await shell.logsLink.click()
+    await shell.goTo('logs')
 
     await expect(page).toHaveURL('/logs')
     await expect(page).toHaveTitle('Logs · AresGate')
