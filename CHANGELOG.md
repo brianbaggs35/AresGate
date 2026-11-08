@@ -6,6 +6,13 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **Verdicts can say where a device's traffic goes.** A device that calls its own cloud, such as a
+  camera talking to its servers, can now be called normal for that network and nothing else it
+  does. The incident page offers *Traffic from 192.168.1.20 to 52.1.2.0/24*, and the Verdicts page
+  lists it. Attacks on the device, and what the service sends back, still count.
+
 ### Fixed
 
 - **The Assets page leaves out the Internet side.** The firewall's ARP table lists the devices on

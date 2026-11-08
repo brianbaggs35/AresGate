@@ -3,6 +3,7 @@ or is a real threat), remembered as rules that are applied to the signals that f
 someone signed in."""
 
 from datetime import datetime
+from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Annotated, Literal, Self, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
@@ -36,6 +37,8 @@ class VerdictOut(BaseModel):
     verdict: Verdict
     # What it is about. At least one is set, and a signal has to match all that are.
     address: str | None
+    # Where that address sends its traffic, as one address or a network. Only with an address.
+    destination: str | None
     source: str | None
     source_name: str | None
     signature: str | None
@@ -63,9 +66,23 @@ class VerdictIn(BaseModel):
     verdict: Verdict
     # A signal matches by the address it is about, or came from, not the one it went to.
     address: IPvAnyAddress | None = None
+    # Where that address sends its traffic: one address, or a whole network such as 52.0.0.0/8.
+    destination: str | None = None
     source: str | None = None
     signature: Signature | None = None
     note: Note | None = None
+
+    @field_validator("destination")
+    @classmethod
+    def _network(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return str(ip_network(value.strip(), strict=True))
+        except ValueError as error:
+            raise ValueError(
+                "A destination is an address or a whole network, such as 52.0.0.0/8."
+            ) from error
 
     @field_validator("source")
     @classmethod
@@ -78,6 +95,8 @@ class VerdictIn(BaseModel):
     def _about_something(self) -> Self:
         if self.address is None and self.source is None and self.signature is None:
             raise ValueError("Say what it is about: an address, a program or a signature.")
+        if self.destination is not None and self.address is None:
+            raise ValueError("A destination is where an address sends: name that address too.")
         return self
 
 
@@ -91,11 +110,18 @@ class VerdictChange(BaseModel):
     note: Note | None = None
 
 
+def _destination_text(network: IPv4Network | IPv6Network) -> str:
+    """A single address as itself, and a network in the notation of its prefix."""
+    single = network.prefixlen == network.max_prefixlen
+    return str(network.network_address) if single else str(network)
+
+
 def _out(rule: VerdictRule, hits: tuple[int, datetime | None]) -> VerdictOut:
     return VerdictOut(
         id=rule.id,
         verdict=cast(Verdict, rule.verdict),
         address=str(rule.address) if rule.address is not None else None,
+        destination=(_destination_text(rule.destination) if rule.destination is not None else None),
         source=rule.source,
         source_name=rules.name_of(rule.source) if rule.source is not None else None,
         signature=rule.signature,
@@ -127,6 +153,8 @@ def _facts(rule: VerdictRule) -> dict[str, str | int | bool]:
     facts: dict[str, str | int | bool] = {"verdict_id": rule.id, "verdict": rule.verdict}
     if rule.address is not None:
         facts["address"] = str(rule.address)
+    if rule.destination is not None:
+        facts["destination"] = _destination_text(rule.destination)
     if rule.source is not None:
         facts["source"] = rule.source
     if rule.signature is not None:
@@ -156,9 +184,11 @@ def give_verdict(
     the verdict (and says what it was), and a verdict is applied at once to the incidents that
     are not over."""
     engine.hold(db)
+    destination = ip_network(body.destination) if body.destination is not None else None
     rule = db.scalars(
         select(VerdictRule).where(
             VerdictRule.address.is_not_distinct_from(body.address),
+            VerdictRule.destination.is_not_distinct_from(destination),
             VerdictRule.source.is_not_distinct_from(body.source),
             VerdictRule.signature.is_not_distinct_from(body.signature),
         )
@@ -167,6 +197,7 @@ def give_verdict(
         rule = VerdictRule(
             verdict=body.verdict,
             address=body.address,
+            destination=destination,
             source=body.source,
             signature=body.signature,
             note=body.note or None,

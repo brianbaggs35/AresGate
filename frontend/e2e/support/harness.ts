@@ -89,6 +89,9 @@ export interface IncidentRequest {
   severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
   /** Which integrations saw it, in turn: the signals are shared between them. */
   programs?: string[]
+  /** Whether the device sent its signals to the address, as a camera calls its cloud, rather than
+   * the address sending them to the device. */
+  outbound?: boolean
   /** How many alerts there are, a few minutes apart. */
   signals?: number
   /** Whether CrowdSec banned the address, and the time it said was left of the ban when it was
@@ -239,6 +242,8 @@ export interface FeedsRecord {
 export interface VerdictRequest {
   verdict: 'not_suspicious' | 'low_priority' | 'threat'
   address?: string
+  /** Where that address sends its traffic, as one address or a whole network. */
+  destination?: string
   source?: string
   signature?: string
   note?: string

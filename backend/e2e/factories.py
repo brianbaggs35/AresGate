@@ -7,7 +7,7 @@ work on any session, so the backend's own tests can use them too.
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
@@ -290,6 +290,9 @@ class IncidentSpec(NamedTuple):
     # A second program that reports every alert a couple of seconds after the first, as the same
     # thing seen twice.
     twin: str | None = None
+    # Whether the device sent the signals to the address, as a camera calls its cloud, rather than
+    # the address sending them to the device.
+    outbound: bool = False
 
 
 class IncidentsRecorded(NamedTuple):
@@ -357,6 +360,7 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
         later_waves = (spec.signals - 1) // per_wave - wave
         later_in_wave = min(per_wave, spec.signals - wave * per_wave) - 1 - place
         source = str(ip_address(address) + signal % (spec.neighbours + 1))
+        sender, target = (spec.device, source) if spec.outbound else (source, spec.device)
         port = spec.ports[signal % len(spec.ports)] if spec.ports else 22
         # The first is the strongest; the others are medium, or low once that is the strongest.
         severity = spec.severity if signal == 0 else min(spec.severity, Severity.MEDIUM)
@@ -371,9 +375,9 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             signature="ET SCAN Potential SSH Scan"
             if spec.scan or signal > 0
             else "Brute force on ssh",
-            src_address=source,
+            src_address=sender,
             src_port=40_000 + signal,
-            dst_address=spec.device,
+            dst_address=target,
             dst_port=port,
             protocol="tcp",
         )
@@ -559,6 +563,7 @@ class VerdictSpec(NamedTuple):
     source: str | None = None
     signature: str | None = None
     note: str | None = None
+    destination: str | None = None
 
 
 def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
@@ -569,6 +574,7 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
             VerdictRule(
                 verdict=spec.verdict,
                 address=ip_address(spec.address) if spec.address else None,
+                destination=ip_network(spec.destination) if spec.destination else None,
                 source=spec.source,
                 signature=spec.signature,
                 note=spec.note,
