@@ -107,7 +107,8 @@ class TestWhichLane:
     def test_a_threat_is_urgent_and_needs_the_owner(self) -> None:
         found = incident(confidence=90)
 
-        assert attention.urgent(found) and attention.needs_you(found)
+        assert attention.urgent(found)
+        assert attention.needs_you(found)
         assert not attention.urgent(incident(confidence=50))
         assert attention.needs_you(incident(confidence=50))
 

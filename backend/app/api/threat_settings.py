@@ -2,7 +2,6 @@
 things aside as background, and what the network is like, so that what is normal there is known.
 For someone signed in."""
 
-from dataclasses import replace
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
@@ -175,5 +174,5 @@ def change_threat_settings(
 @router.post("/preview")
 def preview_threat_settings(body: ThreatSettingsIn, db: Db) -> PreviewOut:
     """What the lanes would come to if the settings were as asked, without changing them."""
-    asked = replace(_tuning(body), confirming=body.ai_confirms and settings.watching(db))
+    asked = _tuning(body).confirming_when(body.ai_confirms and settings.watching(db))
     return PreviewOut(now=lanes(db, settings.load(db)), after=lanes(db, asked))

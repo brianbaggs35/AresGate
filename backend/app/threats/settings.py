@@ -3,7 +3,7 @@
 Nothing is stored until the owner first saves; until then every number is the default. The AI
 watching or not is part of it, because with the AI watching a threat is one it agrees with."""
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Final
 
 from sqlalchemy.orm import Session
@@ -35,6 +35,19 @@ class Tuning:
     notes: str = ""
     confirming: bool = False
 
+    def confirming_when(self, confirming: bool) -> Tuning:
+        """These settings, with the AI's agreement needed for a threat or not."""
+        return Tuning(
+            self.threat_from,
+            self.ai_may_clear,
+            self.clear_from,
+            self.ai_confirms,
+            self.exposure,
+            self.exposed_ports,
+            self.notes,
+            confirming,
+        )
+
 
 def watching(db: Session) -> bool:
     """Whether an AI is on, has a provider and reads incidents by itself."""
@@ -65,13 +78,13 @@ def _stored(db: Session) -> Tuning:
 def load(db: Session) -> Tuning:
     """The settings as they are saved, or the defaults where nothing has been."""
     stored = _stored(db)
-    return replace(stored, confirming=stored.ai_confirms and watching(db))
+    return stored.confirming_when(stored.ai_confirms and watching(db))
 
 
 def save(db: Session, tuning: Tuning) -> bool:
     """Keeps the settings as they are given, and says whether that changed them. The caller
     commits."""
-    if replace(tuning, confirming=False) == _stored(db):
+    if tuning.confirming_when(False) == _stored(db):
         return False
     row = db.get(ThreatSettings, 1)
     if row is None:

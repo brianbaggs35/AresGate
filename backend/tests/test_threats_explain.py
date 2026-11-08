@@ -27,7 +27,8 @@ class TestWhyItIsWhereItIs:
     def test_one_the_rules_are_unsure_of_says_how_unsure(self) -> None:
         [line] = said(confidence=20)
 
-        assert "20% sure" in line and "below the 35%" in line
+        assert "20% sure" in line
+        assert "below the 35%" in line
 
     def test_one_the_ai_set_aside_says_who_and_how_sure(self) -> None:
         first, second = said(confidence=80, ai_class="probe", ai_confidence=91, ai_basis="family")
@@ -51,7 +52,8 @@ class TestWhyItIsWhereItIs:
     def test_a_chain_says_what_stages_it_went_through(self) -> None:
         [line] = said(confidence=50, stages=["recon", "access"])
 
-        assert "more than scanning" in line and "recon then access" in line
+        assert "more than scanning" in line
+        assert "recon then access" in line
 
     def test_a_foothold_says_the_attack_worked(self) -> None:
         [line] = said(confidence=50, stages=["foothold"])
@@ -69,7 +71,8 @@ class TestWhyItIsWhereItIs:
     def test_a_critical_one_does_not_wait_for_the_ai(self) -> None:
         [line] = said(confidence=80, severity=4, tuning=Tuning(confirming=True))
 
-        assert "it is critical" in line and "does not wait" in line
+        assert "it is critical" in line
+        assert "does not wait" in line
 
     def test_a_suspect_says_how_sure_the_rules_are(self) -> None:
         assert said(confidence=50) == ["AresGate's rules are 50% sure it is a real attack."]

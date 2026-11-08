@@ -34,7 +34,8 @@ const judged = computed(() => {
 const by = computed(() => {
   const { provider, model, judged_at: at } = props.family
   if (!at) return ''
-  return `Judged by ${provider ?? 'the AI'}${model ? ` (${model})` : ''} ${formatAgo(at)}.`
+  const named = model ? ` (${model})` : ''
+  return `Judged by ${provider ?? 'the AI'}${named} ${formatAgo(at)}.`
 })
 const OWNER_CALLS = Object.keys(OWNER_CALL) as OwnerCall[]
 </script>
