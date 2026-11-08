@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.alerts import notify
 from app.api.deps import SettingsDep
 from app.collectors.health import WORKER
 from app.collectors.scheduler import Scheduler
@@ -608,6 +609,29 @@ async def run_collectors(scheduler: Annotated[Scheduler, Depends(collector_sched
     """Runs every collector once, now, and answers when they have all finished. The worker does
     nothing of its own in the tests, so a test decides when collecting happens."""
     await scheduler.run_once()
+
+
+class NotifierReport(BaseModel):
+    sent: int
+    retrying: int
+    failed: int
+
+
+@router.post("/notifier/run")
+async def run_notifier(request: Request, settings: SettingsDep, db: Db) -> NotifierReport:
+    """Tells the destinations of the incidents there are, now, once, and answers how it went. The
+    worker does nothing of its own in the tests, so a test decides when alerts are sent. Discord is
+    the stand-in the test started, if it started one."""
+    new_session = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+    report = await notify.notify_once(
+        settings,
+        new_session,
+        ApiLogRecorder(new_session),
+        request.app.state.alert_policy,
+        request.app.state.alert_origin,
+        pace=0,
+    )
+    return NotifierReport(sent=report.sent, retrying=report.retrying, failed=report.failed)
 
 
 class WorkerStatus(BaseModel):
