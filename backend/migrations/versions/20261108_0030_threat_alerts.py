@@ -26,6 +26,9 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     op.alter_column("alert_destinations", "mode", server_default=None)
+    # Postgres can't add a constraint only if it is missing, so each is dropped first: the newest
+    # migration has to be able to run again on a database that has it.
+    op.drop_constraint(op.f("ck_alert_destinations_mode"), "alert_destinations", if_exists=True)
     op.create_check_constraint(
         op.f("ck_alert_destinations_mode"), "alert_destinations", "mode IN ('threats', 'custom')"
     )
@@ -40,6 +43,11 @@ def upgrade() -> None:
         sa.Column("target_id", sa.BigInteger(), nullable=True),
         if_not_exists=True,
     )
+    op.drop_constraint(
+        op.f("fk_alert_deliveries_target_id_alert_deliveries"),
+        "alert_deliveries",
+        if_exists=True,
+    )
     op.create_foreign_key(
         op.f("fk_alert_deliveries_target_id_alert_deliveries"),
         "alert_deliveries",
@@ -51,13 +59,17 @@ def upgrade() -> None:
     op.create_index(
         "ix_alert_deliveries_target_id", "alert_deliveries", ["target_id"], if_not_exists=True
     )
-    op.drop_constraint(op.f("ck_alert_deliveries_kind"), "alert_deliveries", type_="check")
+    op.drop_constraint(
+        op.f("ck_alert_deliveries_kind"), "alert_deliveries", type_="check", if_exists=True
+    )
     op.create_check_constraint(
         op.f("ck_alert_deliveries_kind"),
         "alert_deliveries",
         "kind IN ('incident', 'summary', 'update')",
     )
-    op.drop_constraint(op.f("ck_alert_deliveries_reason"), "alert_deliveries", type_="check")
+    op.drop_constraint(
+        op.f("ck_alert_deliveries_reason"), "alert_deliveries", type_="check", if_exists=True
+    )
     op.create_check_constraint(
         op.f("ck_alert_deliveries_reason"),
         "alert_deliveries",
