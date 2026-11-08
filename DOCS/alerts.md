@@ -10,7 +10,8 @@ This page is built in slices. What works today, and what comes next:
 | | |
 | --- | --- |
 | Destinations: add, rename, turn off, remove, send a test message | Works |
-| Rules for what is sent (only confident threats, filters, quiet hours, a rate limit), with a preview | Works |
+| Rules for what is sent (real attacks only, or filters of your own, quiet hours, a rate limit), with a preview | Works |
+| Real-attack alerts that say why, tell again on escalation and are changed when they turn out harmless | Works |
 | The sender, with de-duplication, retries and a delivery log | Works |
 | A daily digest | Last |
 
@@ -35,10 +36,22 @@ in Discord until you delete it there.
 
 ## What a destination is told about
 
-Each destination has its own rules, set from its card with **Rules**. A new destination starts with
-the strictest sensible ones, because the point of an alert is that it is worth being woken for:
-**medium or worse**, and only what AresGate is **at least 65% sure** of (the "high" band of the
-Incidents page).
+Each destination has its own rules, set from its card with **Rules**. The first choice is what
+the channel is for, as three cards:
+
+- **Real attacks only** (what a new destination starts with, and the recommended one). A message
+  means something real is happening: an incident that is on the **Threats** page as a threat, an
+  attack going on now. Scans, probes and background noise stay on that page. The severity,
+  confidence, program and kind-of-activity rules below are not used for it, because what counts as
+  a threat is already decided, in one place, by [Threats](threats.md) and **Settings > Threat
+  detection**. See [Real attacks only](#real-attacks-only).
+- **Everything serious.** Medium severity or worse, when AresGate is at least 65% sure (the "high"
+  band of the Incidents page). More messages, including scans that are only looking around. This
+  is what every destination got before there were two kinds of rule, and a destination made then
+  keeps it.
+- **Custom.** Choose how serious, how sure, which programs and which kinds of activity, below.
+
+Quiet hours, the limit, "tell me again" and what a message says apply to all three.
 
 | Rule | What it does |
 | --- | --- |
@@ -48,7 +61,7 @@ Incidents page).
 | Kind of activity | Only incidents that include one of the chosen kinds (scanning, brute force). Empty means any. |
 | Quiet hours | A start, an end (over midnight if the end is earlier), a time zone, and whether critical threats still get through. What came in during quiet hours is **held**, not dropped, and is sent when they end. |
 | Limit | The most messages an hour. When more would come in, the rest are said in one summary. |
-| Tell me again if it gets worse | A new message when an incident already sent becomes more serious or more certain. |
+| Tell me again if it gets worse (it escalates, for real attacks only) | A new message when an incident already sent becomes more serious or more certain; for real attacks only, when the attack goes a stage further. |
 | What a message says | **Brief** (what happened, with a link, no addresses), **Standard** (adds the address on the internet and the programs that saw it) or **Full** (also names your devices; Discord keeps what is posted there, so only for a channel only you can read). |
 
 **What no rule can change.** An incident you called *not suspicious* or *low priority* is never
@@ -64,6 +77,55 @@ same function the sender uses, so the preview and what is sent cannot differ. Th
 limit would have summarised is rough: it goes by when each incident began, not by when it first met
 the rules. It looks at the newest 2,000 incidents and says so when there were more. Nothing is sent
 or saved by a preview.
+
+## Real attacks only
+
+A destination on **Real attacks only** is told of an incident when it **becomes a threat**, using
+the same test as the Threats page (`attention.is_threat`, with the settings of **Settings > Threat
+detection**), so what the page calls a threat and what a channel is told of cannot differ.
+
+- **The message says why.** Its title is the furthest the attack got (*Attack in progress*,
+  *Possible break-in* or *Threat*) and the incident's address; the body says how sure AresGate is
+  and lists the facts that put it on the Threats page, in the words of the incident's own page
+  (**Why AresGate thinks so**); and its fields give how far it got (*Looking around → **Trying to
+  get in***), how sure, how serious, where it came from (Standard and Full), and at Full the
+  devices on your network and what the strongest alert said. What a message says still follows the
+  destination's detail setting.
+- **Tell me again if it escalates.** An attack is told once, and again only when it goes a stage
+  further: from looking around to trying to get in, or from there to a sign that it worked. A
+  higher severity or a little more confidence alone is not an escalation. That second message
+  starts *Escalated:*. (Switching a channel from *Custom* to *Real attacks only* may send one
+  such message for an attack already told of, because the count of how far it got is new.)
+- **A warning never stays up for nothing.** When an incident that was told of stops being a threat
+  because you called it *not suspicious* or *low priority*, you resolved or dismissed it, or the AI
+  set it aside as background, AresGate **changes the message it sent**: it becomes a grey *Stood
+  down:* message that says so and why. If the same incident turns into a threat again, it is told
+  of again as *Reopened:*, as a new message. Messages are looked at for 24 hours after they were
+  sent. A message someone deleted in Discord is just left; the log says there was nothing to
+  update, and the webhook is not blamed. Changing a message does not count toward the limit of
+  messages an hour and is not held for quiet hours, since it only makes a standing warning less
+  alarming.
+- **Quiet hours and the limit still apply** to new messages, with the same summaries. A critical
+  threat gets through quiet hours if that switch is on.
+- **Nothing is sent that the other rules would not send.** An incident you called *not suspicious*
+  or *low priority*, or resolved or dismissed, is never sent.
+
+To make this possible AresGate asks Discord to say what it called each message it sends (the
+`wait` option of Execute Webhook) and keeps that name with the log entry, so a message can be
+found again. The log shows a change as **Stood down: ...** with the reason *Message changed:
+stood down*.
+
+### Seeing a message before it is sent
+
+The Rules sheet draws the message as Discord will show it, with the colour bar, title, words,
+fields and footer, and a choice of the **first message** or the one **if it escalates**. It is made
+by the server with the same code that makes the real messages, about an incident that is made up,
+so what is shown is what arrives; it changes at once when you change the card or how much a message
+says. Its words are drawn as text, never as markup, and nothing in it is a link.
+
+**Send a sample alert**, on a destination's card, sends that same made-up message to the channel,
+with *sample alert* in its footer, so you can see it in Discord itself. It never touches the
+log or the incidents, and it never repeats a real message: a sample is not an incident.
 
 ## What is sent, and when
 
@@ -170,7 +232,17 @@ Built from Discord's developer documentation, read on 2026-11-01:
   the optional version, and the `User-Agent: DiscordBot ($url, $versionNumber)` format, without
   which requests "may be blocked").
 
-**Inferred, and not tried against Discord:** that a webhook sends the rate limit headers at all (the
+- [Execute Webhook](https://docs.discord.com/developers/resources/webhook), again: `wait=true`
+  "waits for server confirmation of message send before response, and returns the created message
+  body", which has the message's `id`; and Edit Webhook Message, `PATCH
+  /webhooks/{id}/{token}/messages/{message.id}`, which takes the same `embeds` and
+  `allowed_mentions`.
+- [JSON error codes](https://docs.discord.com/developers/topics/opcodes-and-status-codes): an error
+  body has `code`; 10008 is "Unknown message" and 10015 "Unknown webhook".
+
+**Inferred, and not tried against Discord:** that editing a message *replaces* its embed (the page
+doesn't say, so the whole embed is sent again, with nothing added to it), that an edit of a deleted
+message answers `404` with code 10008; and that a webhook sends the rate limit headers at all (the
 page doesn't say which routes do, so the sender uses them only when they are there); that
 `Retry-After` and `retry_after` mean the same; that `discordapp.com` still takes webhooks (the pages
 name only `discord.com`); the character set of a token (the pages give none, so the check is
@@ -193,7 +265,15 @@ enough for a webhook, which has no bot. The test message is how you find out on 
   (off when collecting is, like the others). `backend/app/alerts/log.py` reads and prunes the log
   (`GET /api/alerts/deliveries`). The Playwright tests send alerts when a spec says, with
   `POST /api/__test__/notifier/run`.
+- Real attacks only: `backend/app/alerts/message.py` has `threat_message` and `stood_down_message`;
+  `notify.py` keeps a threat's escalation as `worse:<rank>` with `THREAT_RANK + stages.depth()` and
+  queues a change to a message as an `update` row (reason `retract`, `target_id` the row that sent
+  it) which `notify_once` sends with `discord.edit`. Migration 0030 adds `alert_destinations.mode`
+  and `alert_deliveries.message_id` and `target_id`. `GET /api/alerts/sample` makes the sample the
+  Rules sheet draws and `POST /api/alerts/destinations/{id}/sample` sends it.
 - The Playwright tests point alerts at a Discord stand-in (`kind: "discord"` in the harness) with
-  `app.state.alert_origin`; the product never does. The stand-in answers `204` for the one
-  webhook it knows, `404 Unknown Webhook` for any other, and `403` to a request without Discord's
-  `User-Agent`, and `GET /api/__test__/stand-ins/{id}/requests` returns what it was sent.
+  `app.state.alert_origin`; the product never does. The stand-in answers `204` for the one webhook
+  it knows (`200` with the message and its `id` when asked to `wait`, and it takes an edit of a
+  message it made), `404 Unknown Webhook` for any other, `404` with code 10008 for a message it
+  never made, and `403` to a request without Discord's `User-Agent`. `GET
+  /api/__test__/stand-ins/{id}/requests` returns what it was sent.
