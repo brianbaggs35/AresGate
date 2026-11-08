@@ -4,6 +4,7 @@ import {
   Gavel,
   History,
   MonitorSmartphone,
+  ShieldAlert,
   Sparkles,
   UserRound,
 } from '@lucide/vue'
@@ -31,6 +32,12 @@ export const settingsSections: readonly SettingsSection[] = [
     route: 'settings-noise-filters',
     title: 'Noise filters',
     icon: Funnel,
+  },
+  {
+    key: 'threat-detection',
+    route: 'settings-threat-detection',
+    title: 'Threat detection',
+    icon: ShieldAlert,
   },
   { key: 'ai', route: 'settings-ai', title: 'AI', icon: Sparkles },
   { key: 'data', route: 'settings-data', title: 'Data', icon: Database },

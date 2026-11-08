@@ -6,6 +6,7 @@ import {
   collectionOf,
   filteredOut,
   marksOf,
+  alertsHint,
   needsYouLink,
   needsYouQuery,
   postureOf,
@@ -29,7 +30,14 @@ function alertsOf(counts: Partial<AlertCounts['by_severity']>, buckets = 3): Ale
     (sum, row) => sum + row.reduce((a, b) => a + b, 0),
     0,
   )
-  return { total, previous: 0, highest: null, by_severity: bySeverity }
+  return {
+    total,
+    previous: 0,
+    reports: total,
+    duplicates: 0,
+    highest: null,
+    by_severity: bySeverity,
+  }
 }
 
 function collector(state: Collector['state']): Collector {
@@ -298,23 +306,37 @@ describe('filteredOut', () => {
 describe('needsYou', () => {
   const since = '2026-11-01T10:00:00Z'
 
-  it('asks for what the banner counts: active, not called quiet, sure enough, in the window', () => {
-    expect(needsYouQuery(attention({ floor: 40 }), since, 3)).toEqual({
-      statuses: ['open', 'investigating'],
-      minConfidence: 40,
+  it('asks for what the banner counts: the threats and the suspects in the window', () => {
+    expect(needsYouQuery(since, 3)).toEqual({
+      lanes: ['threat', 'suspect'],
       q: `since:${since}`,
       tz: expect.any(String) as string,
-      verdicts: ['none', 'threat'],
       limit: 3,
       order: 'priority',
     })
   })
 
-  it('links to the same incidents on the Incidents page', () => {
-    expect(needsYouLink(attention(), since)).toEqual({
-      name: 'incidents',
-      query: { q: `since:${since} confidence>=35` },
+  it('links to the Threats page, open on the lane that matters most', () => {
+    expect(needsYouLink(attention({ urgent: 1 }))).toEqual({
+      name: 'threats',
+      query: { lane: 'threat' },
     })
+    expect(needsYouLink(attention({ urgent: 0, needs_you: 2 }))).toEqual({
+      name: 'threats',
+      query: { lane: 'suspect' },
+    })
+  })
+})
+
+describe('alertsHint', () => {
+  it('names the window', () => {
+    expect(alertsHint({ total: 5, reports: 5 }, 'the last 24 hours')).toBe('In the last 24 hours')
+  })
+
+  it('says how many reports they came from when programs reported things more than once', () => {
+    expect(alertsHint({ total: 1_204, reports: 70_412 }, 'the last 24 hours')).toBe(
+      'In the last 24 hours, from 70,412 reports',
+    )
   })
 })
 

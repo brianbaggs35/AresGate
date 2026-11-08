@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, ListFilter } from '@lucide/vue'
+import { Ban, Copy, ListFilter } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import type { Signal } from '@/api/incidents'
@@ -92,6 +92,15 @@ const unlisted = computed(() => props.total - props.signals.length)
                 :prepend-icon="ListFilter"
                 data-test="signal-filtered"
                 >{{ SET_ASIDE[row.signal.filtered_by] }}</v-chip
+              >
+              <v-chip
+                v-if="row.signal.duplicate"
+                size="small"
+                variant="outlined"
+                :prepend-icon="Copy"
+                title="Another program had already reported the same thing a moment before, so it is counted once."
+                data-test="signal-duplicate"
+                >Already reported</v-chip
               >
               <v-chip
                 v-if="row.ban"

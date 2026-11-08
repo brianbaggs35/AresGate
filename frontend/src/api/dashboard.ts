@@ -30,8 +30,14 @@ export interface Counted {
 }
 
 export interface AlertCounts {
+  /** How many alerts there were, each counted once however often it was reported and by however
+   * many programs. */
   total: number
   previous: number
+  /** How many times programs reported alerts, and how many of those another program had
+   * already reported. */
+  reports: number
+  duplicates: number
   /** The most serious alert there was, or null when there were none. */
   highest: Severity | null
   /** For every severity, how many in each bucket. */
@@ -119,7 +125,7 @@ export interface Noise {
 
 /** What the incidents that were going on in the window come to for the owner: how many need
  * them, and why each of the others was filtered out. Every incident is in exactly one of the
- * four counts. */
+ * five counts. */
 export interface Attention {
   incidents: number
   /** The confidence an incident needs, at least, to be asked about. */
@@ -130,6 +136,8 @@ export interface Attention {
   muted: number
   /** AresGate's confidence in them is below the floor. */
   unsure: number
+  /** Set aside by an AI that judged them background. */
+  cleared: number
   /** The rest: they need the owner. */
   needs_you: number
   /** How many of those AresGate is highly confident of. */

@@ -42,6 +42,31 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // The threats, the kinds of incident that are background, and a page for each kind. All
+    // belong to the one place in the menu.
+    path: '/threats',
+    children: [
+      {
+        path: '',
+        name: 'threats',
+        component: () => import('@/views/ThreatsView.vue'),
+        meta: { title: 'Threats' },
+      },
+      {
+        path: 'kinds',
+        name: 'kinds',
+        component: () => import('@/views/KindsView.vue'),
+        meta: { title: 'Threats' },
+      },
+      {
+        path: String.raw`kinds/:id(\d+)`,
+        name: 'family',
+        component: () => import('@/views/FamilyView.vue'),
+        meta: { title: 'Threats' },
+      },
+    ],
+  },
+  {
     // The chat, and a page for each conversation. Both belong to the one place in the menu.
     path: '/assistant',
     children: [
@@ -157,6 +182,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'noise-filters',
         name: 'settings-noise-filters',
         component: () => import('@/views/NoiseFiltersView.vue'),
+      },
+      {
+        path: 'threat-detection',
+        name: 'settings-threat-detection',
+        component: () => import('@/views/ThreatSettingsView.vue'),
       },
       {
         path: 'ai',

@@ -44,6 +44,7 @@ export interface Tally {
   needs_you: number
   urgent: number
   unsure: number
+  cleared: number
   muted: number
 }
 

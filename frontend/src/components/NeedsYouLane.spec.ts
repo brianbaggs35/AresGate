@@ -50,15 +50,15 @@ describe('NeedsYouLane', () => {
   it('leads to every incident when that is all of them', async () => {
     const { find, text } = await open()
 
-    expect(text('needs-you-all')).toBe('Open Incidents')
-    expect(find('needs-you-all').attributes('href')).toBe('/incidents')
+    expect(text('needs-you-all')).toBe('Open Threats')
+    expect(find('needs-you-all').attributes('href')).toBe('/threats')
   })
 
   it('says how many there are in all when it shows only the first few', async () => {
     const { find, text } = await open({ total: 12 })
 
     expect(text('needs-you-all')).toBe('See all 12')
-    expect(find('needs-you-all').attributes('href')).toBe('/incidents')
+    expect(find('needs-you-all').attributes('href')).toBe('/threats')
   })
 
   it('leads to the list it is given, when it is given one', async () => {

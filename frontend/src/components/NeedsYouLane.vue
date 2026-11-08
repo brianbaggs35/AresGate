@@ -18,7 +18,7 @@ const props = defineProps<{
   incidents: readonly Incident[]
   /** How many there are in all, which is more than are shown when the lane is only the first few. */
   total: number
-  /** The list that has all of them, for the link to it; the page of incidents as it opens if not given. */
+  /** The list that has all of them, for the link to it; the Threats page as it opens if not given. */
   to?: RouteLocationRaw
 }>()
 defineEmits<{ judged: [Judged] }>()
@@ -40,10 +40,10 @@ const more = computed(() => props.total > props.incidents.length)
       <v-btn
         variant="text"
         :append-icon="ArrowRight"
-        :to="to ?? { name: 'incidents' }"
+        :to="to ?? { name: 'threats' }"
         data-test="needs-you-all"
       >
-        {{ more ? `See all ${formatCount(total)}` : 'Open Incidents' }}
+        {{ more ? `See all ${formatCount(total)}` : 'Open Threats' }}
       </v-btn>
     </header>
     <ul class="lane__list">

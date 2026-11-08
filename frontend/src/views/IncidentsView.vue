@@ -9,9 +9,11 @@ import {
   fetchIncidents,
   type BulkSelection,
   type BulkUndo,
+  LANES,
   type Incident,
   type IncidentPage,
   type IncidentStatus,
+  type Lane,
 } from '@/api/incidents'
 import type { VerdictKind } from '@/api/verdicts'
 import AppPage from '@/components/AppPage.vue'
@@ -30,6 +32,7 @@ import { formatCount } from '@/format'
 import {
   CONFIDENCE_FILTERS,
   DEFAULT_VIEW,
+  LANE_FILTERS,
   SEVERITY_FILTERS,
   VIEWS,
   activeFilters,
@@ -74,6 +77,8 @@ function filtersOf(query: LocationQuery): Filters {
   return {
     view,
     severity,
+    lane: LANES.find((name) => name === one('lane')) ?? null,
+    family: /^[1-9]\d{0,15}$/.test(one('family')) ? Number(one('family')) : null,
     confidence: confidence?.value ?? 0,
     // A link from before the search had words (`address=`) still finds the address.
     q: one('q') || (one('address') ? `address:${one('address')}` : ''),
@@ -94,6 +99,8 @@ function show(next: Partial<Filters>) {
   const query: Record<string, string> = {}
   if (merged.view !== DEFAULT_VIEW) query.view = merged.view
   if (merged.severity) query.severity = merged.severity
+  if (merged.lane) query.lane = merged.lane
+  if (merged.family) query.family = merged.family.toString()
   if (merged.confidence) query.confidence = merged.confidence.toString()
   if (merged.q) query.q = merged.q
   if (merged.quieted) query.quieted = '1'
@@ -109,7 +116,7 @@ function toggleFacet(term: string) {
 }
 
 function clearFilters() {
-  show({ severity: null, confidence: 0, q: '', quieted: false })
+  show({ severity: null, lane: null, family: null, confidence: 0, q: '', quieted: false })
 }
 
 const data = ref<IncidentPage | null>(null)
@@ -340,6 +347,10 @@ function pickSeverity(severity: Severity | null) {
   show({ severity })
 }
 
+function pickLane(lane: Lane | null) {
+  show({ lane })
+}
+
 function pickConfidence(confidence: number) {
   show({ confidence })
 }
@@ -456,6 +467,16 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           @update:model-value="pickSeverity"
         />
         <v-select
+          label="Lane"
+          :items="LANE_FILTERS"
+          item-title="label"
+          item-value="value"
+          :model-value="filters.lane"
+          hide-details
+          data-test="filter-lane"
+          @update:model-value="pickLane"
+        />
+        <v-select
           label="Confidence"
           :items="CONFIDENCE_FILTERS"
           item-title="label"
@@ -465,6 +486,24 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="filter-confidence"
           @update:model-value="pickConfidence"
         />
+      </div>
+      <div v-if="filters.family" class="incidents__kind" data-test="filter-family">
+        <v-chip
+          closable
+          :close-label="'Show every kind'"
+          variant="outlined"
+          @click:close="show({ family: null })"
+        >
+          Only one kind of incident
+        </v-chip>
+        <v-btn
+          variant="text"
+          size="small"
+          :to="{ name: 'family', params: { id: filters.family } }"
+          data-test="filter-family-open"
+        >
+          Open the kind
+        </v-btn>
       </div>
       <div v-if="narrowed > 0 || quieted > 0" class="incidents__options">
         <v-btn v-if="narrowed > 0" variant="text" data-test="clear-filters" @click="clearFilters">
@@ -618,9 +657,16 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 
 .incidents__filters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   align-items: start;
   gap: 0.75rem;
+}
+
+.incidents__kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
 }
 
 .incidents__options {

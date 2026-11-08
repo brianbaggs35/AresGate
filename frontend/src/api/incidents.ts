@@ -22,6 +22,21 @@ export type Activity = 'scan' | 'brute_force'
 export const CLASSIFICATIONS = ['compromise', 'attack', 'probe', 'noise', 'unclear'] as const
 export type Classification = (typeof CLASSIFICATIONS)[number]
 
+/** Where an incident goes on the Threats page: a threat is highly likely to be real, a suspect is
+ * worth a look, and background is what AresGate is not sure of or an AI judged to be noise or a
+ * probe. */
+export const LANES = ['threat', 'suspect', 'background'] as const
+export type Lane = (typeof LANES)[number]
+
+/** How far along the path of an attack an incident got: looking, trying to get in, a sign that
+ * it worked. */
+export const STAGES = ['recon', 'access', 'foothold'] as const
+export type Stage = (typeof STAGES)[number]
+
+/** Whose word a call on an incident is: yours on its kind, the AI's reading of this incident, or
+ * the AI's judgement of its kind. */
+export type CallBasis = 'owner' | 'reading' | 'family'
+
 /** What the AI made of an incident, in a word and how sure it was: for a list. */
 export interface Glance {
   classification: Classification
@@ -132,6 +147,21 @@ export interface Incident {
   neighbours: number
   /** What the AI made of it, if it has read it (`IncidentDetail.reading` has the rest). */
   ai: Glance | null
+  /** Where it goes: a threat, a suspect or background. Null for one that is over, or that you
+   * called not suspicious or low priority. */
+  lane: Lane | null
+  /** How many of its signals another program had already reported (they count once). */
+  duplicates: number
+  /** The stages of an attack its signals show, in the order of the path. */
+  stages: Stage[]
+  /** The kind of incident it is, and what is thought of it by you or an AI. */
+  family_id: number | null
+  call: Call | null
+}
+
+/** What is made of an incident beyond the rules, and whose word it is. */
+export interface Call extends Glance {
+  basis: CallBasis
 }
 
 /** One thing that makes AresGate as sure as it is: the points add up to the confidence. */
@@ -163,6 +193,42 @@ export interface Signal {
   verdict_rule_id: number | null
   /** Which of your noise filters set it aside, if one did and no verdict was about it. */
   filtered_by: FilteredBy | null
+  /** Whether another program had already reported the same thing a moment before. */
+  duplicate: boolean
+}
+
+/** Signals that say the same thing the same way: one that happened `count` times. */
+export interface Occurrence {
+  /** The first of them. */
+  signal: Signal
+  count: number
+  last_at: string
+  /** How many of them another program also reported. */
+  duplicates: number
+}
+
+/** Your word on a whole kind of incident: set all of it aside, or never set any of it aside. */
+export type OwnerCall = 'background' | 'watch'
+
+/** A kind of incident: the ones that a program reported in the same words about the same sort of
+ * place, and what is thought of all of them. */
+export interface FamilyBrief {
+  id: number
+  /** What its incidents say, without the addresses and numbers that differ. */
+  label: string
+  source: string
+  source_name: string
+  /** Where its incidents are from: the internet, your own network, or a rule with no address. */
+  reach: 'internet' | 'network' | 'rule'
+  /** Your word on it: set all of it aside (`background`), or never set it aside (`watch`). */
+  owner_call: OwnerCall | null
+  /** What an AI made of the kind as a whole. */
+  classification: Classification | null
+  confidence: number | null
+  reason: string | null
+  judged_at: string | null
+  /** How many incidents of it are going on. */
+  incidents: number
 }
 
 /** A device on the network that one of the incident's addresses belongs to. */
@@ -187,6 +253,11 @@ export interface IncidentDetail extends Incident {
    * about a rule rather than an address. */
   blocked: number | null
   reading: Reading | null
+  /** Why it is in the lane it is in, a fact to a line. */
+  why: string[]
+  /** Its signals grouped by what they say, in the order each first happened. */
+  occurrences: Occurrence[]
+  family: FamilyBrief | null
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */
@@ -241,6 +312,10 @@ export interface IncidentQuery {
   q?: string
   /** The time zone the person is in, for what `today` means in a search. */
   tz?: string
+  /** Only incidents going on that are in one of these lanes. */
+  lanes?: readonly Lane[]
+  /** Only incidents of this kind. */
+  family?: number
   limit?: number
   offset?: number
   /** `priority` puts the most serious and surest first; the default is the most recent. */
@@ -257,6 +332,8 @@ export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage>
   if (query.address) params.set('address', query.address)
   if (query.q) params.set('q', query.q)
   if (query.tz) params.set('tz', query.tz)
+  for (const lane of query.lanes ?? []) params.append('lane', lane)
+  if (query.family) params.set('family', query.family.toString())
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
   if (query.order) params.set('order', query.order)
@@ -334,6 +411,8 @@ function matchingOf(query: IncidentQuery) {
     ...(query.address ? { address: query.address } : {}),
     ...(query.q ? { q: query.q } : {}),
     ...(query.tz ? { tz: query.tz } : {}),
+    ...(query.lanes?.length ? { lane: query.lanes } : {}),
+    ...(query.family ? { family: query.family } : {}),
   }
 }
 

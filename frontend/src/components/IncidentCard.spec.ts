@@ -42,6 +42,34 @@ describe('IncidentCard', () => {
     expect(text('ai-chip')).toBe('AI: Active attack, 88% sure')
   })
 
+  it('says which lane it is in', async () => {
+    const { text, wrapper } = await show({ lane: 'suspect' })
+    expect(text('lane-chip')).toBe('Suspect')
+
+    const none = await show({ lane: null })
+    expect(none.wrapper.find('[data-test="lane-chip"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="lane-chip"]').exists()).toBe(true)
+  })
+
+  it('shows the call on it, whoever made it, in place of the AI’s reading', async () => {
+    const { text, wrapper } = await show({
+      ai: { classification: 'attack', confidence: 88 },
+      call: { classification: 'probe', confidence: 92, basis: 'family' },
+    })
+
+    expect(text('call-chip')).toBe('AI: Probe, 92% sure')
+    expect(wrapper.find('[data-test="ai-chip"]').exists()).toBe(false)
+  })
+
+  it('says how many alerts another program had already reported, counted once', async () => {
+    const { text, wrapper } = await show({ duplicates: 12 })
+    expect(text('incident-duplicates')).toBe('12 also reported by another program, counted once')
+
+    const none = await show({ duplicates: 0 })
+    expect(none.wrapper.find('[data-test="incident-duplicates"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="incident-duplicates"]').exists()).toBe(true)
+  })
+
   it('says nothing of the AI for an incident it has not read', async () => {
     const { wrapper } = await show()
 

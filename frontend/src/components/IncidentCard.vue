@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Layers, Network, Repeat, Users } from '@lucide/vue'
+import { Copy, Layers, Network, Repeat, Users } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -8,8 +8,10 @@ import { errorMessage } from '@/api/client'
 import { fetchIncident, type Incident } from '@/api/incidents'
 import { VERDICTS, giveVerdict, type VerdictKind } from '@/api/verdicts'
 import AiChip from '@/components/AiChip.vue'
+import CallChip from '@/components/CallChip.vue'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
+import LaneChip from '@/components/LaneChip.vue'
 import ResponseChip from '@/components/ResponseChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
@@ -55,6 +57,11 @@ const signals = computed(() => {
   const count = props.incident.signal_count
   if (count === 1) return '1 signal'
   return `${formatCount(count)} signals ${spanOf(props.incident)}`
+})
+
+const duplicates = computed(() => {
+  const count = props.incident.duplicates
+  return `${formatCount(count)} also reported by another program, counted once`
 })
 
 const rule = computed(() => isAboutRule(props.incident.subject))
@@ -118,6 +125,7 @@ async function give(kind: VerdictKind) {
       data-test="incident"
     >
       <div class="incident-card__top">
+        <LaneChip v-if="incident.lane" :lane="incident.lane" />
         <SeverityChip :severity="incident.severity" />
         <IncidentStatusChip v-if="incident.status !== 'open'" :status="incident.status" />
         <VerdictChip v-if="incident.verdict" :verdict="incident.verdict" />
@@ -131,7 +139,8 @@ async function give(kind: VerdictKind) {
           {{ ACTIVITY[activity].label }}
         </v-chip>
         <ResponseChip :response="incident.response" />
-        <AiChip v-if="incident.ai" :ai="incident.ai" />
+        <CallChip v-if="incident.call" :call="incident.call" />
+        <AiChip v-else-if="incident.ai" :ai="incident.ai" />
         <span class="incident-card__when text-body-medium text-medium-emphasis">
           Last signal
           <time
@@ -157,6 +166,14 @@ async function give(kind: VerdictKind) {
           <li class="incident-card__fact" data-test="incident-signals">
             <v-icon :icon="Layers" size="18" aria-hidden="true" />
             {{ signals }}
+          </li>
+          <li
+            v-if="incident.duplicates > 0"
+            class="incident-card__fact"
+            data-test="incident-duplicates"
+          >
+            <v-icon :icon="Copy" size="18" aria-hidden="true" />
+            {{ duplicates }}
           </li>
           <li v-if="incident.waves > 1" class="incident-card__fact" data-test="incident-waves">
             <v-icon :icon="Repeat" size="18" aria-hidden="true" />

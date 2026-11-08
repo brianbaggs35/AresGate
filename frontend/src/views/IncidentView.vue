@@ -24,13 +24,17 @@ import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
 import AiChip from '@/components/AiChip.vue'
 import AiReading from '@/components/AiReading.vue'
+import CallChip from '@/components/CallChip.vue'
 import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
+import IncidentOccurrences from '@/components/IncidentOccurrences.vue'
 import IncidentReasons from '@/components/IncidentReasons.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import IncidentTimeline from '@/components/IncidentTimeline.vue'
+import IncidentWhere from '@/components/IncidentWhere.vue'
+import LaneChip from '@/components/LaneChip.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResponseDetails from '@/components/ResponseDetails.vue'
@@ -158,6 +162,10 @@ async function change(status: IncidentStatus) {
 const shown = computed(() => incident.value as IncidentDetail)
 const actions = computed(() => actionsFor(shown.value.status))
 const others = computed(() => otherAddresses(shown.value).length)
+/** Whether any alert happened more than once, or was reported by two programs. */
+const hasRepeats = computed(() =>
+  shown.value.occurrences.some(({ count, duplicates }) => count > 1 || duplicates > 0),
+)
 const programs = computed(() => shown.value.sources.map(({ name }) => name).join(', '))
 
 /** When it began and when it last did something, as a line under the title. */
@@ -225,10 +233,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
     <template v-if="incident">
       <PageHeader :title="shown.title" :back="{ to: { name: 'incidents' }, label: 'Incidents' }">
         <div class="incident__chips">
+          <LaneChip v-if="shown.lane" :lane="shown.lane" />
           <SeverityChip :severity="shown.severity" />
           <IncidentStatusChip :status="shown.status" />
           <VerdictChip v-if="shown.verdict" :verdict="shown.verdict" />
-          <AiChip v-if="shown.ai" :ai="shown.ai" />
+          <CallChip v-if="shown.call" :call="shown.call" />
+          <AiChip v-else-if="shown.ai" :ai="shown.ai" />
           <v-chip variant="outlined" :prepend-icon="Gauge" data-test="confidence-chip">
             {{ CONFIDENCE[shown.confidence_level] }} confidence
           </v-chip>
@@ -332,6 +342,17 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         @ask="askTheAi"
         @changed="refresh"
       />
+
+      <IncidentWhere :incident="shown" />
+
+      <SectionCard
+        v-if="hasRepeats"
+        title="What kept happening"
+        description="Alerts that were reported again and again are one alert that happened many times, and one that two programs reported counts once."
+        data-test="occurrences-card"
+      >
+        <IncidentOccurrences :occurrences="shown.occurrences" />
+      </SectionCard>
 
       <SectionCard
         title="What was done about it"
