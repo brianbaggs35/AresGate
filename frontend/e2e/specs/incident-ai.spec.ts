@@ -116,7 +116,7 @@ test.describe('what the AI makes of an incident', () => {
 
     await incidents.goto('?view=all')
 
-    await expect(page.getByTestId('ai-chip')).toHaveText('AI: Probe, 90% sure')
+    await expect(page.getByTestId('call-chip')).toHaveText('AI: Probe, 90% sure')
   })
 
   test('puts the reading in the activity log', async ({

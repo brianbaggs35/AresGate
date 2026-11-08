@@ -188,7 +188,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
 
       await incidents.goto()
-      await expect(page.getByTestId('ai-chip')).toBeVisible()
+      await expect(page.getByTestId('call-chip')).toBeVisible()
       await expectAccessible(page)
     })
 

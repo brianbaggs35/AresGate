@@ -855,7 +855,14 @@ test.describe('layout on a phone', () => {
     await harness.createIncidents([
       { address: '93.184.216.34', severity: 'critical', programs: ['wazuh'], minutes_ago: 30 },
       { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], minutes_ago: 50 },
-      { address: '1.1.1.1', severity: 'medium', programs: ['wazuh'], minutes_ago: 70 },
+      // Sure enough not to be background, which is not flagged.
+      {
+        address: '1.1.1.1',
+        severity: 'medium',
+        programs: ['wazuh', 'opnsense'],
+        signals: 4,
+        minutes_ago: 70,
+      },
     ])
 
     await dashboard.goto()
