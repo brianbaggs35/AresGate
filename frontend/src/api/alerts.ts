@@ -161,3 +161,64 @@ export function changeRules(id: number, rules: Rules, csrfToken: string): Promis
 export function previewRules(id: number, rules: Rules, csrfToken: string): Promise<RulesPreview> {
   return apiPost<RulesPreview>(`/alerts/destinations/${id.toString()}/preview`, rules, csrfToken)
 }
+
+/** Where a message is: waiting (`queued`, `held` for quiet hours to end, `retrying` after a
+ * failure, `limited` until a summary tells of it), told in a summary (`summarized`), `sent`, given
+ * up on (`failed`), or no longer worth sending (`dropped`). */
+export type DeliveryState =
+  'queued' | 'held' | 'retrying' | 'limited' | 'summarized' | 'sent' | 'failed' | 'dropped'
+
+/** Why a message was made: an incident the destination had not heard of, one that got worse, one
+ * that was reopened, or a summary of what was held back (over the limit, or in quiet hours). */
+export type DeliveryReason = 'new' | 'worse' | 'reopened' | 'limit' | 'quiet'
+
+/** One message to one destination, and what became of it. */
+export interface Delivery {
+  id: number
+  destination_id: number
+  destination: string
+  /** None for a summary, and for a message whose incident has since been deleted. */
+  incident_id: number | null
+  kind: 'incident' | 'summary'
+  reason: DeliveryReason
+  state: DeliveryState
+  title: string
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical'
+  confidence: number
+  /** For a summary, how many incidents it told of. */
+  covers: number
+  attempts: number
+  created_at: string
+  /** When it is due to be sent, or tried again. */
+  due_at: string
+  sent_at: string | null
+  /** Why it is waiting, was not sent or failed, in words. */
+  note: string | null
+}
+
+/** A page of the log, newest first. */
+export interface Deliveries {
+  items: Delivery[]
+  /** The id to ask for the next page with, or none on the last. */
+  next_before: number | null
+  /** How many messages are in each state. */
+  counts: Partial<Record<DeliveryState, number>>
+}
+
+/** What narrows the log. */
+export interface DeliveryQuery {
+  destination_id?: number
+  state?: DeliveryState
+  before?: number
+}
+
+/** The log of messages sent to destinations, what is waiting and what was held back or left out. */
+export function fetchDeliveries(query: DeliveryQuery = {}): Promise<Deliveries> {
+  const params = new URLSearchParams()
+  if (query.destination_id !== undefined)
+    params.set('destination_id', query.destination_id.toString())
+  if (query.state !== undefined) params.set('state', query.state)
+  if (query.before !== undefined) params.set('before', query.before.toString())
+  const asked = params.toString()
+  return apiGet<Deliveries>(asked ? `/alerts/deliveries?${asked}` : '/alerts/deliveries')
+}

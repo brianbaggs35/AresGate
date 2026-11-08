@@ -3,7 +3,15 @@ import { ApiError } from '@/api/client'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DestinationDialog from '@/components/DestinationDialog.vue'
 import RulesDialog from '@/components/RulesDialog.vue'
-import { destination, destinations, failing, preview, rules, working } from '@/test/alerts'
+import {
+  deliveries,
+  destination,
+  destinations,
+  failing,
+  preview,
+  rules,
+  working,
+} from '@/test/alerts'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AlertsView from '@/views/AlertsView.vue'
 
@@ -19,6 +27,7 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
   const test = vi.spyOn(alertsApi, 'testDestination')
   const changeIt = vi.spyOn(alertsApi, 'changeRules')
   const previewIt = vi.spyOn(alertsApi, 'previewRules').mockResolvedValue(preview())
+  const log = vi.spyOn(alertsApi, 'fetchDeliveries').mockResolvedValue(deliveries())
   const mounted = await mountWithPlugins(AlertsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -52,6 +61,7 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     test,
     changeIt,
     previewIt,
+    log,
     find,
     text,
     cards,
@@ -86,9 +96,18 @@ describe('AlertsView', () => {
       expect(text('page-heading')).toBe('Alerts')
     })
 
-    it('says none are set up, and offers to add one', async () => {
-      const { text, find, editing } = await open(destinations([]))
+    it('shows what was sent below the destinations, once there is one', async () => {
+      const { find, log } = await open()
 
+      expect(find('delivery-log').exists()).toBe(true)
+      expect(log).toHaveBeenCalledOnce()
+    })
+
+    it('says none are set up, and offers to add one', async () => {
+      const { text, find, editing, log } = await open(destinations([]))
+
+      expect(find('delivery-log').exists()).toBe(false)
+      expect(log).not.toHaveBeenCalled()
       expect(text('no-destinations')).toContain('No alerts are set up')
       expect(find('destination-list').exists()).toBe(false)
       await find('empty-add').trigger('click')

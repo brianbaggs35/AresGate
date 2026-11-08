@@ -51,6 +51,13 @@ export class AlertsPage {
   readonly previewLeftOut: Locator
   readonly previewExamples: Locator
   readonly previewFailure: Locator
+  /** The log of messages sent, and the filters on it. */
+  readonly log: Locator
+  readonly logTotals: Locator
+  readonly deliveries: Locator
+  readonly logEmpty: Locator
+  readonly logState: Locator
+  readonly logRefresh: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -95,6 +102,12 @@ export class AlertsPage {
     this.previewLeftOut = page.getByTestId('preview-left-out')
     this.previewExamples = page.getByTestId('preview-examples')
     this.previewFailure = page.getByTestId('preview-failure')
+    this.log = page.getByTestId('delivery-log')
+    this.logTotals = page.getByTestId('delivery-totals')
+    this.deliveries = page.getByTestId('delivery')
+    this.logEmpty = page.getByTestId('delivery-empty')
+    this.logState = page.getByTestId('delivery-filter-state')
+    this.logRefresh = page.getByTestId('delivery-refresh')
   }
 
   async goto(): Promise<void> {

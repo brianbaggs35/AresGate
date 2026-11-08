@@ -1,4 +1,12 @@
-import type { Choices, Destination, Destinations, Rules, RulesPreview } from '@/api/alerts'
+import type {
+  Choices,
+  Deliveries,
+  Delivery,
+  Destination,
+  Destinations,
+  Rules,
+  RulesPreview,
+} from '@/api/alerts'
 
 const NOW = Date.now()
 const MINUTE = 60_000
@@ -125,4 +133,35 @@ export function destinations(
     choices: choices(),
     ...changes,
   }
+}
+
+/** A message that was sent a few minutes ago, with whatever is given changed. */
+export function delivery(changes: Partial<Delivery> = {}): Delivery {
+  return {
+    id: 1,
+    destination_id: 1,
+    destination: 'Security channel',
+    incident_id: 12,
+    kind: 'incident',
+    reason: 'new',
+    state: 'sent',
+    title: 'Port scan from 203.0.113.7',
+    severity: 'high',
+    confidence: 82,
+    covers: 0,
+    attempts: 1,
+    created_at: new Date(NOW - 6 * MINUTE).toISOString(),
+    due_at: new Date(NOW - 6 * MINUTE).toISOString(),
+    sent_at: new Date(NOW - 5 * MINUTE).toISOString(),
+    note: null,
+    ...changes,
+  }
+}
+
+/** A page of the log. */
+export function deliveries(
+  items: Delivery[] = [delivery()],
+  changes: Partial<Deliveries> = {},
+): Deliveries {
+  return { items, next_before: null, counts: { sent: items.length }, ...changes }
 }

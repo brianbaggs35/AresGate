@@ -17,6 +17,7 @@ import { ApiError, errorMessage } from '@/api/client'
 import { problemsByField } from '@/ai'
 import AppPage from '@/components/AppPage.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DeliveryLog from '@/components/DeliveryLog.vue'
 import DestinationCard from '@/components/DestinationCard.vue'
 import DestinationDialog from '@/components/DestinationDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -299,6 +300,7 @@ onMounted(load)
       </p>
     </SectionCard>
     <v-skeleton-loader v-else type="card" />
+    <DeliveryLog v-if="listing && items.length" :destinations="items" />
 
     <DestinationDialog
       v-model="editing"
