@@ -2,17 +2,18 @@
 each message."""
 
 import asyncio
+import json
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
-from typing import Any
+from typing import Any, cast
 
 import pytest
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.alerts import destinations, notify
+from app.alerts import destinations, discord, notify
 from app.alerts import rules as alert_rules
 from app.alerts.discord import Sent
 from app.config import Settings
@@ -43,6 +44,9 @@ def destination(
     """A destination that began listening an hour ago, with the rules of a new one."""
     row = destinations.create(session, settings, name, ADDRESS, NOW - 2 * HOUR)
     row.listening_since = NOW - HOUR
+    # These tests are of what a destination with floors and no more is told; a destination that
+    # is told of threats only has tests of its own.
+    row.mode = "custom"
     for field, value in changes.items():
         setattr(row, field, value)
     session.commit()
@@ -777,6 +781,398 @@ def tell(
     )
 
 
+MESSAGE = "1100000000000000001"
+
+
+def threat(session: Session, **changes: Any) -> Incident:
+    """An incident on the Threats page: it went past looking around."""
+    fields: dict[str, Any] = {"confidence": 90, "stages": ["recon", "access"]}
+    return incident(session, **{**fields, **changes})
+
+
+def edits(session: Session) -> list[AlertDelivery]:
+    return [row for row in rows(session) if row.kind == "update"]
+
+
+class TestThreatsOnly:
+    def test_a_threat_is_told_once_with_the_stage_it_reached_as_its_rank(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats")
+        found = threat(session)
+
+        (job,) = pass_at(session, settings)
+        assert pass_at(session, settings) != []
+
+        (row,) = rows(session)
+        assert (row.reason, row.key, row.rank, row.incident_id) == ("new", "new", 102, found.id)
+        [embed] = cast("list[dict[str, Any]]", job.payload["embeds"])
+        assert embed["title"].startswith("Attack in progress: ")
+        assert embed["footer"] == {"text": "AresGate · threat alert"}
+        assert "Why AresGate thinks so" in embed["description"]
+        assert job.edit is None
+
+    def test_what_is_not_a_threat_is_not_told_whatever_the_floors_say(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats", min_severity=1, min_confidence=0)
+        incident(session, confidence=50)
+        incident(session, confidence=90, severity=1, stages=[], subject="93.184.216.2")
+
+        jobs = pass_at(session, settings)
+
+        # The second is sure enough for the rules to call it a threat; the first only a suspect.
+        assert len(jobs) == 1
+        [only] = rows(session)
+        assert only.confidence == 90
+
+    def test_the_floors_do_not_apply_to_a_threat(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats", min_severity=4, min_confidence=100)
+        threat(session, severity=1)
+
+        assert len(pass_at(session, settings)) == 1
+
+    def test_an_attack_that_goes_further_is_told_again_and_one_that_only_grows_is_not(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats")
+        found = threat(session)
+        (job,) = pass_at(session, settings)
+        notify.keep(session, job.delivery_id, Sent(True, 200, message_id=MESSAGE), NOW)
+        found.signal_count = 40
+        found.severity = 4
+        session.commit()
+        assert pass_at(session, settings) == []
+
+        found.stages = ["recon", "access", "foothold"]
+        session.commit()
+        (again,) = pass_at(session, settings)
+        pass_at(session, settings)
+
+        assert [(row.reason, row.key, row.rank) for row in rows(session)] == [
+            ("new", "new", 102),
+            ("worse", "worse:103", 103),
+        ]
+        [embed] = cast("list[dict[str, Any]]", again.payload["embeds"])
+        assert embed["title"].startswith("Escalated: Possible break-in: ")
+
+    def test_an_escalation_is_not_told_when_the_owner_asked_for_one_message(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats", again_when_worse=False)
+        found = threat(session)
+        (job,) = pass_at(session, settings)
+        notify.keep(session, job.delivery_id, Sent(True, 200, message_id=MESSAGE), NOW)
+        found.stages = ["recon", "access", "foothold"]
+        session.commit()
+
+        assert pass_at(session, settings) == []
+
+    def test_quiet_hours_hold_a_threat_like_any_other_message(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, "Security", mode="threats", **ALWAYS_QUIET)
+        threat(session)
+
+        assert pass_at(session, settings) == []
+
+        (row,) = rows(session)
+        assert (row.state, row.was_held) == ("held", True)
+
+    def test_an_incident_the_owner_called_a_threat_is_told_with_their_word(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats")
+        incident(session, confidence=40, verdict="threat")
+
+        (job,) = pass_at(session, settings)
+
+        [embed] = cast("list[dict[str, Any]]", job.payload["embeds"])
+        assert "You said it is a real threat." in embed["description"]
+
+    def test_a_destination_switched_to_threats_hears_of_a_threat_it_was_told_of_under_floors(
+        self, session: Session, settings: Settings
+    ) -> None:
+        row = destination(session, settings)
+        found = threat(session)
+        (job,) = pass_at(session, settings)
+        notify.keep(session, job.delivery_id, Sent(True, 200), NOW)
+        row.mode = "threats"
+        session.commit()
+
+        pass_at(session, settings)
+
+        assert [item.key for item in rows(session)] == ["new", "worse:102"]
+        assert found.id
+
+
+class TestStandingDown:
+    def sent(
+        self, session: Session, settings: Settings, **changes: Any
+    ) -> tuple[AlertDestination, Incident]:
+        row = destination(session, settings, mode="threats", **changes)
+        found = threat(session)
+        (job,) = pass_at(session, settings)
+        notify.keep(session, job.delivery_id, Sent(True, 200, message_id=MESSAGE), NOW)
+        return row, found
+
+    def test_the_name_discord_gave_a_message_is_kept(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.sent(session, settings)
+
+        assert rows(session)[0].message_id == MESSAGE
+
+    def test_a_threat_the_owner_calls_harmless_is_changed_to_say_so(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "not_suspicious"
+        session.commit()
+
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+        pass_at(session, settings, NOW + MINUTE)
+
+        (change,) = edits(session)
+        assert (change.reason, change.key, change.state, change.target_id) == (
+            "retract",
+            f"retract:{rows(session)[0].id}",
+            "queued",
+            rows(session)[0].id,
+        )
+        assert job.edit == MESSAGE
+        [embed] = cast("list[dict[str, Any]]", job.payload["embeds"])
+        assert embed["title"].startswith("Stood down: ")
+        assert "You called it not suspicious or low priority" in embed["description"]
+        assert embed["color"] == discord.GREY
+        # Nothing but the correction is waiting, and the message itself stays sent.
+        assert rows(session)[0].state == "sent"
+
+    def test_the_change_is_sent_once_and_does_not_count_as_a_message(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings, max_per_hour=1)
+        found.status = "resolved"
+        session.commit()
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+
+        notify.keep(session, job.delivery_id, Sent(True, 200), NOW + MINUTE)
+
+        assert pass_at(session, settings, NOW + 2 * MINUTE) == []
+        (change,) = edits(session)
+        assert (change.state, change.attempts, change.message_id) == ("sent", 1, None)
+
+    def test_a_threat_the_ai_later_clears_is_changed_too(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.stages = []
+        found.confidence = 70
+        found.ai_class = "noise"
+        found.ai_confidence = 95
+        session.commit()
+
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+
+        [embed] = cast("list[dict[str, Any]]", job.payload["embeds"])
+        assert embed["title"].startswith("Stood down: ")
+        assert "noise" in embed["description"]
+
+    def test_a_threat_that_is_no_longer_sure_enough_is_changed_too(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.stages = []
+        found.confidence = 50
+        session.commit()
+
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+
+        assert job.edit == MESSAGE
+
+    def test_a_change_of_mind_long_after_it_was_last_seen_is_still_passed_on(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.last_seen_at = NOW - 10 * HOUR
+        found.verdict = "low_priority"
+        session.commit()
+
+        assert len(pass_at(session, settings, NOW + 10 * HOUR)) == 1
+
+    def test_a_message_older_than_a_day_is_left_as_it_was(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.last_seen_at = NOW - 10 * HOUR
+        found.verdict = "low_priority"
+        session.commit()
+
+        assert pass_at(session, settings, NOW + 25 * HOUR) == []
+
+    def test_only_a_destination_told_of_threats_changes_what_it_said(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings)
+        found = incident(session)
+        (job,) = pass_at(session, settings)
+        notify.keep(session, job.delivery_id, Sent(True, 200, message_id=MESSAGE), NOW)
+        found.verdict = "not_suspicious"
+        session.commit()
+
+        assert pass_at(session, settings, NOW + MINUTE) == []
+        assert edits(session) == []
+
+    def test_what_never_reached_the_channel_is_not_changed(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings, mode="threats")
+        found = threat(session)
+        (job,) = pass_at(session, settings)
+        # Discord took it, but did not say what it called it.
+        notify.keep(session, job.delivery_id, Sent(True, 204), NOW)
+        found.verdict = "low_priority"
+        session.commit()
+
+        assert pass_at(session, settings, NOW + MINUTE) == []
+        assert edits(session) == []
+
+    def test_a_change_that_has_not_gone_yet_is_dropped_if_it_is_a_threat_again(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        pass_at(session, settings, NOW + MINUTE)
+        found.verdict = None
+        session.commit()
+
+        assert pass_at(session, settings, NOW + 2 * MINUTE) == []
+
+        (change,) = edits(session)
+        assert (change.state, change.note) == ("dropped", "Not changed. It is a threat again.")
+        assert [row.key for row in rows(session) if row.kind == "incident"] == ["new"]
+
+    def test_and_made_again_if_it_is_not_once_more(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        pass_at(session, settings, NOW + MINUTE)
+        found.verdict = None
+        session.commit()
+        pass_at(session, settings, NOW + 2 * MINUTE)
+        found.verdict = "low_priority"
+        session.commit()
+
+        (job,) = pass_at(session, settings, NOW + 3 * MINUTE)
+
+        (change,) = edits(session)
+        assert (change.state, change.note, job.delivery_id) == ("queued", None, change.id)
+
+    def test_a_threat_that_was_stood_down_and_is_one_again_is_told_as_reopened(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+        notify.keep(session, job.delivery_id, Sent(True, 200), NOW + MINUTE)
+        found.verdict = None
+        session.commit()
+
+        (again,) = pass_at(session, settings, NOW + 2 * MINUTE)
+
+        [embed] = cast("list[dict[str, Any]]", again.payload["embeds"])
+        assert embed["title"].startswith("Reopened: ")
+        assert "stood down earlier" in embed["description"]
+        keys = [row.key for row in rows(session) if row.kind == "incident"]
+        assert keys == ["new", f"reopened:{int((NOW + MINUTE).timestamp())}"]
+
+    def test_a_message_deleted_in_discord_needs_no_change(
+        self, session: Session, settings: Settings
+    ) -> None:
+        row, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+        gone = Sent(
+            False,
+            404,
+            "The message was deleted in Discord, so there was nothing to update.",
+            missing=True,
+        )
+
+        assert notify.keep(session, job.delivery_id, gone, NOW + MINUTE) == "dropped"
+
+        (change,) = edits(session)
+        assert (change.state, change.note) == ("dropped", gone.problem)
+        session.refresh(row)
+        assert row.last_error is None
+
+    def test_a_change_whose_message_has_lost_its_name_is_not_tried(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        pass_at(session, settings, NOW + MINUTE)
+        rows(session)[0].message_id = None
+        session.commit()
+
+        assert pass_at(session, settings, NOW + MINUTE) == []
+
+        (change,) = edits(session)
+        assert (change.state, change.note) == (
+            "dropped",
+            "Not changed. The message or the incident is gone.",
+        )
+
+    def test_a_change_to_an_incident_that_is_gone_is_not_tried(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        pass_at(session, settings, NOW + MINUTE)
+        session.execute(delete(Incident))
+        session.commit()
+
+        assert pass_at(session, settings, NOW + MINUTE) == []
+
+        (change,) = edits(session)
+        assert (change.state, change.incident_id) == ("dropped", None)
+
+    def test_the_wording_is_the_incidents_own_and_not_the_networks(
+        self, session: Session, settings: Settings
+    ) -> None:
+        _, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        found.title = "[click](https://evil.example)"
+        session.commit()
+
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+
+        assert "evil.example" not in json.dumps(job.payload)
+
+    def test_a_webhook_that_discord_refuses_fails_the_waiting_changes_too(
+        self, session: Session, settings: Settings
+    ) -> None:
+        row, found = self.sent(session, settings)
+        found.verdict = "low_priority"
+        session.commit()
+        (job,) = pass_at(session, settings, NOW + MINUTE)
+
+        notify.keep(session, job.delivery_id, Sent(False, 404, "gone", gone=True), NOW + MINUTE)
+
+        session.refresh(row)
+        assert row.refused
+        assert edits(session)[0].state == "failed"
+
+
 class TestAPass:
     def test_it_sends_what_the_rules_choose_once_and_keeps_the_log(
         self, session: Session, settings: Settings, new_session: Callable[[], Session], serve: Serve
@@ -906,6 +1302,64 @@ class TestAPass:
 
         assert report == notify.Report(retrying=1)
         assert rows(session)[0].state == "retrying"
+
+
+class TestAThreatThroughDiscord:
+    def test_a_message_is_made_and_later_changed_to_say_it_was_stood_down(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session], serve: Serve
+    ) -> None:
+        row = destination(session, settings, mode="threats")
+        found = threat(session, last_seen_at=utcnow(), first_seen_at=utcnow())
+        row.listening_since = utcnow() - HOUR
+        session.commit()
+        server = stand_in(serve)
+
+        first = tell(settings, new_session, server)
+        found.verdict = "not_suspicious"
+        session.commit()
+        second = tell(settings, new_session, server)
+        third = tell(settings, new_session, server)
+
+        assert (first, second, third) == (
+            notify.Report(sent=1),
+            notify.Report(sent=1),
+            notify.Report(),
+        )
+        post, patch = server.seen
+        assert post.target.endswith("?wait=true")
+        assert (patch.method, patch.target.split("/messages/")[0]) == (
+            "PATCH",
+            f"/api/webhooks/{ID}/{TOKEN}",
+        )
+        assert json.loads(patch.body)["embeds"][0]["title"].startswith("Stood down: ")
+        assert [(item.kind, item.state) for item in rows(session)] == [
+            ("incident", "sent"),
+            ("update", "sent"),
+        ]
+
+    def test_a_message_someone_deleted_is_let_go_without_blaming_the_webhook(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session], serve: Serve
+    ) -> None:
+        row = destination(session, settings, mode="threats")
+        found = threat(session, last_seen_at=utcnow(), first_seen_at=utcnow())
+        row.listening_since = utcnow() - HOUR
+        session.commit()
+        server = stand_in(serve)
+        tell(settings, new_session, server)
+        rows(session)[0].message_id = "1100000000000000099"
+        found.verdict = "not_suspicious"
+        session.commit()
+
+        report = tell(settings, new_session, server)
+
+        assert report == notify.Report()
+        assert [(item.kind, item.state) for item in rows(session)] == [
+            ("incident", "sent"),
+            ("update", "dropped"),
+        ]
+        session.refresh(row)
+        assert row.refused is False
+        assert row.last_error is None
 
 
 def run_loop(

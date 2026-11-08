@@ -71,6 +71,9 @@ def create(
         kind="discord",
         name=name,
         enabled=True,
+        # What it is for: a message means that a real attack is going on. Looser rules are a
+        # choice of the owner's.
+        mode="threats",
         hint=webhook.hint,
         created_at=now,
         updated_at=now,

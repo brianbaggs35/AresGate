@@ -21,6 +21,13 @@ does, in this order:
    up on and said so in the log. A webhook Discord refuses (deleted, or a wrong token) is never
    tried again, since repeated refusals count against the address, until it is replaced.
 
+A destination in ``threats`` mode is told of the incidents on the Threats page and of nothing
+else: once when an incident first becomes a threat, and again when it escalates a stage (looking
+around, then trying to get in, then a sign that it worked), not for every alert in it. The message
+says why in the words of the incident's Where it stands card. Discord is asked to name each message
+it takes, so that when the owner calls the incident harmless, someone resolves it, or the AI clears
+it, the message is edited to say it was stood down (an ``update`` row) and not left standing.
+
 The sender sends a message at least once: if the worker stops between Discord taking a message
 and the row being saved, the message is sent again when it starts. The log (``AlertDelivery``)
 keeps what became of every message and why, and the Alerts page shows it.
@@ -34,7 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.alerts import destinations, discord, message
@@ -42,11 +49,14 @@ from app.alerts import rules as alert_rules
 from app.alerts.destinations import Unusable
 from app.alerts.discord import Sent, Webhook
 from app.config import Settings
-from app.incidents import queries
+from app.incidents import attention, queries
 from app.incidents import rules as incident_rules
 from app.integrations.client import Recorder
 from app.integrations.netguard import AddressPolicy
 from app.models import AlertDelivery, AlertDestination, Incident, utcnow
+from app.threats import explain, stages
+from app.threats import settings as threat_settings
+from app.threats.settings import Tuning
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +77,13 @@ CANDIDATES: Final = 500
 PACE: Final = 1.0
 # The longest a pass waits for Discord to say it may go on; for longer the rest wait for the next.
 MAX_PAUSE: Final = 10.0
+# How long after a threat was told of a change of mind about it is still passed on, by editing the
+# message. (Discord lets a webhook's message be edited for as long as it exists.)
+RETRACT_WINDOW: Final = timedelta(hours=24)
+# What an incident's rank starts from in ``threats`` mode, above any rank of ``custom``.
+THREAT_RANK: Final = 100
+# Why an incident that was told of is no longer worth the message: what puts it right is an edit.
+RETRACTING: Final = ("muted", "settled", "threat")
 
 # Waiting to be sent, and those and the ones a summary will tell of.
 PENDING: Final = ("queued", "held", "retrying")
@@ -85,26 +102,37 @@ def band_of(confidence: int) -> int:
     return 0
 
 
-def rank_of(incident: Incident) -> int:
+def rank_of(incident: Incident, mode: str = "custom") -> int:
     """How bad an incident is as one number that only goes up when it gets worse: its severity
-    first and its confidence band after."""
+    first and its confidence band after. For a destination that is told of threats only, how far
+    the attack has got instead, since that is what makes a threat worth a second message."""
+    if mode == "threats":
+        return THREAT_RANK + stages.depth(incident.stages or [])
     return incident.severity * 10 + band_of(incident.confidence)
 
 
 def _next_message(
-    rules: alert_rules.Rules, incident: Incident, rows: list[AlertDelivery]
+    rules: alert_rules.Rules,
+    incident: Incident,
+    rows: list[AlertDelivery],
+    stood_down: dict[int, datetime],
 ) -> tuple[str, str] | None:
     """Whether the incident is to be told of again, as the reason and the unique key of the
     message, or none if there is nothing new. ``rows`` are the messages already made about it
-    for this destination."""
+    for this destination, and ``stood_down`` those of them that were changed to say it was no
+    longer a threat, by when."""
     told = [row for row in rows if row.state not in ("failed", "dropped")]
     if not told:
         return "new", "new"
     closed = max((row.closed_at for row in rows if row.closed_at is not None), default=None)
     if closed is not None and max(row.created_at for row in rows) <= closed:
         return "reopened", f"reopened:{int(closed.timestamp())}"
-    rank = rank_of(incident)
-    if rules.again_when_worse and rank > max(row.rank for row in told):
+    standing = [row for row in told if row.id not in stood_down]
+    if not standing:
+        # Everything said of it was taken back, and it is a threat again.
+        return "reopened", f"reopened:{int(max(stood_down.values()).timestamp())}"
+    rank = rank_of(incident, rules.mode)
+    if rules.again_when_worse and rank > max(row.rank for row in standing):
         return "worse", f"worse:{rank}"
     return None
 
@@ -133,11 +161,17 @@ def _tell(
     rules: alert_rules.Rules,
     incident: Incident,
     rows: list[AlertDelivery],
+    updates: list[AlertDelivery],
     decision: alert_rules.Decision,
     now: datetime,
 ) -> None:
     """Makes the message the rules call for, if there is one, and moves what waits in or out of
     quiet hours."""
+    for edit in updates:
+        if edit.state in WAITING:
+            # It is a threat after all, so what was sent is left as it was.
+            edit.state = "dropped"
+            edit.note = "Not changed. It is a threat again."
     for row in rows:
         if row.state == "held" and not decision.held:
             row.state = "queued"
@@ -146,7 +180,12 @@ def _tell(
             row.state = "held"
             row.was_held = True
             row.due_at = _wait_until(rules, True, now)
-    found = _next_message(rules, incident, rows)
+    stood_down = {
+        edit.target_id: edit.created_at
+        for edit in updates
+        if edit.target_id is not None and edit.state not in ("failed", "dropped")
+    }
+    found = _next_message(rules, incident, rows, stood_down)
     if found is None:
         return
     reason, key = found
@@ -161,7 +200,7 @@ def _tell(
                 reason=reason,
                 key=key,
                 state=state,
-                rank=rank_of(incident),
+                rank=rank_of(incident, rules.mode),
                 title=incident.title,
                 severity=incident.severity,
                 confidence=incident.confidence,
@@ -178,9 +217,48 @@ def _tell(
         existing.was_held = decision.held
 
 
+def _retract(
+    incident: Incident,
+    rows: list[AlertDelivery],
+    updates: list[AlertDelivery],
+    db: Session,
+    now: datetime,
+) -> None:
+    """Changes the messages already sent about an incident to say it was stood down."""
+    by_target = {edit.target_id: edit for edit in updates}
+    for row in rows:
+        if row.state != "sent" or row.message_id is None:
+            continue
+        edit = by_target.get(row.id)
+        if edit is None:
+            db.add(
+                AlertDelivery(
+                    destination_id=row.destination_id,
+                    incident_id=incident.id,
+                    kind="update",
+                    reason="retract",
+                    key=f"retract:{row.id}",
+                    state="queued",
+                    rank=row.rank,
+                    title=row.title,
+                    severity=row.severity,
+                    confidence=row.confidence,
+                    target_id=row.id,
+                    created_at=now,
+                    due_at=now,
+                )
+            )
+        elif edit.state == "dropped":
+            # It was a threat again for a while, and is not once more.
+            edit.state = "queued"
+            edit.note = None
+            edit.due_at = now
+
+
 def _incidents(db: Session, destination: AlertDestination, now: datetime) -> list[Incident]:
     """The incidents worth a look for a destination: those seen lately since it began listening,
-    and any it still has a message waiting about."""
+    and any it still has a message waiting about. For one told of threats, also those it sent a
+    message about lately: the owner may call one harmless long after it was last seen."""
     since = max(now - LOOKBACK, destination.listening_since)
     recent = list(
         db.scalars(
@@ -190,9 +268,19 @@ def _incidents(db: Session, destination: AlertDestination, now: datetime) -> lis
             .limit(CANDIDATES)
         )
     )
+    revisit = AlertDelivery.state.in_(WAITING)
+    if destination.mode == "threats":
+        revisit = or_(
+            revisit,
+            and_(
+                AlertDelivery.state == "sent",
+                AlertDelivery.message_id.is_not(None),
+                AlertDelivery.sent_at >= now - RETRACT_WINDOW,
+            ),
+        )
     waiting = select(AlertDelivery.incident_id).where(
         AlertDelivery.destination_id == destination.id,
-        AlertDelivery.state.in_(WAITING),
+        revisit,
         AlertDelivery.incident_id.is_not(None),
     )
     others = db.scalars(
@@ -204,29 +292,37 @@ def _incidents(db: Session, destination: AlertDestination, now: datetime) -> lis
 
 
 def decide_new(
-    db: Session, destination: AlertDestination, rules: alert_rules.Rules, now: datetime
+    db: Session,
+    destination: AlertDestination,
+    rules: alert_rules.Rules,
+    now: datetime,
+    tuning: Tuning | None = None,
 ) -> None:
     """Writes to the outbox what the rules say a destination is to be told, and drops what they no
-    longer say."""
+    longer say. ``tuning`` is what the owner set for telling a threat from noise."""
     incidents = _incidents(db, destination, now)
     if not incidents:
         return
+    tuning = tuning or threat_settings.load(db)
     by_incident: dict[int, list[AlertDelivery]] = defaultdict(list)
+    edits: dict[int, list[AlertDelivery]] = defaultdict(list)
     for row in db.scalars(
         select(AlertDelivery).where(
             AlertDelivery.destination_id == destination.id,
-            AlertDelivery.kind == "incident",
+            AlertDelivery.kind.in_(("incident", "update")),
             AlertDelivery.incident_id.in_([incident.id for incident in incidents]),
         )
     ):
-        by_incident[row.incident_id or 0].append(row)
+        (edits if row.kind == "update" else by_incident)[row.incident_id or 0].append(row)
     for incident in incidents:
         rows = by_incident[incident.id]
-        decision = alert_rules.decide(rules, incident, now)
+        decision = alert_rules.decide(rules, incident, now, tuning)
         if decision.reason is None:
-            _tell(db, destination, rules, incident, rows, decision, now)
-        else:
-            _set_aside(rows, decision.reason, alert_rules.explain(decision.reason, rules), now)
+            _tell(db, destination, rules, incident, rows, edits[incident.id], decision, now)
+            continue
+        _set_aside(rows, decision.reason, alert_rules.explain(decision.reason, rules), now)
+        if rules.mode == "threats" and decision.reason in RETRACTING:
+            _retract(incident, rows, edits[incident.id], db, now)
 
 
 @dataclass(frozen=True)
@@ -237,6 +333,8 @@ class Job:
     destination_id: int
     webhook: Webhook
     payload: dict[str, object]
+    # For a change to a message already sent: what Discord called it.
+    edit: str | None = None
 
 
 def _summary(
@@ -338,7 +436,10 @@ def due_now(
     for row in due:
         if row.kind == "summary" or row in held:
             continue
-        if allowed > 0:
+        if row.kind == "update":
+            # A change to a message already sent is not another message in the channel.
+            ready.append(row)
+        elif allowed > 0:
             ready.append(row)
             allowed -= 1
         else:
@@ -366,7 +467,12 @@ def _devices(db: Session, incident: Incident) -> list[message.Device]:
 
 
 def build(
-    db: Session, destination: AlertDestination, row: AlertDelivery, origin: str, now: datetime
+    db: Session,
+    destination: AlertDestination,
+    row: AlertDelivery,
+    origin: str,
+    now: datetime,
+    tuning: Tuning | None = None,
 ) -> dict[str, object] | None:
     """What a row says, or none when there is nothing left to say (the incident is gone)."""
     if row.kind == "summary":
@@ -391,12 +497,29 @@ def build(
     incident = db.get(Incident, row.incident_id) if row.incident_id else None
     if incident is None:
         return None
+    devices = _devices(db, incident) if destination.detail == "full" else ()
+    if row.kind == "update" or destination.mode == "threats":
+        tuning = tuning or threat_settings.load(db)
+        why = explain.why(incident, attention.NEEDS_YOU_FROM, tuning)
+        if row.kind == "update":
+            return message.stood_down_message(
+                incident, detail=destination.detail, origin=origin, why=why[:3], at=now
+            )
+        return message.threat_message(
+            incident,
+            reason=row.reason,
+            detail=destination.detail,
+            origin=origin,
+            why=why,
+            devices=devices,
+            at=now,
+        )
     return message.incident_message(
         incident,
         reason=row.reason,
         detail=destination.detail,
         origin=origin,
-        devices=_devices(db, incident) if destination.detail == "full" else (),
+        devices=devices,
         at=now,
     )
 
@@ -406,6 +529,7 @@ def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
     caller commits."""
     addressed = destinations.with_address(db)
     jobs: list[Job] = []
+    tuning = threat_settings.load(db)
     for destination in destinations.listing(db):
         if not destination.enabled or destination.refused or destination.id not in addressed:
             continue
@@ -415,14 +539,24 @@ def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
             destinations.record_attempt(destination, str(problem), now)
             continue
         rules = alert_rules.of(destination)
-        decide_new(db, destination, rules, now)
+        decide_new(db, destination, rules, now, tuning)
         for row in due_now(db, destination, rules, now):
-            payload = build(db, destination, row, settings.public_origin, now)
+            target = db.get(AlertDelivery, row.target_id) if row.target_id else None
+            edit = target.message_id if target else None
+            payload = (
+                build(db, destination, row, settings.public_origin, now, tuning)
+                if row.kind != "update" or edit
+                else None
+            )
             if payload is None:
                 row.state = "dropped"
-                row.note = "Not sent. The incident is gone."
+                row.note = (
+                    "Not changed. The message or the incident is gone."
+                    if row.kind == "update"
+                    else "Not sent. The incident is gone."
+                )
                 continue
-            jobs.append(Job(row.id, destination.id, webhook, payload))
+            jobs.append(Job(row.id, destination.id, webhook, payload, edit))
     return jobs
 
 
@@ -439,12 +573,20 @@ def keep(db: Session, delivery_id: int, sent: Sent, now: datetime) -> str:
     if row is None or destination is None:
         # The destination was removed while the message was on its way.
         return "gone"
-    destinations.record_attempt(destination, sent, now)
     row.attempts += 1
+    if sent.missing:
+        # Someone deleted the message in Discord: the webhook is fine, and there is nothing to edit.
+        row.state = "dropped"
+        row.note = sent.problem
+        db.commit()
+        return row.state
+    destinations.record_attempt(destination, sent, now)
     if sent.ok:
         row.state = "sent"
         row.sent_at = now
         row.note = None
+        if row.kind != "update":
+            row.message_id = sent.message_id
     elif sent.gone:
         row.state = "failed"
         row.note = sent.problem
@@ -510,14 +652,28 @@ async def notify_once(
     for job in jobs:
         if job.destination_id in resting:
             continue
-        sent = await discord.send(
-            job.webhook,
-            job.payload,
-            connection=f"destination-{job.destination_id}",
-            recorder=recorder,
-            policy=policy,
-            origin=origin,
-        )
+        connection = f"destination-{job.destination_id}"
+        if job.edit:
+            sent = await discord.edit(
+                job.webhook,
+                job.edit,
+                job.payload,
+                connection=connection,
+                recorder=recorder,
+                policy=policy,
+                origin=origin,
+            )
+        else:
+            # Discord is asked to name the message, so that it can be changed later.
+            sent = await discord.send(
+                job.webhook,
+                job.payload,
+                connection=connection,
+                recorder=recorder,
+                policy=policy,
+                origin=origin,
+                wait=True,
+            )
         outcome = await asyncio.to_thread(settle, new_session, job.delivery_id, sent, utcnow())
         counts[outcome] = counts.get(outcome, 0) + 1
         if not sent.ok or (sent.pause or 0) > MAX_PAUSE:

@@ -147,6 +147,32 @@ class TestThePage:
         assert told["incident_id"] == incident.id
         assert told["sent_at"] == "2026-11-08T12:00:00Z"
 
+    def test_a_correction_to_a_message_is_listed_with_the_message_it_changes(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        row = destination(session)
+        told = delivery(session, row, key="1", message_id="1100000000000000001")
+        delivery(
+            session,
+            row,
+            key=f"retract:{told.id}",
+            kind="update",
+            reason="retract",
+            target_id=told.id,
+            note="Not changed. It is a threat again.",
+            state="dropped",
+        )
+        session.commit()
+
+        update, _ = client.get(BASE).json()["items"]
+
+        assert (update["kind"], update["reason"], update["state"]) == (
+            "update",
+            "retract",
+            "dropped",
+        )
+        assert update["note"] == "Not changed. It is a threat again."
+
     def test_it_pages_and_filters(
         self, client: TestClient, csrf_token: str, session: Session
     ) -> None:

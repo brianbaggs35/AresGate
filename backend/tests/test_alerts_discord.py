@@ -11,6 +11,7 @@ from app.alerts import discord
 from app.alerts.discord import InvalidWebhook, Sent
 from app.integrations import netguard
 from app.integrations.client import Call
+from e2e.stand_ins import Seen
 from e2e.stand_ins import discord as discord_stand_in
 from tests.stubs import Answer, Serve
 
@@ -167,6 +168,20 @@ class TestTheMessage:
         assert embed["title"].endswith("…")
         assert len(embed["description"]) == discord.MAX_DESCRIPTION
         assert len(embed["footer"]["text"]) == 2048
+
+    def test_fields_are_added_within_discords_limits(self) -> None:
+        many = [
+            (f"Name {n}", "v" * 2000 if n == 0 else f"Value {n}", n % 2 == 0) for n in range(30)
+        ]
+
+        embed = embed_of(discord.message(title="T", description="D", fields=many))
+
+        assert len(embed["fields"]) == discord.MAX_FIELDS
+        assert embed["fields"][0]["name"] == "Name 0"
+        assert len(embed["fields"][0]["value"]) == discord.MAX_FIELD_VALUE
+        assert embed["fields"][0]["value"].endswith("…")
+        assert embed["fields"][1] == {"name": "Name 1", "value": "Value 1", "inline": False}
+        assert embed["fields"][2]["inline"] is True
 
     def test_the_test_message_names_the_destination_and_says_nothing_is_wrong(self) -> None:
         embed = embed_of(discord.check_message("Security", NOW))
@@ -372,3 +387,129 @@ class TestSending:
             "AresGate won't connect to it. AI providers are on the internet, not on your own "
             "network."
         )
+
+
+class TestWhatDiscordCalledAMessage:
+    def test_a_message_that_was_waited_for_has_the_name_discord_gave_it(self) -> None:
+        sent = discord.judge(200, {"id": "1100000000000000001", "type": 0})
+
+        assert sent == Sent(True, 200, message_id="1100000000000000001")
+
+    @pytest.mark.parametrize(
+        "body", [None, "text", {}, {"id": 5}, {"id": "abc"}, {"id": "1" * 40}, [{"id": "1"}]]
+    )
+    def test_a_name_that_is_not_one_is_not_kept(self, body: object) -> None:
+        assert discord.judge(200, body).message_id is None
+        assert discord.judge(204, None).message_id is None
+
+    def test_an_edit_of_a_message_that_was_deleted_is_not_the_webhooks_fault(self) -> None:
+        sent = discord.judge_edit(404, {"message": "Unknown Message", "code": 10008})
+
+        assert (sent.ok, sent.missing, sent.gone, sent.retry) == (False, True, False, False)
+        assert sent.problem == "The message was deleted in Discord, so there was nothing to update."
+
+    @pytest.mark.parametrize(
+        "body", [{"message": "Unknown Webhook", "code": 10015}, {"code": True}, {"code": "x"}, None]
+    )
+    def test_any_other_404_is_a_webhook_that_is_gone(self, body: object) -> None:
+        sent = discord.judge_edit(404, body)
+
+        assert (sent.missing, sent.gone) == (False, True)
+
+    def test_an_edit_that_worked_is_taken(self) -> None:
+        assert discord.judge_edit(200, {"id": "1100000000000000001"}).ok
+
+
+class TestWaitingForTheMessageAndEditingIt:
+    def stand_in(self, serve: Serve) -> Any:
+        return serve(discord_stand_in(f"{ID}/{TOKEN}"))
+
+    def wait_for(self, server: Any, log: Log | None = None) -> Sent:
+        return asyncio.run(
+            discord.send(
+                discord.parse(ADDRESS),
+                discord.check_message("Security", NOW),
+                connection="destination-1",
+                recorder=log or Log(),
+                policy=netguard.PUBLIC_INTERNET_AND_LOOPBACK,
+                origin=server.url,
+                wait=True,
+            )
+        )
+
+    def edit(self, server: Any, message_id: str, log: Log | None = None) -> Sent:
+        return asyncio.run(
+            discord.edit(
+                discord.parse(ADDRESS),
+                message_id,
+                discord.check_message("Changed", NOW),
+                connection="destination-1",
+                recorder=log or Log(),
+                policy=netguard.PUBLIC_INTERNET_AND_LOOPBACK,
+                origin=server.url,
+            )
+        )
+
+    def test_it_asks_discord_to_name_the_message(self, serve: Serve) -> None:
+        server = self.stand_in(serve)
+
+        sent = self.wait_for(server)
+
+        assert sent.ok
+        assert sent.message_id == "1100000000000000001"
+        assert server.seen[0].target == f"/api/webhooks/{ID}/{TOKEN}?wait=true"
+
+    def test_a_message_is_edited_where_it_was_made(self, serve: Serve) -> None:
+        server = self.stand_in(serve)
+        made = self.wait_for(server)
+        log = Log()
+
+        sent = self.edit(server, made.message_id or "", log)
+
+        assert sent.ok
+        patch = server.seen[1]
+        assert (patch.method, patch.path) == (
+            "PATCH",
+            f"/api/webhooks/{ID}/{TOKEN}/messages/{made.message_id}",
+        )
+        assert json.loads(patch.body)["embeds"][0]["title"] == "AresGate can reach this channel"
+        [_, call] = [None, *log.calls]
+        assert call is not None and call.path == discord.LOGGED_PATH
+        assert TOKEN not in repr(log.calls)
+
+    def test_a_message_that_was_never_made_or_was_deleted_is_missing(self, serve: Serve) -> None:
+        server = self.stand_in(serve)
+
+        sent = self.edit(server, "1100000000000000099")
+
+        assert (sent.ok, sent.missing, sent.gone) == (False, True, False)
+
+    def test_a_name_that_is_not_one_is_never_put_in_an_address(self, serve: Serve) -> None:
+        server = self.stand_in(serve)
+
+        sent = self.edit(server, "../../x")
+
+        assert (sent.ok, sent.status) == (False, None)
+        assert server.seen == []
+
+    def test_editing_through_a_webhook_that_is_gone_says_so(self, serve: Serve) -> None:
+        server = serve(discord_stand_in("1/other"))
+
+        sent = self.edit(server, "1100000000000000001")
+
+        assert (sent.ok, sent.gone, sent.missing) == (False, True, False)
+
+
+class TestTheDiscordStandIn:
+    def ask(self, method: str, path: str) -> Answer:
+        handle = discord_stand_in(f"{ID}/{TOKEN}")
+        agent = {"user-agent": "DiscordBot (https://example.test, 1)"}
+        return handle(Seen(method, path, agent, b'{"content": "x"}'))
+
+    def test_only_a_post_or_a_patch_to_a_webhook_is_answered(self) -> None:
+        assert self.ask("GET", f"/api/webhooks/{ID}/{TOKEN}").status == 404
+        assert self.ask("POST", "/api/users").status == 404
+
+    def test_an_edit_needs_a_message_path_and_a_post_does_not_have_one(self) -> None:
+        assert self.ask("PATCH", f"/api/webhooks/{ID}/{TOKEN}").status == 404
+        assert self.ask("POST", f"/api/webhooks/{ID}/{TOKEN}/messages/1").status == 404

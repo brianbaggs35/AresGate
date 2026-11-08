@@ -14,7 +14,7 @@ import pytest
 from coverage.data import CoverageData
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app import config as config_module
@@ -25,7 +25,7 @@ from app.config import Settings
 from app.db import get_session
 from app.integrations import netguard, registry, service
 from app.integrations.service import Submission
-from app.models import CollectorHealth, Event, SystemInfo, User, WorkerBeat, utcnow
+from app.models import CollectorHealth, Event, Incident, SystemInfo, User, WorkerBeat, utcnow
 from app.security import passwords, setup_code
 from e2e import factories
 from e2e.api import STAND_INS
@@ -1285,6 +1285,7 @@ def test_it_tells_the_destinations_of_the_incidents_there_are(
         f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
         utcnow(),
     )
+    row.mode = "custom"
     row.min_confidence = 0
     session.commit()
     e2e.post(
@@ -1302,3 +1303,41 @@ def test_it_tells_the_destinations_of_the_incidents_there_are(
     seen = e2e.get(f"/api/__test__/stand-ins/{started['id']}/requests").json()
     assert len(seen) == 1
     assert row.id
+
+
+def test_it_tells_of_a_threat_and_then_says_it_was_stood_down(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={"kind": "discord", "webhook": f"{WEBHOOK_ID}/{WEBHOOK_TOKEN}"},
+    ).json()
+    session.commit()
+    destinations.create(
+        session,
+        settings,
+        "Security",
+        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        utcnow(),
+    )
+    session.commit()
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {"severity": "high", "minutes_ago": 0, "signals": 4, "scan": True, "exploit": True}
+            ]
+        },
+    )
+
+    first = e2e.post("/api/__test__/notifier/run").json()
+    session.execute(update(Incident).values(verdict="not_suspicious"))
+    session.commit()
+    second = e2e.post("/api/__test__/notifier/run").json()
+
+    assert (first, second) == (
+        {"sent": 1, "retrying": 0, "failed": 0},
+        {"sent": 1, "retrying": 0, "failed": 0},
+    )
+    posted, patched = e2e.get(f"/api/__test__/stand-ins/{started['id']}/requests").json()
+    assert (posted["method"], patched["method"]) == ("POST", "PATCH")

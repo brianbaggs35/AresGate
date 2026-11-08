@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.alerts import rules as alert_rules
 from app.alerts.rules import Quiet, Rules
 from app.models import AlertDestination, Incident
+from app.threats.settings import Tuning
 
 # A Monday noon in UTC, which is 13:00 in Berlin (winter time) and 07:00 in New York.
 NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
@@ -338,6 +339,65 @@ class TestTheZone:
         assert alert_rules.zone_of(name) is None
 
 
+class TestOnlyThreats:
+    def only(self, **changes: Any) -> Rules:
+        return rules(mode="threats", **changes)
+
+    def test_a_destination_reads_its_mode(self, session: Session) -> None:
+        assert alert_rules.of(destination(session, mode="threats")).mode == "threats"
+        assert alert_rules.of(destination(session, name="Other")).mode == "custom"
+
+    def test_what_is_on_the_threats_page_is_told(self) -> None:
+        sure = incident(confidence=90, stages=[])
+        chain = incident(confidence=40, stages=["recon", "access"])
+        owner = incident(confidence=40, verdict="threat")
+
+        for found in (sure, chain, owner):
+            assert alert_rules.decide(self.only(), found, NOW).send
+
+    def test_a_suspect_is_not_told_however_serious(self) -> None:
+        decision = alert_rules.decide(self.only(), incident(confidence=50, severity=4), NOW)
+
+        assert (decision.send, decision.reason) == (False, "threat")
+
+    def test_the_floors_the_sources_and_the_kinds_do_not_apply(self) -> None:
+        strict = self.only(
+            min_severity=4, min_confidence=100, sources=("zenarmor",), activities=("brute_force",)
+        )
+
+        assert alert_rules.decide(strict, incident(confidence=90, severity=1), NOW).send
+
+    def test_the_owners_word_that_it_is_harmless_wins_over_a_chain(self) -> None:
+        found = incident(stages=["recon", "access"], verdict="low_priority")
+
+        assert alert_rules.decide(self.only(), found, NOW).reason == "muted"
+        assert alert_rules.decide(self.only(), incident(status="resolved"), NOW).reason == "settled"
+
+    def test_the_ai_can_keep_a_scan_off_the_page(self) -> None:
+        found = incident(confidence=70, severity=2, ai_class="noise", ai_confidence=95)
+
+        assert alert_rules.decide(self.only(), found, NOW).reason == "threat"
+
+    def test_what_the_owner_set_for_telling_a_threat_from_noise_is_followed(self) -> None:
+        found = incident(confidence=70, severity=2)
+        strict = Tuning(threat_from=90)
+
+        assert alert_rules.decide(self.only(), found, NOW).send
+        assert alert_rules.decide(self.only(), found, NOW, strict).reason == "threat"
+
+    def test_quiet_hours_hold_a_threat(self) -> None:
+        quiet = Quiet(0, 1439, "UTC", critical_passes=False)
+
+        decision = alert_rules.decide(self.only(quiet=quiet), incident(confidence=90), NOW)
+
+        assert (decision.send, decision.held) == (True, True)
+
+    def test_it_says_in_words_why_a_suspect_is_left_out(self) -> None:
+        assert alert_rules.explain("threat", self.only()) == (
+            "Not a threat: a suspect or background on the Threats page"
+        )
+
+
 class TestThePreview:
     def test_it_counts_what_would_have_been_sent_and_why_the_rest_was_not(
         self, session: Session
@@ -360,12 +420,27 @@ class TestThePreview:
         assert result.left_out == {
             "muted": 1,
             "settled": 1,
+            "threat": 0,
             "severity": 1,
             "confidence": 1,
             "source": 1,
             "activity": 1,
         }
         assert not result.truncated
+
+    def test_for_a_destination_told_of_threats_it_counts_the_threats_of_the_day(
+        self, session: Session
+    ) -> None:
+        incident(session, subject="a", confidence=90)
+        incident(session, subject="b", confidence=40, stages=["recon", "access"])
+        incident(session, subject="c", confidence=50)
+        incident(session, subject="d", confidence=90, verdict="not_suspicious")
+
+        result = alert_rules.preview(session, rules(mode="threats"), NOW)
+
+        assert (result.considered, result.would_send) == (4, 2)
+        assert result.left_out["threat"] == 1
+        assert result.left_out["muted"] == 1
 
     def test_the_newest_that_would_be_sent_are_the_examples(self, session: Session) -> None:
         for n in range(8):

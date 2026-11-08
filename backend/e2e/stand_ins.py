@@ -260,7 +260,7 @@ class StubServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-            do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = _answer
+            do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = _answer
 
             def log_message(self, format: str, *args: object) -> None:
                 pass
@@ -1352,20 +1352,28 @@ def openai(api_key: str, models: Collection[str] = ()) -> Handler:
 def discord(webhook: str) -> Handler:
     """Discord's Execute Webhook: ``POST /api/webhooks/{id}/{token}`` (the version in the path is
     optional) with a JSON message of at least some ``content`` or ``embeds`` answers 204 No
-    Content. ``webhook`` is the ``id/token`` it knows; any other is Unknown Webhook (404). A
-    request without the User-Agent Discord asks for is refused (403), as it may be blocked."""
+    Content, or, with ``?wait=true``, 200 with the message it made (which has an ``id``). Edit
+    Webhook Message, ``PATCH`` of that message's path, answers 200 with the new message, or 404 with
+    code 10008 (Unknown Message) for one that was never made. ``webhook`` is the ``id/token`` it
+    knows; any other is Unknown Webhook (404). A request without the User-Agent Discord asks for is
+    refused (403), as it may be blocked."""
     known = f"/api/webhooks/{webhook}"
+    made: dict[str, object] = {}
 
     def handle(seen: Seen) -> Answer:
         path = re.sub(r"^/api/v\d+/", "/api/", seen.path.partition("?")[0])
-        if seen.method != "POST" or not path.startswith("/api/webhooks/"):
+        if seen.method not in ("POST", "PATCH") or not path.startswith("/api/webhooks/"):
             return _json({"message": "404: Not Found", "code": 0}, 404)
         if not seen.headers.get("user-agent", "").startswith("DiscordBot ("):
             return _json(
                 {"message": "You are being blocked from accessing our API", "code": 0}, 403
             )
-        if path != known:
+        if not (path == known or path.startswith(known + "/")):
             return _json({"message": "Unknown Webhook", "code": 10015}, 404)
+        posting = seen.method == "POST" and path == known
+        editing = seen.method == "PATCH" and path.startswith(known + "/messages/")
+        if not (posting or editing):
+            return _json({"message": "404: Not Found", "code": 0}, 404)
         try:
             asked = json.loads(seen.body)
         except ValueError:
@@ -1373,9 +1381,19 @@ def discord(webhook: str) -> Handler:
         message: Mapping[str, object] = (
             cast("Mapping[str, object]", asked) if isinstance(asked, dict) else {}
         )
+        if editing:
+            name = path.rsplit("/", 1)[1]
+            if name not in made:
+                return _json({"message": "Unknown Message", "code": 10008}, 404)
+            made[name] = message
+            return _json({"id": name, **message})
         if not (message.get("content") or message.get("embeds")):
             return _json({"message": "Cannot send an empty message", "code": 50006}, 400)
-        return Answer(status=204)
+        if "wait=true" not in seen.target.partition("?")[2].split("&"):
+            return Answer(status=204)
+        name = str(1100000000000000000 + len(made) + 1)
+        made[name] = message
+        return _json({"id": name, "type": 0, **message})
 
     return handle
 
