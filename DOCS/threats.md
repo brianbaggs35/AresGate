@@ -46,7 +46,10 @@ yours quiets, is in none: it is already dealt with.)
 
 What decides the lane, in this order:
 
-1. **Your verdicts.** A verdict of yours always wins.
+1. **Your verdicts.** A verdict of yours always wins. A verdict can say where a device's traffic
+   goes: a camera that calls its own cloud can be called normal for that network and nothing else
+   it does. It matches only what the device sends there, so what the service sends back, and
+   everything else the device does, still counts.
 2. **How far the attack got.** Each alert is placed on a short path, the way Microsoft Sentinel's
    Fusion and Splunk's risk-based alerting look for several weak signs that add up: *looking
    around* (scans and probes), *trying to get in* (an exploit, an injection, a known

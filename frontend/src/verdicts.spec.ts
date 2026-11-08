@@ -1,3 +1,4 @@
+import type { Signal } from '@/api/incidents'
 import type { Verdict } from '@/api/verdicts'
 import { detail, signal } from '@/test/incidents'
 import { verdict as rule } from '@/test/verdicts'
@@ -87,7 +88,13 @@ describe('standing', () => {
 })
 
 describe('aboutVerdict', () => {
-  const none = { address: null, source: null, source_name: null, signature: null }
+  const none = {
+    address: null,
+    destination: null,
+    source: null,
+    source_name: null,
+    signature: null,
+  }
 
   it.each<[string, Partial<Verdict>, string]>([
     ['an address', { address: '93.184.216.34' }, '93.184.216.34'],
@@ -108,6 +115,27 @@ describe('aboutVerdict', () => {
       'all three',
       { signature: 'ET SCAN', address: '93.184.216.34', source: 'wazuh', source_name: 'Wazuh' },
       '“ET SCAN” from 93.184.216.34, as seen by Wazuh',
+    ],
+    [
+      'a device sending to a network',
+      { address: '192.168.1.20', destination: '52.1.2.0/24' },
+      'Traffic from 192.168.1.20 to 52.1.2.0/24',
+    ],
+    [
+      'a signature a device sent to an address, as one program saw it',
+      {
+        signature: 'ET POLICY',
+        address: '192.168.1.20',
+        destination: '52.1.2.9',
+        source: 'ntopng',
+        source_name: 'ntopng',
+      },
+      '“ET POLICY” from 192.168.1.20 to 52.1.2.9, as seen by ntopng',
+    ],
+    [
+      'a destination with no device named',
+      { destination: '52.1.2.0/24' },
+      'Traffic from any address to 52.1.2.0/24',
     ],
   ])('says %s', (_name, changes, words) => {
     expect(aboutVerdict({ ...none, ...changes })).toBe(words)
@@ -180,6 +208,89 @@ describe('scopesOf', () => {
 
     // The address, and four alerts twice.
     expect(scopes).toHaveLength(9)
+  })
+})
+
+describe('where a device sends its traffic', () => {
+  const inside = '192.168.1.20'
+
+  /** The titles of the scopes about where a device sent its traffic, for the signals given. */
+  const sentTo = (...changes: Partial<Signal>[]) =>
+    scopesOf(detail({ signals: changes.map((change) => signal(change)) }))
+      .filter(({ key }) => key.startsWith('sent:'))
+      .map(({ title }) => title)
+
+  it('offers the address the device sent to, then the whole network it is in', () => {
+    const scopes = scopesOf(
+      detail({ signals: [signal({ src_address: inside, dst_address: '52.1.2.9' })] }),
+    )
+
+    expect(scopes.slice(-2)).toEqual([
+      {
+        key: 'sent:192.168.1.20>52.1.2.9',
+        title: 'Traffic from 192.168.1.20 to 52.1.2.9',
+        hint: 'Only what this device sends there',
+        request: { address: inside, destination: '52.1.2.9' },
+      },
+      {
+        key: 'sent:192.168.1.20>52.1.2.0/24',
+        title: 'Traffic from 192.168.1.20 to 52.1.2.0/24',
+        hint: 'Only what this device sends to the whole network',
+        request: { address: inside, destination: '52.1.2.0/24' },
+      },
+    ])
+  })
+
+  it('offers a whole network once, however many of its addresses the device sent to', () => {
+    expect(
+      sentTo(
+        { src_address: inside, dst_address: '52.1.2.9' },
+        { src_address: inside, dst_address: '52.1.2.8' },
+      ),
+    ).toEqual([
+      'Traffic from 192.168.1.20 to 52.1.2.9',
+      'Traffic from 192.168.1.20 to 52.1.2.0/24',
+      'Traffic from 192.168.1.20 to 52.1.2.8',
+    ])
+  })
+
+  it('offers an IPv6 address alone, as no network of it is offered', () => {
+    expect(sentTo({ src_address: inside, dst_address: '2606:2800:220:1::1' })).toEqual([
+      'Traffic from 192.168.1.20 to 2606:2800:220:1::1',
+    ])
+  })
+
+  it('counts the private ranges a home network hands out as inside, and nothing else', () => {
+    expect(sentTo({ src_address: '10.0.0.5', dst_address: '52.1.2.9' })).toHaveLength(2)
+    expect(sentTo({ src_address: '172.20.0.5', dst_address: '52.1.2.9' })).toHaveLength(2)
+    expect(sentTo({ src_address: 'fd12:3456::7', dst_address: '52.1.2.9' })).toHaveLength(2)
+    expect(sentTo({ src_address: '172.32.0.5', dst_address: '52.1.2.9' })).toEqual([])
+    expect(sentTo({ src_address: '93.184.216.34', dst_address: '52.1.2.9' })).toEqual([])
+  })
+
+  it('keeps to a few devices, not every one that sent something', () => {
+    expect(
+      sentTo(
+        { src_address: inside, dst_address: '52.1.2.9' },
+        { src_address: inside, dst_address: '52.1.3.9' },
+        { src_address: '192.168.1.30', dst_address: '52.1.4.9' },
+      ),
+    ).toEqual([
+      'Traffic from 192.168.1.20 to 52.1.2.9',
+      'Traffic from 192.168.1.20 to 52.1.2.0/24',
+      'Traffic from 192.168.1.20 to 52.1.3.9',
+      'Traffic from 192.168.1.20 to 52.1.3.0/24',
+    ])
+  })
+
+  it('skips a signal that names no destination, no device, or the device itself', () => {
+    expect(
+      sentTo(
+        { src_address: inside, dst_address: null },
+        { src_address: null, dst_address: '52.1.2.9' },
+        { src_address: inside, dst_address: inside },
+      ),
+    ).toEqual([])
   })
 })
 

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 
 from sqlalchemy.orm import Session
 
@@ -12,12 +12,13 @@ NOW = datetime(2026, 10, 26, 6, 0, tzinfo=UTC)
 
 
 def rule(verdict: str = "not_suspicious", **about: str | None) -> VerdictRule:
-    fields = {"address": None, "source": None, "signature": None, **about}
-    address = fields["address"]
+    fields = {"address": None, "destination": None, "source": None, "signature": None, **about}
+    address, destination = fields["address"], fields["destination"]
     return VerdictRule(
         id=1,
         verdict=verdict,
         address=ip_address(address) if address else None,
+        destination=ip_network(destination) if destination else None,
         source=fields["source"],
         signature=fields["signature"],
     )
@@ -73,6 +74,62 @@ class TestWhatARuleMatches:
         assert verdicts.matches(both, signal())
         assert not verdicts.matches(both, signal(signature="something else"))
         assert not verdicts.matches(both, signal(src="8.8.8.8", dst=DEVICE))
+
+
+CLOUD = "52.1.2.0/24"
+CLOUD_HOST = "52.1.2.9"
+
+
+class TestWhereADeviceSends:
+    def test_it_matches_what_the_device_sends_to_that_network(self) -> None:
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert verdicts.matches(camera, signal(src=DEVICE, dst=CLOUD_HOST))
+
+    def test_but_not_what_it_sends_anywhere_else(self) -> None:
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert not verdicts.matches(camera, signal(src=DEVICE, dst=ATTACKER))
+
+    def test_nor_what_is_sent_back_to_it_from_there(self) -> None:
+        # An attack that comes from the service still counts, whatever the device is excused.
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert not verdicts.matches(camera, signal(src=CLOUD_HOST, dst=DEVICE))
+
+    def test_nor_what_another_device_sends_there(self) -> None:
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert not verdicts.matches(camera, signal(src="192.168.1.30", dst=CLOUD_HOST))
+
+    def test_nor_a_signal_that_names_no_destination(self) -> None:
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert not verdicts.matches(camera, signal(src=DEVICE, dst=None))
+
+    def test_a_single_address_is_a_network_of_one(self) -> None:
+        host = rule(address=DEVICE, destination=CLOUD_HOST)
+        assert verdicts.matches(host, signal(src=DEVICE, dst=CLOUD_HOST))
+        assert not verdicts.matches(host, signal(src=DEVICE, dst="52.1.2.8"))
+
+    def test_the_signature_and_the_program_narrow_it_as_well(self) -> None:
+        # The signal's defaults are a Wazuh alert with the SSH scan signature.
+        camera = rule(address=DEVICE, destination=CLOUD, source="wazuh")
+        assert verdicts.matches(camera, signal(src=DEVICE, dst=CLOUD_HOST))
+        assert not verdicts.matches(
+            rule(address=DEVICE, destination=CLOUD, source="ntopng"),
+            signal(src=DEVICE, dst=CLOUD_HOST),
+        )
+        assert not verdicts.matches(
+            rule(address=DEVICE, destination=CLOUD, signature="ET POLICY Something"),
+            signal(src=DEVICE, dst=CLOUD_HOST),
+        )
+
+    def test_it_is_more_specific_than_a_rule_for_the_device_alone(self) -> None:
+        device = rule("threat", address=DEVICE)
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert verdicts.judge(signal(src=DEVICE, dst=CLOUD_HOST), [device, camera]) is camera
+        # Everything else the device does still has the rule for the device.
+        assert verdicts.judge(signal(src=DEVICE, dst=ATTACKER), [device, camera]) is device
+
+    def test_a_rule_that_names_a_device_is_never_the_standing_of_an_alert(self) -> None:
+        camera = rule(address=DEVICE, destination=CLOUD)
+        assert verdicts.standing([camera], "wazuh", "ET SCAN Potential SSH Scan") is None
 
 
 class TestWhichRuleDecides:

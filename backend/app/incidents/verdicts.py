@@ -9,6 +9,7 @@ makes the incident certain, whatever else it holds.
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network
 from typing import Final
 
 from sqlalchemy import func, select
@@ -53,7 +54,23 @@ def matches(rule: VerdictRule, signal: Signal) -> bool:
         return False
     if rule.signature is not None and rule.signature != signal.signature:
         return False
+    if rule.destination is not None:
+        return _sent_to(rule.address, rule.destination, signal)
     return rule.address is None or str(rule.address) in _about(signal)
+
+
+def _sent_to(
+    device: IPv4Address | IPv6Address | None, network: IPv4Network | IPv6Network, signal: Signal
+) -> bool:
+    """Whether a signal is the device sending to the network a rule names. Only what the device
+    sends is about it: what comes back to it, or is sent to it by something else, is not, so an
+    attack on the device still counts."""
+    return (
+        device is not None
+        and signal.src_address == device
+        and signal.dst_address is not None
+        and signal.dst_address in network
+    )
 
 
 def _about(signal: Signal) -> set[str]:
@@ -67,7 +84,7 @@ def _about(signal: Signal) -> set[str]:
 
 def _weight(rule: VerdictRule) -> tuple[int, int]:
     """The rule that names more is the more specific, and wins; then the stronger verdict."""
-    named = (rule.address, rule.source, rule.signature)
+    named = (rule.address, rule.source, rule.signature, rule.destination)
     return sum(item is not None for item in named), STRENGTH[rule.verdict]
 
 

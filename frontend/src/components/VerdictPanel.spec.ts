@@ -34,6 +34,23 @@ async function show(incident = detail(), verdicts: verdictsApi.Verdict[] = []) {
 }
 
 describe('VerdictPanel', () => {
+  describe('where a device sends its traffic', () => {
+    it('gives a verdict about what the device sends to a network, not about the device', async () => {
+      const { give, scope, press } = await show(
+        detail({ signals: [signal({ src_address: '192.168.1.20', dst_address: '52.1.2.9' })] }),
+      )
+
+      await scope('sent:192.168.1.20>52.1.2.0/24')
+      await press('give-not_suspicious')
+
+      expect(give.mock.calls[0]?.[0]).toEqual({
+        verdict: 'not_suspicious',
+        address: '192.168.1.20',
+        destination: '52.1.2.0/24',
+      })
+    })
+  })
+
   describe('what the verdicts say now', () => {
     it('says nothing has been said of a new incident', async () => {
       const { text, find } = await show()

@@ -90,12 +90,17 @@ export function standing(
   return "You haven't said anything about it yet."
 }
 
-type About = Pick<Verdict, 'address' | 'source' | 'source_name' | 'signature'>
+type About = Pick<Verdict, 'address' | 'destination' | 'source' | 'source_name' | 'signature'>
 
 /** What a verdict is about, in words: "“ET SCAN” from 93.184.216.34, as seen by Wazuh". */
 export function aboutVerdict(about: About): string {
   const program = about.source_name ?? about.source
   const seen = program ? `as seen by ${program}` : null
+  if (about.destination) {
+    const what = about.signature ? `“${about.signature}”` : 'Traffic'
+    const base = `${what} from ${about.address ?? 'any address'} to ${about.destination}`
+    return seen ? `${base}, ${seen}` : base
+  }
   if (about.signature) {
     const base = `“${about.signature}” from ${about.address ?? 'any address'}`
     return seen ? `${base}, ${seen}` : base
@@ -110,11 +115,39 @@ export interface Scope {
   title: string
   /** What it takes in, in a few words. */
   hint: string
-  request: Pick<VerdictRequest, 'address' | 'source' | 'signature'>
+  request: Pick<VerdictRequest, 'address' | 'destination' | 'source' | 'signature'>
 }
 
 /** How many different alerts an incident offers a verdict on. */
 const MAX_ALERTS = 4
+
+/** How many device-to-destination pairs an incident offers a verdict on. */
+const MAX_SENT_TO = 2
+
+/** The addresses a home network hands out, where a device's traffic starts: the IPv4 private
+ * ranges and the IPv6 unique local ones. */
+const INSIDE = /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:)/i
+
+/** The /24 network an IPv4 address is in, where a service's servers are often kept together. An
+ * IPv6 address has no such network offered. */
+function wholeNetworkOf(address: string): string | null {
+  const octets = address.split('.')
+  if (address.includes(':') || octets.length !== 4) {
+    return null
+  }
+  return `${octets.slice(0, 3).join('.')}.0/24`
+}
+
+/** The pairs of a device inside the network and an address its traffic went to, a few at most. */
+function sentTo(signals: IncidentDetail['signals']): { device: string; to: string }[] {
+  const pairs = new Map<string, { device: string; to: string }>()
+  for (const { src_address: device, dst_address: to } of signals) {
+    if (device && to && device !== to && INSIDE.test(device) && pairs.size < MAX_SENT_TO) {
+      pairs.set(`${device}\u0000${to}`, { device, to })
+    }
+  }
+  return [...pairs.values()]
+}
 
 /** What a verdict on an incident can be about: its address, each alert it holds from any
  * address, and each of them from its address alone, in that order. */
@@ -152,6 +185,28 @@ export function scopesOf(incident: Pick<IncidentDetail, 'subject' | 'signals'>):
         hint: `Only this address, as seen by ${name}`,
         request: { address, source, signature },
       })
+    }
+  }
+  const offered = new Set<string>()
+  for (const { device, to } of sentTo(incident.signals)) {
+    const network = wholeNetworkOf(to)
+    const choices = [
+      { destination: to, hint: 'Only what this device sends there' },
+      ...(network
+        ? [{ destination: network, hint: 'Only what this device sends to the whole network' }]
+        : []),
+    ]
+    for (const { destination, hint } of choices) {
+      const key = `sent:${device}>${destination}`
+      if (!offered.has(key)) {
+        offered.add(key)
+        scopes.push({
+          key,
+          title: `Traffic from ${device} to ${destination}`,
+          hint,
+          request: { address: device, destination },
+        })
+      }
     }
   }
   return scopes

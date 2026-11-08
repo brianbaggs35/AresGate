@@ -11,6 +11,7 @@ export function verdict(changes: Partial<Verdict> = {}): Verdict {
     id: 1,
     verdict: 'not_suspicious',
     address: '93.184.216.34',
+    destination: null,
     source: null,
     source_name: null,
     signature: null,

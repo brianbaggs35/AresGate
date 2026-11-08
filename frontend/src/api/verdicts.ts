@@ -11,6 +11,9 @@ export interface Verdict {
   verdict: VerdictKind
   /** What it is about: a signal has to match all that are set, and at least one is. */
   address: string | null
+  /** Where that address sends its traffic, as one address or a whole network: only with an
+   * address, and only what it sends there is matched. */
+  destination: string | null
   /** An integration's key, and its name. */
   source: string | null
   source_name: string | null
@@ -33,6 +36,7 @@ export interface VerdictGiven extends Verdict {
 export interface VerdictRequest {
   verdict: VerdictKind
   address?: string
+  destination?: string
   source?: string
   signature?: string
   note?: string

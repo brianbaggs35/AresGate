@@ -215,6 +215,8 @@ class IncidentRequest(BaseModel):
     exploit: bool = False
     compromise: bool = False
     twin: str | None = Field(default=None, max_length=32)
+    # Whether the device sent the signals to the address, as a camera calls its cloud.
+    outbound: bool = False
 
 
 class IncidentsRequest(BaseModel):
@@ -248,6 +250,7 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 minutes_ago=item.minutes_ago,
                 device=item.device,
                 device_name=item.device_name,
+                outbound=item.outbound,
                 status=item.status,
                 neighbours=item.neighbours,
                 waves=min(item.waves, item.signals),
@@ -332,6 +335,7 @@ class VerdictRequest(BaseModel):
 
     verdict: Literal["not_suspicious", "low_priority", "threat"]
     address: str | None = None
+    destination: str | None = None
     source: str | None = None
     signature: str | None = None
     note: str | None = None

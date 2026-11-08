@@ -14,6 +14,8 @@ from tests.test_incidents_engine import ATTACKER, DEVICE, NOW, alert, run, store
 
 BASE = "/api/verdicts"
 SIGNATURE = "ET SCAN Potential SSH Scan"
+CLOUD = "52.1.2.0/24"
+CLOUD_HOST = "52.1.2.9"
 
 
 def headers(token: str) -> dict[str, str]:
@@ -68,6 +70,7 @@ class TestGivingAVerdict:
             "id": 0,
             "verdict": "not_suspicious",
             "address": ATTACKER,
+            "destination": None,
             "source": None,
             "source_name": None,
             "signature": None,
@@ -113,6 +116,77 @@ class TestGivingAVerdict:
         assert give(client, csrf_token, address="2606:2800:220:1::1").json()["address"] == (
             "2606:2800:220:1::1"
         )
+
+    def test_a_destination_says_where_a_device_sends_its_traffic(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        response = give(client, csrf_token, address=DEVICE, destination=CLOUD)
+
+        assert response.status_code == 201
+        body = response.json()
+        assert (body["address"], body["destination"]) == (DEVICE, CLOUD)
+        assert audited(session, Action.VERDICT_GIVEN)[0].detail == {
+            "verdict_id": body["id"],
+            "verdict": "not_suspicious",
+            "address": DEVICE,
+            "destination": CLOUD,
+        }
+
+    def test_a_single_address_destination_is_kept_as_that_address(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        body = give(client, csrf_token, address=DEVICE, destination=f" {CLOUD_HOST} ").json()
+
+        assert body["destination"] == CLOUD_HOST
+
+    def test_a_destination_said_as_null_is_no_destination(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        body = give(client, csrf_token, address=DEVICE, destination=None).json()
+
+        assert body["destination"] is None
+
+    def test_a_destination_is_a_verdict_apart_from_the_device_alone(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        give(client, csrf_token, address=DEVICE)
+
+        given = give(client, csrf_token, verdict="threat", address=DEVICE, destination=CLOUD)
+
+        assert given.status_code == 201
+        assert len(client.get(BASE).json()["items"]) == 2
+
+    def test_saying_it_again_of_the_same_device_and_network_changes_it(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        give(client, csrf_token, address=DEVICE, destination=CLOUD)
+
+        again = give(client, csrf_token, verdict="threat", address=DEVICE, destination=CLOUD)
+
+        assert again.status_code == 200
+        assert (again.json()["verdict"], again.json()["replaced"]) == (
+            "threat",
+            "not_suspicious",
+        )
+        assert len(client.get(BASE).json()["items"]) == 1
+
+    def test_it_quiets_what_the_device_sends_there_and_nothing_else_of_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, src_address=DEVICE, dst_address=CLOUD_HOST, severity=Severity.HIGH),
+            alert(NOW, n=2, src_address=DEVICE, dst_address=ATTACKER, severity=Severity.HIGH),
+        )
+        run(session)
+
+        give(client, csrf_token, address=DEVICE, destination=CLOUD)
+
+        session.expire_all()
+        by_subject = {incident.subject: incident for incident in session.scalars(select(Incident))}
+        assert by_subject[CLOUD_HOST].verdict == "not_suspicious"
+        assert by_subject[ATTACKER].verdict is None
 
     def test_it_is_applied_at_once_to_the_incidents_that_are_going(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings
@@ -198,6 +272,10 @@ class TestGivingAVerdict:
             {"verdict": "threat", "signature": "x" * 257},
             {"verdict": "threat", "address": ATTACKER, "note": "x" * 501},
             {"verdict": "threat", "address": ATTACKER, "colour": "red"},
+            {"verdict": "threat", "destination": CLOUD},
+            {"verdict": "threat", "address": DEVICE, "destination": "52.1.2.9/24"},
+            {"verdict": "threat", "address": DEVICE, "destination": "not a network"},
+            {"verdict": "threat", "source": "wazuh", "destination": CLOUD},
         ],
         ids=[
             "nothing",
@@ -211,6 +289,10 @@ class TestGivingAVerdict:
             "a long signature",
             "a long note",
             "something else",
+            "a destination with no device",
+            "a network with host bits set",
+            "a destination that is not one",
+            "a destination with a program but no device",
         ],
     )
     def test_nonsense_is_refused(

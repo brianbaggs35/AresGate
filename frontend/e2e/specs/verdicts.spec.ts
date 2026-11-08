@@ -1,6 +1,42 @@
 import { expect, test } from '../support'
 
 const ATTACKER = '93.184.216.34'
+const CAMERA = '192.168.1.20'
+const CLOUD = '52.1.2.9'
+const CLOUD_NETWORK = '52.1.2.0/24'
+
+test.describe('where a device sends its traffic', () => {
+  test('is listed with the device and the network it sends to', async ({ harness, verdicts }) => {
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: CAMERA, destination: CLOUD_NETWORK },
+    ])
+
+    await verdicts.goto()
+
+    await expect(verdicts.about()).toHaveText([`Traffic from ${CAMERA} to ${CLOUD_NETWORK}`])
+  })
+
+  test('is offered on an incident, and what it says is about that traffic alone', async ({
+    harness,
+    incident,
+    page,
+    verdicts,
+  }) => {
+    await harness.createIncidents([{ address: CLOUD, outbound: true, signals: 2 }])
+    await page.goto('/incidents?view=all')
+    await page.getByTestId('incident').filter({ hasText: CLOUD }).click()
+    await expect(page).toHaveURL(/\/incidents\/\d+$/)
+
+    await incident.about(`Traffic from ${CAMERA} to ${CLOUD_NETWORK}`)
+    await incident.give('not_suspicious').click()
+
+    await expect(incident.verdictNotice).toHaveText(
+      `Remembered: Traffic from ${CAMERA} to ${CLOUD_NETWORK} is not suspicious.`,
+    )
+    await verdicts.goto()
+    await expect(verdicts.about()).toHaveText([`Traffic from ${CAMERA} to ${CLOUD_NETWORK}`])
+  })
+})
 
 test.describe('verdicts page', () => {
   test('is one of the settings pages, and says none have been given on a new install', async ({
