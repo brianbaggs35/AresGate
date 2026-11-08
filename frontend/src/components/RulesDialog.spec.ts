@@ -11,8 +11,10 @@ import {
 import * as alertsApi from '@/api/alerts'
 import type { Destination, Rules, RulesPreview } from '@/api/alerts'
 import { ApiError } from '@/api/client'
+import ChoiceToggle from '@/components/ChoiceToggle.vue'
+import ModeCards from '@/components/ModeCards.vue'
 import RulesDialog from '@/components/RulesDialog.vue'
-import { choices, destination, preview, rules } from '@/test/alerts'
+import { choices, destination, preview, rules, sample, threatRules } from '@/test/alerts'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 interface Props {
@@ -42,6 +44,7 @@ async function mountSheet(props: Props = {}, startOpen = false) {
       ]),
   })
   const ask = vi.spyOn(alertsApi, 'previewRules').mockResolvedValue(preview())
+  const makeSample = vi.spyOn(alertsApi, 'fetchSample').mockResolvedValue(sample())
   const mounted = await mountWithPlugins(Page, { withApp: true, signedIn: 'admin' })
   const inSheet = (selector: string) =>
     document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
@@ -61,11 +64,40 @@ async function mountSheet(props: Props = {}, startOpen = false) {
     await flushPromises()
   }
   const radio = () => mounted.wrapper.findComponent(VRadioGroup)
+  const cards = () => mounted.wrapper.findComponent(ModeCards)
+  /** Chooses a card, as a tap on it does. */
+  const pick = async (purpose: 'threats' | 'serious' | 'custom') => {
+    cards().vm.$emit('update:modelValue', purpose)
+    await flushPromises()
+  }
+  const story = () => mounted.wrapper.findComponent(ChoiceToggle)
+  /** What the choice of which message to show is given. */
+  const told = () =>
+    story().vm.$props as unknown as {
+      modelValue: string
+      options: { label: string }[]
+    }
   const save = async () => {
     inSheet('rules-save')!.click()
     await flushPromises()
   }
-  return { ...mounted, saved, open, ask, inSheet, openIt, component, set, radio, save }
+  return {
+    ...mounted,
+    saved,
+    open,
+    ask,
+    makeSample,
+    inSheet,
+    openIt,
+    component,
+    set,
+    radio,
+    save,
+    cards,
+    pick,
+    story,
+    told,
+  }
 }
 
 /** A short pause before a change is asked about, so that the tests need not wait for long. */
@@ -378,6 +410,305 @@ describe('RulesDialog', () => {
       expect(text).toContain('No addresses')
       expect(text).toContain('a device on your network')
       expect(text).toContain('only you can read')
+    })
+  })
+
+  describe('what the channel is for', () => {
+    it('starts on real attacks only for a destination told of threats', async () => {
+      const { openIt, cards, inSheet } = await mountSheet({
+        destination: destination({ rules: threatRules() }),
+      })
+
+      await openIt()
+
+      expect(cards().props('modelValue')).toBe('threats')
+      expect(inSheet('rules-threats-note')!.textContent).toContain('becomes a threat')
+      expect(inSheet('rules-floors')).toBeNull()
+    })
+
+    it('links the note on threats to where it is set what a threat is', async () => {
+      const { openIt, inSheet } = await mountSheet({
+        destination: destination({ rules: threatRules() }),
+      })
+
+      await openIt()
+
+      expect(inSheet('rules-threat-link')!.getAttribute('href')).toBe('/settings/threat-detection')
+    })
+
+    it('starts on everything serious for the plain rules a channel got before', async () => {
+      const { openIt, cards, inSheet } = await mountSheet()
+
+      await openIt()
+
+      expect(cards().props('modelValue')).toBe('serious')
+      expect(inSheet('rules-floors')).not.toBeNull()
+      expect(inSheet('rules-purpose-note')).toBeNull()
+    })
+
+    it.each([
+      ['how serious', { min_severity: 3 }],
+      ['how sure', { min_confidence: 35 }],
+      ['the programs', { sources: ['wazuh'] }],
+      ['the kinds of activity', { activities: ['scan'] }],
+    ])('starts on custom when %s is the owner’s own', async (_what, changes) => {
+      const { openIt, cards } = await mountSheet({
+        destination: destination({ rules: rules(changes) }),
+      })
+
+      await openIt()
+
+      expect(cards().props('modelValue')).toBe('custom')
+    })
+
+    it('has nothing to save when a choice is put back as it was', async () => {
+      const { openIt, pick, save, saved } = await mountSheet({
+        destination: destination({ rules: threatRules({ min_severity: 3 }) }),
+      })
+      await openIt()
+
+      await pick('custom')
+      await pick('threats')
+      await save()
+
+      expect(saved).not.toHaveBeenCalled()
+    })
+
+    it('changes what a channel is told when another card is chosen', async () => {
+      const { openIt, pick, save, saved, inSheet, cards } = await mountSheet({
+        destination: destination({ rules: rules({ min_severity: 3, sources: ['wazuh'] }) }),
+      })
+      await openIt()
+
+      await pick('threats')
+
+      expect(cards().props('modelValue')).toBe('threats')
+      expect(inSheet('rules-floors')).toBeNull()
+      expect(inSheet('rules-save')!.hasAttribute('disabled')).toBe(false)
+      await save()
+      expect(saved).toHaveBeenCalledWith(
+        rules({
+          mode: 'threats',
+          min_severity: 3,
+          sources: ['wazuh'],
+          time_zone: expect.any(String) as string,
+        }),
+      )
+    })
+
+    it('puts the plain rules back when everything serious is chosen', async () => {
+      const { openIt, pick, save, saved } = await mountSheet({
+        destination: destination({
+          rules: rules({
+            min_severity: 4,
+            min_confidence: 0,
+            sources: ['wazuh'],
+            activities: ['scan'],
+          }),
+        }),
+      })
+      await openIt()
+
+      await pick('serious')
+      await save()
+
+      expect(saved).toHaveBeenCalledWith(rules({ time_zone: expect.any(String) as string }))
+    })
+
+    it('opens the rules of a channel that is told of threats when custom is chosen', async () => {
+      const { openIt, pick, inSheet, cards } = await mountSheet({
+        destination: destination({ rules: threatRules() }),
+      })
+      await openIt()
+
+      await pick('custom')
+
+      expect(cards().props('modelValue')).toBe('custom')
+      expect(inSheet('rules-floors')).not.toBeNull()
+      expect(inSheet('rules-threats-note')).toBeNull()
+    })
+
+    it('calls the plain rules the owner’s own once one of them is changed', async () => {
+      const { openIt, set, cards } = await mountSheet()
+      await openIt()
+
+      await set(VSelect, 'How serious', 3)
+
+      expect(cards().props('modelValue')).toBe('custom')
+    })
+
+    it('stays on custom when the rules are changed back to the plain ones', async () => {
+      const { openIt, set, cards } = await mountSheet({
+        destination: destination({ rules: rules({ min_severity: 3 }) }),
+      })
+      await openIt()
+
+      await set(VSelect, 'How serious', 2)
+
+      expect(cards().props('modelValue')).toBe('custom')
+    })
+
+    it('says escalate, not get worse, for a destination told of threats', async () => {
+      const { openIt, component, told } = await mountSheet({
+        destination: destination({ rules: threatRules() }),
+      })
+      await openIt()
+
+      expect(component(VSwitch, 'Tell me again if it escalates')).toBeDefined()
+      const options = told().options
+      expect(options.map((item) => item.label)).toEqual(['First message', 'If it escalates'])
+    })
+
+    it('says get worse for the rules that are the owner’s own', async () => {
+      const { openIt, told } = await mountSheet()
+      await openIt()
+
+      const options = told().options
+      expect(options.map((item) => item.label)).toEqual(['First message', 'If it gets worse'])
+    })
+  })
+
+  describe('the sample message', () => {
+    it('is asked for when the sheet opens, and drawn as Discord will show it', async () => {
+      const { openIt, makeSample, inSheet } = await mountSheet()
+
+      await openIt()
+
+      expect(makeSample).toHaveBeenCalledTimes(1)
+      expect(makeSample).toHaveBeenCalledWith('custom', 'standard', 'new')
+      expect(inSheet('discord-title')!.textContent).toContain('Attack in progress')
+      expect(inSheet('sample-wait')).toBeNull()
+    })
+
+    it('is asked for when the sheet is made already open', async () => {
+      const { makeSample, inSheet } = await mountSheet({}, true)
+      await flushPromises()
+
+      expect(makeSample).toHaveBeenCalledTimes(1)
+      expect(inSheet('discord-title')).not.toBeNull()
+    })
+
+    it('says it is being made until it has come', async () => {
+      const { makeSample, openIt, inSheet } = await mountSheet()
+      makeSample.mockReturnValue(new Promise(() => undefined))
+
+      await openIt()
+
+      expect(inSheet('sample-wait')!.textContent).toContain('Making a sample message')
+      expect(inSheet('discord-preview')).toBeNull()
+    })
+
+    it('is made again for the other purpose when one is chosen', async () => {
+      const { openIt, pick, makeSample } = await mountSheet()
+      await openIt()
+
+      await pick('threats')
+
+      expect(makeSample).toHaveBeenCalledTimes(2)
+      expect(makeSample).toHaveBeenLastCalledWith('threats', 'standard', 'new')
+    })
+
+    it('is made again for the other level of detail when one is chosen', async () => {
+      const { openIt, radio, makeSample } = await mountSheet()
+      await openIt()
+
+      radio().vm.$emit('update:modelValue', 'full')
+      await flushPromises()
+
+      expect(makeSample).toHaveBeenCalledTimes(2)
+      expect(makeSample).toHaveBeenLastCalledWith('custom', 'full', 'new')
+    })
+
+    it('is made again for the later message of the story when that is chosen', async () => {
+      const { openIt, story, makeSample } = await mountSheet({
+        destination: destination({ rules: threatRules() }),
+      })
+      await openIt()
+
+      story().vm.$emit('update:modelValue', 'worse')
+      await flushPromises()
+
+      expect(makeSample).toHaveBeenLastCalledWith('threats', 'standard', 'worse')
+    })
+
+    it('goes back to the first message of the story each time the sheet opens', async () => {
+      const { openIt, story, told, makeSample, open } = await mountSheet()
+      await openIt()
+      story().vm.$emit('update:modelValue', 'worse')
+      await flushPromises()
+
+      open.value = false
+      await flushPromises()
+      await openIt()
+
+      expect(told().modelValue).toBe('new')
+      expect(makeSample).toHaveBeenLastCalledWith('custom', 'standard', 'new')
+    })
+
+    it('is not asked for again by a change that does not change it', async () => {
+      const { openIt, set, makeSample } = await mountSheet()
+      await openIt()
+
+      await set(VSelect, 'How serious', 3)
+      await set(VSelect, 'Limit', 10)
+
+      expect(makeSample).toHaveBeenCalledTimes(1)
+    })
+
+    it('says why there is no sample, and shows the next one that comes', async () => {
+      const { openIt, makeSample, inSheet, pick } = await mountSheet()
+      makeSample.mockRejectedValueOnce(new ApiError(500, 'Could not make a sample.'))
+
+      await openIt()
+
+      expect(inSheet('sample-failure')!.textContent).toContain('Could not make a sample.')
+      expect(inSheet('discord-preview')).toBeNull()
+      await pick('threats')
+      expect(inSheet('sample-failure')).toBeNull()
+      expect(inSheet('discord-preview')).not.toBeNull()
+    })
+
+    it('shows the answer to the latest question, not a late answer to an earlier one', async () => {
+      const { openIt, makeSample, pick, inSheet } = await mountSheet()
+      let first: (value: alertsApi.Sample) => void = () => undefined
+      makeSample.mockReturnValueOnce(new Promise((resolve) => (first = resolve)))
+      await openIt()
+      makeSample.mockResolvedValueOnce(sample({ title: 'The later one' }))
+
+      await pick('threats')
+      first(sample({ title: 'The earlier one' }))
+      await flushPromises()
+
+      expect(inSheet('discord-title')!.textContent).toBe('The later one')
+    })
+
+    it('does not mind a late failure of an earlier question', async () => {
+      const { openIt, makeSample, pick, inSheet } = await mountSheet()
+      let first: (error: Error) => void = () => undefined
+      makeSample.mockReturnValueOnce(new Promise((_, reject) => (first = reject)))
+      await openIt()
+
+      await pick('threats')
+      first(new ApiError(500, 'Too late.'))
+      await flushPromises()
+
+      expect(inSheet('sample-failure')).toBeNull()
+      expect(inSheet('discord-title')).not.toBeNull()
+    })
+
+    it('forgets what was on its way when it is closed', async () => {
+      const { openIt, makeSample, open, inSheet } = await mountSheet()
+      let late: (value: alertsApi.Sample) => void = () => undefined
+      makeSample.mockReturnValueOnce(new Promise((resolve) => (late = resolve)))
+      await openIt()
+
+      open.value = false
+      await flushPromises()
+      late(sample({ title: 'Too late' }))
+      await flushPromises()
+      await openIt()
+
+      expect(inSheet('discord-title')!.textContent).not.toBe('Too late')
     })
   })
 

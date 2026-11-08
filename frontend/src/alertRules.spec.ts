@@ -65,6 +65,14 @@ describe('describeRules', () => {
     )
   })
 
+  it('says a destination told of threats is told of real attacks, and ignores the other rules', () => {
+    const threats = rules({ mode: 'threats', min_severity: 4, sources: ['wazuh'] })
+
+    expect(describeRules(threats, choices())).toBe(
+      'Tells you only about real attacks that are going on now, with the reason. Changes the message if one turns out not to be a threat. At most 6 messages an hour.',
+    )
+  })
+
   it('names the programs and kinds chosen', () => {
     const chosen = rules({
       sources: ['wazuh', 'opnsense'],

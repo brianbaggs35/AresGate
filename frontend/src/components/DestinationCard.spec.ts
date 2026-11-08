@@ -1,6 +1,6 @@
 import type { Destination } from '@/api/alerts'
 import DestinationCard from '@/components/DestinationCard.vue'
-import { choices, destination, failing, rules, working } from '@/test/alerts'
+import { choices, destination, failing, rules, threatRules, working } from '@/test/alerts'
 import { mountWithPlugins } from '@/test/mount'
 
 async function show(item: Destination = destination(), props: Record<string, unknown> = {}) {
@@ -93,6 +93,33 @@ describe('DestinationCard', () => {
     expect(wrapper.emitted('remove')).toHaveLength(1)
   })
 
+  it('says in words that a destination told of threats is told of real attacks', async () => {
+    const { text } = await show(destination({ rules: threatRules() }))
+
+    expect(text('destination-rules')).toContain('Tells you only about real attacks')
+  })
+
+  it('asks to send a sample alert', async () => {
+    const { find, wrapper } = await show()
+
+    await find('destination-sample').trigger('click')
+
+    expect(wrapper.emitted('sample')).toHaveLength(1)
+  })
+
+  it('cannot send a sample alert to a destination whose address is gone', async () => {
+    const { find } = await show(destination({ status: 'not_connected' }))
+
+    expect(find('destination-sample').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows the sample alert as being sent', async () => {
+    const { find } = await show(destination(), { busy: true, sampling: true })
+
+    expect(find('destination-sample').classes()).toContain('v-btn--loading')
+    expect(find('destination-test').classes()).not.toContain('v-btn--loading')
+  })
+
   it('asks to turn it off, and on again', async () => {
     const off = await show()
     await off.find('destination-enabled').find('input').setValue(false)
@@ -106,7 +133,7 @@ describe('DestinationCard', () => {
   it('waits while something is being done to it', async () => {
     const { find } = await show(destination(), { busy: true })
 
-    for (const name of ['test', 'rules-edit', 'edit', 'remove']) {
+    for (const name of ['test', 'sample', 'rules-edit', 'edit', 'remove']) {
       expect(find(`destination-${name}`).attributes('disabled')).toBeDefined()
     }
     expect(find('destination-enabled').find('input').attributes('disabled')).toBeDefined()

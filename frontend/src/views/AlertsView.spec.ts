@@ -10,6 +10,7 @@ import {
   failing,
   preview,
   rules,
+  sample,
   working,
 } from '@/test/alerts'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -25,6 +26,8 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
   const change = vi.spyOn(alertsApi, 'changeDestination')
   const remove = vi.spyOn(alertsApi, 'removeDestination').mockResolvedValue(undefined)
   const test = vi.spyOn(alertsApi, 'testDestination')
+  const sendIt = vi.spyOn(alertsApi, 'sendSample')
+  vi.spyOn(alertsApi, 'fetchSample').mockResolvedValue(sample())
   const changeIt = vi.spyOn(alertsApi, 'changeRules')
   const previewIt = vi.spyOn(alertsApi, 'previewRules').mockResolvedValue(preview())
   const log = vi.spyOn(alertsApi, 'fetchDeliveries').mockResolvedValue(deliveries())
@@ -58,6 +61,7 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     add,
     change,
     remove,
+    sendIt,
     test,
     changeIt,
     previewIt,
@@ -304,6 +308,63 @@ describe('AlertsView', () => {
       test.mockRejectedValue(offline())
 
       await press(0, 'test')
+
+      expect(text('alerts-failure')).toContain("Can't reach AresGate.")
+    })
+  })
+
+  describe('sending a sample alert', () => {
+    it('sends one and says it was sent', async () => {
+      const { sendIt, press, text, cards } = await open()
+      sendIt.mockResolvedValue({
+        ok: true,
+        message: 'The sample alert was sent.',
+        destination: working(),
+      })
+
+      await press(0, 'sample')
+
+      expect(sendIt).toHaveBeenCalledWith(1, 'a-security-token')
+      expect(text('alerts-notice')).toBe(
+        'A sample alert was sent to Security channel. Look for it in the channel.',
+      )
+      expect(cards()[0]?.find('[data-test="status"]').text()).toBe('Connected')
+    })
+
+    it('waits for the answer, with the card’s buttons held', async () => {
+      const { sendIt, press, cards } = await open()
+      let answer: (value: alertsApi.DestinationTest) => void = () => undefined
+      sendIt.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+
+      await press(0, 'sample')
+
+      const card = cards()[0]!
+      expect(card.find('[data-test="destination-sample"]').classes()).toContain('v-btn--loading')
+      expect(card.find('[data-test="destination-test"]').attributes('disabled')).toBeDefined()
+      answer({ ok: true, message: '', destination: working() })
+      await flushPromises()
+      expect(card.find('[data-test="destination-sample"]').classes()).not.toContain(
+        'v-btn--loading',
+      )
+    })
+
+    it('shows on the card why it did not get through', async () => {
+      const { sendIt, press, cards, find } = await open()
+      sendIt.mockResolvedValue({ ok: false, message: 'No.', destination: failing() })
+
+      await press(0, 'sample')
+
+      expect(find('alerts-notice').exists()).toBe(false)
+      expect(cards()[0]?.find('[data-test="destination-error"]').text()).toContain(
+        "Discord doesn't accept this webhook",
+      )
+    })
+
+    it('says why it could not be sent at all', async () => {
+      const { sendIt, press, text } = await open()
+      sendIt.mockRejectedValue(offline())
+
+      await press(0, 'sample')
 
       expect(text('alerts-failure')).toContain("Can't reach AresGate.")
     })

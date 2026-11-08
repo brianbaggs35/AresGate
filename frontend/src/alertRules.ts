@@ -83,6 +83,25 @@ function named(keys: string[], choices: Choice[]): string[] {
 
 /** What a destination is told about, in a few sentences for its card. */
 export function describeRules(rules: Rules, choices: Choices): string {
+  const parts = rules.mode === 'threats' ? threatsParts() : floorsParts(rules, choices)
+  parts.push(perHour(rules.max_per_hour))
+  if (rules.quiet_hours) {
+    const critical = rules.quiet_critical ? ', except critical ones' : ''
+    parts.push(
+      `Quiet from ${toTime(rules.quiet_from)} to ${toTime(rules.quiet_until)} (${rules.time_zone})${critical}`,
+    )
+  }
+  return `${parts.join('. ')}.`
+}
+
+function threatsParts(): string[] {
+  return [
+    'Tells you only about real attacks that are going on now, with the reason',
+    'Changes the message if one turns out not to be a threat',
+  ]
+}
+
+function floorsParts(rules: Rules, choices: Choices): string[] {
   const severity = (
     SEVERITIES.find((item) => item.value === rules.min_severity)?.label ??
     `Severity ${rules.min_severity.toString()} or worse`
@@ -100,12 +119,5 @@ export function describeRules(rules: Rules, choices: Choices): string {
   if (rules.activities.length > 0) {
     parts.push(`Only ${listed(named(rules.activities, choices.activities))}`)
   }
-  parts.push(perHour(rules.max_per_hour))
-  if (rules.quiet_hours) {
-    const critical = rules.quiet_critical ? ', except critical ones' : ''
-    parts.push(
-      `Quiet from ${toTime(rules.quiet_from)} to ${toTime(rules.quiet_until)} (${rules.time_zone})${critical}`,
-    )
-  }
-  return `${parts.join('. ')}.`
+  return parts
 }

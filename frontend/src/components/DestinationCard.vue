@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FlaskConical, Pencil, SlidersHorizontal, Trash2 } from '@lucide/vue'
+import { FlaskConical, Pencil, SlidersHorizontal, Sparkles, Trash2 } from '@lucide/vue'
 import { computed, useId } from 'vue'
 
 import type { Choices, Destination } from '@/api/alerts'
@@ -11,7 +11,8 @@ import { formatDateTime } from '@/format'
 /**
  * One place alerts are sent: its name, what kind it is, whether it works, a masked version of its
  * address (the address itself is a secret that is never shown again), what it is told about in
- * words, and the buttons to test it, set its rules, change it, turn it off or remove it. It only asks; what the buttons do is up to the page.
+ * words, and the buttons to test it, send a sample alert, set its rules, change it, turn it off or
+ * remove it. It only asks; what the buttons do is up to the page.
  */
 const props = defineProps<{
   destination: Destination
@@ -21,9 +22,12 @@ const props = defineProps<{
   busy?: boolean
   /** The test message is being sent. */
   testing?: boolean
+  /** The sample alert is being sent. */
+  sampling?: boolean
 }>()
 const emit = defineEmits<{
   test: []
+  sample: []
   rules: []
   edit: []
   remove: []
@@ -88,6 +92,16 @@ const titleId = useId()
         @click="emit('test')"
       >
         Send test message
+      </v-btn>
+      <v-btn
+        variant="tonal"
+        :prepend-icon="Sparkles"
+        :loading="sampling"
+        :disabled="busy || destination.status === 'not_connected'"
+        data-test="destination-sample"
+        @click="emit('sample')"
+      >
+        Send a sample alert
       </v-btn>
       <v-btn
         variant="text"

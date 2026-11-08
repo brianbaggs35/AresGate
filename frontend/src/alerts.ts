@@ -52,6 +52,7 @@ export const DELIVERY_REASONS: Readonly<Record<DeliveryReason, string>> = {
   reopened: 'Reopened',
   limit: 'Summary of what the limit held back',
   quiet: 'Summary of what came in during quiet hours',
+  retract: 'Message changed: stood down',
 }
 
 /** The log's headline: how many were sent, how many wait and how many did not get through. */
@@ -71,12 +72,13 @@ export function deliveryTotals(counts: Partial<Record<DeliveryState, number>>): 
 
 /** What a summary is called in the log, since it has no incident of its own. */
 export function deliveryTitle(delivery: {
-  kind: 'incident' | 'summary'
+  kind: 'incident' | 'summary' | 'update'
   title: string
   covers: number
   reason: DeliveryReason
 }): string {
   if (delivery.kind === 'incident') return delivery.title
+  if (delivery.kind === 'update') return `Stood down: ${delivery.title}`
   const many = `${delivery.covers.toString()} ${delivery.covers === 1 ? 'incident' : 'incidents'}`
   return delivery.reason === 'quiet'
     ? `${many} came in during quiet hours`

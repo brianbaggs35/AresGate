@@ -4,8 +4,10 @@ import {
   changeRules,
   fetchDeliveries,
   fetchDestinations,
+  fetchSample,
   previewRules,
   removeDestination,
+  sendSample,
   testDestination,
 } from '@/api/alerts'
 import * as client from '@/api/client'
@@ -47,6 +49,28 @@ describe('alerts', () => {
 
     await expect(testDestination(4, 'a-token')).resolves.toEqual({ ok: true })
     expect(post).toHaveBeenCalledWith('/alerts/destinations/4/test', undefined, 'a-token')
+  })
+
+  it('sends a sample alert, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ ok: true })
+
+    await expect(sendSample(4, 'a-token')).resolves.toEqual({ ok: true })
+    expect(post).toHaveBeenCalledWith('/alerts/destinations/4/sample', undefined, 'a-token')
+  })
+
+  it('asks what a message looks like, for a mode, a detail and a part of the story', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ payload: {} })
+
+    await expect(fetchSample('threats', 'full', 'worse')).resolves.toEqual({ payload: {} })
+    expect(get).toHaveBeenCalledWith('/alerts/sample?mode=threats&detail=full&reason=worse')
+  })
+
+  it('asks for the first message of the story when no part is named', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ payload: {} })
+
+    await fetchSample('custom', 'brief')
+
+    expect(get).toHaveBeenCalledWith('/alerts/sample?mode=custom&detail=brief&reason=new')
   })
 
   it('replaces the rules of one, with the sign-in token', async () => {
