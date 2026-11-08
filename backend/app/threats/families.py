@@ -86,12 +86,13 @@ def assign(db: Session) -> int:
     for incident in waiting:
         incident.family_key = incident.family_key or key_of(incident)
     keys = {incident.family_key for incident in waiting if incident.family_key}
-    known = {
-        key: family_id
-        for key, family_id in db.execute(
+    known = dict(
+        db.execute(
             select(IncidentFamily.key, IncidentFamily.id).where(IncidentFamily.key.in_(keys))
         )
-    }
+        .tuples()
+        .all()
+    )
     for incident in waiting:
         key = incident.family_key
         if key is None:  # pragma: no cover - set just above

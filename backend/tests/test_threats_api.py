@@ -156,7 +156,8 @@ class TestListingTheKinds:
         assert labels(lane="suspect") == ["ET SCAN big from <address>"]
         assert labels(lane="background") == ["ET SCAN small from <address>"]
         assert len(labels(judged="waiting")) == 3
-        assert labels(judged="ai") == [] and labels(judged="owner") == []
+        assert labels(judged="ai") == []
+        assert labels(judged="owner") == []
         assert labels(q="small") == ["ET SCAN small from <address>"]
         assert labels(limit=1, offset=2) == ["ET SCAN small from <address>"]
 

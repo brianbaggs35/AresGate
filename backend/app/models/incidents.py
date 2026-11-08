@@ -21,6 +21,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
 
+# What becomes of a column that names a row when that row is deleted.
+SET_NULL = "SET NULL"
 # What the person who looks after the network has decided about an incident.
 STATUSES = ("open", "investigating", "resolved", "dismissed")
 
@@ -117,7 +119,7 @@ class Incident(Base):
     # and is worked out as the incident changes; ``family_id`` follows it.
     family_key: Mapped[str | None] = mapped_column(String(40), default=None)
     family_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("incident_families.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("incident_families.id", ondelete=SET_NULL), default=None
     )
     # What is thought of it beyond the rules (app/threats/calls.py): what kind of thing it is, how
     # sure that is, and whose opinion it is: the owner's (of its family), the AI's reading of this
@@ -168,7 +170,7 @@ class IncidentSignal(Base):
     # A verdict stays on a resolved incident as it was, whatever becomes of the rule.
     verdict: Mapped[str | None] = mapped_column(String(16), default=None)
     verdict_rule_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("verdict_rules.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("verdict_rules.id", ondelete=SET_NULL), default=None
     )
     # Which of the owner's noise filters set it aside (``inside``, ``severity``; see
     # app/incidents/filters.py), when it did and no verdict decided otherwise. Like a verdict it
@@ -221,7 +223,7 @@ class IncidentFamily(Base):
     judged_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     judged_incidents: Mapped[int] = mapped_column(Integer, default=0)
     call_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("ai_calls.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("ai_calls.id", ondelete=SET_NULL), default=None
     )
     provider: Mapped[str | None] = mapped_column(String(32), default=None)
     model: Mapped[str | None] = mapped_column(String(128), default=None)

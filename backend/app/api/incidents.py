@@ -2,7 +2,7 @@
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
 from dataclasses import dataclass
-from typing import Annotated, Literal, Self, cast
+from typing import Annotated, Literal, NamedTuple, Self, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import (
@@ -682,9 +682,30 @@ def _in_lanes(
     return found
 
 
+class _Scope(NamedTuple):
+    """Which lanes and which kind of incident a list was asked to be narrowed to."""
+
+    lanes: list[LaneName] | None
+    family: int | None
+
+
+def _scope(
+    lane: Annotated[
+        list[LaneName] | None,
+        Query(
+            description="Only those in this lane (threat, suspect or background), which are "
+            "incidents that are going on. Repeat it for several."
+        ),
+    ] = None,
+    family: Annotated[int | None, Query(ge=1, le=2**63 - 1, description="Only this kind.")] = None,
+) -> _Scope:
+    return _Scope(lane, family)
+
+
 @router.get("")
 def list_incidents(
     db: Db,
+    scope: Annotated[_Scope, Depends(_scope)],
     state: Annotated[
         list[Status] | None,
         Query(alias="status", description="Only these, e.g. open. Repeat it for several."),
@@ -708,14 +729,6 @@ def list_incidents(
         str | None,
         Query(description="The time zone the person is in, such as America/Halifax."),
     ] = None,
-    lane: Annotated[
-        list[LaneName] | None,
-        Query(
-            description="Only those in this lane (threat, suspect or background), which are "
-            "incidents that are going on. Repeat it for several."
-        ),
-    ] = None,
-    family: Annotated[int | None, Query(ge=1, le=2**63 - 1, description="Only this kind.")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     order: Annotated[
@@ -737,7 +750,7 @@ def list_incidents(
                 min_confidence=min_confidence,
                 address=address,
                 since=since,
-                extra=[*asked.conditions(), *_in_lanes(judging, lane, family)],
+                extra=[*asked.conditions(), *_in_lanes(judging, scope.lanes, scope.family)],
             ),
             limit=limit,
             offset=offset,

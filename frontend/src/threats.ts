@@ -202,21 +202,24 @@ export function funnelSteps(funnel: Funnel): FunnelStep[] {
   return steps.map((step) => ({ ...step, width: widthOf(step.count, most) }))
 }
 
+/** A count and what it counts, such as "1 alert" or "3,000 alerts". */
+function counted(count: number, one: string): string {
+  return `${formatCount(count)} ${count === 1 ? one : `${one}s`}`
+}
+
 /** The funnel in a sentence, for the top of the page. */
 export function funnelSentence(funnel: Funnel, window: string): string {
-  const alerts = formatCount(funnel.alerts)
-  const reports = formatCount(funnel.reports)
   if (funnel.reports === 0) return `No program reported anything in ${window}.`
   const lead =
     funnel.reports === funnel.alerts
-      ? `${reports} ${funnel.reports === 1 ? 'alert' : 'alerts'} in ${window}`
-      : `${reports} reports in ${window} came to ${alerts} ${funnel.alerts === 1 ? 'alert' : 'alerts'}`
-  const incidents = `${formatCount(funnel.incidents)} ${funnel.incidents === 1 ? 'incident' : 'incidents'}`
+      ? `${counted(funnel.alerts, 'alert')} in ${window}`
+      : `${counted(funnel.reports, 'report')} in ${window} came to ${counted(funnel.alerts, 'alert')}`
+  const incidents = counted(funnel.incidents, 'incident')
   if (funnel.threats === 0 && funnel.suspects === 0) {
     return `${lead}, grouped into ${incidents}. None of them is a threat or worth a look.`
   }
-  const threats = `${formatCount(funnel.threats)} ${funnel.threats === 1 ? 'threat' : 'threats'}`
-  const suspects = `${formatCount(funnel.suspects)} ${funnel.suspects === 1 ? 'suspect' : 'suspects'}`
+  const threats = counted(funnel.threats, 'threat')
+  const suspects = counted(funnel.suspects, 'suspect')
   return `${lead}, grouped into ${incidents}: ${threats} and ${suspects}.`
 }
 
@@ -301,15 +304,20 @@ export function portsOf(text: string): { ports: number[]; bad: string[] } {
   return { ports, bad }
 }
 
+/** How the threat bar compares with the usual one. */
+function barNote(from: number, fallback: number): string {
+  if (from < fallback) {
+    return 'Lower than usual: more will be called threats, and more of them will be nothing.'
+  }
+  if (from > fallback) {
+    return 'Higher than usual: only the surest will be called threats, and one that is real may be a suspect.'
+  }
+  return 'The usual: an incident is a threat when AresGate is this sure it is a real attack.'
+}
+
 /** What the threat bar means, in a sentence. */
 export function threatSentence(from: number, fallback: number): string {
-  const how =
-    from < fallback
-      ? 'Lower than usual: more will be called threats, and more of them will be nothing.'
-      : from > fallback
-        ? 'Higher than usual: only the surest will be called threats, and one that is real may be a suspect.'
-        : 'The usual: an incident is a threat when AresGate is this sure it is a real attack.'
-  return `Incidents AresGate is at least ${from.toString()} out of 100 sure of are threats. ${how}`
+  return `Incidents AresGate is at least ${from.toString()} out of 100 sure of are threats. ${barNote(from, fallback)}`
 }
 
 /** What the AI's bar for setting an incident aside means. */

@@ -30,6 +30,7 @@ FamilyId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 Judged = Literal["ai", "owner", "waiting"]
 MAX_PAGE = 100
 SAMPLE = 20
+NO_SUCH_KIND = "There's no such kind of incident."
 
 
 class FunnelOut(BaseModel):
@@ -152,7 +153,7 @@ def _kind(db: Db, family_id: int) -> overview.Kind:
         return found[0]
     family = db.get(IncidentFamily, family_id)
     if family is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "There's no such kind of incident.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_KIND)
     # Nothing of it is going on now.
     now = utcnow()
     return overview.Kind(family, 0, 0, 0, Severity.INFO, family.created_at, now, 0, 0, 0)
@@ -262,7 +263,7 @@ def call_family(
     every incident of the kind at once."""
     family = db.get(IncidentFamily, family_id)
     if family is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "There's no such kind of incident.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_KIND)
     if family.owner_call != body.call:
         record_audit(
             db,
@@ -295,7 +296,7 @@ def judge_family(
     """Has the AI judge a kind of incident now, and keeps what it says. It sees what Settings > AI
     allows. It can take a minute."""
     if db.get(IncidentFamily, family_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "There's no such kind of incident.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_KIND)
     outcome = judging.ask_now(db, context, [family_id])
     ok = isinstance(outcome, judging.Judged)
     record_audit(
