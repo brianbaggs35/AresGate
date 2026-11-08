@@ -204,7 +204,8 @@ export function funnelSteps(funnel: Funnel): FunnelStep[] {
 
 /** A count and what it counts, such as "1 alert" or "3,000 alerts". */
 function counted(count: number, one: string): string {
-  return `${formatCount(count)} ${count === 1 ? one : `${one}s`}`
+  const noun = count === 1 ? one : one + 's'
+  return `${formatCount(count)} ${noun}`
 }
 
 /** The funnel in a sentence, for the top of the page. */
