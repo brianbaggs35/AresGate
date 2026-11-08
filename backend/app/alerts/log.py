@@ -49,7 +49,7 @@ def counts(db: Session, destination_id: int | None = None) -> dict[str, int]:
     query = select(AlertDelivery.state, func.count()).group_by(AlertDelivery.state)
     if destination_id is not None:
         query = query.where(AlertDelivery.destination_id == destination_id)
-    return {state: total for state, total in db.execute(query)}
+    return dict(db.execute(query).all())
 
 
 def purge_expired(db: Session, settings: Settings, now: datetime) -> int:
