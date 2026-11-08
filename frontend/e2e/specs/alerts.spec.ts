@@ -288,7 +288,7 @@ test.describe('alerts page', () => {
       await alerts.choose(alerts.severity, 'High or worse')
       await alerts.choose(alerts.sources, 'Wazuh')
       await page.keyboard.press('Escape')
-      await alerts.choose(alerts.rate, '3')
+      await alerts.choose(alerts.rate, 'At most 3 messages an hour')
       await alerts.again.uncheck()
       await alerts.detail('Brief').check()
       await alerts.rulesSave.click()
