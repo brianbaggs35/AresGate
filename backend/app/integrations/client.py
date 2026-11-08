@@ -17,7 +17,7 @@ import logging
 import ssl
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from types import TracebackType
@@ -81,6 +81,8 @@ class Reply:
 
     status: int
     text: str
+    # What it said in its headers, with the names in lower case.
+    headers: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def ok(self) -> bool:
@@ -256,7 +258,11 @@ class ApiClient:
                 body += chunk
                 if len(body) > MAX_BODY:
                     raise CallFailed("It answered with more than AresGate reads.")
-            return Reply(response.status_code, body.decode("utf-8", errors="replace"))
+            return Reply(
+                response.status_code,
+                body.decode("utf-8", errors="replace"),
+                {name.lower(): value for name, value in response.headers.items()},
+            )
 
     async def _log(self, call: Call) -> None:
         try:

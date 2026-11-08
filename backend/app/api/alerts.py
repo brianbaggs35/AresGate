@@ -4,11 +4,11 @@ here returns one, and a failed request doesn't quote what was sent."""
 from typing import Annotated, Literal, cast
 
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints
 from sqlalchemy.orm import Session
 
-from app.alerts import destinations, discord
+from app.alerts import destinations, discord, log
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import NameTaken, Unusable
 from app.alerts.discord import InvalidWebhook
@@ -20,7 +20,7 @@ from app.events.event import Severity
 from app.incidents import episode
 from app.integrations import registry
 from app.integrations.service import Status
-from app.models import AlertDestination, Incident, utcnow
+from app.models import AlertDelivery, AlertDestination, Incident, utcnow
 
 # Everything here is for someone who is signed in.
 router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(signed_in)])
@@ -119,6 +119,44 @@ class PreviewOut(BaseModel):
     truncated: bool
     left_out: list[LeftOutOut]
     examples: list[ExampleOut]
+
+
+DeliveryState = Literal[
+    "queued", "held", "retrying", "limited", "summarized", "sent", "failed", "dropped"
+]
+
+
+class DeliveryOut(BaseModel):
+    """One message to a destination and what became of it."""
+
+    id: int
+    destination_id: int
+    destination: str
+    # None for a summary, and for a message whose incident has since been deleted.
+    incident_id: int | None
+    kind: Literal["incident", "summary"]
+    reason: Literal["new", "worse", "reopened", "limit", "quiet"]
+    state: DeliveryState
+    title: str
+    severity: SeverityName
+    confidence: int
+    # For a summary, how many incidents it told of.
+    covers: int
+    attempts: int
+    created_at: AwareDatetime
+    # When it is due to be sent, or tried again.
+    due_at: AwareDatetime
+    sent_at: AwareDatetime | None
+    # Why it is waiting, was not sent or failed, in words.
+    note: str | None
+
+
+class DeliveriesOut(BaseModel):
+    items: list[DeliveryOut]
+    # The id to pass as ``before`` for the next page, or none on the last.
+    next_before: int | None
+    # How many messages are in each state, for the destination asked about or all.
+    counts: dict[DeliveryState, int]
 
 
 class DestinationIn(BaseModel):
@@ -284,6 +322,9 @@ def change_destination(
         ) from None
     if body.enabled is not None and body.enabled != row.enabled:
         row.enabled = body.enabled
+        if body.enabled:
+            # It hears of what happens from now on, not of what it missed while it was off.
+            row.listening_since = now
         changed.append("turned on" if body.enabled else "turned off")
     if changed:
         row.updated_at = now
@@ -430,6 +471,8 @@ def change_rules(
     row.detail = rules.detail
     row.again_when_worse = rules.again_when_worse
     row.updated_at = utcnow()
+    # New rules apply to what happens from now on: a looser one does not send the last hours.
+    row.listening_since = row.updated_at
     record_audit(
         db,
         request,
@@ -473,4 +516,43 @@ def preview_rules(destination_id: DestinationId, body: RulesModel, db: Db) -> Pr
             if count
         ],
         examples=[_example(incident) for incident in result.examples],
+    )
+
+
+def _delivery(row: AlertDelivery, destination: str) -> DeliveryOut:
+    return DeliveryOut(
+        id=row.id,
+        destination_id=row.destination_id,
+        destination=destination,
+        incident_id=row.incident_id,
+        kind=cast("Literal['incident', 'summary']", row.kind),
+        reason=cast("Literal['new', 'worse', 'reopened', 'limit', 'quiet']", row.reason),
+        state=cast("DeliveryState", row.state),
+        title=row.title,
+        severity=SEVERITY_NAMES[Severity(row.severity)],
+        confidence=row.confidence,
+        covers=row.covers,
+        attempts=row.attempts,
+        created_at=row.created_at,
+        due_at=row.due_at,
+        sent_at=row.sent_at,
+        note=row.note,
+    )
+
+
+@router.get("/deliveries")
+def list_deliveries(
+    db: Db,
+    destination_id: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None,
+    state: DeliveryState | None = None,
+    before: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None,
+    limit: Annotated[int, Query(ge=1, le=log.MAX_PAGE)] = log.PAGE,
+) -> DeliveriesOut:
+    """The log of messages, newest first: what was sent to each destination, what is waiting, and
+    what was held back, left out or given up on, with the reason."""
+    page = log.listing(db, destination_id=destination_id, state=state, before=before, limit=limit)
+    return DeliveriesOut(
+        items=[_delivery(row, name) for row, name in page],
+        next_before=page[-1][0].id if len(page) == limit else None,
+        counts=cast("dict[DeliveryState, int]", log.counts(db, destination_id)),
     )

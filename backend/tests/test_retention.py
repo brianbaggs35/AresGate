@@ -15,7 +15,16 @@ from app.events import store as events
 from app.integrations.apilog import ApiLogRecorder
 from app.integrations.client import Call
 from app.metrics import store as metrics
-from app.models import AiCall, ApiCall, AuditEvent, Event, MetricSample, MetricSeries
+from app.models import (
+    AiCall,
+    AlertDelivery,
+    AlertDestination,
+    ApiCall,
+    AuditEvent,
+    Event,
+    MetricSample,
+    MetricSeries,
+)
 from app.partitions import EVENTS, METRIC_SAMPLES
 from tests.helpers import new_event, new_sample
 
@@ -83,6 +92,28 @@ def test_purging_also_deletes_the_record_of_ai_requests_past_its_retention_perio
 
     session.expire_all()
     assert session.scalar(select(func.count()).select_from(AiCall)) == 1
+
+
+def test_purging_also_deletes_the_alerts_log_past_its_retention_period(
+    session: Session, settings: Settings, new_session: Callable[[], Session]
+) -> None:
+    row = AlertDestination(kind="discord", name="Security", hint="…6789")
+    session.add(row)
+    session.flush()
+    old = datetime.now(UTC) - timedelta(days=settings.alert_log_retention_days + 1)
+    for state in ("sent", "retrying"):
+        session.add(
+            AlertDelivery(
+                destination_id=row.id, reason="new", key=state, state=state, created_at=old
+            )
+        )
+    session.commit()
+
+    retention.purge_once(settings, new_session)
+
+    session.expire_all()
+    # What was still waiting stays, however old.
+    assert [item.state for item in session.scalars(select(AlertDelivery))] == ["retrying"]
 
 
 def test_purging_also_deletes_the_events_past_their_retention_period(

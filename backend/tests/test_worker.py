@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app import config, db, worker
 from app.ai.gateway import Context
 from app.config import Settings
+from app.integrations import netguard
 from app.models import CollectorHealth, IntegrationConnection, WorkerBeat
 from app.secret_key import SecretKeyError
 from tests.helpers import TEST_DATABASE_URL, TEST_SECRET_KEY
@@ -133,14 +134,34 @@ class TestServing:
         def collecting(_: Settings) -> Collecting:
             return Collecting()
 
+        async def tell_destinations(
+            settings: Settings,
+            new_session: Callable[[], Session],
+            recorder: object,
+            policy: object,
+            *,
+            enabled: bool,
+        ) -> None:
+            assert callable(new_session)
+            assert settings.environment == "production"
+            assert callable(recorder)
+            assert policy is netguard.PUBLIC_INTERNET
+            started.append(f"alerts, enabled: {enabled}")
+
         monkeypatch.setattr(worker, "build", collecting)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
         monkeypatch.setattr(worker.ai, "run", read_incidents)
+        monkeypatch.setattr(worker.notify, "run", tell_destinations)
         production = settings.model_copy(update={"environment": "production"})
 
         asyncio.run(worker.serve(production))
 
-        assert sorted(started) == ["AI, enabled: True", "collectors", "incidents, enabled: True"]
+        assert sorted(started) == [
+            "AI, enabled: True",
+            "alerts, enabled: True",
+            "collectors",
+            "incidents, enabled: True",
+        ]
 
     def test_one_that_stops_takes_the_other_with_it(
         self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
@@ -167,6 +188,7 @@ class TestServing:
         monkeypatch.setattr(worker, "build", failing)
         monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
         monkeypatch.setattr(worker.ai, "run", waiting("AI"))
+        monkeypatch.setattr(worker.notify, "run", waiting("alerts"))
 
         serving = worker.serve(settings)
 
@@ -174,7 +196,7 @@ class TestServing:
             asyncio.run(serving)
 
         assert raised.group_contains(RuntimeError, match="fell over")
-        assert sorted(cancelled) == ["AI", "incidents"]
+        assert sorted(cancelled) == ["AI", "alerts", "incidents"]
 
 
 @pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")

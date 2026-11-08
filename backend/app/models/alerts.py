@@ -6,7 +6,10 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    ForeignKey,
     Identity,
+    Index,
+    Integer,
     SmallInteger,
     String,
     UniqueConstraint,
@@ -30,6 +33,24 @@ DEFAULT_MAX_PER_HOUR = 6
 DEFAULT_QUIET_FROM = 22 * 60
 DEFAULT_QUIET_UNTIL = 7 * 60
 DEFAULT_DETAIL = "standard"
+
+# Why a message was sent: an incident the destination had not heard of, one it had that got worse,
+# one that was reopened after it was dealt with, or a summary of what was held back (``limit``: too
+# many an hour, ``quiet``: it came in during quiet hours).
+DELIVERY_REASONS = ("new", "worse", "reopened", "limit", "quiet")
+# Where a message is: waiting (``queued``, ``held`` for quiet hours to end, ``retrying`` after a
+# failure, ``limited`` until a summary tells of it), told in a summary (``summarized``), ``sent``,
+# given up on (``failed``), or no longer worth sending (``dropped``).
+DELIVERY_STATES = (
+    "queued",
+    "held",
+    "retrying",
+    "limited",
+    "summarized",
+    "sent",
+    "failed",
+    "dropped",
+)
 
 
 class AlertDestination(Base):
@@ -89,3 +110,75 @@ class AlertDestination(Base):
     detail: Mapped[str] = mapped_column(String(16), default=DEFAULT_DETAIL)
     # Whether an incident it has already told of is told of again when it gets worse.
     again_when_worse: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The destination hears of what happens after this and not before: when it was added, or last
+    # turned on. Without it a new channel would be sent everything from the last hours at once.
+    listening_since: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    # Discord said the webhook is gone or refused it (so trying again can only do harm: repeated
+    # refusals count against the address). Nothing is sent until the address is replaced or a
+    # test message gets through.
+    refused: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AlertDelivery(Base):
+    """One message to one destination, and what became of it: the notifier's outbox and its log.
+
+    An incident is told to a destination once (``key`` ``new``), and again only when it gets worse
+    (``worse:<rank>``, a higher severity or confidence band) or is reopened after the owner dealt
+    with it (``reopened:<when>``). The unique key is what keeps a retry, a restart or a second
+    pass from sending the same thing twice. A summary has no incident: it says how many were held
+    back, and the messages it covers point to it with ``summary_id``."""
+
+    __tablename__ = "alert_deliveries"
+    __table_args__ = (
+        CheckConstraint("kind IN ('incident', 'summary')", name="kind"),
+        CheckConstraint("reason IN ('new', 'worse', 'reopened', 'limit', 'quiet')", name="reason"),
+        CheckConstraint(
+            "state IN ('queued', 'held', 'retrying', 'limited', 'summarized', 'sent', 'failed', "
+            "'dropped')",
+            name="state",
+        ),
+        UniqueConstraint("destination_id", "incident_id", "key", name="uq_alert_deliveries_key"),
+        Index(
+            "ix_alert_deliveries_destination_id_state_due_at", "destination_id", "state", "due_at"
+        ),
+        Index("ix_alert_deliveries_incident_id", "incident_id"),
+        Index("ix_alert_deliveries_created_at", "created_at"),
+        Index("ix_alert_deliveries_summary_id", "summary_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    destination_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("alert_destinations.id", ondelete="CASCADE")
+    )
+    # The incident it is about. Gone with the incident, but the title stays in the log.
+    incident_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("incidents.id", ondelete="SET NULL"), default=None
+    )
+    kind: Mapped[str] = mapped_column(String(8), default="incident")
+    reason: Mapped[str] = mapped_column(String(8))
+    key: Mapped[str] = mapped_column(String(40))
+    state: Mapped[str] = mapped_column(String(12), default="queued")
+    # How bad the incident was when this was made: its severity and confidence band as one number
+    # (see app/alerts/notify.py), so that a higher one is worse.
+    rank: Mapped[int] = mapped_column(SmallInteger, default=0)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    severity: Mapped[int] = mapped_column(SmallInteger, default=0)
+    confidence: Mapped[int] = mapped_column(SmallInteger, default=0)
+    # For a summary: how many incidents it tells of. For one of those: the summary that did.
+    covers: Mapped[int] = mapped_column(Integer, default=0)
+    summary_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("alert_deliveries.id", ondelete="SET NULL"), default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    # When it may be sent: now, when quiet hours end, or when the next try is due.
+    due_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
+    # Why it is not sent or was not: what Discord answered, or why it was dropped. Holds nothing
+    # secret.
+    note: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Whether it waited for quiet hours to end.
+    was_held: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When the incident was seen dealt with, after this was made: the next message about it is a
+    # reopening.
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

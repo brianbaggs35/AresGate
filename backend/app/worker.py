@@ -10,6 +10,7 @@ import asyncio
 from app import logs
 from app.ai import gateway
 from app.ai import run as ai
+from app.alerts import notify
 from app.collectors.scheduler import Scheduler
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
@@ -38,14 +39,24 @@ def build(settings: Settings) -> Scheduler:
 
 
 async def serve(settings: Settings) -> None:
-    """Collects, files what is collected into incidents and has the AI read them, until
-    cancelled."""
+    """Collects, files what is collected into incidents, has the AI read them and tells the
+    destinations of the ones that matter, until cancelled."""
     new_session = get_sessionmaker()
-    context = gateway.context_for_worker(settings, ApiLogRecorder(new_session))
+    recorder = ApiLogRecorder(new_session)
+    context = gateway.context_for_worker(settings, recorder)
     async with asyncio.TaskGroup() as work:
         work.create_task(build(settings).run())
         work.create_task(incidents.run(new_session, enabled=collecting(settings)))
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
+        work.create_task(
+            notify.run(
+                settings,
+                new_session,
+                recorder,
+                netguard.PUBLIC_INTERNET,
+                enabled=collecting(settings),
+            )
+        )
 
 
 def main() -> None:
