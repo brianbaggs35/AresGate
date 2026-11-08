@@ -2,6 +2,7 @@ import {
   addDestination,
   changeDestination,
   changeRules,
+  fetchDeliveries,
   fetchDestinations,
   previewRules,
   removeDestination,
@@ -60,5 +61,18 @@ describe('alerts', () => {
 
     await expect(previewRules(4, rules(), 'a-token')).resolves.toEqual({ would_send: 2 })
     expect(post).toHaveBeenCalledWith('/alerts/destinations/4/preview', rules(), 'a-token')
+  })
+
+  it('asks for the log, narrowed by what is given', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ items: [] })
+
+    await expect(fetchDeliveries()).resolves.toEqual({ items: [] })
+    expect(get).toHaveBeenLastCalledWith('/alerts/deliveries')
+    await fetchDeliveries({ destination_id: 3, state: 'failed', before: 40 })
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts/deliveries?destination_id=3&state=failed&before=40',
+    )
+    await fetchDeliveries({ state: 'sent' })
+    expect(get).toHaveBeenLastCalledWith('/alerts/deliveries?state=sent')
   })
 })

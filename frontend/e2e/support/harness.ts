@@ -75,6 +75,13 @@ export interface ActivityRecord {
 }
 
 /** An attack that programs saw, as `createIncidents()` stores it. All of it is optional. */
+/** How a pass of the notifier went. */
+export interface NotifierReport {
+  sent: number
+  retrying: number
+  failed: number
+}
+
 export interface IncidentRequest {
   /** Where it came from: a public address, since the documentation ranges are not outside the
    * network as far as the engine is concerned. The next of a few is used when it isn't given. */
@@ -499,6 +506,15 @@ export class Harness {
     if (!response.ok()) {
       throw new Error(`Running the collectors failed with ${response.status()}`)
     }
+  }
+
+  /** Tells the destinations of the incidents there are, now, once, and answers how it went. The
+   * worker does nothing of its own in the tests, so alerts are sent when a spec says. Discord is
+   * the stand-in the spec started. */
+  async runNotifier(): Promise<NotifierReport> {
+    return this.api
+      .post('/api/__test__/notifier/run')
+      .then((response) => readJson<NotifierReport>(response, 'Sending the alerts'))
   }
 
   /** Makes the collector worker look like it is running, has stopped or has never reported in. */

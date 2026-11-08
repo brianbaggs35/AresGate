@@ -1,4 +1,12 @@
-import { KINDS, lastResult, maskedAddress } from '@/alerts'
+import {
+  DELIVERY_REASONS,
+  DELIVERY_STATES,
+  KINDS,
+  deliveryTitle,
+  deliveryTotals,
+  lastResult,
+  maskedAddress,
+} from '@/alerts'
 import { destination, failing, working } from '@/test/alerts'
 
 describe('maskedAddress', () => {
@@ -52,5 +60,47 @@ describe('the kinds', () => {
   it('has a name and a picture for Discord', () => {
     expect(KINDS.discord.label).toBe('Discord')
     expect(KINDS.discord.icon).toBeDefined()
+  })
+})
+
+describe('deliveryTotals', () => {
+  it('says how many were sent, how many wait and how many did not get through', () => {
+    expect(
+      deliveryTotals({ sent: 5, queued: 1, held: 2, retrying: 1, limited: 1, failed: 3 }),
+    ).toBe('5 sent, 5 waiting, 3 not sent')
+  })
+
+  it('counts what was told in a summary or left out only in saying there is something', () => {
+    expect(deliveryTotals({ summarized: 2 })).toBe('0 sent, 0 waiting, 0 not sent')
+    expect(deliveryTotals({ dropped: 1 })).toBe('0 sent, 0 waiting, 0 not sent')
+  })
+
+  it('says nothing yet when there is nothing', () => {
+    expect(deliveryTotals({})).toBe('Nothing yet.')
+  })
+})
+
+describe('deliveryTitle', () => {
+  it('is the incident title for a message about an incident', () => {
+    expect(deliveryTitle({ kind: 'incident', title: 'A scan', covers: 0, reason: 'new' })).toBe(
+      'A scan',
+    )
+  })
+
+  it('says how many incidents a summary told of, and why they were summarised', () => {
+    const base = { kind: 'summary', title: '', covers: 4 } as const
+    expect(deliveryTitle({ ...base, reason: 'limit' })).toBe('4 incidents held back by the limit')
+    expect(deliveryTitle({ ...base, covers: 1, reason: 'quiet' })).toBe(
+      '1 incident came in during quiet hours',
+    )
+  })
+})
+
+describe('the words of the log', () => {
+  it('names every state and every reason', () => {
+    expect(Object.keys(DELIVERY_STATES)).toHaveLength(8)
+    expect(Object.keys(DELIVERY_REASONS)).toEqual(['new', 'worse', 'reopened', 'limit', 'quiet'])
+    expect(DELIVERY_STATES.sent.waiting).toBe(false)
+    expect(DELIVERY_STATES.held.waiting).toBe(true)
   })
 })

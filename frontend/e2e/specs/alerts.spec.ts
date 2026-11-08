@@ -370,4 +370,109 @@ test.describe('alerts page', () => {
     await expect(page.getByText('An alert destination was added')).toBeVisible()
     await expect(page.locator('body')).not.toContainText(TOKEN)
   })
+
+  test.describe('the delivery log', () => {
+    const SCAN = {
+      address: '93.184.216.34',
+      severity: 'critical',
+      programs: ['wazuh', 'opnsense', 'crowdsec'],
+      signals: 8,
+      minutes_ago: 0,
+    } as const
+
+    test('is not there before a destination is', async ({ alerts }) => {
+      await alerts.goto()
+      await expect(alerts.empty).toBeVisible()
+      await expect(alerts.log).toHaveCount(0)
+    })
+
+    test('says nothing has been sent yet', async ({ alerts }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+
+      await expect(alerts.logEmpty).toContainText('Nothing has been sent yet')
+      await expect(alerts.logTotals).toHaveText('Nothing yet.')
+    })
+
+    test('shows what was sent, once, and what the message said', async ({
+      harness,
+      alerts,
+      page,
+    }) => {
+      const discord = await harness.standIn({ kind: 'discord', webhook: `${ID}/${TOKEN}` })
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await alerts.choose(alerts.confidence, 'Any, however unsure')
+      await alerts.rulesSave.click()
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await harness.createIncidents([SCAN])
+
+      expect(await harness.runNotifier()).toEqual({ sent: 1, retrying: 0, failed: 0 })
+      expect(await harness.runNotifier()).toEqual({ sent: 0, retrying: 0, failed: 0 })
+
+      await page.reload()
+      await expect(alerts.deliveries).toHaveCount(1)
+      const sent = alerts.deliveries.first()
+      await expect(sent.getByTestId('delivery-state')).toHaveText('Sent')
+      await expect(sent.getByTestId('delivery-title')).toContainText('93.184.216.34')
+      await expect(sent.getByTestId('delivery-detail')).toContainText('Security · New incident')
+      await expect(alerts.logTotals).toHaveText('1 sent, 0 waiting, 0 not sent')
+      const messages = await harness.standInRequests(discord.id)
+      expect(messages).toHaveLength(1)
+      const said = JSON.stringify(messages[0]?.body)
+      expect(said).toContain('"allowed_mentions":{"parse":[]}')
+      expect(said).toContain('/incidents/')
+      expect(said).not.toContain(TOKEN)
+      await sent.getByTestId('delivery-title').click()
+      await expect(page).toHaveURL(/\/incidents\/\d+$/)
+    })
+
+    test('says why a message did not get through, and tries no more', async ({
+      harness,
+      alerts,
+      page,
+    }) => {
+      await harness.standIn({ kind: 'discord', webhook: `${OTHER_ID}/${OTHER_TOKEN}` })
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await alerts.choose(alerts.confidence, 'Any, however unsure')
+      await alerts.rulesSave.click()
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await harness.createIncidents([SCAN])
+
+      expect(await harness.runNotifier()).toEqual({ sent: 0, retrying: 0, failed: 1 })
+      expect(await harness.runNotifier()).toEqual({ sent: 0, retrying: 0, failed: 0 })
+
+      await page.reload()
+      await expect(alerts.destination('Security').getByTestId('status')).toHaveText('Problem')
+      const failed = alerts.deliveries.first()
+      await expect(failed.getByTestId('delivery-state')).toHaveText('Not sent')
+      await expect(failed.getByTestId('delivery-note')).toContainText(
+        "Discord doesn't accept this webhook (HTTP 404).",
+      )
+      await expect(alerts.logTotals).toHaveText('0 sent, 0 waiting, 1 not sent')
+    })
+
+    test('narrows to a state and says when none match', async ({ harness, alerts }) => {
+      await harness.standIn({ kind: 'discord', webhook: `${ID}/${TOKEN}` })
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+      await alerts.choose(alerts.confidence, 'Any, however unsure')
+      await alerts.rulesSave.click()
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await harness.createIncidents([SCAN])
+      await harness.runNotifier()
+      await alerts.logRefresh.click()
+      await expect(alerts.deliveries).toHaveCount(1)
+
+      await alerts.choose(alerts.logState, 'Not sent')
+
+      await expect(alerts.logEmpty).toContainText('No messages match these filters.')
+      await alerts.choose(alerts.logState, 'Sent')
+      await expect(alerts.deliveries).toHaveCount(1)
+    })
+  })
 })
