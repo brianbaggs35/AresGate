@@ -111,6 +111,11 @@ for (const theme of ['light', 'dark'] as const) {
       await incidents.picks.nth(0).click()
       await incidents.picks.nth(1).click()
       await expect(incidents.picked).toHaveText('2 selected')
+      // Clicking the second one scrolled the list, which can leave the next card's box half under the
+      // bar at the bottom of a phone: a box that is only partly on the screen is not what is checked.
+      await page.evaluate(() => {
+        window.scrollTo(0, 0)
+      })
       await expectAccessible(page)
       await incidents.bulkVerdict('not_suspicious').click()
       await expect(incidents.dialogLines.first()).toBeVisible()
