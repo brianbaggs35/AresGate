@@ -4,16 +4,20 @@ import type {
   Delivery,
   Destination,
   Destinations,
+  DiscordMessage,
   Rules,
   RulesPreview,
+  Sample,
 } from '@/api/alerts'
 
 const NOW = Date.now()
 const MINUTE = 60_000
 
-/** What a new destination is told about: what is serious and what AresGate is sure of. */
+/** The rules of a destination told of what is serious and what AresGate is sure of. (The server
+ * makes a new one told of threats only; that is `threatRules()`.) */
 export function rules(changes: Partial<Rules> = {}): Rules {
   return {
+    mode: 'custom',
     min_severity: 2,
     min_confidence: 65,
     sources: [],
@@ -28,6 +32,11 @@ export function rules(changes: Partial<Rules> = {}): Rules {
     again_when_worse: true,
     ...changes,
   }
+}
+
+/** The rules of a destination told of real attacks only, as the server makes a new one. */
+export function threatRules(changes: Partial<Rules> = {}): Rules {
+  return rules({ mode: 'threats', ...changes })
 }
 
 /** What the rules can name. */
@@ -164,4 +173,39 @@ export function deliveries(
   changes: Partial<Deliveries> = {},
 ): Deliveries {
   return { items, next_before: null, counts: { sent: items.length }, ...changes }
+}
+
+/** A message about a threat as the server makes a sample of it. */
+export function sample(changes: Partial<DiscordMessage['embeds'][number]> = {}): Sample {
+  return {
+    payload: {
+      username: 'AresGate',
+      embeds: [
+        {
+          title: 'Attack in progress: High-severity scanning from 93.184.216.34',
+          description: [
+            'AresGate is 88% sure this is a real attack, and it is going on now.',
+            '',
+            '**Why AresGate thinks so**',
+            '• It is more than scanning: it went through 2 stages (recon then access).',
+            '',
+            '[Open the incident](https://aresgate.example/incidents) to see what was seen and why.',
+          ].join('\n'),
+          color: 0xef4444,
+          url: 'https://aresgate.example/incidents',
+          footer: { text: 'AresGate · sample alert' },
+          fields: [
+            {
+              name: 'How far it got',
+              value: 'Looking around → **Trying to get in**',
+              inline: false,
+            },
+            { name: 'How sure', value: '88%', inline: true },
+            { name: 'Seen from', value: '`93.184.216.34`', inline: true },
+          ],
+          ...changes,
+        },
+      ],
+    },
+  }
 }

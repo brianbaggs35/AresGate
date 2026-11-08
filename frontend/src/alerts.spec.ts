@@ -94,12 +94,25 @@ describe('deliveryTitle', () => {
       '1 incident came in during quiet hours',
     )
   })
+
+  it('says a change to a message sent before is the incident standing down', () => {
+    expect(deliveryTitle({ kind: 'update', title: 'A scan', covers: 0, reason: 'retract' })).toBe(
+      'Stood down: A scan',
+    )
+  })
 })
 
 describe('the words of the log', () => {
   it('names every state and every reason', () => {
     expect(Object.keys(DELIVERY_STATES)).toHaveLength(8)
-    expect(Object.keys(DELIVERY_REASONS)).toEqual(['new', 'worse', 'reopened', 'limit', 'quiet'])
+    expect(Object.keys(DELIVERY_REASONS)).toEqual([
+      'new',
+      'worse',
+      'reopened',
+      'limit',
+      'quiet',
+      'retract',
+    ])
     expect(DELIVERY_STATES.sent.waiting).toBe(false)
     expect(DELIVERY_STATES.held.waiting).toBe(true)
   })

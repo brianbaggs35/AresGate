@@ -3,8 +3,14 @@ import type { Status } from '@/api/integrations'
 
 export type Detail = 'brief' | 'standard' | 'full'
 
+/** What decides what a destination is told of: `threats`, only the incidents on the Threats page
+ * (a real attack going on now), or `custom`, what the severity, confidence, programs and kinds of
+ * activity below choose. */
+export type Mode = 'threats' | 'custom'
+
 /** What a destination is told about, and when. The page always sends and receives the whole set. */
 export interface Rules {
+  mode: Mode
   /** The least serious it is told of, from 1 (low) to 4 (critical). */
   min_severity: number
   /** The least AresGate is sure, from 0 to 100. */
@@ -69,7 +75,7 @@ export interface Destinations {
 
 /** Why incidents would have been left out, with the number. */
 export interface LeftOut {
-  reason: 'muted' | 'settled' | 'severity' | 'confidence' | 'source' | 'activity'
+  reason: 'muted' | 'settled' | 'threat' | 'severity' | 'confidence' | 'source' | 'activity'
   text: string
   count: number
 }
@@ -100,7 +106,7 @@ export interface RulesPreview {
   examples: PreviewExample[]
 }
 
-/** What a test message found. */
+/** What a test message, or a sample alert, found. */
 export interface DestinationTest {
   ok: boolean
   message: string
@@ -152,6 +158,59 @@ export function testDestination(id: number, csrfToken: string): Promise<Destinat
   )
 }
 
+/** Sends a sample alert, made up and marked as one, in the form this destination's rules give its
+ * real messages, and answers how it went. */
+export function sendSample(id: number, csrfToken: string): Promise<DestinationTest> {
+  return apiPost<DestinationTest>(
+    `/alerts/destinations/${id.toString()}/sample`,
+    undefined,
+    csrfToken,
+  )
+}
+
+/** A field of a Discord embed. */
+export interface EmbedField {
+  name: string
+  value: string
+  inline: boolean
+}
+
+/** The embed of a message as Discord is sent it. */
+export interface Embed {
+  title: string
+  description: string
+  /** The colour of the bar beside it, as a number. */
+  color: number
+  url?: string
+  footer?: { text: string }
+  timestamp?: string
+  fields?: EmbedField[]
+}
+
+/** A message as it is sent to a Discord webhook. */
+export interface DiscordMessage {
+  username: string
+  embeds: Embed[]
+}
+
+/** Which message of the story of an incident a sample shows. */
+export type SampleReason = 'new' | 'worse' | 'reopened'
+
+export interface Sample {
+  payload: DiscordMessage
+}
+
+/** What a message looks like, made by the code that makes the real ones about an incident that is
+ * made up. */
+export function fetchSample(
+  mode: Mode,
+  detail: Detail,
+  reason: SampleReason = 'new',
+): Promise<Sample> {
+  const params = new URLSearchParams({ mode, detail, reason })
+  return apiGet<Sample>(`/alerts/sample?${params.toString()}`)
+}
+
 /** Replaces what a destination is told about, and when. */
 export function changeRules(id: number, rules: Rules, csrfToken: string): Promise<Destination> {
   return apiPut<Destination>(`/alerts/destinations/${id.toString()}/rules`, rules, csrfToken)
@@ -168,9 +227,11 @@ export function previewRules(id: number, rules: Rules, csrfToken: string): Promi
 export type DeliveryState =
   'queued' | 'held' | 'retrying' | 'limited' | 'summarized' | 'sent' | 'failed' | 'dropped'
 
-/** Why a message was made: an incident the destination had not heard of, one that got worse, one
- * that was reopened, or a summary of what was held back (over the limit, or in quiet hours). */
-export type DeliveryReason = 'new' | 'worse' | 'reopened' | 'limit' | 'quiet'
+/** Why a message was made: an incident the destination had not heard of, one that got worse (for a
+ * destination told of threats, one that went a stage further), one that was reopened, a summary
+ * of what was held back (over the limit, or in quiet hours), or a correction to a message sent
+ * before (`retract`: it was stood down because the incident turned out not to be a threat). */
+export type DeliveryReason = 'new' | 'worse' | 'reopened' | 'limit' | 'quiet' | 'retract'
 
 /** One message to one destination, and what became of it. */
 export interface Delivery {
@@ -179,7 +240,8 @@ export interface Delivery {
   destination: string
   /** None for a summary, and for a message whose incident has since been deleted. */
   incident_id: number | null
-  kind: 'incident' | 'summary'
+  /** `update` is a change to a message already sent. */
+  kind: 'incident' | 'summary' | 'update'
   reason: DeliveryReason
   state: DeliveryState
   title: string

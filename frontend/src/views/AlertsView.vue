@@ -8,6 +8,7 @@ import {
   changeRules,
   fetchDestinations,
   removeDestination,
+  sendSample,
   testDestination,
   type Destination,
   type Destinations,
@@ -44,6 +45,7 @@ const failure = ref<string | null>(null)
 /** The destination something is being done to, so its buttons wait. */
 const working = ref<number | null>(null)
 const testing = ref<number | null>(null)
+const sampling = ref<number | null>(null)
 
 /** The destination being changed or removed, or none for a new one. The dialogs keep showing it
  * while they fade out. */
@@ -185,6 +187,21 @@ async function test(destination: Destination) {
   }
 }
 
+async function sample(destination: Destination) {
+  begin()
+  sampling.value = destination.id
+  try {
+    const answer = await session.change((token) => sendSample(destination.id, token))
+    replace(answer.destination)
+    if (answer.ok)
+      notice.value = `A sample alert was sent to ${destination.name}. Look for it in the channel.`
+  } catch (error) {
+    failure.value = errorMessage(error)
+  } finally {
+    sampling.value = null
+  }
+}
+
 async function toggle(destination: Destination, enabled: boolean) {
   begin()
   working.value = destination.id
@@ -268,9 +285,11 @@ onMounted(load)
           :key="item.id"
           :destination="item"
           :choices="listing.choices"
-          :busy="working === item.id || testing === item.id"
+          :busy="working === item.id || testing === item.id || sampling === item.id"
           :testing="testing === item.id"
+          :sampling="sampling === item.id"
           @test="test(item)"
+          @sample="sample(item)"
           @rules="rules(item)"
           @edit="edit(item)"
           @remove="ask(item)"

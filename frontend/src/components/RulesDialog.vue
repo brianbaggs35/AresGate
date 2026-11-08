@@ -3,11 +3,14 @@ import { X } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 import {
+  fetchSample,
   previewRules,
   type Choices,
   type Destination,
+  type DiscordMessage,
   type Rules,
   type RulesPreview,
+  type SampleReason,
 } from '@/api/alerts'
 import { errorMessage } from '@/api/client'
 import {
@@ -21,14 +24,19 @@ import {
   toTime,
   withCurrent,
 } from '@/alertRules'
+import ChoiceToggle from '@/components/ChoiceToggle.vue'
+import DiscordPreview from '@/components/DiscordPreview.vue'
+import ModeCards, { type Purpose } from '@/components/ModeCards.vue'
 import RulesPreviewPanel from '@/components/RulesPreview.vue'
 import { useKeyboardReturn } from '@/dialog'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * What one destination is told about, and when: how serious and how sure, which programs and
- * kinds of activity, quiet hours, how many messages an hour, and how much a message says. Beside
- * the choices it shows what they would have sent in the last day, worked out by the server each
+ * What one destination is told about, and when. First what the channel is for: real attacks only
+ * (the incidents on the Threats page), everything serious, or custom, which opens how serious and
+ * how sure, which programs and kinds of activity. Then quiet hours, how many messages an hour, and
+ * how much a message says, with the message itself drawn as Discord will show it. Beside the
+ * choices it shows what they would have sent in the last day, worked out by the server each
  * time they change, so the rules can be tuned before they are used. It is a sheet from the side
  * on a desktop and the screen above the bottom bar on a phone. It only asks; saving the answer is
  * up to the page, which hands back what was wrong with each field.
@@ -57,8 +65,26 @@ const session = useSessionStore()
 const titleId = useId()
 const giveBackTheKeyboard = useKeyboardReturn(open)
 
+/** Which of the cards the rules are: the real attacks, the plain "everything serious" that a
+ * channel got before there were two kinds of rule, or something of the owner's own. */
+function purposeOf(rules: Rules): Purpose {
+  if (rules.mode === 'threats') return 'threats'
+  const plain =
+    rules.min_severity === SERIOUS.min_severity &&
+    rules.min_confidence === SERIOUS.min_confidence &&
+    rules.sources.length === 0 &&
+    rules.activities.length === 0
+  return plain ? 'serious' : 'custom'
+}
+
+const SERIOUS = { min_severity: 2, min_confidence: 65 }
+
 const draft = ref<Rules>({ ...props.destination.rules })
+const purpose = ref<Purpose>(purposeOf(props.destination.rules))
 const answer = ref<RulesPreview | null>(null)
+const sample = ref<DiscordMessage | null>(null)
+const sampleReason = ref<SampleReason>('new')
+const sampleFailure = ref<string | null>(null)
 const previewFailure = ref<string | null>(null)
 const previewing = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -66,6 +92,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let lastAsked = ''
 // Each question is numbered, so that a late answer to an earlier one is not taken for the latest.
 let asked = 0
+let shown = 0
 
 const severities = SEVERITIES.map((item) => ({ title: item.label, value: item.value }))
 const confidences = computed(() =>
@@ -103,6 +130,18 @@ const until = computed({
   },
 })
 
+const threats = computed(() => purpose.value === 'threats')
+const stories = computed(() => [
+  { key: 'new' as const, label: 'First message' },
+  { key: 'worse' as const, label: threats.value ? 'If it escalates' : 'If it gets worse' },
+])
+
+function choose(chosen: Purpose) {
+  purpose.value = chosen
+  draft.value.mode = chosen === 'threats' ? 'threats' : 'custom'
+  if (chosen === 'serious') Object.assign(draft.value, { ...SERIOUS, sources: [], activities: [] })
+}
+
 const changed = computed(
   () => JSON.stringify(draft.value) !== JSON.stringify(props.destination.rules),
 )
@@ -131,6 +170,21 @@ async function ask() {
   }
 }
 
+/** What a message would look like with these rules, as the server makes it. */
+async function show() {
+  const mine = ++shown
+  try {
+    const found = await session.call(() =>
+      fetchSample(draft.value.mode, draft.value.detail, sampleReason.value),
+    )
+    if (mine !== shown) return
+    sample.value = found.payload
+    sampleFailure.value = null
+  } catch (error) {
+    if (mine === shown) sampleFailure.value = errorMessage(error)
+  }
+}
+
 function later() {
   clearTimeout(timer)
   if (JSON.stringify(draft.value) !== lastAsked) {
@@ -142,6 +196,7 @@ function stop() {
   clearTimeout(timer)
   // Whatever is still on its way is not wanted.
   asked += 1
+  shown += 1
 }
 
 // Each time it opens it shows what is kept now, not what an earlier visit left. A page that
@@ -160,13 +215,32 @@ watch(
     }
     // Quiet hours that are off start in the time zone of this computer.
     if (!draft.value.quiet_hours) draft.value.time_zone = browserZone()
+    purpose.value = purposeOf(draft.value)
     answer.value = null
     previewFailure.value = null
+    sample.value = null
+    sampleReason.value = 'new'
     void ask()
   },
   { immediate: true },
 )
 watch(draft, later, { deep: true })
+// Changing what "everything serious" stands for makes it the owner's own.
+watch(
+  draft,
+  (rules) => {
+    if (purpose.value === 'serious' && purposeOf(rules) !== 'serious') purpose.value = 'custom'
+  },
+  { deep: true },
+)
+// The sample is made when the sheet opens and again whenever what it shows is changed.
+watch(
+  () => (open.value ? [draft.value.mode, draft.value.detail, sampleReason.value].join() : null),
+  (shows) => {
+    if (shows !== null) void show()
+  },
+  { immediate: true },
+)
 onBeforeUnmount(stop)
 
 function save() {
@@ -203,6 +277,8 @@ function save() {
       </header>
 
       <form class="rules-sheet__body" @submit.prevent="save">
+        <ModeCards :model-value="purpose" @update:model-value="choose" />
+
         <RulesPreviewPanel
           :preview="answer"
           :loading="previewing"
@@ -210,7 +286,25 @@ function save() {
           :per-hour="draft.max_per_hour"
         />
 
-        <fieldset class="rules-group">
+        <section v-if="threats" class="rules-group" data-test="rules-purpose-note">
+          <h3 class="text-title-medium">What is worth a message</h3>
+          <p class="text-body-medium rules-group__note" data-test="rules-threats-note">
+            A message goes out when an incident becomes a threat on the Threats page, and again if
+            the attack goes a stage further: from looking around to trying to get in, and from there
+            to a sign that it worked. It says why, in the words of the incident's own page. If you,
+            or the AI, later decide it was not a threat, the message is changed to say it was stood
+            down, so a warning never stays up for nothing.
+          </p>
+          <p class="text-body-medium text-medium-emphasis rules-group__note">
+            What counts as a threat is set under
+            <router-link :to="{ name: 'settings-threat-detection' }" data-test="rules-threat-link"
+              >Threat detection</router-link
+            >. Never sent, whatever else: an incident you called not suspicious or low priority, and
+            one you resolved or dismissed.
+          </p>
+        </section>
+
+        <fieldset v-else class="rules-group" data-test="rules-floors">
           <legend class="text-title-medium">What is worth a message</legend>
           <v-select
             v-model="draft.min_severity"
@@ -266,7 +360,6 @@ function save() {
             chosen.
           </p>
         </fieldset>
-
         <fieldset class="rules-group">
           <legend class="text-title-medium">When</legend>
           <v-switch
@@ -322,7 +415,7 @@ function save() {
           />
           <v-switch
             v-model="draft.again_when_worse"
-            label="Tell me again if it gets worse"
+            :label="threats ? 'Tell me again if it escalates' : 'Tell me again if it gets worse'"
             color="primary"
             hide-details
             data-test="rules-again"
@@ -346,6 +439,34 @@ function save() {
               </template>
             </v-radio>
           </v-radio-group>
+          <div class="rules-sample">
+            <div class="rules-sample__head">
+              <h3 class="text-label-large">What it looks like</h3>
+              <ChoiceToggle
+                v-model="sampleReason"
+                :options="stories"
+                label="Which message to show"
+                name="rules-story"
+              />
+            </div>
+            <v-alert
+              v-if="sampleFailure"
+              type="warning"
+              variant="tonal"
+              density="compact"
+              data-test="sample-failure"
+            >
+              {{ sampleFailure }}
+            </v-alert>
+            <DiscordPreview v-else-if="sample" :message="sample" />
+            <p v-else class="text-body-medium text-medium-emphasis" data-test="sample-wait">
+              Making a sample message…
+            </p>
+            <p class="text-body-small text-medium-emphasis">
+              A sample about an incident that is made up, written by the same code that writes the
+              real ones. Send one to the channel from its card to see it in Discord.
+            </p>
+          </div>
         </fieldset>
 
         <v-alert
@@ -468,6 +589,26 @@ function save() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+.rules-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.rules-sample__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.rules-sample p,
+.rules-sample h3 {
+  margin: 0;
 }
 
 .rules-detail {
