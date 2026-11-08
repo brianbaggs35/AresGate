@@ -242,11 +242,15 @@ class Sent:
     missing: bool = False
 
 
+def _member(body: object, name: str) -> object:
+    """A member of the JSON object an answer carried, or nothing when the body is not an object."""
+    return cast("Mapping[str, object]", body).get(name) if isinstance(body, Mapping) else None
+
+
 def _retry_after(body: object) -> float | None:
-    if isinstance(body, Mapping):
-        value = cast("Mapping[str, object]", body).get("retry_after")
-        if isinstance(value, int | float) and not isinstance(value, bool) and value >= 0:
-            return float(value)
+    value = _member(body, "retry_after")
+    if isinstance(value, int | float) and not isinstance(value, bool) and value >= 0:
+        return float(value)
     return None
 
 
@@ -269,19 +273,13 @@ def _spent(headers: Mapping[str, str]) -> float | None:
 
 def _snowflake(body: object) -> str | None:
     """The ``id`` of the message in an answer, if it has one that looks like Discord's."""
-    if isinstance(body, Mapping):
-        found = cast("Mapping[str, object]", body).get("id")
-        if isinstance(found, str) and _ID.fullmatch(found):
-            return found
-    return None
+    found = _member(body, "id")
+    return found if isinstance(found, str) and _ID.fullmatch(found) else None
 
 
 def _code_of(body: object) -> int | None:
-    if isinstance(body, Mapping):
-        code = cast("Mapping[str, object]", body).get("code")
-        if isinstance(code, int) and not isinstance(code, bool):
-            return code
-    return None
+    code = _member(body, "code")
+    return code if isinstance(code, int) and not isinstance(code, bool) else None
 
 
 def judge(status: int, body: object, headers: Mapping[str, str] | None = None) -> Sent:
