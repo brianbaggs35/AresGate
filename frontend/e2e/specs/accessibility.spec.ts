@@ -1227,10 +1227,23 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(alerts.destination('Security channel')).toBeVisible()
       await expectAccessible(page)
 
-      // The sheet, with what the rules would have done and what was left out.
+      // The sheet, with the cards for what the channel is for, what the rules would have done and
+      // what was left out, and the message as Discord will show it.
       await alerts.openRules('Security channel')
       await expect(alerts.previewSummary).toContainText('would have sent')
       await expect(alerts.previewLeftOut).toBeVisible()
+      await expect(alerts.purposeChosen('threats')).toBeChecked()
+      await expect(alerts.discordTitle).toBeVisible()
+      await expectAccessible(page)
+
+      // With the later message of the story, which has a title of its own.
+      await alerts.story('worse').click()
+      await expect(alerts.discordTitle).toContainText('Escalated')
+      await expectAccessible(page)
+
+      // Custom rules, with the rest of the choices open.
+      await alerts.purpose('custom').click()
+      await expect(alerts.floors).toBeVisible()
       await expectAccessible(page)
 
       // With quiet hours on, and a start that is also the end, which can't be saved.

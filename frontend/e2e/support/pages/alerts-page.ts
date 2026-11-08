@@ -36,6 +36,18 @@ export class AlertsPage {
   readonly rulesCancel: Locator
   readonly rulesClose: Locator
   readonly rulesFailure: Locator
+  /** The three cards for what a channel is for, and what the sheet shows under the one chosen. */
+  readonly purposes: Locator
+  readonly floors: Locator
+  readonly threatsNote: Locator
+  readonly threatsLink: Locator
+  /** The message as Discord will show it, and the choice of which message of the story. */
+  readonly discord: Locator
+  readonly discordTitle: Locator
+  readonly discordDescription: Locator
+  readonly discordFields: Locator
+  readonly discordFooter: Locator
+  readonly sampleFailure: Locator
   readonly severity: Locator
   readonly confidence: Locator
   readonly sources: Locator
@@ -88,6 +100,16 @@ export class AlertsPage {
     this.rulesCancel = page.getByTestId('rules-cancel')
     this.rulesClose = page.getByTestId('rules-close')
     this.rulesFailure = page.getByTestId('rules-failure')
+    this.purposes = page.getByTestId('purposes')
+    this.floors = page.getByTestId('rules-floors')
+    this.threatsNote = page.getByTestId('rules-threats-note')
+    this.threatsLink = page.getByTestId('rules-threat-link')
+    this.discord = page.getByTestId('discord-preview')
+    this.discordTitle = page.getByTestId('discord-title')
+    this.discordDescription = page.getByTestId('discord-description')
+    this.discordFields = page.getByTestId('discord-fields')
+    this.discordFooter = page.getByTestId('discord-footer')
+    this.sampleFailure = page.getByTestId('sample-failure')
     this.severity = page.getByTestId('rules-severity')
     this.confidence = page.getByTestId('rules-confidence')
     this.sources = page.getByTestId('rules-sources')
@@ -130,6 +152,22 @@ export class AlertsPage {
   async openRules(name: string): Promise<void> {
     await this.destination(name).getByTestId('destination-rules-edit').click()
     await this.rules.waitFor()
+  }
+
+  /** The card for what a channel is for: `threats`, `serious` or `custom`. */
+  purpose(key: 'threats' | 'serious' | 'custom'): Locator {
+    return this.page.getByTestId(`purpose-${key}`)
+  }
+
+  /** Its radio button, which says whether it is the one chosen. */
+  purposeChosen(key: 'threats' | 'serious' | 'custom'): Locator {
+    return this.purpose(key).getByRole('radio')
+  }
+
+  /** The button that shows the first message of the story of an incident, or what is sent if it
+   * gets worse. */
+  story(which: 'new' | 'worse'): Locator {
+    return this.page.getByTestId(`rules-story-${which}`)
   }
 
   /** Chooses from one of the menus in the rules sheet, by exactly what the choice is called ("Sent"

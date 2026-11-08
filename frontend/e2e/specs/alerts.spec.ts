@@ -244,22 +244,38 @@ test.describe('alerts page', () => {
       ])
     })
 
-    test('starts with what is serious and sure, and shows the card in words', async ({
-      alerts,
-    }) => {
+    test('starts with real attacks only, and shows the card in words', async ({ alerts }) => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       const card = alerts.destination('Security')
 
       await expect(card.getByTestId('destination-rules')).toContainText(
-        'Tells you about incidents that are medium or worse, when AresGate is at least 65% sure.',
+        'Tells you only about real attacks that are going on now, with the reason.',
       )
       await alerts.openRules('Security')
 
       await expect(alerts.rulesTitle).toHaveText('What Security is told')
+      await expect(alerts.purposeChosen('threats')).toBeChecked()
+      await expect(alerts.floors).toHaveCount(0)
+      await expect(alerts.rulesSave).toBeDisabled()
+    })
+
+    test('starts "everything serious" with what is serious and sure', async ({ alerts }) => {
+      await alerts.goto()
+      await alerts.addDestination('Security', ADDRESS)
+      await alerts.openRules('Security')
+
+      await alerts.purpose('serious').click()
+
+      await expect(alerts.purposeChosen('serious')).toBeChecked()
       await expect(alerts.severity).toContainText('Medium or worse')
       await expect(alerts.confidence).toContainText('High: 65% or more')
-      await expect(alerts.rulesSave).toBeDisabled()
+      await expect(alerts.rulesSave).toBeEnabled()
+      await alerts.rulesSave.click()
+      await expect(alerts.notice).toHaveText('Saved what Security is told.')
+      await expect(alerts.destination('Security').getByTestId('destination-rules')).toContainText(
+        'Tells you about incidents that are medium or worse, when AresGate is at least 65% sure.',
+      )
     })
 
     test('shows what the rules would have sent, and changes it as they change', async ({
@@ -268,6 +284,7 @@ test.describe('alerts page', () => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
+      await alerts.purpose('serious').click()
       await expect(alerts.previewSummary).toContainText('out of 4 incidents going on')
 
       await alerts.choose(alerts.severity, 'Critical only')
@@ -285,6 +302,7 @@ test.describe('alerts page', () => {
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
 
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.severity, 'High or worse')
       await alerts.choose(alerts.sources, 'Wazuh')
       await page.keyboard.press('Escape')
@@ -302,6 +320,7 @@ test.describe('alerts page', () => {
 
       await page.reload()
       await alerts.openRules('Security')
+      await expect(alerts.purposeChosen('custom')).toBeChecked()
       await expect(alerts.severity).toContainText('High or worse')
       await expect(alerts.sources).toContainText('Wazuh')
       await expect(alerts.again).not.toBeChecked()
@@ -333,13 +352,15 @@ test.describe('alerts page', () => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.severity, 'Critical only')
 
       await alerts.rulesCancel.click()
       await expect(alerts.rules).toHaveCount(0)
       await alerts.openRules('Security')
 
-      await expect(alerts.severity).toContainText('Medium or worse')
+      await expect(alerts.purposeChosen('threats')).toBeChecked()
+      await expect(alerts.floors).toHaveCount(0)
     })
 
     test('says why the rules could not be kept, and why a preview could not be made', async ({
@@ -353,6 +374,7 @@ test.describe('alerts page', () => {
       await expect(alerts.previewFailure).toContainText("Can't reach AresGate.")
 
       await page.route('**/api/alerts/destinations/*/rules', (route) => route.abort())
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.severity, 'Critical only')
       await alerts.rulesSave.click()
 
@@ -404,6 +426,7 @@ test.describe('alerts page', () => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.confidence, 'Any, however unsure')
       await alerts.rulesSave.click()
       await expect(alerts.notice).toHaveText('Saved what Security is told.')
@@ -438,6 +461,7 @@ test.describe('alerts page', () => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.confidence, 'Any, however unsure')
       await alerts.rulesSave.click()
       await expect(alerts.notice).toHaveText('Saved what Security is told.')
@@ -461,6 +485,7 @@ test.describe('alerts page', () => {
       await alerts.goto()
       await alerts.addDestination('Security', ADDRESS)
       await alerts.openRules('Security')
+      await alerts.purpose('custom').click()
       await alerts.choose(alerts.confidence, 'Any, however unsure')
       await alerts.rulesSave.click()
       await expect(alerts.notice).toHaveText('Saved what Security is told.')

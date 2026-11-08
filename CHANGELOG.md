@@ -8,6 +8,22 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Alerts for real attacks, that say why and take themselves back.** A Discord channel can now be
+  told only of **real attacks** (the incidents on the Threats page, an attack going on now) and no
+  longer of every scan: a new channel starts that way, and a channel made before keeps the rules it
+  had. Each message says why in the words of the incident's own page (*Why AresGate thinks so*),
+  how far the attack got (*Looking around → **Trying to get in***), how sure and how serious. The
+  channel hears of an attack again only when it goes a stage further (*Escalated:*), and when an
+  incident it was told of turns out not to be a threat, because you called it not suspicious, you
+  resolved it or the AI set it aside, the message in Discord is **changed** to a grey *Stood down:*
+  note, so a warning never stays up for nothing. The **Rules** sheet is rebuilt around three cards
+  (**Real attacks only**, **Everything serious**, **Custom**) and draws the message as Discord will
+  show it, made by the same code that makes the real ones, for the first message and for the one
+  if it escalates; **Send a sample alert** on a card sends that message to the channel, marked as
+  a sample. AresGate asks Discord to name each message it sends (`wait=true`) to find it again.
+  This adds a migration (`0030`: `alert_destinations.mode`, and `message_id` and `target_id` on
+  `alert_deliveries`). `GET /api/alerts/sample`, `POST /api/alerts/destinations/{id}/sample`.
+  [Alerts](DOCS/alerts.md) has the rules and what was read from Discord's documentation.
 - **Alerts are sent: a notifier with de-duplication, retries and a delivery log.** The worker now
   tells each Discord destination of the incidents its rules choose, which until now it only
   previewed. An incident is told **once**, and again only when it gets worse (a higher severity or
