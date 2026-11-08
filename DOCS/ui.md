@@ -212,6 +212,43 @@ opens `AiCallDialog`). An answer that could not be made is a warning with a link
 is shown at once and a spinner says it can take a minute. Wording and the starting questions are in
 `src/chat.ts`.
 
+## Threats
+
+The Threats pages answer "is anything really going on?" before they answer anything else, and
+every look and word lives in `src/threats.ts`.
+
+- **The page** (`ThreatsView`) opens on the first lane with something in it and keeps the lane in
+  the route's query (`lane`), as the Incidents list does, so a link opens on it (the range, 24 hours
+  or 7 days, is not kept). At the top the
+  funnel (`ThreatFunnel`) goes from what programs reported to the lanes, one bar for each step
+  with its number and what was taken out on the way. The bars are drawn to the number of digits,
+  not to scale, because seventy thousand and four on one linear bar leaves the four invisible; the
+  numbers say the same, so the bars are decoration. Then a switch of the three lanes with their
+  counts, a sentence for what the lane on screen means, and its incidents as ordinary
+  `IncidentCard`s, so a card can be judged where it is. The background lane lists *kinds*
+  (`FamilyCard`) rather than incidents, because hundreds of them say the same thing.
+- **A lane is never just a color.** `LaneChip` is an icon and a word (*Threat*, *Suspect*,
+  *Background*), `CallChip` says what the AI or you called an incident and how sure, and
+  `StageTrail` draws how far an attack got (*Looking around*, *Trying to get in*, *Sign it worked*)
+  as a row of steps with the ones it reached filled, and says it in words for a screen reader.
+- **A kind** (`KindsView`, `FamilyView`) has its own list, with a search and the lane and who
+  judged it as filters in the query, and its own page. `FamilyJudgement` is the one place that says
+  what is thought of the kind (the AI's call and why, whether it is yours) and has the three
+  things you can do: *Always background*, *Never set aside* (the one you gave is disabled, and
+  *Take my word back* appears) and *Ask the AI*. Why they are where they are is a list in
+  `FamilyView`, one fact a line, from the server so it cannot disagree with it.
+- **An incident** says where it stands (`IncidentWhere`: its lane, why, how far it got, and its
+  kind with a link) and, when an alert repeated or two programs reported it, what kept happening
+  (`IncidentOccurrences`), as one line with a count.
+- **Settings > Threat detection** (`ThreatSettingsView`) is a draft beside what is kept, the way
+  the noise filters are: `ThreatLevelCard` (a slider that says its number and what it means),
+  `ThreatAiCard`, `ThreatNetworkCard` (what is open to the internet, the ports and a note) and
+  `ThreatEffect`, which shows what saving would do to the lanes (`POST /api/threat-settings/preview`,
+  never worked out in the browser). Ports are read as they are typed, and a word that is not a port
+  is named under the field, not guessed at.
+- **On a phone** Threats is in the bottom bar between the dashboard and Incidents, and Logs is in
+  the sheet behind More. Nothing scrolls sideways.
+
 ## Assets
 
 The Assets page lists every device the connected programs can see (`GET /api/assets`), built from

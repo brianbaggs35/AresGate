@@ -8,6 +8,42 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Threats: a few real attacks instead of seventy thousand alerts.** A new **Threats** page (in
+  the menu, and on a phone in the bottom bar, where Logs moved behind **More** to make room) takes
+  what programs reported down to what matters, and says how at each step: *reports*, *alerts*,
+  *incidents*, and the lanes **Threat**, **Suspect** and **Background**. An alert that two programs
+  report about the same traffic within two minutes (OPNsense's intrusion detection, ntopng and
+  Wazuh each can) counts once, and an alert said again and again counts once for each stretch of
+  time (`Event.twin_of`, `app/events/twins.py`); an incident lists what kept happening as one line
+  with a count, and says how many of its alerts another program had already reported. Each alert
+  is placed on a short path (looking around, trying to get in, a sign it worked), and an incident
+  that went past looking around is a threat and is never set aside. Every incident's page has a
+  **Where it stands** card with its lane and each fact that put it there. The dashboard's alert
+  count says how many reports it came from, *Needs you* lists only threats and suspects and leads
+  to Threats, and what the AI set aside is counted and linked. The Incidents page can be narrowed
+  to a lane or a kind (`lane`, `family`), and changing every incident that matches a search follows
+  them. [Threats](DOCS/threats.md) has the rules.
+- **Kinds of incident, judged once by the AI.** Hundreds of scanners each make an incident of their
+  own but are one *kind* of thing: the same program, the same words, the same sort of place. The
+  new **Kinds of incident** list and a page for each kind say what the AI makes of it (noise, a
+  probe, an attack, a compromise or unclear, how sure, and why) and lists a few of its incidents.
+  The AI is asked about a kind, a dozen kinds to a request, and one answer covers every incident of
+  it, so reading seventy thousand alerts costs a few questions. The start of every request is the
+  same, so providers that cache a prompt (OpenAI, Anthropic) read it at a discount, and how many
+  kinds it judges by itself follows the usage level on the AI usage page (none on *Very low*). You
+  can **Ask the AI** on any kind, and your word outranks it: *Always background*, *Never set
+  aside*, or take it back. `GET /api/threats/overview`, `/families` and `/families/{id}`, `PUT`
+  `/families/{id}/call` and `POST /families/{id}/judge`; the code is `app/threats/` and
+  `app/ai/families.py`.
+- **Settings > Threat detection.** *How sure before it is a threat* (65 until you change it),
+  whether the AI may set harmless incidents aside and how sure it has to be (80, never for a
+  critical one), whether a threat needs the AI to agree while it is watching, what is open to the
+  internet (nothing, some ports, or not sure) and a note about your network in your own words,
+  which the AI is told. As with the noise filters, the page works out what saving would do to the
+  lanes before you keep it. `GET` and `PUT /api/threat-settings` and `POST
+  /api/threat-settings/preview`.
+  This adds a migration (`0028`: `incident_families`, `threat_settings`, and columns on
+  `incidents`, `incident_signals` and `events`).
 - **Noise filters, in Settings.** A new **Settings > Noise filters** page decides what AresGate asks
   you about without a verdict from you. *How sure before it asks you* is the confidence an
   incident has to reach (1 to 100, 35 until you change it) for the dashboard's sentence, the Needs

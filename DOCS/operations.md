@@ -575,6 +575,15 @@ settings would, counts, and rolls it back, so the figures are what saving does (
 two to agreeing) and nothing is kept until you press *Save*. Each change is a record in Settings
 > Activity with what it was and what it became.
 
+### Threats
+
+Noise filters set what AresGate asks about. **Threats** (in the menu, and **Settings > Threat
+detection**) is how it decides what is a real attack. Every incident that is going on is a
+*threat*, a *suspect* or *background*, an alert two programs both reported counts once, the same
+alert again and again counts once for each stretch of time, and the AI judges a whole *kind* of
+incident in one cached request instead of every incident. [Threats](threats.md) has the rules, what
+the AI does and what it costs, the settings and the API.
+
 ## The dashboard
 
 The first page of the web app, for the last 24 hours or the last 7 days (the buttons at the top
@@ -641,7 +650,9 @@ and each incident has a page of its own.
   the one you start from), *Open*, *Investigating*, *Resolved*, *Dismissed* or *All*, each with
   how many there are. Narrow them to a severity or a confidence, or [search](#searching-incidents).
   What you chose is in the address of the page, so a link or the back button brings it back. The
-  list shows 25 at a time.
+  list shows 25 at a time. Each card also says its lane (*Threat*, *Suspect* or *Background*, see
+  [Threats](threats.md)), and the *Lane* menu narrows the list to one; a kind of incident can be
+  opened here from its page, so a link keeps both in the address (`lane`, `family`).
 - **Searching incidents.** The box above the list takes words and a few `field:value` terms,
   and every one of them has to be true. Press `/` anywhere on the page to type in it. What you
   type is applied after a pause or with Enter, and the box shows how it was understood as one
