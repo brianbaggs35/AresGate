@@ -1,3 +1,4 @@
+import type { IncidentRequest } from '../support'
 import { expect, test } from '../support'
 
 const ID = '1234567890123456789'
@@ -372,13 +373,13 @@ test.describe('alerts page', () => {
   })
 
   test.describe('the delivery log', () => {
-    const SCAN = {
+    const SCAN: IncidentRequest = {
       address: '93.184.216.34',
       severity: 'critical',
       programs: ['wazuh', 'opnsense', 'crowdsec'],
       signals: 8,
       minutes_ago: 0,
-    } as const
+    }
 
     test('is not there before a destination is', async ({ alerts }) => {
       await alerts.goto()
