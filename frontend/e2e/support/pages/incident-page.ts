@@ -142,7 +142,7 @@ export class IncidentPage {
     this.aiNotice = page.getByTestId('ai-notice')
     this.aiFailure = page.getByTestId('ai-failure')
     this.aiSettingsLink = page.getByTestId('ai-settings-link')
-    this.aiChip = page.locator('.incident__chips').getByTestId('ai-chip')
+    this.aiChip = page.locator('.incident__chips').getByTestId('call-chip')
     this.groupingCard = page.getByTestId('grouping-card')
     this.grouping = page.getByTestId('grouping-line')
     this.waves = page.getByTestId('waves')

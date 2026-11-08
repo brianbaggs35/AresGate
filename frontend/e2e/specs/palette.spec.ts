@@ -90,6 +90,7 @@ test.describe('the command palette', () => {
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL('/incidents')
   })
