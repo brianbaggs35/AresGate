@@ -23,6 +23,10 @@ from app.models.base import Base, UTCDateTime, utcnow
 KINDS = ("discord",)
 # How much of an incident a message says (see app/alerts/rules.py).
 DETAILS = ("brief", "standard", "full")
+# What a destination is told about: ``threats``, only the incidents on the Threats page (a real
+# attack that is going on now), or ``custom``, whatever the severity, confidence, program and kind
+# of activity it was given choose.
+MODES = ("threats", "custom")
 
 # What a new destination is told about: only what is serious (medium or worse) and that
 # AresGate is sure of (the "high" band of confidence), at most six messages an hour, and no
@@ -36,8 +40,9 @@ DEFAULT_DETAIL = "standard"
 
 # Why a message was sent: an incident the destination had not heard of, one it had that got worse,
 # one that was reopened after it was dealt with, or a summary of what was held back (``limit``: too
-# many an hour, ``quiet``: it came in during quiet hours).
-DELIVERY_REASONS = ("new", "worse", "reopened", "limit", "quiet")
+# many an hour, ``quiet``: it came in during quiet hours). ``retract`` is not a message but a
+# correction to one already sent, made when the incident turns out not to be a threat.
+DELIVERY_REASONS = ("new", "worse", "reopened", "limit", "quiet", "retract")
 # Where a message is: waiting (``queued``, ``held`` for quiet hours to end, ``retrying`` after a
 # failure, ``limited`` until a summary tells of it), told in a summary (``summarized``), ``sent``,
 # given up on (``failed``), or no longer worth sending (``dropped``).
@@ -68,6 +73,7 @@ class AlertDestination(Base):
         CheckConstraint("quiet_from BETWEEN 0 AND 1439", name="quiet_from"),
         CheckConstraint("quiet_until BETWEEN 0 AND 1439", name="quiet_until"),
         CheckConstraint("detail IN ('brief', 'standard', 'full')", name="detail"),
+        CheckConstraint("mode IN ('threats', 'custom')", name="mode"),
         UniqueConstraint("name", name="uq_alert_destinations_name"),
     )
 
@@ -87,6 +93,8 @@ class AlertDestination(Base):
     last_success_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     last_error: Mapped[str | None] = mapped_column(String(500), default=None)
 
+    # Which kind of rule decides: see ``MODES``. The four fields below are those of ``custom``.
+    mode: Mapped[str] = mapped_column(String(8), default="custom")
     # What it is told about (rules.py decides with these). An incident has to be at least this
     # serious (0 to 4, as in app/events/event.py) and AresGate at least this sure (0 to 100), unless
     # the owner said it is a real threat.
@@ -130,8 +138,10 @@ class AlertDelivery(Base):
 
     __tablename__ = "alert_deliveries"
     __table_args__ = (
-        CheckConstraint("kind IN ('incident', 'summary')", name="kind"),
-        CheckConstraint("reason IN ('new', 'worse', 'reopened', 'limit', 'quiet')", name="reason"),
+        CheckConstraint("kind IN ('incident', 'summary', 'update')", name="kind"),
+        CheckConstraint(
+            "reason IN ('new', 'worse', 'reopened', 'limit', 'quiet', 'retract')", name="reason"
+        ),
         CheckConstraint(
             "state IN ('queued', 'held', 'retrying', 'limited', 'summarized', 'sent', 'failed', "
             "'dropped')",
@@ -144,6 +154,7 @@ class AlertDelivery(Base):
         Index("ix_alert_deliveries_incident_id", "incident_id"),
         Index("ix_alert_deliveries_created_at", "created_at"),
         Index("ix_alert_deliveries_summary_id", "summary_id"),
+        Index("ix_alert_deliveries_target_id", "target_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -154,6 +165,8 @@ class AlertDelivery(Base):
     incident_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("incidents.id", ondelete="SET NULL"), default=None
     )
+    # ``incident``: a message about one. ``summary``: one message for several. ``update``: an edit
+    # to a message already sent (``target_id``), which says it has been stood down.
     kind: Mapped[str] = mapped_column(String(8), default="incident")
     reason: Mapped[str] = mapped_column(String(8))
     key: Mapped[str] = mapped_column(String(40))
@@ -182,3 +195,10 @@ class AlertDelivery(Base):
     # When the incident was seen dealt with, after this was made: the next message about it is a
     # reopening.
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # What Discord called the message once it took it (a snowflake), which is how it is edited
+    # later. Not a secret: it is no use without the webhook's token.
+    message_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    # For an update: the message it edits.
+    target_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("alert_deliveries.id", ondelete="SET NULL"), default=None
+    )

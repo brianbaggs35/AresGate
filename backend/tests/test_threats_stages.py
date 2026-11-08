@@ -82,3 +82,12 @@ class TestTheStagesOfAnIncident:
         assert not stages.is_chain([stages.ACCESS])
         assert stages.is_chain([stages.FOOTHOLD])
         assert stages.is_chain([stages.RECON, stages.ACCESS])
+
+
+def test_how_far_an_attack_got_is_the_furthest_stage_it_reached() -> None:
+    assert stages.depth([]) == 0
+    assert stages.depth(["recon"]) == 1
+    assert stages.depth(["recon", "access"]) == 2
+    assert stages.depth(["recon", "access", "foothold"]) == 3
+    assert stages.depth(["foothold"]) == 3
+    assert stages.depth(["unheard-of"]) == 0

@@ -938,11 +938,38 @@ class TestDiscord:
         assert self.handler(post("/api/webhooks/1/abc", message, **self.agent)).status == 204
         assert self.handler(post("/api/v10/webhooks/1/abc", message, **self.agent)).status == 204
         assert (
-            self.handler(post("/api/webhooks/1/abc?wait=true", message, **self.agent)).status == 204
-        )
-        assert (
             self.handler(post("/api/webhooks/1/abc", {"content": "hi"}, **self.agent)).status == 204
         )
+
+    def test_a_message_that_is_waited_for_is_answered_with_its_name(self) -> None:
+        handler = stand_ins.discord("1/abc")
+        message = {"embeds": [{"title": "t"}]}
+
+        first = handler(post("/api/webhooks/1/abc?wait=true", message, **self.agent))
+        second = handler(post("/api/v10/webhooks/1/abc?wait=true", message, **self.agent))
+
+        assert (first.status, second.status) == (200, 200)
+        assert body(first)["id"] != body(second)["id"]
+        assert body(first)["embeds"] == message["embeds"]
+
+    def test_a_message_that_was_made_can_be_edited_and_one_that_was_not_cannot(self) -> None:
+        handler = stand_ins.discord("1/abc")
+        made = body(handler(post("/api/webhooks/1/abc?wait=true", {"content": "a"}, **self.agent)))
+        edit = Seen(
+            "PATCH",
+            f"/api/webhooks/1/abc/messages/{made['id']}",
+            self.agent,
+            json.dumps({"content": "b"}).encode(),
+        )
+        unknown = Seen(
+            "PATCH", "/api/webhooks/1/abc/messages/1", self.agent, json.dumps({}).encode()
+        )
+
+        changed = handler(edit)
+        missing = handler(unknown)
+
+        assert (changed.status, body(changed)["content"]) == (200, "b")
+        assert (missing.status, body(missing)["code"]) == (404, 10008)
 
     def test_another_webhook_is_unknown(self) -> None:
         answer = self.handler(post("/api/webhooks/1/other", {"content": "hi"}, **self.agent))
@@ -972,6 +999,13 @@ class TestDiscord:
     def test_anything_else_is_not_found(self) -> None:
         assert self.handler(seen("/api/webhooks/1/abc", **self.agent)).status == 404
         assert self.handler(post("/api/other", {"content": "hi"}, **self.agent)).status == 404
+        assert (
+            self.handler(
+                Seen("PATCH", "/api/webhooks/1/abc", self.agent, b"{}"),
+            ).status
+            == 404
+        )
+        assert self.handler(post("/api/webhooks/1/abc/messages/1", {}, **self.agent)).status == 404
 
 
 class TestStandIns:

@@ -11,28 +11,41 @@ incident the owner said is a real threat passes the severity and confidence floo
 have already decided, but still has to be of the programs and kinds the rules name. Quiet hours
 hold a message, they do not drop it.
 
-A new destination is told only of what is serious (medium or worse) and what AresGate is sure
-of (the "high" band, 65 or more): the point of an alert is that it is worth being woken for.
+A destination is in one of two modes. In ``threats`` mode it is told of the incidents on the
+Threats page and of nothing else: a real attack, one the rules or the AI are sure of or that went
+past looking around (``app/incidents/attention.py`` says which), so a message means that something
+real is happening. The floors, programs and kinds below do not apply, since the Threats page has
+its own, which the owner sets under Settings. In ``custom`` mode the rules choose with a floor on
+severity and on confidence, and may name programs and kinds of activity. Either way quiet hours and
+the limit on messages an hour apply.
+
+A new destination is in ``threats`` mode. One in ``custom`` mode is told only of what is serious
+(medium or worse) and what AresGate is sure of (the "high" band, 65 or more) until the owner
+chooses otherwise: the point of an alert is that it is worth being woken for.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
-from typing import Final, Literal
+from typing import Final, Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only
 
 from app.events.event import Severity
-from app.incidents import verdicts
+from app.incidents import attention, verdicts
 from app.models import AlertDestination, Incident
+from app.threats import settings as threat_settings
+from app.threats.settings import Tuning
 
-Reason = Literal["muted", "settled", "severity", "confidence", "source", "activity"]
+Mode = Literal["threats", "custom"]
+Reason = Literal["muted", "settled", "threat", "severity", "confidence", "source", "activity"]
 # In the order they are checked, which is the order a person would want to hear them in.
 REASONS: Final[tuple[Reason, ...]] = (
     "muted",
     "settled",
+    "threat",
     "severity",
     "confidence",
     "source",
@@ -73,6 +86,7 @@ class Rules:
     max_per_hour: int
     detail: str
     again_when_worse: bool
+    mode: Mode = "custom"
 
 
 def of(destination: AlertDestination) -> Rules:
@@ -96,6 +110,7 @@ def of(destination: AlertDestination) -> Rules:
         max_per_hour=destination.max_per_hour,
         detail=destination.detail,
         again_when_worse=destination.again_when_worse,
+        mode=cast("Mode", destination.mode),
     )
 
 
@@ -159,21 +174,36 @@ def set_aside(incident: Incident) -> Reason | None:
     return None
 
 
-def decide(rules: Rules, incident: Incident, now: datetime) -> Decision:
-    """Whether to tell a destination of an incident, and if now."""
-    aside = set_aside(incident)
-    if aside is not None:
-        return Decision(False, aside)
+def _floors(rules: Rules, incident: Incident) -> Reason | None:
+    """Why the incident is not one of those a ``custom`` destination chose, if it is not."""
     # Having said it is a threat, the owner does not need the floors to agree.
     certain = incident.verdict == verdicts.THREAT
     if not certain and incident.severity < rules.min_severity:
-        return Decision(False, "severity")
+        return "severity"
     if not certain and incident.confidence < rules.min_confidence:
-        return Decision(False, "confidence")
+        return "confidence"
     if rules.sources and not set(rules.sources) & set(incident.sources):
-        return Decision(False, "source")
+        return "source"
     if rules.activities and not set(rules.activities) & set(incident.activities):
-        return Decision(False, "activity")
+        return "activity"
+    return None
+
+
+def decide(
+    rules: Rules, incident: Incident, now: datetime, tuning: Tuning | None = None
+) -> Decision:
+    """Whether to tell a destination of an incident, and if now. ``tuning`` is what the owner set
+    for telling a threat from noise, which a destination in ``threats`` mode goes by."""
+    aside = set_aside(incident)
+    if aside is not None:
+        return Decision(False, aside)
+    left: Reason | None
+    if rules.mode == "threats":
+        left = None if attention.is_threat(incident, tuning=tuning) else "threat"
+    else:
+        left = _floors(rules, incident)
+    if left is not None:
+        return Decision(False, left)
     quiet = rules.quiet
     if quiet and in_quiet(quiet, now):
         passes = quiet.critical_passes and incident.severity >= Severity.CRITICAL
@@ -187,6 +217,8 @@ def explain(reason: Reason, rules: Rules) -> str:
         return "You called it not suspicious or low priority"
     if reason == "settled":
         return "Already resolved or dismissed"
+    if reason == "threat":
+        return "Not a threat: a suspect or background on the Threats page"
     if reason == "severity":
         return f"Less serious than {SEVERITY_WORDS.get(rules.min_severity, 'chosen')}"
     if reason == "confidence":
@@ -221,6 +253,7 @@ class Preview:
 def preview(db: Session, rules: Rules, now: datetime) -> Preview:
     """What the rules would have done with the incidents of the last day, so that the owner can
     see what they let through before they are saved."""
+    tuning = threat_settings.load(db)
     since = now - timedelta(hours=PREVIEW_HOURS)
     going_on = Incident.last_seen_at >= since
     total = db.scalar(select(func.count()).select_from(Incident).where(going_on)) or 0
@@ -237,6 +270,9 @@ def preview(db: Session, rules: Rules, now: datetime) -> Preview:
                 Incident.verdict,
                 Incident.sources,
                 Incident.activities,
+                Incident.stages,
+                Incident.ai_class,
+                Incident.ai_confidence,
                 Incident.first_seen_at,
                 Incident.last_seen_at,
             )
@@ -248,7 +284,7 @@ def preview(db: Session, rules: Rules, now: datetime) -> Preview:
     sent: list[Incident] = []
     held = 0
     for incident in found:
-        decision = decide(rules, incident, now)
+        decision = decide(rules, incident, now, tuning)
         if decision.reason is not None:
             left_out[decision.reason] += 1
         else:

@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -27,6 +28,7 @@ from tests.helpers import OTHER_ORIGIN
 from tests.stubs import Answer, Serve, StubServer
 
 BASE = "/api/alerts/destinations"
+SAMPLE = "/api/alerts/sample"
 ID = "1234567890123456789"
 TOKEN = "Zk3-_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-_x"
 ADDRESS = f"https://discord.com/api/webhooks/{ID}/{TOKEN}"
@@ -68,6 +70,8 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("patch", f"{BASE}/1"),
         ("delete", f"{BASE}/1"),
         ("post", f"{BASE}/1/test"),
+        ("post", f"{BASE}/1/sample"),
+        ("get", SAMPLE),
         ("put", f"{BASE}/1/rules"),
         ("post", f"{BASE}/1/preview"),
     ):
@@ -568,6 +572,7 @@ class TestTheTestMessage:
 
 # What a new destination is told about, and the page's whole set of rules with changes.
 NEW_RULES: dict[str, Any] = {
+    "mode": "threats",
     "min_severity": 2,
     "min_confidence": 65,
     "sources": [],
@@ -613,6 +618,82 @@ def incident(session: Session, **changes: Any) -> Incident:
     session.add(found)
     session.commit()
     return found
+
+
+class TestTheSampleAlert:
+    def test_a_sample_is_sent_in_the_form_the_destinations_rules_give_it(
+        self, client: TestClient, csrf_token: str, serve: Serve, app: FastAPI, session: Session
+    ) -> None:
+        server = discord(serve, app)
+        body = add(client, csrf_token).json()
+
+        response = client.post(f"{BASE}/{body['id']}/sample", headers=headers(csrf_token))
+
+        assert response.status_code == 200
+        answer = response.json()
+        assert answer["ok"] is True
+        assert answer["message"] == "The sample alert was sent. Look for it in the channel."
+        assert answer["destination"]["status"] == "connected"
+        [seen] = server.seen
+        [embed] = json.loads(seen.body)["embeds"]
+        assert embed["title"].startswith("Attack in progress: ")
+        assert embed["footer"] == {"text": "AresGate · sample alert"}
+        [event] = audited(session, Action.ALERT_DESTINATION_TESTED)
+        assert event.outcome == "success"
+
+    def test_a_destination_with_floors_gets_the_plain_message(
+        self, client: TestClient, csrf_token: str, serve: Serve, app: FastAPI
+    ) -> None:
+        server = discord(serve, app)
+        body = add(client, csrf_token).json()
+        client.put(
+            f"{BASE}/{body['id']}/rules",
+            json=rules(mode="custom", detail="brief"),
+            headers=headers(csrf_token),
+        )
+
+        client.post(f"{BASE}/{body['id']}/sample", headers=headers(csrf_token))
+
+        [embed] = json.loads(server.seen[0].body)["embeds"]
+        assert embed["title"] == "High-severity scanning"
+        assert "fields" not in embed
+
+    def test_a_webhook_that_is_not_taken_is_a_problem_in_words(
+        self, client: TestClient, csrf_token: str, serve: Serve, app: FastAPI
+    ) -> None:
+        discord(serve, app, known=f"{OTHER_ID}/{OTHER_TOKEN}")
+        body = add(client, csrf_token).json()
+
+        answer = client.post(f"{BASE}/{body['id']}/sample", headers=headers(csrf_token)).json()
+
+        assert answer["ok"] is False
+        assert answer["message"].startswith("Discord doesn't accept this webhook (HTTP 404).")
+
+    def test_there_is_no_sample_for_a_destination_that_is_not_there(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        response = client.post(f"{BASE}/99/sample", headers=headers(csrf_token))
+
+        assert response.status_code == 404
+
+    def test_the_page_can_ask_what_a_message_looks_like(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        threats = client.get(SAMPLE).json()["payload"]
+        brief = client.get(SAMPLE, params={"mode": "custom", "detail": "brief"}).json()
+        worse = client.get(SAMPLE, params={"reason": "worse"}).json()
+
+        assert threats["allowed_mentions"] == {"parse": []}
+        assert threats["embeds"][0]["title"].startswith("Attack in progress: ")
+        assert threats["embeds"][0]["url"].endswith("/incidents")
+        assert brief["payload"]["embeds"][0]["title"] == "High-severity scanning"
+        assert worse["payload"]["embeds"][0]["title"].startswith("Escalated: ")
+
+    def test_a_mode_or_a_level_it_does_not_know_is_refused(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        for query in ({"mode": "all"}, {"detail": "loud"}, {"reason": "limit"}):
+            assert client.get(SAMPLE, params=query).status_code == 422, query
 
 
 class TestTheRules:
@@ -775,10 +856,85 @@ class TestTheRules:
         assert response.status_code == 404
 
 
+class TestTheMode:
+    def test_a_new_destination_is_told_only_of_threats(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        body = add(client, csrf_token).json()
+
+        assert body["rules"]["mode"] == "threats"
+
+    def test_the_owner_can_choose_the_floors_instead_and_back(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        body = add(client, csrf_token).json()
+
+        custom = client.put(
+            f"{BASE}/{body['id']}/rules",
+            json=rules(mode="custom", min_severity=3),
+            headers=headers(csrf_token),
+        ).json()
+        back = client.put(
+            f"{BASE}/{body['id']}/rules", json=rules(), headers=headers(csrf_token)
+        ).json()
+
+        assert (custom["rules"]["mode"], custom["rules"]["min_severity"]) == ("custom", 3)
+        assert back["rules"]["mode"] == "threats"
+        assert client.get(BASE).json()["items"][0]["rules"]["mode"] == "threats"
+
+    def test_a_mode_there_is_not_is_refused(self, client: TestClient, csrf_token: str) -> None:
+        body = add(client, csrf_token).json()
+
+        response = client.put(
+            f"{BASE}/{body['id']}/rules",
+            json=rules(mode="everything"),
+            headers=headers(csrf_token),
+        )
+
+        assert response.status_code == 422
+
+    def test_the_rules_must_say_which(self, client: TestClient, csrf_token: str) -> None:
+        body = add(client, csrf_token).json()
+        without = {key: value for key, value in NEW_RULES.items() if key != "mode"}
+
+        response = client.put(
+            f"{BASE}/{body['id']}/rules", json=without, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 422
+
+    def test_the_preview_of_threats_counts_what_is_on_the_threats_page(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        destination = add(client, csrf_token).json()
+        incident(session, title="Chain", confidence=40, stages=["recon", "access"])
+        incident(session, title="Suspect", confidence=50)
+        incident(session, title="Quiet", verdict="not_suspicious")
+
+        response = client.post(
+            f"{BASE}/{destination['id']}/preview", json=rules(), headers=headers(csrf_token)
+        )
+
+        body = response.json()
+        assert (body["considered"], body["would_send"]) == (3, 1)
+        assert body["left_out"] == [
+            {"reason": "muted", "text": "You called it not suspicious or low priority", "count": 1},
+            {
+                "reason": "threat",
+                "text": "Not a threat: a suspect or background on the Threats page",
+                "count": 1,
+            },
+        ]
+        assert [example["title"] for example in body["examples"]] == ["Chain"]
+
+
 class TestThePreview:
     def preview(self, client: TestClient, csrf_token: str, destination: int, **changes: Any) -> Any:
+        # These are of the floors, so the rules are the custom ones unless a test says otherwise.
         return client.post(
-            f"{BASE}/{destination}/preview", json=rules(**changes), headers=headers(csrf_token)
+            f"{BASE}/{destination}/preview",
+            json=rules(**{"mode": "custom", **changes}),
+            headers=headers(csrf_token),
         )
 
     def test_it_says_what_the_rules_would_have_sent_in_the_last_day(

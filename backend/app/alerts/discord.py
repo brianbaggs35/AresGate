@@ -11,8 +11,19 @@ What this is built from (Discord's developer documentation, read 2026-11-01):
 
 - Execute Webhook, https://docs.discord.com/developers/resources/webhook: ``POST
   /webhooks/{webhook.id}/{webhook.token}``; ``content`` up to 2000 characters and ``embeds`` up to
-  10; ``wait=false`` (the default) answers 204 No Content; ``allowed_mentions`` controls who a
-  message may ping; a webhook needs no sign-in.
+  10; ``wait=false`` (the default) answers 204 No Content, ``wait=true`` "waits for server
+  confirmation of message send before response, and returns the created message body" (which has
+  the message's ``id``); ``allowed_mentions`` controls who a message may ping; a webhook needs no
+  sign-in.
+- Edit Webhook Message, same page: ``PATCH /webhooks/{webhook.id}/{webhook.token}/messages/
+  {message.id}`` takes the same ``embeds`` and ``allowed_mentions`` and returns the message. The
+  page does not say whether the ``embeds`` sent replace the old or are merged with them, so the
+  whole embed is sent again.
+- JSON error codes, https://docs.discord.com/developers/topics/opcodes-and-status-codes: an error
+  body has ``code`` and ``message``; 10008 is "Unknown message" (the message was deleted) and 10015
+  "Unknown webhook".
+- Embed fields, https://docs.discord.com/developers/resources/message: up to 25 fields, ``inline``
+  is a boolean.
 - Rate limits, https://docs.discord.com/developers/topics/rate-limits: a 429 answers with a body
   that has ``retry_after`` (seconds, a float) and ``global``; webhooks are limited per webhook;
   a webhook that answers 404 "should not" be used again; 401, 403 and 429 count toward a limit of
@@ -28,11 +39,12 @@ What is inferred and not tried against Discord: that ``discordapp.com`` still ta
 is Discord's older name, and addresses made then use it; the pages above name only discord.com),
 that the token is made of letters, digits, ``-`` and ``_`` (the pages give no format; the
 patterns below are wide), that a wrong token answers 401 (the pages say only that 404 is a webhook
-that is gone), and that a 5xx can be tried again.
+that is gone), that a 5xx can be tried again, that editing a message replaces its embed, and that
+an edit of a deleted message answers 404 with code 10008.
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
@@ -63,6 +75,11 @@ AMBER = 0xF59E0B
 # The limits of a message, from the pages above.
 MAX_TITLE = 256
 MAX_DESCRIPTION = 4096
+MAX_FIELDS = 25
+MAX_FIELD_NAME = 256
+MAX_FIELD_VALUE = 1024
+GREY = 0x6B7280
+GREEN = 0x22C55E
 # The longest Discord is believed when it says how long to wait, in seconds.
 MAX_WAIT = 3600
 USER_AGENT = f"DiscordBot (https://github.com/brianbaggs35/AresGate, {__version__})"
@@ -147,6 +164,10 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+# A field of an embed: its name, its value and whether it sits beside the next.
+Field = tuple[str, str, bool]
+
+
 def message(
     *,
     title: str,
@@ -154,6 +175,7 @@ def message(
     color: int = BLUE,
     footer: str | None = None,
     link: str | None = None,
+    fields: Sequence[Field] = (),
     at: datetime | None = None,
 ) -> dict[str, object]:
     """A message of one embed, within the limits Discord sets, that can ping no one however it
@@ -163,6 +185,15 @@ def message(
         "description": _clip(description, MAX_DESCRIPTION),
         "color": color,
     }
+    if fields:
+        embed["fields"] = [
+            {
+                "name": _clip(name, MAX_FIELD_NAME),
+                "value": _clip(value, MAX_FIELD_VALUE),
+                "inline": inline,
+            }
+            for name, value, inline in fields[:MAX_FIELDS]
+        ]
     if link:
         embed["url"] = link
     if footer:
@@ -204,6 +235,11 @@ class Sent:
     # How long Discord's headers say the next message has to wait: it got this one, but the
     # allowance for now is spent.
     pause: float | None = None
+    # What Discord called the message, when it was asked to say (``wait``).
+    message_id: str | None = None
+    # An edit of a message that is gone (someone deleted it in Discord): the webhook is fine, and
+    # there is nothing to change.
+    missing: bool = False
 
 
 def _retry_after(body: object) -> float | None:
@@ -231,11 +267,28 @@ def _spent(headers: Mapping[str, str]) -> float | None:
     return _seconds(headers.get("x-ratelimit-reset-after"))
 
 
+def _snowflake(body: object) -> str | None:
+    """The ``id`` of the message in an answer, if it has one that looks like Discord's."""
+    if isinstance(body, Mapping):
+        found = cast("Mapping[str, object]", body).get("id")
+        if isinstance(found, str) and _ID.fullmatch(found):
+            return found
+    return None
+
+
+def _code_of(body: object) -> int | None:
+    if isinstance(body, Mapping):
+        code = cast("Mapping[str, object]", body).get("code")
+        if isinstance(code, int) and not isinstance(code, bool):
+            return code
+    return None
+
+
 def judge(status: int, body: object, headers: Mapping[str, str] | None = None) -> Sent:
     """What an answer from Discord means for sending."""
     seen = headers or {}
     if status in (200, 204):
-        return Sent(True, status, pause=_spent(seen))
+        return Sent(True, status, pause=_spent(seen), message_id=_snowflake(body))
     if status == 429:
         # The page says to rely on the header or the field; the field is the more exact.
         wait = _retry_after(body)
@@ -272,6 +325,23 @@ def judge(status: int, body: object, headers: Mapping[str, str] | None = None) -
     )
 
 
+# Discord's code for an edit of a message that is not there.
+UNKNOWN_MESSAGE = 10008
+
+
+def judge_edit(status: int, body: object, headers: Mapping[str, str] | None = None) -> Sent:
+    """What an answer from Discord means for editing a message. A 404 with the code for an unknown
+    message is the message having been deleted, which is not a fault of the webhook."""
+    if status == 404 and _code_of(body) == UNKNOWN_MESSAGE:
+        return Sent(
+            False,
+            status,
+            "The message was deleted in Discord, so there was nothing to update.",
+            missing=True,
+        )
+    return judge(status, body, headers)
+
+
 def _origin(override: str | None) -> Origin:
     """Where Discord is. The end-to-end harness points it at a stand-in on its own machine."""
     if override:
@@ -289,17 +359,19 @@ def _without_address(record: Recorder) -> Recorder:
     return keep
 
 
-async def send(
+async def _call(
+    method: str,
+    path: str,
     webhook: Webhook,
     payload: Mapping[str, object],
     *,
+    query: Mapping[str, str] | None,
     connection: str,
     recorder: Recorder,
     policy: AddressPolicy,
-    origin: str | None = None,
+    origin: str | None,
+    edit: bool,
 ) -> Sent:
-    """Posts a message to a webhook and says how it went. Never raises for Discord's answer, or
-    for none. Every request is logged, without the address."""
     target = Target(
         integration="discord",
         connection=connection,
@@ -313,11 +385,68 @@ async def send(
     async with ApiClient(target, _without_address(recorder), policy) as client:
         try:
             reply = await client.request(
-                "POST",
-                webhook.path,
+                method,
+                path,
+                query=query,
                 json_body=payload,
                 headers={"User-Agent": USER_AGENT},
             )
         except CallFailed as failure:
             return Sent(False, None, str(failure), retry=True)
-    return judge(reply.status, reply.json(), reply.headers)
+    judge_it = judge_edit if edit else judge
+    return judge_it(reply.status, reply.json(), reply.headers)
+
+
+async def send(
+    webhook: Webhook,
+    payload: Mapping[str, object],
+    *,
+    connection: str,
+    recorder: Recorder,
+    policy: AddressPolicy,
+    origin: str | None = None,
+    wait: bool = False,
+) -> Sent:
+    """Posts a message to a webhook and says how it went. Never raises for Discord's answer, or
+    for none. Every request is logged, without the address. With ``wait`` Discord answers with the
+    message it made, and ``Sent.message_id`` is its name, which is how it is edited later."""
+    return await _call(
+        "POST",
+        webhook.path,
+        webhook,
+        payload,
+        query={"wait": "true"} if wait else None,
+        connection=connection,
+        recorder=recorder,
+        policy=policy,
+        origin=origin,
+        edit=False,
+    )
+
+
+async def edit(
+    webhook: Webhook,
+    message_id: str,
+    payload: Mapping[str, object],
+    *,
+    connection: str,
+    recorder: Recorder,
+    policy: AddressPolicy,
+    origin: str | None = None,
+) -> Sent:
+    """Changes a message already sent to a webhook, and says how it went. ``message_id`` came from
+    Discord, but it is checked all the same, since it becomes part of the address."""
+    if not _ID.fullmatch(message_id):
+        return Sent(False, None, "That isn't the name of a Discord message.")
+    return await _call(
+        "PATCH",
+        f"{webhook.path}/messages/{message_id}",
+        webhook,
+        payload,
+        query=None,
+        connection=connection,
+        recorder=recorder,
+        policy=policy,
+        origin=origin,
+        edit=True,
+    )

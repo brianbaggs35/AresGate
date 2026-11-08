@@ -25,6 +25,8 @@ RECON: Final = "recon"
 ACCESS: Final = "access"
 FOOTHOLD: Final = "foothold"
 STAGES: Final = (RECON, ACCESS, FOOTHOLD)
+# What each is called to the owner.
+NAMES: Final = {RECON: "Looking around", ACCESS: "Trying to get in", FOOTHOLD: "Sign it worked"}
 
 _FOOTHOLD = re.compile(
     r"\bmalware\b|\btrojan\b|\bbackdoor\b|\bransom(?:ware)?\b|\bbotnet\b|\bc2\b|\bcnc\b"
@@ -62,3 +64,9 @@ def with_stage(known: list[str], signal: Signal) -> list[str]:
 def is_chain(stages: list[str]) -> bool:
     """Whether the stages are more than scanning: a foothold, or more than one stage."""
     return FOOTHOLD in stages or len(stages) > 1
+
+
+def depth(stages: list[str]) -> int:
+    """How far along the path an incident has got: 0 for none, 3 for a foothold. It only goes up
+    as signals are added, which is what makes it a way to tell that an attack escalated."""
+    return max((STAGES.index(stage) + 1 for stage in stages if stage in STAGES), default=0)

@@ -1,6 +1,7 @@
 """Alerts: the places AresGate sends word of what it finds. Their addresses only go in: no route
 here returns one, and a failed request doesn't quote what was sent."""
 
+from datetime import datetime
 from typing import Annotated, Literal, cast
 
 import anyio.from_thread
@@ -8,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Res
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints
 from sqlalchemy.orm import Session
 
-from app.alerts import destinations, discord, log
+from app.alerts import destinations, discord, log, message
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import NameTaken, Unusable
 from app.alerts.discord import InvalidWebhook
@@ -32,6 +33,8 @@ Address = Annotated[SecretStr, Field(min_length=1, max_length=discord.MAX_URL)]
 
 Activity = Literal["scan", "brute_force"]
 Detail = Literal["brief", "standard", "full"]
+Mode = Literal["threats", "custom"]
+Why = Literal["new", "worse", "reopened"]
 Minute = Annotated[int, Field(ge=0, le=alert_rules.MINUTES_A_DAY - 1)]
 
 
@@ -41,6 +44,8 @@ class RulesModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Only the incidents on the Threats page, or what the four rules below choose.
+    mode: Mode
     min_severity: Annotated[int, Field(ge=1, le=4)]
     min_confidence: Annotated[int, Field(ge=0, le=100)]
     sources: Annotated[list[Annotated[str, StringConstraints(max_length=32)]], Field(max_length=16)]
@@ -134,8 +139,8 @@ class DeliveryOut(BaseModel):
     destination: str
     # None for a summary, and for a message whose incident has since been deleted.
     incident_id: int | None
-    kind: Literal["incident", "summary"]
-    reason: Literal["new", "worse", "reopened", "limit", "quiet"]
+    kind: Literal["incident", "summary", "update"]
+    reason: Literal["new", "worse", "reopened", "limit", "quiet", "retract"]
     state: DeliveryState
     title: str
     severity: SeverityName
@@ -189,6 +194,7 @@ def _invalid(*location: str, message: str) -> dict[str, object]:
 
 def _rules_model(row: AlertDestination) -> RulesModel:
     return RulesModel(
+        mode=cast("Mode", row.mode),
         min_severity=row.min_severity,
         min_confidence=row.min_confidence,
         sources=list(row.sources),
@@ -363,26 +369,33 @@ def remove_destination(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/destinations/{destination_id}/test")
-def test_destination(
-    destination_id: DestinationId,
-    auth: Annotated[SignedIn, Depends(signed_in)],
+class SampleOut(BaseModel):
+    """A message as Discord will show it, for the page to draw."""
+
+    payload: dict[str, object]
+
+
+def _deliver(
+    row: AlertDestination,
+    payload: dict[str, object],
+    *,
+    auth: SignedIn,
     request: Request,
-    db: Db,
+    db: Session,
     settings: SettingsDep,
     recorder: RecorderDep,
+    now: datetime,
+    done: str,
 ) -> TestOut:
-    """Sends a real test message and keeps how it went. It goes even when the destination is turned
-    off, because the owner asked for it."""
-    row = _find(db, destination_id)
-    now = utcnow()
+    """Sends a message the owner asked for to a destination and keeps how it went. It goes even
+    when the destination is turned off."""
     sent: discord.Sent | str
     try:
         webhook = destinations.open_webhook(db, settings, row)
         sent = anyio.from_thread.run(
             lambda: discord.send(
                 webhook,
-                discord.check_message(row.name, now),
+                payload,
                 connection=f"destination-{row.id}",
                 recorder=recorder,
                 policy=request.app.state.alert_policy,
@@ -402,11 +415,81 @@ def test_destination(
         detail={"destination": row.name},
     )
     db.commit()
-    message = "The test message was sent. Look for it in the channel."
+    text = done
     if not ok:
         problem = sent if isinstance(sent, str) else sent.problem
-        message = problem or "The message didn't get through."
-    return TestOut(ok=ok, message=message, destination=_one(db, row))
+        text = problem or "The message didn't get through."
+    return TestOut(ok=ok, message=text, destination=_one(db, row))
+
+
+@router.post("/destinations/{destination_id}/test")
+def test_destination(
+    destination_id: DestinationId,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+    settings: SettingsDep,
+    recorder: RecorderDep,
+) -> TestOut:
+    """Sends a real test message and keeps how it went. It goes even when the destination is turned
+    off, because the owner asked for it."""
+    row = _find(db, destination_id)
+    now = utcnow()
+    return _deliver(
+        row,
+        discord.check_message(row.name, now),
+        auth=auth,
+        request=request,
+        db=db,
+        settings=settings,
+        recorder=recorder,
+        now=now,
+        done="The test message was sent. Look for it in the channel.",
+    )
+
+
+@router.post("/destinations/{destination_id}/sample")
+def send_sample(
+    destination_id: DestinationId,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+    settings: SettingsDep,
+    recorder: RecorderDep,
+) -> TestOut:
+    """Sends a sample alert, made up and marked as one, in the form this destination's rules give
+    its real messages, so the owner sees what will arrive before a real one does."""
+    row = _find(db, destination_id)
+    now = utcnow()
+    return _deliver(
+        row,
+        message.sample_message(
+            mode=row.mode, reason="new", detail=row.detail, origin=settings.public_origin, at=now
+        ),
+        auth=auth,
+        request=request,
+        db=db,
+        settings=settings,
+        recorder=recorder,
+        now=now,
+        done="The sample alert was sent. Look for it in the channel.",
+    )
+
+
+@router.get("/sample")
+def sample(
+    settings: SettingsDep,
+    mode: Mode = "threats",
+    detail: Detail = "standard",
+    reason: Why = "new",
+) -> SampleOut:
+    """A message as the rules in this mode and at this level of detail would send it, about an
+    incident that is made up, for the page to show next to the choice."""
+    return SampleOut(
+        payload=message.sample_message(
+            mode=mode, reason=reason, detail=detail, origin=settings.public_origin, at=utcnow()
+        )
+    )
 
 
 def _checked(body: RulesModel) -> alert_rules.Rules:
@@ -432,6 +515,7 @@ def _checked(body: RulesModel) -> alert_rules.Rules:
             ],
         )
     return alert_rules.Rules(
+        mode=body.mode,
         min_severity=body.min_severity,
         min_confidence=body.min_confidence,
         sources=tuple(sorted(set(body.sources))),
@@ -458,6 +542,7 @@ def change_rules(
     """Replaces what a destination is told about, and when."""
     row = _find(db, destination_id)
     rules = _checked(body)
+    row.mode = rules.mode
     row.min_severity = rules.min_severity
     row.min_confidence = rules.min_confidence
     row.sources = list(rules.sources)
@@ -525,8 +610,8 @@ def _delivery(row: AlertDelivery, destination: str) -> DeliveryOut:
         destination_id=row.destination_id,
         destination=destination,
         incident_id=row.incident_id,
-        kind=cast("Literal['incident', 'summary']", row.kind),
-        reason=cast("Literal['new', 'worse', 'reopened', 'limit', 'quiet']", row.reason),
+        kind=cast("Literal['incident', 'summary', 'update']", row.kind),
+        reason=cast("Literal['new', 'worse', 'reopened', 'limit', 'quiet', 'retract']", row.reason),
         state=cast("DeliveryState", row.state),
         title=row.title,
         severity=SEVERITY_NAMES[Severity(row.severity)],
