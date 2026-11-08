@@ -498,13 +498,13 @@ def build(
     if incident is None:
         return None
     devices = _devices(db, incident) if destination.detail == "full" else ()
-    if row.kind == "update" or destination.mode == "threats":
-        tuning = tuning or threat_settings.load(db)
-        why = explain.why(incident, attention.NEEDS_YOU_FROM, tuning)
-        if row.kind == "update":
-            return message.stood_down_message(
-                incident, detail=destination.detail, origin=origin, why=why[:3], at=now
-            )
+    tuning = tuning or threat_settings.load(db)
+    why = explain.why(incident, attention.NEEDS_YOU_FROM, tuning)
+    if row.kind == "update":
+        return message.stood_down_message(
+            incident, detail=destination.detail, origin=origin, why=why[:3], at=now
+        )
+    if destination.mode == "threats":
         return message.threat_message(
             incident,
             reason=row.reason,
@@ -519,6 +519,7 @@ def build(
         reason=row.reason,
         detail=destination.detail,
         origin=origin,
+        why=why,
         devices=devices,
         at=now,
     )

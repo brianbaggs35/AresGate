@@ -589,6 +589,20 @@ class TestWhatIsSaid:
         assert "laptop (192.168.1.20)" in text
         assert f"{settings.public_origin}/incidents/{found.id}" in text
 
+    def test_a_destination_told_of_more_than_threats_is_also_told_why(
+        self, session: Session, settings: Settings
+    ) -> None:
+        destination(session, settings)
+        incident(session)
+
+        (job,) = pass_at(session, settings)
+
+        [embed] = cast("list[dict[str, Any]]", job.payload["embeds"])
+        assert embed["footer"] == {"text": "AresGate · alert"}
+        assert "**Why AresGate thinks so**" in embed["description"]
+        assert "• AresGate's rules are 70% sure it is a real attack." in embed["description"]
+        assert {"How sure", "How serious"} <= {item["name"] for item in embed["fields"]}
+
     def test_a_message_whose_incident_has_gone_is_dropped(
         self, session: Session, settings: Settings
     ) -> None:

@@ -21,6 +21,9 @@ Every release's notes are here, newest first. The format follows
   show it, made by the same code that makes the real ones, for the first message and for the one
   if it escalates; **Send a sample alert** on a card sends that message to the channel, marked as
   a sample. AresGate asks Discord to name each message it sends (`wait=true`) to find it again.
+  A channel on **Everything serious** or **Custom** gets the same facts and reasons (*Why AresGate
+  thinks so*, how sure, how serious, how far it got), so a message about something less than a
+  threat still says how much it is worth getting up for.
   This adds a migration (`0030`: `alert_destinations.mode`, and `message_id` and `target_id` on
   `alert_deliveries`). `GET /api/alerts/sample`, `POST /api/alerts/destinations/{id}/sample`.
   [Alerts](DOCS/alerts.md) has the rules and what was read from Discord's documentation.

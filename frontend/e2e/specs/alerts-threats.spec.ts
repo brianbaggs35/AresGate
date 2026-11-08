@@ -146,10 +146,15 @@ test.describe('alerts for real attacks', () => {
     await alerts.addDestination('Security', ADDRESS)
     await alerts.openRules('Security')
     await expect(alerts.discordFields).toContainText('How far it got')
+    await expect(alerts.discordTitle).toContainText('Attack in progress')
 
     await alerts.purpose('serious').click()
 
-    await expect(alerts.discordFields).toHaveCount(0)
+    // The other kind of message is for something less than a threat, and says why all the same.
+    await expect(alerts.discordTitle).toContainText('High-severity')
+    await expect(alerts.discordTitle).not.toContainText('Attack in progress')
+    await expect(alerts.discordDescription).toContainText('Why AresGate thinks so')
+    await expect(alerts.discordFields).toContainText('How sure')
     await expect(alerts.discordFooter).toHaveText('AresGate · sample alert')
   })
 

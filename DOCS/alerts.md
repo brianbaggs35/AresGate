@@ -165,6 +165,14 @@ What a message says depends on the destination's **detail** setting, and is buil
 | Standard | Adds the address it came from when that is on the internet, and the programs that saw it. |
 | Full | Adds what the strongest alert said and the devices on your network it touched, by name. |
 
+The table is for the wording; the parts are the same on both kinds of destination. A message to a
+destination on **Everything serious** or **Custom** also carries the facts and the reasons that a
+threat message does. Its fields give how far an attack got (when it went through stages), how sure,
+how serious and, at Standard and Full, where it came from, and its body lists **Why AresGate thinks
+so** in the words of the incident's own page, for example that the rules are 70% sure and the AI has
+not judged it yet. So a message about something that is not (yet) a threat says how much it is worth
+getting up for.
+
 Whatever an attacker or a device can choose (an alert's words, a hostname) is put in a code span, so
 it can't format the message, make a link or ping anyone, and `allowed_mentions` is empty on every
 message anyway.

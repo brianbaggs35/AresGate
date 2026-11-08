@@ -54,7 +54,7 @@ test.describe('alerts on a phone', () => {
     await alerts.purpose('serious').click()
 
     await expect(alerts.purposeChosen('serious')).toBeChecked()
-    await expect(alerts.discordFields).toHaveCount(0)
+    await expect(alerts.discordTitle).not.toContainText('Attack in progress')
     await expect(alerts.severity).toBeVisible()
   })
 })
