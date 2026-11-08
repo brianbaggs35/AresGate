@@ -179,10 +179,67 @@ describe('IncidentsView', () => {
     it('narrow it to the incidents AresGate is sure of', async () => {
       const { wrapper, router, fetchIncidents, choose } = await open()
 
-      await choose(() => pick(wrapper, 1, 65))
+      await choose(() => pick(wrapper, 2, 65))
 
       expect(last(fetchIncidents).minConfidence).toBe(65)
       expect(router.currentRoute.value.query).toEqual({ confidence: '65' })
+    })
+
+    it('narrow it to a lane: the threats, the suspects or the background', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open()
+
+      await choose(() => pick(wrapper, 1, 'threat'))
+
+      expect(last(fetchIncidents).lanes).toEqual(['threat'])
+      expect(router.currentRoute.value.query).toEqual({ lane: 'threat' })
+    })
+
+    it('come back to any lane', async () => {
+      const { wrapper, router, fetchIncidents, choose } = await open({
+        route: '/incidents?lane=suspect',
+      })
+      expect(last(fetchIncidents).lanes).toEqual(['suspect'])
+      expect(wrapper.findAllComponents(VSelect)[1]?.props('modelValue')).toBe('suspect')
+
+      await choose(() => pick(wrapper, 1, null))
+
+      expect(last(fetchIncidents)).not.toHaveProperty('lanes')
+      expect(router.currentRoute.value.query).toEqual({})
+    })
+
+    it('ignore a lane that is not one', async () => {
+      const { fetchIncidents } = await open({ route: '/incidents?lane=other' })
+
+      expect(last(fetchIncidents)).not.toHaveProperty('lanes')
+    })
+
+    it('narrow it to one kind of incident, which can be dropped or opened', async () => {
+      const { fetchIncidents, find, router, choose } = await open({
+        route: '/incidents?family=7',
+      })
+
+      expect(last(fetchIncidents).family).toBe(7)
+      expect(find('filter-family-open').attributes('href')).toBe('/threats/kinds/7')
+
+      await choose(() => find('filter-family').find('.v-chip__close').trigger('click'))
+
+      expect(last(fetchIncidents)).not.toHaveProperty('family')
+      expect(router.currentRoute.value.query).toEqual({})
+    })
+
+    it('keep the kind in the address when another way to narrow it is chosen', async () => {
+      const { wrapper, router, choose } = await open({ route: '/incidents?family=7' })
+
+      await choose(() => pick(wrapper, 0, 'high'))
+
+      expect(router.currentRoute.value.query).toEqual({ severity: 'high', family: '7' })
+    })
+
+    it('ignore a kind that is not a number', async () => {
+      const { fetchIncidents, find } = await open({ route: '/incidents?family=seven' })
+
+      expect(last(fetchIncidents)).not.toHaveProperty('family')
+      expect(find('filter-family').exists()).toBe(false)
     })
 
     it('come from the address of the page, and ignore what is not a choice', async () => {

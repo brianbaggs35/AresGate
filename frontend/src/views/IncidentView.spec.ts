@@ -465,6 +465,57 @@ describe('IncidentView', () => {
       expect(find('ai-chip').exists()).toBe(false)
     })
 
+    it('says which lane it is in, and shows the call on it beside how serious it is', async () => {
+      const { wrapper } = await open({
+        found: detail({
+          lane: 'background',
+          call: { classification: 'probe', confidence: 92, basis: 'family' },
+        }),
+      })
+
+      expect(wrapper.find('.incident__chips [data-test="lane-chip"]').text()).toBe('Background')
+      expect(wrapper.find('.incident__chips [data-test="call-chip"]').text()).toBe(
+        'AI: Probe, 92% sure',
+      )
+      expect(wrapper.find('.incident__chips [data-test="ai-chip"]').exists()).toBe(false)
+    })
+
+    it('has no lane to show for one that is over', async () => {
+      const { wrapper } = await open({ found: detail({ lane: null }) })
+
+      expect(wrapper.find('.incident__chips [data-test="lane-chip"]').exists()).toBe(false)
+    })
+
+    it('says where it stands and why', async () => {
+      const { find, text } = await open()
+
+      expect(text('where-why')).toBe("AresGate's rules are 70% sure it is a real attack.")
+      expect(find('where-open').attributes('href')).toBe('/threats/kinds/7')
+    })
+
+    it('shows what kept happening only when something did', async () => {
+      const none = await open()
+      expect(none.find('occurrences-card').exists()).toBe(false)
+
+      const repeated = await open({
+        found: detail({
+          occurrences: [
+            { signal: signal(), count: 40, last_at: new Date().toISOString(), duplicates: 0 },
+          ],
+        }),
+      })
+      expect(repeated.find('occurrences-card').exists()).toBe(true)
+
+      const twice = await open({
+        found: detail({
+          occurrences: [
+            { signal: signal(), count: 1, last_at: new Date().toISOString(), duplicates: 1 },
+          ],
+        }),
+      })
+      expect(twice.find('occurrences-card').exists()).toBe(true)
+    })
+
     it('says what it made of an incident it has read, beside how serious it is', async () => {
       const { text, wrapper } = await open({
         found: detail({ reading: reading(), ai: { classification: 'probe', confidence: 91 } }),

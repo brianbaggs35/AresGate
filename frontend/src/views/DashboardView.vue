@@ -22,6 +22,7 @@ import StatTile from '@/components/StatTile.vue'
 import StatusHero from '@/components/StatusHero.vue'
 import TrafficCard from '@/components/TrafficCard.vue'
 import {
+  alertsHint,
   bucketLabel,
   changeOf,
   collectionOf,
@@ -74,9 +75,7 @@ async function load(quiet = false) {
       const { attention, window: windowInfo } = counted
       const found =
         attention.needs_you > 0
-          ? await fetchIncidents(needsYouQuery(attention, windowInfo.start, LANE_SIZE)).catch(
-              () => undefined,
-            )
+          ? await fetchIncidents(needsYouQuery(windowInfo.start, LANE_SIZE)).catch(() => undefined)
           : null
       return [counted, reporting, found] as const
     })
@@ -286,7 +285,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           flat
           label="Alerts"
           :value="alertsTile.value"
-          :hint="`In ${lastWords}`"
+          :hint="alertsHint(data.alerts, lastWords)"
           :icon="BellRing"
           :tone="alertsTile.tone"
           :delta="alertsTile.delta"
@@ -336,7 +335,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         v-if="needsYou?.items.length"
         :incidents="needsYou.items"
         :total="needsYou.total"
-        :to="needsYouLink(data.attention, data.window.start)"
+        :to="needsYouLink(data.attention)"
         @judged="judged"
       />
 

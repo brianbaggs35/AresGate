@@ -131,7 +131,9 @@ describe('what the filters would do', () => {
 
   it('counts one incident properly', () => {
     const one = preview({
-      after: effect({ incidents: { active: 1, needs_you: 1, urgent: 0, unsure: 0, muted: 0 } }),
+      after: effect({
+        incidents: { active: 1, needs_you: 1, urgent: 0, unsure: 0, muted: 0, cleared: 0 },
+      }),
     })
 
     expect(changeSentence(one)).toContain('1 incident would need you instead of 5')

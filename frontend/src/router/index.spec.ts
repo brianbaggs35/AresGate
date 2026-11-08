@@ -51,6 +51,21 @@ describe('router', () => {
     expect(document.title).toBe('Incidents · AresGate')
   })
 
+  it('shows the threats, the kinds of incident and each kind’s page, under one title', async () => {
+    const list = await visit('/threats')
+    expect(list.name).toBe('threats')
+    expect((await visit('/threats/kinds')).name).toBe('kinds')
+    const one = await visit('/threats/kinds/12')
+    expect(one.name).toBe('family')
+    expect(one.params.id).toBe('12')
+    expect(document.title).toBe('Threats · AresGate')
+    expect((await visit('/threats/kinds/twelve')).name).toBe('not-found')
+  })
+
+  it('shows the threat detection settings as a page of Settings', async () => {
+    expect((await visit('/settings/threat-detection')).name).toBe('settings-threat-detection')
+  })
+
   it('shows an address that is not a number as a page that is not there', async () => {
     expect((await visit('/incidents/twelve')).name).toBe('not-found')
   })

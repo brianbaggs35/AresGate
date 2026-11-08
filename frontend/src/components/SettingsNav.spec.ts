@@ -24,6 +24,7 @@ describe('SettingsNav', () => {
       '/settings/activity',
       '/settings/verdicts',
       '/settings/noise-filters',
+      '/settings/threat-detection',
       '/settings/ai',
       '/settings/data',
     ])
@@ -33,6 +34,7 @@ describe('SettingsNav', () => {
       'Activity',
       'Verdicts',
       'Noise filters',
+      'Threat detection',
       'AI',
       'Data',
     ])
@@ -59,6 +61,7 @@ describe('SettingsNav', () => {
       '/settings/activity',
       '/settings/verdicts',
       '/settings/noise-filters',
+      '/settings/threat-detection',
       '/settings/ai',
       '/settings/data',
     ])
@@ -68,6 +71,7 @@ describe('SettingsNav', () => {
       'Activity',
       'Verdicts',
       'Noise filters',
+      'Threat detection',
       'AI',
       'Data',
     ])

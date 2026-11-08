@@ -40,6 +40,8 @@ export function dashboard(
     alerts: {
       total: 0,
       previous: 0,
+      reports: 0,
+      duplicates: 0,
       highest: null,
       by_severity: {
         info: none(buckets),
@@ -132,6 +134,7 @@ export function attention(changes: Partial<Attention> = {}): Attention {
     handled: 0,
     muted: 0,
     unsure: 0,
+    cleared: 0,
     needs_you: 0,
     urgent: 0,
     ...changes,

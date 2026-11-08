@@ -53,6 +53,14 @@ describe('incidents', () => {
     )
   })
 
+  it('asks for the incidents in some lanes, and of one kind', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
+
+    await fetchIncidents({ lanes: ['threat', 'suspect'], family: 12 })
+
+    expect(get).toHaveBeenCalledWith('/incidents?lane=threat&lane=suspect&family=12')
+  })
+
   it('can ask for the most serious first', async () => {
     const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [], counts: {} })
 
@@ -140,6 +148,8 @@ describe('incidents', () => {
             address: '93.184.216.34',
             q: 'ssh',
             tz: 'America/Halifax',
+            lanes: ['threat'],
+            family: 12,
             limit: 25,
           },
         },
@@ -158,6 +168,8 @@ describe('incidents', () => {
             address: '93.184.216.34',
             q: 'ssh',
             tz: 'America/Halifax',
+            lane: ['threat'],
+            family: 12,
           },
           status: 'dismissed',
         },

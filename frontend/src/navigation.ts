@@ -9,6 +9,7 @@ import {
   Plug,
   ScrollText,
   Settings,
+  ShieldAlert,
   Siren,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
@@ -29,6 +30,12 @@ export const BOTTOM_BAR_LIMIT = 5
 /** The menu, in order. A page that should be in it adds itself here. */
 export const navItems: readonly NavItem[] = [
   { route: 'home', title: 'Dashboard', icon: LayoutDashboard },
+  {
+    route: 'threats',
+    title: 'Threats',
+    icon: ShieldAlert,
+    keywords: 'attacks real noise background suspects kinds families lanes',
+  },
   { route: 'incidents', title: 'Incidents', icon: Siren },
   { route: 'assistant', title: 'Assistant', icon: Bot },
   { route: 'logs', title: 'Logs', icon: ScrollText },

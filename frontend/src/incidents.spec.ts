@@ -115,6 +115,8 @@ describe('queryOf', () => {
     const filters = {
       view: 'resolved' as const,
       severity: 'high' as const,
+      lane: 'threat' as const,
+      family: 7,
       confidence: HIGH_CONFIDENCE,
       q: ' source:wazuh -port:22 ',
       quieted: true,
@@ -123,6 +125,8 @@ describe('queryOf', () => {
     expect(queryOf(filters, 10)).toEqual({
       statuses: ['resolved'],
       minSeverity: 'high',
+      lanes: ['threat'],
+      family: 7,
       minConfidence: 65,
       q: 'source:wazuh -port:22',
       tz: zone(),
@@ -149,15 +153,19 @@ describe('activeFilters', () => {
     expect(activeFilters({ ...NO_FILTERS, q: '10.0.0.1' })).toBe(1)
     expect(activeFilters({ ...NO_FILTERS, q: '  ' })).toBe(0)
     expect(activeFilters({ ...NO_FILTERS, quieted: true })).toBe(1)
+    expect(activeFilters({ ...NO_FILTERS, lane: 'threat' })).toBe(1)
+    expect(activeFilters({ ...NO_FILTERS, family: 7 })).toBe(1)
     expect(
       activeFilters({
         view: 'all',
         severity: 'high',
+        lane: 'suspect',
+        family: 7,
         confidence: 65,
         q: '10.0.0.1',
         quieted: true,
       }),
-    ).toBe(4)
+    ).toBe(6)
   })
 
   it('offers the confidence the words low, medium and high are drawn at', () => {

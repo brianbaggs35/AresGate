@@ -9,6 +9,7 @@ import type {
   IncidentPage,
   IncidentQuery,
   IncidentStatus,
+  Lane,
   Program,
   Signal,
 } from '@/api/incidents'
@@ -198,6 +199,14 @@ export const SEVERITY_FILTERS: readonly { value: Severity | null; label: string 
   { value: 'critical', label: 'Critical only' },
 ]
 
+/** Which lane it has to be in to be listed. */
+export const LANE_FILTERS: readonly { value: Lane | null; label: string }[] = [
+  { value: null, label: 'Any lane' },
+  { value: 'threat', label: 'Threats' },
+  { value: 'suspect', label: 'Suspects' },
+  { value: 'background', label: 'Background' },
+]
+
 /** How sure AresGate has to be of it to be listed. */
 export const CONFIDENCE_FILTERS: readonly { value: number; label: string }[] = [
   { value: 0, label: 'Any confidence' },
@@ -209,6 +218,10 @@ export const CONFIDENCE_FILTERS: readonly { value: number; label: string }[] = [
 export interface Filters {
   view: ViewKey
   severity: Severity | null
+  /** Only incidents in this lane (a threat, a suspect or background), which are going on. */
+  lane: Lane | null
+  /** Only incidents of this kind (see `api/threats.ts`). */
+  family: number | null
   confidence: number
   /** The search in words, as it is applied (see `search.ts`). */
   q: string
@@ -220,6 +233,8 @@ export interface Filters {
 export const NO_FILTERS: Readonly<Filters> = {
   view: DEFAULT_VIEW,
   severity: null,
+  lane: null,
+  family: null,
   confidence: 0,
   q: '',
   quieted: false,
@@ -232,6 +247,8 @@ export function queryOf(filters: Filters, limit: number): IncidentQuery {
   return {
     statuses,
     ...(filters.severity ? { minSeverity: filters.severity } : {}),
+    ...(filters.lane ? { lanes: [filters.lane] } : {}),
+    ...(filters.family ? { family: filters.family } : {}),
     minConfidence: filters.confidence,
     ...(q ? { q, tz: zone() } : {}),
     ...(filters.quieted ? {} : { verdicts: ['none', 'threat'] as const }),
@@ -243,6 +260,8 @@ export function queryOf(filters: Filters, limit: number): IncidentQuery {
 export function activeFilters(filters: Filters): number {
   return (
     Number(filters.severity !== null) +
+    Number(filters.lane !== null) +
+    Number(filters.family !== null) +
     Number(filters.confidence !== 0) +
     Number(filters.q.trim() !== '') +
     Number(filters.quieted)

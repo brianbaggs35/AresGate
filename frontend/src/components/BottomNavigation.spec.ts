@@ -40,7 +40,7 @@ describe('BottomNavigation', () => {
 
     expect(
       wrapper.findAll('.v-bottom-navigation .v-btn').map((place) => place.attributes('data-test')),
-    ).toEqual(['nav-home', 'nav-incidents', 'nav-assistant', 'nav-logs', 'nav-more'])
+    ).toEqual(['nav-home', 'nav-threats', 'nav-incidents', 'nav-assistant', 'nav-more'])
     expect(wrapper.find('[data-test="nav-more"]').text()).toBe('More')
     expect(wrapper.find('[data-test="nav-status"]').exists()).toBe(false)
   })
@@ -82,6 +82,7 @@ describe('BottomNavigation', () => {
           place.textContent.trim(),
         ),
       ).toEqual([
+        'Logs',
         'Assets',
         'Integrations',
         'Interfaces',
@@ -127,7 +128,7 @@ describe('BottomNavigation', () => {
       expect(wrapper.find('[data-test="nav-more"]').attributes('aria-expanded')).toBe('false')
     })
 
-    it.each(['/ai-usage', '/status', '/settings/account', '/settings/activity'])(
+    it.each(['/logs', '/ai-usage', '/status', '/settings/account', '/settings/activity'])(
       'is marked as the place that is open on %s',
       async (route) => {
         const { wrapper } = await open(route)
@@ -138,7 +139,7 @@ describe('BottomNavigation', () => {
       },
     )
 
-    it.each(['/', '/logs', '/incidents/7', '/no/such/page'])(
+    it.each(['/', '/threats/kinds/3', '/incidents/7', '/no/such/page'])(
       'is not marked on %s',
       async (route) => {
         const { wrapper } = await open(route)
@@ -150,10 +151,10 @@ describe('BottomNavigation', () => {
     )
   })
 
-  it('keeps Logs marked on its page', async () => {
-    const { wrapper } = await open('/logs?q=kind%3Aalert')
+  it('keeps Threats marked on the page of a kind of incident', async () => {
+    const { wrapper } = await open('/threats/kinds/3')
 
-    expect(wrapper.find('[data-test="nav-logs"]').classes()).toContain('v-btn--active')
+    expect(wrapper.find('[data-test="nav-threats"]').classes()).toContain('v-btn--active')
   })
 
   it('goes to a place when it is tapped', async () => {

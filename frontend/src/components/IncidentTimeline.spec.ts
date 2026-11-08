@@ -77,6 +77,19 @@ describe('IncidentTimeline', () => {
     expect(rows().map((row) => row.classes('timeline__item--quiet'))).toEqual([false, true, true])
   })
 
+  it('says which signals another program had already reported', async () => {
+    const { rows } = await show([
+      signal({ occurred_at: new Date(AT).toISOString() }),
+      signal({ occurred_at: new Date(AT + 60_000).toISOString(), duplicate: true }),
+    ])
+
+    expect(rows().map((row) => row.find('[data-test="signal-duplicate"]').exists())).toEqual([
+      false,
+      true,
+    ])
+    expect(rows()[1]?.find('[data-test="signal-duplicate"]').text()).toBe('Already reported')
+  })
+
   it('gives the time down to the second, machine-readable', async () => {
     const { rows } = await show()
 

@@ -1,6 +1,7 @@
 import type {
   Ban,
   BulkResult,
+  FamilyBrief,
   Incident,
   IncidentResponse,
   IncidentDetail,
@@ -47,6 +48,11 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     ports_capped: false,
     neighbours: 0,
     ai: null,
+    lane: 'threat',
+    duplicates: 0,
+    stages: [],
+    family_id: 7,
+    call: null,
     ...changes,
   }
 }
@@ -107,6 +113,7 @@ export function signal(changes: Partial<Signal> = {}): Signal {
     verdict: null,
     verdict_rule_id: null,
     filtered_by: null,
+    duplicate: false,
     ...changes,
   }
 }
@@ -118,6 +125,24 @@ export function device(changes: Partial<IncidentDevice> = {}): IncidentDevice {
     mac: 'aa:bb:cc:00:11:22',
     hostname: 'nas',
     vendor: 'Synology',
+    ...changes,
+  }
+}
+
+/** A kind of incident that is going on once, that no one has judged yet. */
+export function familyBrief(changes: Partial<FamilyBrief> = {}): FamilyBrief {
+  return {
+    id: 7,
+    label: 'Brute force on ssh from <address>',
+    source: 'wazuh',
+    source_name: 'Wazuh',
+    reach: 'internet',
+    owner_call: null,
+    classification: null,
+    confidence: null,
+    reason: null,
+    judged_at: null,
+    incidents: 1,
     ...changes,
   }
 }
@@ -165,6 +190,9 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     devices: [device()],
     blocked: 12,
     reading: null,
+    why: ["AresGate's rules are 70% sure it is a real attack."],
+    occurrences: [],
+    family: familyBrief(),
     ...changes,
   }
 }

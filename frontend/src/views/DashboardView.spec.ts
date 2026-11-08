@@ -30,6 +30,8 @@ function busy() {
   return dashboard({
     alerts: {
       total: 9,
+      reports: 9,
+      duplicates: 0,
       previous: 6,
       highest: 'critical',
       by_severity: {
@@ -286,14 +288,23 @@ describe('DashboardView', () => {
       const { fetchIncidents } = await open()
 
       expect(fetchIncidents).toHaveBeenCalledWith({
-        statuses: ['open', 'investigating'],
-        minConfidence: 35,
+        lanes: ['threat', 'suspect'],
         q: `since:${busy().window.start}`,
         tz: expect.any(String) as string,
-        verdicts: ['none', 'threat'],
         limit: 3,
         order: 'priority',
       })
+    })
+
+    it('says how many reports the alerts came from, when programs reported things twice', async () => {
+      const { text } = await open({
+        dashboard: dashboard({
+          alerts: { ...busy().alerts, total: 9, reports: 4_100, duplicates: 2_000 },
+          attention: attention({ incidents: 3, needs_you: 1, urgent: 1 }),
+        }),
+      })
+
+      expect(text('tile-alerts')).toContain('from 4,100 reports')
     })
 
     it('does not ask when nothing needs the owner', async () => {
@@ -303,12 +314,12 @@ describe('DashboardView', () => {
       expect(find('needs-you').exists()).toBe(false)
     })
 
-    it('lists the incidents on the Incidents page by the same floor and window', async () => {
+    it('lists them all on the Threats page, open on the threats', async () => {
       const { find } = await open({ incidents: waiting() })
 
       const link = new URL(find('needs-you-all').attributes('href') ?? '', 'https://x')
-      expect(link.pathname).toBe('/incidents')
-      expect(link.searchParams.get('q')).toBe(`since:${busy().window.start} confidence>=35`)
+      expect(link.pathname).toBe('/threats')
+      expect(link.searchParams.get('lane')).toBe('threat')
     })
 
     it('shows a card for each, under the banner, and says how many there are in all', async () => {

@@ -6,7 +6,7 @@ import { severityColor } from '@/charts/palette'
 import type { ChartMark } from '@/charts/types'
 import { formatCount, formatDateTime } from '@/format'
 
-import { NO_FILTERS, queryOf } from '@/incidents'
+import { zone } from '@/search'
 import { SEVERITIES, SEVERITY } from '@/severity'
 
 /** How a number has changed, as the stat tile shows it. */
@@ -158,7 +158,7 @@ export function postureOf(
 
 /** One reason incidents were filtered out, with where to see them. */
 export interface FilteredOut {
-  key: 'unsure' | 'muted' | 'handled'
+  key: 'unsure' | 'cleared' | 'muted' | 'handled'
   count: number
   /** What to call them after the count: "not sure enough". */
   label: string
@@ -177,6 +177,12 @@ export function filteredOut(attention: Attention, since: string): FilteredOut[] 
       count: attention.unsure,
       label: 'not sure enough',
       to: { name: 'incidents', query: { q: `${going} confidence<${attention.floor.toString()}` } },
+    },
+    {
+      key: 'cleared',
+      count: attention.cleared,
+      label: 'set aside by the AI as background',
+      to: { name: 'threats', query: { lane: 'background' } },
     },
     {
       key: 'muted',
@@ -200,26 +206,26 @@ export function filteredOut(attention: Attention, since: string): FilteredOut[] 
   return reasons.filter(({ count }) => count > 0)
 }
 
-/** What it takes to be going on in the window and to need the owner, as the words of a search. */
-function needing(attention: Attention, since: string): string {
-  return `since:${since} confidence>=${attention.floor.toString()}`
-}
-
 /**
  * The search for the incidents that need the owner, which the banner counts and the lane lists:
- * still active, not called quiet, going on in the window and at least as sure as the floor, the
- * most serious and surest first.
+ * the threats and the suspects going on in the window, the most serious and surest first.
  */
-export function needsYouQuery(attention: Attention, since: string, limit: number): IncidentQuery {
-  return {
-    ...queryOf({ ...NO_FILTERS, q: `since:${since}`, confidence: attention.floor }, limit),
-    order: 'priority',
-  }
+export function needsYouQuery(since: string, limit: number): IncidentQuery {
+  return { lanes: ['threat', 'suspect'], q: `since:${since}`, tz: zone(), order: 'priority', limit }
 }
 
-/** Where the incidents that need the owner are listed in full: what the lane and the banner count. */
-export function needsYouLink(attention: Attention, since: string): RouteLocationRaw {
-  return { name: 'incidents', query: { q: needing(attention, since) } }
+/** Where the incidents that need the owner are listed in full: the Threats page, open on the
+ * lane with something in it that matters most. */
+export function needsYouLink(attention: Attention): RouteLocationRaw {
+  return { name: 'threats', query: { lane: attention.urgent > 0 ? 'threat' : 'suspect' } }
+}
+
+/** What to say under the number of alerts: the window, and how many reports they came from when
+ * programs reported the same things more than once. */
+export function alertsHint(alerts: Pick<AlertCounts, 'total' | 'reports'>, last: string): string {
+  return alerts.reports > alerts.total
+    ? `In ${last}, from ${formatCount(alerts.reports)} reports`
+    : `In ${last}`
 }
 
 /** The label of a bucket on a chart: the hour for a day, the day and hour for a week. */

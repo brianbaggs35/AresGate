@@ -31,7 +31,7 @@ export function noiseFilters(changes: Partial<NoiseFilters> = {}): NoiseFilters 
  * set aside, with whatever is given changed. */
 export function effect(changes: Partial<Effect> = {}): Effect {
   return {
-    incidents: { active: 31, needs_you: 5, urgent: 1, unsure: 24, muted: 2 },
+    incidents: { active: 31, needs_you: 5, urgent: 1, unsure: 24, cleared: 0, muted: 2 },
     set_aside: { total: 0, inside: 0, severity: 0, by_source: {} },
     ...changes,
   }
@@ -42,7 +42,7 @@ export function preview(changes: Partial<Preview> = {}): Preview {
   return {
     now: effect(),
     after: effect({
-      incidents: { active: 31, needs_you: 2, urgent: 0, unsure: 27, muted: 2 },
+      incidents: { active: 31, needs_you: 2, urgent: 0, unsure: 27, cleared: 0, muted: 2 },
       set_aside: { total: 2901, inside: 0, severity: 2901, by_source: { wazuh: 2901 } },
     }),
     ...changes,
