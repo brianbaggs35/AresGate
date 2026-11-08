@@ -111,13 +111,10 @@ test.describe('logs on a phone', () => {
     await expect(logs.cards.first()).toContainText('Failed login')
   })
 
-  test('are reached from the bottom bar, where Logs is one of the places', async ({
-    page,
-    shell,
-    logs,
-  }) => {
+  test('are reached from the bottom bar, behind More', async ({ page, shell, logs }) => {
     await page.goto('/')
 
+    await shell.moreButton.tap()
     await shell.logsLink.tap()
 
     await expect(page).toHaveURL('/logs')

@@ -106,6 +106,13 @@ export interface IncidentRequest {
   neighbours?: number
   waves?: number
   ports?: number[]
+  /** What the scanner went on to do: try an exploit, and a sign that it worked. Either makes the
+   * incident more than scanning, which is never background. */
+  exploit?: boolean
+  compromise?: boolean
+  /** A second program that reports every alert a couple of seconds after the first, as the same
+   * thing seen twice (it counts once). */
+  twin?: string
 }
 
 /** How much `createIncidents()` stored. */

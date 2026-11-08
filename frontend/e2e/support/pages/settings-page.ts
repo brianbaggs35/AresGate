@@ -9,6 +9,7 @@ export class SettingsPage {
   readonly activityLink: Locator
   readonly verdictsLink: Locator
   readonly noiseFiltersLink: Locator
+  readonly threatDetectionLink: Locator
   readonly aiLink: Locator
   readonly dataLink: Locator
 
@@ -20,6 +21,7 @@ export class SettingsPage {
     this.activityLink = page.getByTestId('settings-nav-activity')
     this.verdictsLink = page.getByTestId('settings-nav-verdicts')
     this.noiseFiltersLink = page.getByTestId('settings-nav-noise-filters')
+    this.threatDetectionLink = page.getByTestId('settings-nav-threat-detection')
     this.aiLink = page.getByTestId('settings-nav-ai')
     this.dataLink = page.getByTestId('settings-nav-data')
   }

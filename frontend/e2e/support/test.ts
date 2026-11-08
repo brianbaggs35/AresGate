@@ -20,6 +20,7 @@ import { DashboardPage } from './pages/dashboard-page'
 import { SecurityPage } from './pages/security-page'
 import { SettingsPage } from './pages/settings-page'
 import { NoiseFiltersPage } from './pages/noise-filters-page'
+import { KindPage, KindsPage, ThreatSettingsPage, ThreatsPage } from './pages/threats-page'
 import { SetupPage } from './pages/setup-page'
 import { SignInPage } from './pages/sign-in-page'
 import { SignInsPage } from './pages/sign-ins-page'
@@ -64,6 +65,12 @@ export interface AresGateFixtures {
   verdicts: VerdictsPage
   /** The settings page for what is set aside without a verdict, and how sure it has to be. */
   noiseFilters: NoiseFiltersPage
+  /** The threats, the kinds of incident that are background, and one kind. */
+  threats: ThreatsPage
+  kinds: KindsPage
+  kind: KindPage
+  /** The settings page for how a threat is told from background. */
+  threatSettings: ThreatSettingsPage
   /** The passkey device every page has, which unlocks itself. Chromium only. */
   authenticator: VirtualAuthenticator
   /** Whether the page starts signed in as the baseline account, as most pages need. */
@@ -202,6 +209,22 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   noiseFilters: async ({ page }, use) => {
     await use(new NoiseFiltersPage(page))
+  },
+
+  threats: async ({ page }, use) => {
+    await use(new ThreatsPage(page))
+  },
+
+  kinds: async ({ page }, use) => {
+    await use(new KindsPage(page))
+  },
+
+  kind: async ({ page }, use) => {
+    await use(new KindPage(page))
+  },
+
+  threatSettings: async ({ page }, use) => {
+    await use(new ThreatSettingsPage(page))
   },
 
   signInElsewhere: async ({ browser, baseURL, baseline }, use) => {

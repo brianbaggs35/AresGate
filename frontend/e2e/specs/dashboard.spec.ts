@@ -110,12 +110,12 @@ test.describe('dashboard', () => {
       `Brute force on ssh (${ATTACKER})`,
       `Brute force on ssh (${MIDDLING})`,
     ])
-    await expect(dashboard.needsYouAll).toHaveText('Open Incidents')
+    await expect(dashboard.needsYouAll).toHaveText('Open Threats')
 
     await dashboard.needsYouAll.click()
 
-    await expect(page).toHaveURL(/\/incidents\?q=since/)
-    await expect(incidentsPageCards(page)).toHaveCount(2)
+    await expect(page).toHaveURL(/\/threats\?lane=threat/)
+    await expect(incidentsPageCards(page).first()).toContainText(ATTACKER)
   })
 
   test('asks for attention for the incident it is confident of, and says how many more to look at', async ({

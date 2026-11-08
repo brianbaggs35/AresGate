@@ -287,6 +287,101 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the threats, the kinds of incident and one kind have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      threats,
+      kinds,
+      kind,
+      incidents,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'critical',
+          programs: ['wazuh', 'opnsense'],
+          signals: 3,
+          exploit: true,
+          compromise: true,
+          minutes_ago: 8,
+          device_name: 'nas',
+        },
+        { address: '1.1.1.1', severity: 'high', programs: ['wazuh'], signals: 2, minutes_ago: 20 },
+        {
+          address: '8.8.4.10',
+          severity: 'low',
+          programs: ['opnsense'],
+          twin: 'ntopng',
+          signals: 4,
+          scan: true,
+          neighbours: 2,
+          waves: 2,
+          minutes_ago: 30,
+        },
+      ])
+      await threats.goto()
+      await expect(threats.cards).toHaveCount(1)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await threats.lane('suspect').click()
+      await expect(threats.cards).toHaveCount(1)
+      await expectAccessible(page)
+
+      await threats.lane('background').click()
+      await expect(threats.kinds.first()).toBeVisible()
+      await expectAccessible(page)
+
+      await kinds.goto()
+      await expect(kinds.cards).toHaveCount(2)
+      await expectAccessible(page)
+
+      await kinds.cards.first().getByTestId('family').click()
+      await expect(kind.judgementNone).toBeVisible()
+      await kind.watch.click()
+      await expect(kind.judgementOwner).toBeVisible()
+      await expectAccessible(page)
+
+      // The incident that says why it is where it is and what kept happening.
+      await incidents.goto('?address=8.8.4.10')
+      await incidents.cards.first().click()
+      await expect(page.getByTestId('where-card')).toBeVisible()
+      await expect(page.getByTestId('occurrences-card')).toBeVisible()
+      await expectAccessible(page)
+    })
+
+    test('the threat detection settings have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      threatSettings,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        { address: '1.1.1.1', severity: 'high', programs: ['wazuh'], signals: 2 },
+      ])
+      await threatSettings.goto()
+      await expect(threatSettings.levelValue).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // Everything changed at once, with what it would do worked out.
+      await threatSettings.levelSlider.focus()
+      for (let step = 0; step < 5; step++) await page.keyboard.press('ArrowLeft')
+      await threatSettings.exposure('some').check()
+      await threatSettings.ports.fill('22, https')
+      await threatSettings.notes.fill('A web server.')
+      await expect(threatSettings.effectTable).toBeVisible()
+      await expectAccessible(page)
+
+      await threatSettings.ports.fill('22, 443')
+      await threatSettings.save.click()
+      await expect(threatSettings.saved).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the logs, a search of them and the sheet for an event have no WCAG 2.2 AA problems', async ({
       page,
       harness,

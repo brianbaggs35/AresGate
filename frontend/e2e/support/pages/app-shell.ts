@@ -7,6 +7,7 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 /** The places in the menu, by the names of their routes. */
 export type Place =
   | 'home'
+  | 'threats'
   | 'incidents'
   | 'assistant'
   | 'logs'
@@ -19,6 +20,7 @@ export type Place =
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
 const BEHIND_MORE: readonly Place[] = [
+  'logs',
   'assets',
   'integrations',
   'ai-usage',
@@ -36,6 +38,7 @@ export class AppShell {
   readonly menu: Locator
   /** The places in the menu. */
   readonly dashboardLink: Locator
+  readonly threatsLink: Locator
   readonly incidentsLink: Locator
   readonly logsLink: Locator
   readonly assetsLink: Locator
@@ -78,6 +81,7 @@ export class AppShell {
     this.logo = page.getByRole('link', { name: 'AresGate' })
     this.menu = page.getByRole('navigation', { name: 'Main' })
     this.dashboardLink = page.getByTestId('nav-home')
+    this.threatsLink = page.getByTestId('nav-threats')
     this.incidentsLink = page.getByTestId('nav-incidents')
     this.logsLink = page.getByTestId('nav-logs')
     this.assetsLink = page.getByTestId('nav-assets')
