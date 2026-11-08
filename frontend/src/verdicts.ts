@@ -149,54 +149,63 @@ function sentTo(signals: IncidentDetail['signals']): { device: string; to: strin
   return [...pairs.values()]
 }
 
-/** What a verdict on an incident can be about: its address, each alert it holds from any
- * address, and each of them from its address alone, in that order. */
-export function scopesOf(incident: Pick<IncidentDetail, 'subject' | 'signals'>): Scope[] {
-  const address = isAboutRule(incident.subject) ? null : incident.subject
-  const alerts = new Map<string, { source: string; name: string; signature: string }>()
-  for (const { source, source_name: name, signature } of incident.signals) {
+/** An alert an incident holds, as the program that reported it saw it. */
+interface AlertSeen {
+  source: string
+  name: string
+  signature: string
+}
+
+/** The alerts an incident offers a verdict on: each signature from each program, a few at most. */
+function alertsOf(signals: IncidentDetail['signals']): AlertSeen[] {
+  const alerts = new Map<string, AlertSeen>()
+  for (const { source, source_name: name, signature } of signals) {
     if (signature && alerts.size < MAX_ALERTS) {
       alerts.set(`${source}\u0000${signature}`, { source, name, signature })
     }
   }
-  const found = [...alerts.values()]
+  return [...alerts.values()]
+}
+
+/** A verdict on an alert from any address. */
+function anyAddressScope({ source, name, signature }: AlertSeen): Scope {
+  return {
+    key: `alert:${source}:${signature}`,
+    title: `“${signature}”`,
+    hint: `From any address, as seen by ${name}`,
+    request: { source, signature },
+  }
+}
+
+/** A verdict on an alert from one address alone. */
+function thisAddressScope(address: string, { source, name, signature }: AlertSeen): Scope {
+  return {
+    key: `alert-here:${source}:${signature}`,
+    title: `“${signature}” from ${address}`,
+    hint: `Only this address, as seen by ${name}`,
+    request: { address, source, signature },
+  }
+}
+
+/** The destinations a device's traffic to an address can be offered as: the address itself, and
+ * the whole network it is in where there is one. */
+function destinationsOf(to: string): { destination: string; hint: string }[] {
+  const network = wholeNetworkOf(to)
+  return [
+    { destination: to, hint: 'Only what this device sends there' },
+    ...(network
+      ? [{ destination: network, hint: 'Only what this device sends to the whole network' }]
+      : []),
+  ]
+}
+
+/** A verdict on the traffic a device inside the network sends out, to each address it sends to
+ * and to the network of each. */
+function sentScopes(signals: IncidentDetail['signals']): Scope[] {
   const scopes: Scope[] = []
-  if (address) {
-    scopes.push({
-      key: 'address',
-      title: address,
-      hint: 'Everything about this address',
-      request: { address },
-    })
-  }
-  for (const { source, name, signature } of found) {
-    scopes.push({
-      key: `alert:${source}:${signature}`,
-      title: `“${signature}”`,
-      hint: `From any address, as seen by ${name}`,
-      request: { source, signature },
-    })
-  }
-  if (address) {
-    for (const { source, name, signature } of found) {
-      scopes.push({
-        key: `alert-here:${source}:${signature}`,
-        title: `“${signature}” from ${address}`,
-        hint: `Only this address, as seen by ${name}`,
-        request: { address, source, signature },
-      })
-    }
-  }
   const offered = new Set<string>()
-  for (const { device, to } of sentTo(incident.signals)) {
-    const network = wholeNetworkOf(to)
-    const choices = [
-      { destination: to, hint: 'Only what this device sends there' },
-      ...(network
-        ? [{ destination: network, hint: 'Only what this device sends to the whole network' }]
-        : []),
-    ]
-    for (const { destination, hint } of choices) {
+  for (const { device, to } of sentTo(signals)) {
+    for (const { destination, hint } of destinationsOf(to)) {
       const key = `sent:${device}>${destination}`
       if (!offered.has(key)) {
         offered.add(key)
@@ -209,6 +218,29 @@ export function scopesOf(incident: Pick<IncidentDetail, 'subject' | 'signals'>):
       }
     }
   }
+  return scopes
+}
+
+/** What a verdict on an incident can be about: its address, each alert it holds from any
+ * address, and each of them from its address alone, in that order. Then the traffic its devices
+ * send out. */
+export function scopesOf(incident: Pick<IncidentDetail, 'subject' | 'signals'>): Scope[] {
+  const address = isAboutRule(incident.subject) ? null : incident.subject
+  const found = alertsOf(incident.signals)
+  const scopes: Scope[] = []
+  if (address) {
+    scopes.push({
+      key: 'address',
+      title: address,
+      hint: 'Everything about this address',
+      request: { address },
+    })
+  }
+  scopes.push(...found.map(anyAddressScope))
+  if (address) {
+    scopes.push(...found.map((alert) => thisAddressScope(address, alert)))
+  }
+  scopes.push(...sentScopes(incident.signals))
   return scopes
 }
 
