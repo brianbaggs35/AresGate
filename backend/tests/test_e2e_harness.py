@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config as config_module
+from app.alerts import destinations
 from app.collectors import health
 from app.collectors.health import WORKER, WorkerState
 from app.config import Settings
@@ -37,6 +38,9 @@ from e2e.baseline import (
 from e2e.coverage_report import current_measurement
 from e2e.main import create_e2e_app
 from tests.helpers import ORIGIN
+
+WEBHOOK_ID = "1234567890123456789"
+WEBHOOK_TOKEN = "Zk3-_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-_x"
 
 
 @pytest.fixture
@@ -149,6 +153,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "ai_providers": 0,
         "ai_settings": 0,
         "ai_triage": 0,
+        "alert_deliveries": 0,
         "alert_destinations": 0,
         "audit_events": 0,
         "collector_health": 0,
@@ -203,6 +208,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
         "fixture": "baseline",
         "tables_emptied": [
             "incident_signals",
+            "alert_deliveries",
             "ai_triage",
             "incidents",
             "user_sessions",
@@ -1262,3 +1268,37 @@ def test_an_incident_that_cannot_be_made_is_refused(
     made = e2e.post("/api/__test__/factories/incidents", json={"incidents": [incident]})
 
     assert made.status_code == 422
+
+
+def test_it_tells_the_destinations_of_the_incidents_there_are(
+    e2e: TestClient, session: Session, settings: Settings
+) -> None:
+    started = e2e.post(
+        "/api/__test__/stand-ins",
+        json={"kind": "discord", "webhook": f"{WEBHOOK_ID}/{WEBHOOK_TOKEN}"},
+    ).json()
+    session.commit()
+    row = destinations.create(
+        session,
+        settings,
+        "Security",
+        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        utcnow(),
+    )
+    row.min_confidence = 0
+    session.commit()
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={"incidents": [{"severity": "critical", "minutes_ago": 0, "signals": 3}]},
+    )
+
+    first = e2e.post("/api/__test__/notifier/run").json()
+    second = e2e.post("/api/__test__/notifier/run").json()
+
+    assert (first, second) == (
+        {"sent": 1, "retrying": 0, "failed": 0},
+        {"sent": 0, "retrying": 0, "failed": 0},
+    )
+    seen = e2e.get(f"/api/__test__/stand-ins/{started['id']}/requests").json()
+    assert len(seen) == 1
+    assert row.id
