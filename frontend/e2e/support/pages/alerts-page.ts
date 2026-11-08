@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 /** The Alerts page: the places AresGate sends word of threats, and the dialog that adds or
  * changes one. */
@@ -152,6 +152,22 @@ export class AlertsPage {
   async openRules(name: string): Promise<void> {
     await this.destination(name).getByTestId('destination-rules-edit').click()
     await this.rules.waitFor()
+  }
+
+  /**
+   * Makes a change to the rules and waits for the preview to answer for it. The sheet asks 400 ms
+   * after the last change and dims the preview while it waits, so a check made too soon sees
+   * faint text. Several changes can be made in one go: the sheet asks once, after the last.
+   */
+  async changeRules(change: () => Promise<void>): Promise<void> {
+    const answered = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname.endsWith('/preview'),
+    )
+    await change()
+    await answered
+    await expect(this.page.getByTestId('rules-preview')).toHaveAttribute('aria-busy', 'false')
   }
 
   /** The card for what a channel is for: `threats`, `serious` or `custom`. */

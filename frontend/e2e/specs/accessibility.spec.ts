@@ -1242,14 +1242,16 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
 
       // Custom rules, with the rest of the choices open.
-      await alerts.purpose('custom').click()
+      await alerts.changeRules(() => alerts.purpose('custom').click())
       await expect(alerts.floors).toBeVisible()
       await expectAccessible(page)
 
       // With quiet hours on, and a start that is also the end, which can't be saved.
-      await alerts.quiet.check()
-      await alerts.quietFrom.fill('22:00')
-      await alerts.quietUntil.fill('22:00')
+      await alerts.changeRules(async () => {
+        await alerts.quiet.check()
+        await alerts.quietFrom.fill('22:00')
+        await alerts.quietUntil.fill('22:00')
+      })
       await expect(alerts.rulesSave).toBeDisabled()
       await expectAccessible(page)
 
@@ -1261,7 +1263,7 @@ for (const theme of ['light', 'dark'] as const) {
 
       // With the page it could not reach.
       await page.route('**/api/alerts/destinations/*/rules', (route) => route.abort())
-      await alerts.quietUntil.fill('07:00')
+      await alerts.changeRules(() => alerts.quietUntil.fill('07:00'))
       await alerts.rulesSave.click()
       await expect(alerts.rulesFailure).toBeVisible()
       await expectAccessible(page)
