@@ -72,6 +72,12 @@ const askable = computed(() => !hosted.value && testable.value)
 const plans = computed(() => hasPlans(props.provider))
 const host = (url: string) => new URL(url).hostname
 
+// These two hold a "//", which is kept out of the template on purpose: vue-tsc 3.3.14 reads a
+// "//" inside a component's attributes as the start of a comment, even in a quoted address, and
+// garbles the code it checks, after which it reports errors for the rest of the template.
+const addressExample = 'http://192.168.1.50:11434'
+const addressHint = 'Where Ollama listens, with http:// and the port.'
+
 function begin(kind: 'save' | 'test' | 'models' | 'remove') {
   working.value = kind
   notice.value = null
@@ -187,8 +193,8 @@ async function forget() {
         :id="id('base_url')"
         v-model="draft.baseUrl"
         label="Address"
-        placeholder="http://192.168.1.50:11434"
-        hint="Where Ollama listens, with http:// and the port."
+        :placeholder="addressExample"
+        :hint="addressHint"
         persistent-hint
         inputmode="url"
         autocomplete="off"
