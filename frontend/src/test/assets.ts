@@ -85,5 +85,6 @@ export const page = (
   new: 0,
   unidentified: 0,
   watching_since: '2026-09-01T10:00:00Z',
+  outside: 0,
   ...overrides,
 })

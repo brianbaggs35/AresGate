@@ -4,6 +4,17 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **The Assets page leaves out the Internet side.** The firewall's ARP table lists the devices on
+  its WAN side too, such as the provider's equipment with public addresses, and they were listed
+  as assets. Now a device whose addresses are public and that is not one of the firewall's own is
+  left out, and the page says how many were left out. The firewall's own addresses (the ARP
+  table's permanent entries) stay listed. A network of yours on the Internet interface leaves out
+  what is on it, and a network of your home keeps what is on it, which takes precedence.
+
 ## 0.0.7
 
 ### Added

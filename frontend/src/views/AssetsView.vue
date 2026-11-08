@@ -122,6 +122,14 @@ function interfacesOf(asset: Asset): string[] {
   return asset.interfaces.flatMap((id) => interfaceNames.value.get(id) ?? [])
 }
 
+/** What is left out for being on the Internet side: the provider's, not the home's. */
+const outsideNote = computed(() => {
+  const { outside } = page.value
+  return outside === 1
+    ? "1 device on the Internet side is not listed, such as your provider's equipment."
+    : `${formatCount(outside)} devices on the Internet side are not listed, such as your provider's equipment.`
+})
+
 const description = computed(() => {
   if (!data.value) return 'Every device your connected programs can see, as one list.'
   const { all, online } = page.value.counts
@@ -409,6 +417,14 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </div>
 
       <AssetSuppliers :suppliers="page.suppliers" />
+
+      <p
+        v-if="page.outside > 0"
+        class="text-body-medium text-medium-emphasis"
+        data-test="assets-outside"
+      >
+        {{ outsideNote }} Your firewall's own addresses stay listed.
+      </p>
 
       <p
         v-if="page.watching_since"

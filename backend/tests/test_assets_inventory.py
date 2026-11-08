@@ -432,6 +432,121 @@ class TestWhichInterfaceItIsOn:
         }
 
 
+def internet(session: Session, *blocks: str) -> Interface:
+    made = Interface(name="Internet", role="internet", networks=list(blocks), position=0)
+    session.add(made)
+    session.flush()
+    return made
+
+
+class TestTheInternetSide:
+    def test_a_neighbour_with_a_public_address_is_on_the_internet_side(
+        self, session: Session
+    ) -> None:
+        provider = AssetSpec(vendor="Example Cable Inc.", addresses=("9.9.9.9",), listed=(arp(1),))
+
+        found = load(session, [provider])
+
+        assert (found.assets, found.outside) == ([], 1)
+
+    def test_the_firewalls_own_public_address_is_listed(self, session: Session) -> None:
+        own = AssetSpec(
+            hostname="firewall",
+            addresses=("9.9.9.10",),
+            listed=(Listed("opnsense", "arp", 1, own=True),),
+        )
+
+        found = load(session, [own])
+
+        assert (one(found).name, found.outside) == ("firewall", 0)
+
+    def test_the_firewalls_own_address_is_listed_even_on_the_internet_network(
+        self, session: Session
+    ) -> None:
+        internet(session, "9.9.9.0/24")
+        own = AssetSpec(addresses=("9.9.9.10",), listed=(Listed("opnsense", "arp", 1, own=True),))
+
+        found = load(session, [own])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_a_device_on_a_private_address_is_the_home(self, session: Session) -> None:
+        found = load(session, [AssetSpec(addresses=("192.168.1.20",), listed=(arp(1),))])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_a_public_address_with_a_home_address_is_the_home(self, session: Session) -> None:
+        both = AssetSpec(addresses=("9.9.9.11", "192.168.1.21"), listed=(arp(1),))
+
+        found = load(session, [both])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_a_link_local_address_says_nothing_of_the_side(self, session: Session) -> None:
+        provider = AssetSpec(addresses=("9.9.9.12", "fe80::1"), listed=(arp(1),))
+
+        assert load(session, [provider]).outside == 1
+
+    def test_an_ipv6_address_alone_is_not_taken_for_the_internet(self, session: Session) -> None:
+        found = load(session, [AssetSpec(addresses=("2606:4700:4700::1111",), listed=(arp(1),))])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_the_owners_internet_network_leaves_out_what_is_on_it(self, session: Session) -> None:
+        internet(session, "172.31.0.0/16")
+        provider = AssetSpec(addresses=("172.31.5.9",), listed=(arp(1),))
+
+        assert load(session, [provider]).outside == 1
+
+    def test_the_owners_home_network_keeps_what_is_on_it(self, session: Session) -> None:
+        network(session, "Home", "9.9.9.0/24")
+        spec = AssetSpec(addresses=("9.9.9.9",), listed=(arp(1),))
+
+        found = load(session, [spec])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_where_the_home_and_the_internet_both_cover_it_the_home_wins(
+        self, session: Session
+    ) -> None:
+        internet(session, "9.9.9.0/24")
+        network(session, "Home", "9.9.9.0/24")
+
+        found = load(session, [AssetSpec(addresses=("9.9.9.9",), listed=(arp(1),))])
+
+        assert (len(found.assets), found.outside) == (1, 0)
+
+    def test_a_machine_with_a_public_address_is_on_the_internet_side(
+        self, session: Session
+    ) -> None:
+        found = load(session, hosts=[HostSpec("004", address="9.9.9.20")])
+
+        assert (found.assets, found.outside) == ([], 1)
+
+    def test_a_machine_with_no_address_is_not_on_the_internet_side(self, session: Session) -> None:
+        found = load(session, hosts=[HostSpec("005", hostname="kiosk")])
+
+        assert (one(found).name, found.outside) == ("kiosk", 0)
+
+    def test_the_internet_is_not_one_of_the_interfaces_offered(self, session: Session) -> None:
+        home = network(session, "Home", "192.168.1.0/24")
+        internet(session, "9.9.9.0/24")
+
+        found = load(session, [AssetSpec(addresses=("192.168.1.7",))])
+
+        assert [item.id for item in found.networks] == [home.id]
+
+    def test_what_is_left_out_is_not_among_the_assets_whatever_else_is_asked(
+        self, session: Session
+    ) -> None:
+        provider = AssetSpec(addresses=("9.9.9.9",), listed=(arp(1),))
+        laptop = AssetSpec(hostname="laptop", addresses=("192.168.1.20",), listed=(arp(1),))
+
+        found = load(session, [provider, laptop])
+
+        assert (found.outside, [asset.name for asset in found.assets]) == (1, ["laptop"])
+
+
 class TestWhoCouldListDevices:
     def test_each_integration_is_connected_when_everything_it_lists_with_is(
         self, session: Session

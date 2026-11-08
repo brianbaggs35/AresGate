@@ -52,6 +52,8 @@ class NewSighting:
     address: IPv4Address | IPv6Address | None = None
     hostname: str | None = None
     vendor: str | None = None
+    # Whether the program listed it as one of its own addresses, such as the firewall's interfaces.
+    own: bool = False
 
     def __post_init__(self) -> None:
         if mac_address(self.mac) != self.mac:
@@ -68,6 +70,7 @@ class NewSighting:
         address: str | None = None,
         hostname: str | None = None,
         vendor: str | None = None,
+        own: bool = False,
     ) -> Self | None:
         """The sighting, or None when ``mac`` isn't a device's address. An address that isn't
         one, a name that isn't a name and a maker that isn't there are left out: they shouldn't
@@ -81,6 +84,7 @@ class NewSighting:
             _address(address),
             _hostname(hostname),
             _text(vendor, MAX_VENDOR),
+            own,
         )
 
 

@@ -3,6 +3,8 @@ import { connectFirewall, expect, test } from '../support'
 
 const LAPTOP = '00:11:22:0a:0b:0c'
 const PHONE = '02:aa:bb:cc:dd:ee'
+const FIREWALL = '00:11:22:0a:0b:0d'
+const CABLE = '00:11:22:0a:0b:0f'
 
 /** Four devices: a laptop that is on and that two programs list, a phone with a private address
  * and a lease only, a camera that has been gone for days, and one that says nothing of itself. */
@@ -111,6 +113,47 @@ test.describe('assets', () => {
       await expect(laptop.getByTestId('asset-status')).toHaveText('Online')
       await expect(assets.supplier('opnsense')).toContainText('Connected')
       await expect(assets.empty).toHaveCount(0)
+    })
+  })
+
+  test.describe("with the provider's equipment on the Internet side", () => {
+    test.beforeEach(async ({ harness }) => {
+      await harness.createAssets({
+        devices: [
+          {
+            hostname: 'laptop',
+            mac: LAPTOP,
+            addresses: ['192.168.1.20'],
+            listed: [{ source: 'opnsense', via: 'arp', minutes_ago: 1 }],
+          },
+          {
+            hostname: 'firewall',
+            mac: FIREWALL,
+            addresses: ['9.9.9.10'],
+            listed: [{ source: 'opnsense', via: 'arp', minutes_ago: 1, own: true }],
+          },
+          {
+            vendor: 'Example Cable Inc.',
+            mac: CABLE,
+            addresses: ['9.9.9.1', '9.9.9.2'],
+            listed: [{ source: 'opnsense', via: 'arp', minutes_ago: 1 }],
+          },
+        ],
+      })
+    })
+
+    test("leaves the provider's devices out, keeps the firewall's own addresses, and says how many", async ({
+      assets,
+    }) => {
+      await assets.goto()
+
+      await expect(assets.cards).toHaveCount(2)
+      await expect(assets.card('firewall')).toBeVisible()
+      await expect(assets.card('laptop')).toBeVisible()
+      await expect(assets.description).toHaveText('2 assets, 2 online now.')
+      await expect(assets.outside).toHaveText(
+        "1 device on the Internet side is not listed, such as your provider's equipment. Your firewall's own addresses stay listed.",
+      )
     })
   })
 

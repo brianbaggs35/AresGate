@@ -166,6 +166,8 @@ export interface AssetListing {
   source?: string
   via?: 'arp' | 'dhcp' | 'hosts' | 'agent'
   minutes_ago?: number
+  /** Whether the firewall lists it as one of its own addresses (a permanent ARP entry). */
+  own?: boolean
 }
 
 /** A device as the integrations that list it left it, as `createAssets()` stores it. All of it is

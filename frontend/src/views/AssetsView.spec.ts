@@ -146,6 +146,29 @@ describe('AssetsView', () => {
     expect(find('assets-note').exists()).toBe(false)
   })
 
+  it('says what is left out for being on the Internet side, and that the firewall stays', async () => {
+    const { text } = await open({ answer: { ...some(), outside: 2 } })
+
+    expect(text('assets-outside')).toContain(
+      "2 devices on the Internet side are not listed, such as your provider's equipment.",
+    )
+    expect(text('assets-outside')).toContain("Your firewall's own addresses stay listed.")
+  })
+
+  it('says one device for one left out on the Internet side', async () => {
+    const { text } = await open({ answer: { ...some(), outside: 1 } })
+
+    expect(text('assets-outside')).toContain(
+      "1 device on the Internet side is not listed, such as your provider's equipment.",
+    )
+  })
+
+  it('says nothing of the Internet side when nothing is left out', async () => {
+    const { find } = await open({ answer: some() })
+
+    expect(find('assets-outside').exists()).toBe(false)
+  })
+
   it('says when the numbers on screen arrived', async () => {
     const { text } = await open()
 

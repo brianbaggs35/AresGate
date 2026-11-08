@@ -681,6 +681,8 @@ class Listed(NamedTuple):
     source: str = "opnsense"
     via: str = "arp"
     minutes_ago: float = 1
+    # Whether the program listed it as one of its own addresses (the firewall's own interfaces).
+    own: bool = False
 
 
 class AssetSpec(NamedTuple):
@@ -718,7 +720,12 @@ class AssetsRecorded(NamedTuple):
 
 
 def _seen(
-    spec: AssetSpec, mac: str, now: datetime, minutes_ago: float, addresses: Sequence[str]
+    spec: AssetSpec,
+    mac: str,
+    now: datetime,
+    minutes_ago: float,
+    addresses: Sequence[str],
+    own: bool,
 ) -> list[NewSighting]:
     """A device listed at a moment, once for each address it has."""
     found = [
@@ -728,6 +735,7 @@ def _seen(
             address=address,
             hostname=spec.hostname,
             vendor=spec.vendor,
+            own=own,
         )
         for address in addresses or (None,)
     ]
@@ -746,7 +754,14 @@ def assets(
         way = spec.listed[0] if spec.listed else Listed()
         record_devices(
             session,
-            _seen(spec, mac, now, spec.first_seen_hours * 60, (*spec.earlier, *spec.addresses)),
+            _seen(
+                spec,
+                mac,
+                now,
+                spec.first_seen_hours * 60,
+                (*spec.earlier, *spec.addresses),
+                way.own,
+            ),
             now,
             source=way.source,
             via=way.via,
@@ -754,7 +769,7 @@ def assets(
         for listed in spec.listed:
             record_devices(
                 session,
-                _seen(spec, mac, now, listed.minutes_ago, spec.addresses),
+                _seen(spec, mac, now, listed.minutes_ago, spec.addresses, listed.own),
                 now,
                 source=listed.source,
                 via=listed.via,

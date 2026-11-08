@@ -155,6 +155,37 @@ def test_an_interface_narrows_to_what_is_on_its_networks(
     assert get(client, "interface=9999").json()["total"] == 0
 
 
+def test_a_neighbour_on_the_internet_side_is_left_out_and_counted(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    stock(session)
+    factories.assets(
+        session,
+        utcnow(),
+        [
+            AssetSpec(
+                hostname="firewall",
+                mac="00:11:22:0a:0b:0d",
+                addresses=("9.9.9.10",),
+                listed=(Listed("opnsense", "arp", 1, own=True),),
+            ),
+            AssetSpec(
+                vendor="Example Cable Inc.",
+                mac="00:11:22:0a:0b:0f",
+                addresses=("9.9.9.1", "9.9.9.2"),
+                listed=(Listed("opnsense", "arp", 1),),
+            ),
+        ],
+        [],
+    )
+    session.commit()
+
+    body = get(client).json()
+
+    assert (body["total"], body["outside"]) == (3, 1)
+    assert sorted(item["name"] for item in body["items"]) == ["firewall", "laptop", "phone"]
+
+
 @pytest.mark.parametrize(
     "query",
     [

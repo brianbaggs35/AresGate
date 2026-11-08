@@ -91,6 +91,11 @@ class TestMakingASighting:
     def test_it_needs_nothing_but_the_hardware_address_and_the_time(self) -> None:
         assert NewSighting.of(MAC, NOW) == NewSighting(MAC, NOW)
 
+    def test_a_listing_as_one_of_the_programs_own_addresses_is_marked_so(self) -> None:
+        assert NewSighting.of(MAC, NOW, address="192.168.1.1", own=True) == NewSighting(
+            MAC, NOW, IPv4Address("192.168.1.1"), own=True
+        )
+
     @pytest.mark.parametrize("mac", ["", "(incomplete)", "00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"])
     def test_what_is_not_a_device_is_no_sighting(self, mac: str) -> None:
         assert NewSighting.of(mac, NOW, address="192.168.1.20") is None
