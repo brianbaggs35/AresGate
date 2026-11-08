@@ -116,6 +116,20 @@ class TestTheArpTableRead:
     def test_only_an_entry_that_says_it_is_stale_is_left_out(self, expired: object) -> None:
         assert len(sightings([{"mac": LAPTOP, "ip": "192.168.1.20", "expired": expired}], NOW)) == 1
 
+    def test_an_entry_the_firewall_marks_permanent_is_its_own(self) -> None:
+        entries = [
+            {"mac": LAPTOP, "ip": "192.168.1.1", "permanent": True},
+            {"mac": PHONE, "ip": "192.168.1.21", "permanent": False},
+        ]
+
+        assert [item.own for item in sightings(entries, NOW)] == [True, False]
+
+    @pytest.mark.parametrize("permanent", ["true", 1, None])
+    def test_only_an_entry_that_says_it_is_permanent_is_its_own(self, permanent: object) -> None:
+        entry = {"mac": LAPTOP, "ip": "192.168.1.20", "permanent": permanent}
+
+        assert [item.own for item in sightings([entry], NOW)] == [False]
+
     def test_what_is_not_an_entry_of_a_device_is_skipped(self) -> None:
         entries = [
             "text",

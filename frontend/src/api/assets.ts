@@ -87,6 +87,8 @@ export interface AssetPage {
   unidentified: number
   /** When the first asset was first listed; null while there is none. */
   watching_since: string | null
+  /** How many are on the Internet side (the provider's equipment, say), so not in the list. */
+  outside: number
 }
 
 /** What to ask for; what is left out is not narrowed. */

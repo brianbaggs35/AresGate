@@ -102,6 +102,8 @@ class AssetsOut(BaseModel):
     unidentified: int
     # When the first asset was first listed; null while there is none.
     watching_since: AwareDatetime | None
+    # How many are on the Internet side (the provider's equipment, say) and so not in the list.
+    outside: int
 
 
 def _listing(item: Listing) -> ListingOut:
@@ -168,6 +170,7 @@ def _out(found: inventory.Inventory, page: search.Page) -> AssetsOut:
         new=page.facets.new,
         unidentified=page.facets.unidentified,
         watching_since=found.watching_since,
+        outside=found.outside,
     )
 
 

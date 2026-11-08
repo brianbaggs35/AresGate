@@ -27,7 +27,25 @@ def record(
 
 
 def seen(mac: str = LAPTOP, at: datetime = NOW, **changes: str | None) -> NewSighting:
-    sighting = NewSighting.of(mac, at, **changes)
+    sighting = NewSighting.of(
+        mac,
+        at,
+        address=changes.get("address"),
+        hostname=changes.get("hostname"),
+        vendor=changes.get("vendor"),
+    )
+    assert sighting is not None
+    return sighting
+
+
+def own_flags(session: Session) -> list[bool]:
+    """Whether each row of a listing is one of the program's own addresses."""
+    session.expire_all()
+    return [row.own for row in session.scalars(select(DeviceSource))]
+
+
+def listed(own: bool, at: datetime = NOW) -> NewSighting:
+    sighting = NewSighting.of(LAPTOP, at, address="192.168.1.1", own=own)
     assert sighting is not None
     return sighting
 
@@ -284,6 +302,34 @@ def record_machines(
     return store.record_hosts(
         session, hosts, now, source="wazuh", connection="manager", via="agent", complete=complete
     )
+
+
+class TestTheFirewallsOwnAddresses:
+    def test_a_device_listed_as_one_of_the_firewalls_own_is_marked_so(
+        self, session: Session
+    ) -> None:
+        record(session, [listed(own=True)], NOW)
+
+        assert own_flags(session) == [True]
+
+    def test_a_device_listed_as_a_neighbour_is_not_its_own(self, session: Session) -> None:
+        record(session, [listed(own=False)], NOW)
+
+        assert own_flags(session) == [False]
+
+    def test_once_listed_as_its_own_it_stays_so(self, session: Session) -> None:
+        later = NOW + timedelta(minutes=1)
+        record(session, [listed(own=True)], NOW)
+        record(session, [listed(own=False, at=later)], later)
+
+        assert own_flags(session) == [True]
+
+    def test_sightings_of_one_device_in_one_go_are_its_own_if_any_is(
+        self, session: Session
+    ) -> None:
+        record(session, [listed(own=False), listed(own=True)], NOW)
+
+        assert own_flags(session) == [True]
 
 
 class TestMachinesWithNoHardwareAddress:

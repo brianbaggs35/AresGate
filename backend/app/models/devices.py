@@ -76,6 +76,9 @@ class DeviceSource(Base):
     via: Mapped[str] = mapped_column(String(16))
     first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Whether the integration listed it as one of its own addresses (the firewall's own interfaces,
+    # which the ARP table marks as permanent). Once it has been, it stays so.
+    own: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class HostListing(Base):

@@ -26,6 +26,8 @@ export class AssetsPage {
   /** The panel of the programs that list devices, and the line about what new means. */
   readonly suppliers: Locator
   readonly note: Locator
+  /** What is left out for being on the Internet side, when anything is. */
+  readonly outside: Locator
   readonly stale: Locator
   readonly failure: Locator
 
@@ -48,6 +50,7 @@ export class AssetsPage {
     this.refresh = page.getByTestId('refresh')
     this.suppliers = page.getByTestId('suppliers')
     this.note = page.getByTestId('assets-note')
+    this.outside = page.getByTestId('assets-outside')
     this.stale = page.getByTestId('assets-stale')
     this.failure = page.getByTestId('assets-error')
   }

@@ -276,6 +276,11 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   asset is in that state; no program that lists devices is connected (leads to Integrations); one
   is connected but has listed nothing yet (leads to Status). More assets than a page are asked for
   with *Show more*, and the page asks again every 30 seconds for as many as are shown.
+- **The Internet side is left out.** A device on the provider's side of the firewall (its addresses
+  are public, and it is not one of the firewall's own, which the ARP table marks as permanent) is
+  not an asset: the page says how many were left out (`outside` in `GET /api/assets`). A network of
+  the owner's on the Internet interface leaves out what is on it, and one on a home interface keeps
+  what is on it. The Internet is not offered as an *Interface* choice.
 
 ## States
 

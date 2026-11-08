@@ -425,6 +425,7 @@ class ListedRequest(BaseModel):
     source: str = Field(default="opnsense", max_length=32)
     via: str = Field(default="arp", max_length=16)
     minutes_ago: float = Field(default=1, ge=0, le=60 * 24 * 365)
+    own: bool = False
 
 
 class DeviceRequest(BaseModel):

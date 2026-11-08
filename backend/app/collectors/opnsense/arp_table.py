@@ -43,7 +43,7 @@ class ArpTable(Collector):
 
 def sightings(entries: Sequence[object], seen_at: datetime) -> list[NewSighting]:
     """The devices the entries are of. A stale entry is one that didn't answer, so it isn't a
-    sighting."""
+    sighting. An entry the firewall marks as permanent is one of its own addresses."""
     objects = (probes.as_object(entry) for entry in entries)
     found = (
         NewSighting.of(
@@ -52,6 +52,7 @@ def sightings(entries: Sequence[object], seen_at: datetime) -> list[NewSighting]
             address=traffic.text(entry, "ip"),
             hostname=traffic.text(entry, "hostname"),
             vendor=traffic.text(entry, "manufacturer"),
+            own=entry.get("permanent") is True,
         )
         for entry in objects
         if entry is not None and entry.get("expired") is not True

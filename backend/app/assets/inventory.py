@@ -8,6 +8,9 @@ device has it. What matches nothing is an asset of its own. The match is worked 
 asked for and never stored, so a device that gets a lease later is merged then, and every listing
 says how it was matched.
 
+A device on the Internet side of the network, which is the provider's and not the home's, is not
+an asset: it is counted. The firewall's own addresses are always assets, whichever side they are on.
+
 All of it is read into memory and worked on there: a home network has some hundreds of devices at
 the most."""
 
@@ -21,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.devices import ways
+from app.incidents.filters import inside
 from app.integrations import registry
 from app.models import (
     Device,
@@ -95,6 +99,8 @@ class Asset:
     listings: tuple[Listing, ...]
     # The interfaces (by id) whose networks hold one of its current addresses.
     interfaces: tuple[int, ...]
+    # On the Internet side of the network, which is not the home's: left out of the list.
+    outside: bool = False
 
 
 @dataclass(frozen=True)
@@ -114,15 +120,20 @@ class Network:
 
     id: int
     name: str
+    # Whether it is the Internet: what is on it is not the home's.
+    internet: bool = False
 
 
 @dataclass(frozen=True)
 class Inventory:
     assets: list[Asset]
     suppliers: list[Supplier]
+    # The interfaces of the home that have networks; the Internet is not one of them.
     networks: list[Network]
     # When the first asset was first listed; none while there is none.
     watching_since: datetime | None
+    # How many assets are on the Internet side and so left out of ``assets``.
+    outside: int = 0
 
 
 # The integrations that list devices, with the connections each needs and how it lists them.
@@ -186,17 +197,39 @@ def _networks(db: Session) -> list[tuple[Network, Blocks]]:
                 # for the list of devices not to load.
                 continue
         if blocks:
-            found.append((Network(item.id, item.name), blocks))
+            found.append((Network(item.id, item.name, item.role == "internet"), blocks))
     return found
+
+
+def _covers(addresses: tuple[Address, ...], blocks: Blocks) -> bool:
+    """Whether any of these addresses is in any of these networks."""
+    return any(address in block for address in addresses for block in blocks)
 
 
 def _on(addresses: tuple[Address, ...], networks: list[tuple[Network, Blocks]]) -> tuple[int, ...]:
     """The interfaces with a network that holds any of these addresses."""
-    return tuple(
-        network.id
-        for network, blocks in networks
-        if any(address in block for address in addresses for block in blocks)
-    )
+    return tuple(network.id for network, blocks in networks if _covers(addresses, blocks))
+
+
+def _on_internet(
+    own: bool, addresses: tuple[Address, ...], networks: list[tuple[Network, Blocks]]
+) -> bool:
+    """Whether a device is on the Internet side, which is not the home's and so is left out of the
+    assets. The firewall's own addresses are the owner's, whichever side they are on. Otherwise the
+    owner's networks decide where they cover an address, and a network of the home wins over one of
+    the Internet. Where none does, a public IPv4 address is on the Internet, unless another of the
+    device's addresses is the home's. A link-local address is on whatever link it is on, so it
+    says nothing of the side."""
+    if own:
+        return False
+    covering = [network for network, blocks in networks if _covers(addresses, blocks)]
+    if any(not network.internet for network in covering):
+        return False
+    if covering:
+        return True
+    routable = [address for address in addresses if not address.is_link_local]
+    public = any(address.version == 4 and address.is_global for address in routable)
+    return public and not any(inside(address) for address in routable)
 
 
 def _listing(row: DeviceSource) -> Listing:
@@ -270,7 +303,9 @@ def _device(
             if host.address is not None and host.address not in (*current, *older)
         )
     )
-    listings = [_listing(row) for row in parts.sources.get(device.id, [])]
+    sources = parts.sources.get(device.id, [])
+    own = any(row.own for row in sources)
+    listings = [_listing(row) for row in sources]
     listings += [_host_listing(host, matched_by) for host, matched_by in machines]
     last_seen_at = max([device.last_seen_at, *(item.last_seen_at for item in listings)])
     first_seen_at = min([device.first_seen_at, *(host.first_seen_at for host, _ in machines)])
@@ -294,6 +329,7 @@ def _device(
         identified=bool(hostname or device.vendor),
         listings=tuple(sorted(listings, key=lambda item: (item.source, item.via))),
         interfaces=_on(current, networks),
+        outside=_on_internet(own, current, networks),
     )
 
 
@@ -320,11 +356,13 @@ def _host(
         identified=True,
         listings=(listing,),
         interfaces=_on(where, networks),
+        outside=_on_internet(False, where, networks),
     )
 
 
 def load(db: Session, now: datetime) -> Inventory:
-    """Every asset as of ``now``, with the integrations that could list one."""
+    """Every asset as of ``now``, with the integrations that could list one. Those on the Internet
+    side are not in it: they are counted."""
     devices = list(db.scalars(select(Device).order_by(Device.id)))
     machines = list(db.scalars(select(HostListing).order_by(HostListing.id)))
     parts = _Parts()
@@ -351,11 +389,12 @@ def load(db: Session, now: datetime) -> Inventory:
     firsts = [item.first_seen_at for item in (*devices, *machines)]
     networks = _networks(db)
     since = min(firsts) if firsts else now
-    assets = [_device(device, parts, networks, since, now) for device in devices]
-    assets += [_host(host, networks, since, now) for host in alone]
+    found = [_device(device, parts, networks, since, now) for device in devices]
+    found += [_host(host, networks, since, now) for host in alone]
     return Inventory(
-        assets=assets,
+        assets=[asset for asset in found if not asset.outside],
         suppliers=_suppliers(db),
-        networks=[network for network, _ in networks],
+        networks=[network for network, _ in networks if not network.internet],
         watching_since=min(firsts, default=None),
+        outside=sum(asset.outside for asset in found),
     )

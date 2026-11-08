@@ -6,7 +6,7 @@ from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any
 
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from sqlalchemy.dialects.postgresql import Insert, insert
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -24,6 +24,7 @@ class _Seen:
     last: datetime
     hostname: str | None = None
     vendor: str | None = None
+    own: bool = False
     addresses: dict[IPv4Address | IPv6Address, tuple[datetime, datetime]] = field(
         default_factory=dict[IPv4Address | IPv6Address, tuple[datetime, datetime]]
     )
@@ -62,7 +63,9 @@ def record(
     listings = insert(DeviceSource)
     db.execute(
         listings.on_conflict_do_update(
-            index_elements=["device_id", "source", "via"], set_=_widen(listings)
+            index_elements=["device_id", "source", "via"],
+            # Once the program has listed a device as its own, it stays so.
+            set_={**_widen(listings), "own": or_(DeviceSource.own, listings.excluded.own)},
         ),
         [
             {
@@ -71,6 +74,7 @@ def record(
                 "via": via,
                 "first_seen_at": found.first,
                 "last_seen_at": found.last,
+                "own": found.own,
             }
             for mac, found in seen.items()
         ],
@@ -145,6 +149,7 @@ def _sum_up(sightings: Sequence[NewSighting], now: datetime) -> dict[str, _Seen]
         found.first, found.last = min(found.first, at), max(found.last, at)
         found.hostname = sighting.hostname or found.hostname
         found.vendor = sighting.vendor or found.vendor
+        found.own = found.own or sighting.own
         if sighting.address is not None:
             first, last = found.addresses.get(sighting.address, (at, at))
             found.addresses[sighting.address] = (min(first, at), max(last, at))
