@@ -132,10 +132,11 @@ export class AlertsPage {
     await this.rules.waitFor()
   }
 
-  /** Chooses from one of the menus in the rules sheet, by what the choice is called. */
+  /** Chooses from one of the menus in the rules sheet, by exactly what the choice is called ("Sent"
+   * is also in "Not sent" and "Waiting to be sent"). */
   async choose(menu: Locator, label: string): Promise<void> {
     await menu.locator('.v-field').click()
-    await this.page.getByRole('option', { name: label }).click()
+    await this.page.getByRole('option', { name: label, exact: true }).click()
   }
 
   /** Picks how much a message says. */
