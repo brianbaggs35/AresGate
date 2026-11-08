@@ -1,7 +1,7 @@
 """Verdicts that say where a device's traffic goes
 
-Revision ID: 0031
-Revises: 0030
+Revision ID: 0032
+Revises: 0031
 Create Date: 2026-11-08
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0031"
-down_revision: str | Sequence[str] | None = "0030"
+revision: str = "0032"
+down_revision: str | Sequence[str] | None = "0031"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 # Alembic reads these by name, so they're exported, which also tells CodeQL they're used.
