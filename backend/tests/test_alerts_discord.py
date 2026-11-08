@@ -473,8 +473,7 @@ class TestWaitingForTheMessageAndEditingIt:
             f"/api/webhooks/{ID}/{TOKEN}/messages/{made.message_id}",
         )
         assert json.loads(patch.body)["embeds"][0]["title"] == "AresGate can reach this channel"
-        [_, call] = [None, *log.calls]
-        assert call is not None and call.path == discord.LOGGED_PATH
+        assert [call.path for call in log.calls] == [discord.LOGGED_PATH]
         assert TOKEN not in repr(log.calls)
 
     def test_a_message_that_was_never_made_or_was_deleted_is_missing(self, serve: Serve) -> None:

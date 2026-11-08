@@ -524,6 +524,32 @@ def build(
     )
 
 
+def _job(
+    db: Session,
+    destination: AlertDestination,
+    webhook: Webhook,
+    row: AlertDelivery,
+    origin: str,
+    now: datetime,
+    tuning: Tuning,
+) -> Job | None:
+    """What to send for a row that is due, or nothing: the row is then dropped, because the
+    incident is gone or, for a change to a message, the message it would change is."""
+    target = db.get(AlertDelivery, row.target_id) if row.target_id else None
+    edit = target.message_id if target else None
+    changing = row.kind == "update"
+    payload = build(db, destination, row, origin, now, tuning) if edit or not changing else None
+    if payload is None:
+        row.state = "dropped"
+        row.note = (
+            "Not changed. The message or the incident is gone."
+            if changing
+            else "Not sent. The incident is gone."
+        )
+        return None
+    return Job(row.id, destination.id, webhook, payload, edit)
+
+
 def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
     """One pass of deciding: what is to be sent now, to whom. Saves nothing but the outbox; the
     caller commits."""
@@ -541,22 +567,9 @@ def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
         rules = alert_rules.of(destination)
         decide_new(db, destination, rules, now, tuning)
         for row in due_now(db, destination, rules, now):
-            target = db.get(AlertDelivery, row.target_id) if row.target_id else None
-            edit = target.message_id if target else None
-            payload = (
-                build(db, destination, row, settings.public_origin, now, tuning)
-                if row.kind != "update" or edit
-                else None
-            )
-            if payload is None:
-                row.state = "dropped"
-                row.note = (
-                    "Not changed. The message or the incident is gone."
-                    if row.kind == "update"
-                    else "Not sent. The incident is gone."
-                )
-                continue
-            jobs.append(Job(row.id, destination.id, webhook, payload, edit))
+            job = _job(db, destination, webhook, row, settings.public_origin, now, tuning)
+            if job is not None:
+                jobs.append(job)
     return jobs
 
 

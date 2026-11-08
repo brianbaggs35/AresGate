@@ -30,6 +30,42 @@ describe('pieces', () => {
       { kind: 'text', text: '[no](javascript:alert(1)) and **open' },
     ])
   })
+
+  it('leaves a mark that is never closed, and what is empty, as text', () => {
+    expect(pieces('**open')).toEqual([{ kind: 'text', text: '**open' }])
+    expect(pieces('`open')).toEqual([{ kind: 'text', text: '`open' }])
+    expect(pieces('**** and ``')).toEqual([{ kind: 'text', text: '**** and ``' }])
+    expect(pieces('[open')).toEqual([{ kind: 'text', text: '[open' }])
+    expect(pieces('[]() [](https://x.example)')).toEqual([
+      { kind: 'text', text: '[]() [](https://x.example)' },
+    ])
+  })
+
+  it('leaves a link that goes nowhere on the web, or never ends, as text', () => {
+    expect(pieces('[a](https://x.example/y')).toEqual([
+      { kind: 'text', text: '[a](https://x.example/y' },
+    ])
+    expect(pieces('[a](https://) [b](http://x y)')).toEqual([
+      { kind: 'text', text: '[a](https://) [b](http://x y)' },
+    ])
+    expect(pieces('[a](ftp://x.example/y)')).toEqual([
+      { kind: 'text', text: '[a](ftp://x.example/y)' },
+    ])
+  })
+
+  it('takes a link that goes to http as well as https', () => {
+    expect(pieces('[a](http://x.example/y)')).toEqual([{ kind: 'link', text: 'a' }])
+  })
+
+  it('reads a line of marks that never close without taking long over it', () => {
+    const line = '[a'.repeat(10_000)
+    const started = performance.now()
+
+    const read = pieces(line)
+
+    expect(read).toEqual([{ kind: 'text', text: line }])
+    expect(performance.now() - started).toBeLessThan(2000)
+  })
 })
 
 describe('lines', () => {

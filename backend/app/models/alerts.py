@@ -27,6 +27,8 @@ DETAILS = ("brief", "standard", "full")
 # attack that is going on now), or ``custom``, whatever the severity, confidence, program and kind
 # of activity it was given choose.
 MODES = ("threats", "custom")
+# What happens to a log entry when what it points at is deleted: it stays, pointing at nothing.
+SET_NULL = "SET NULL"
 
 # What a new destination is told about: only what is serious (medium or worse) and that
 # AresGate is sure of (the "high" band of confidence), at most six messages an hour, and no
@@ -163,7 +165,7 @@ class AlertDelivery(Base):
     )
     # The incident it is about. Gone with the incident, but the title stays in the log.
     incident_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("incidents.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("incidents.id", ondelete=SET_NULL), default=None
     )
     # ``incident``: a message about one. ``summary``: one message for several. ``update``: an edit
     # to a message already sent (``target_id``), which says it has been stood down.
@@ -180,7 +182,7 @@ class AlertDelivery(Base):
     # For a summary: how many incidents it tells of. For one of those: the summary that did.
     covers: Mapped[int] = mapped_column(Integer, default=0)
     summary_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("alert_deliveries.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("alert_deliveries.id", ondelete=SET_NULL), default=None
     )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     # When it may be sent: now, when quiet hours end, or when the next try is due.
@@ -200,5 +202,5 @@ class AlertDelivery(Base):
     message_id: Mapped[str | None] = mapped_column(String(32), default=None)
     # For an update: the message it edits.
     target_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("alert_deliveries.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey("alert_deliveries.id", ondelete=SET_NULL), default=None
     )
