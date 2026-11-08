@@ -8,6 +8,19 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Alerts are sent: a notifier with de-duplication, retries and a delivery log.** The worker now
+  tells each Discord destination of the incidents its rules choose, which until now it only
+  previewed. An incident is told **once**, and again only when it gets worse (a higher severity or
+  band of confidence) or is reopened after you dealt with it; one you resolved, dismissed or called
+  not suspicious before its message went is not sent. Quiet hours hold messages and tell what
+  waited as one summary, a destination hears of at most its limit an hour and the rest in one
+  summary, a failure is tried again after longer waits (and as long as Discord's `retry_after`
+  says) and then given up on, and a webhook Discord refuses is never tried again until its address
+  is replaced. What a message says follows the destination's detail setting, and what the network
+  says is shown as plain text, so it cannot format a message or ping anyone. A new **Delivery log**
+  on the Alerts page lists every message and what became of it, in words, with a filter by
+  destination and state; `ARESGATE_ALERT_LOG_RETENTION_DAYS` (default 30) sets how long it is
+  kept. [Alerts](DOCS/alerts.md) has the rules.
 - **Threats: a few real attacks instead of seventy thousand alerts.** A new **Threats** page (in
   the menu, and on a phone in the bottom bar, where Logs moved behind **More** to make room) takes
   what programs reported down to what matters, and says how at each step: *reports*, *alerts*,
