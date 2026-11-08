@@ -104,6 +104,16 @@ def test_control_characters_in_a_path_are_cleaned_and_a_long_one_is_cut(serve: S
     assert client_module.clean_path("?only=a-query") == "/"
 
 
+def test_the_headers_it_answered_with_come_back_in_lower_case(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(headers={"X-RateLimit-Remaining": "0", "Retry-After": "3"}))
+
+    reply = request(target(server), Log(), "get", "/api/status")
+
+    assert reply.headers["x-ratelimit-remaining"] == "0"
+    assert reply.headers["retry-after"] == "3"
+    assert Reply(200, "").headers == {}
+
+
 def test_what_is_sent_reaches_the_integration(serve: Serve) -> None:
     server = serve(lambda seen: Answer())
 

@@ -12,7 +12,7 @@ from app.models.ai import (
     AiTriage,
 )
 from app.models.alerts import KINDS as ALERT_KINDS
-from app.models.alerts import AlertDestination
+from app.models.alerts import AlertDelivery, AlertDestination
 from app.models.audit import AuditEvent
 from app.models.auth import (
     LoginThrottle,
@@ -58,6 +58,7 @@ __all__ = [
     "AiProvider",
     "AiSettings",
     "AiTriage",
+    "AlertDelivery",
     "AlertDestination",
     "ApiCall",
     "AuditEvent",

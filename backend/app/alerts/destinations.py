@@ -68,7 +68,13 @@ def create(
     webhook = discord.parse(address)
     check_name(db, name)
     row = AlertDestination(
-        kind="discord", name=name, enabled=True, hint=webhook.hint, created_at=now, updated_at=now
+        kind="discord",
+        name=name,
+        enabled=True,
+        hint=webhook.hint,
+        created_at=now,
+        updated_at=now,
+        listening_since=now,
     )
     db.add(row)
     db.flush()
@@ -92,6 +98,7 @@ def replace_address(
     row.last_attempt_at = None
     row.last_success_at = None
     row.last_error = None
+    row.refused = False
 
 
 def forget(db: Session, row: AlertDestination) -> None:
@@ -136,5 +143,6 @@ def record_attempt(row: AlertDestination, sent: Sent | str, now: datetime) -> No
     elif sent.ok:
         row.last_success_at = now
         row.last_error = None
+        row.refused = False
     else:
         row.last_error = (sent.problem or "The message didn't get through.")[:500]

@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     # How long the record of what was asked of an AI provider, and what it answered, is kept. It
     # is what the usage page adds up, so it is kept longer than the API log.
     ai_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 90
+    # How long the alerts log keeps what became of each message sent to a destination.
+    alert_log_retention_days: Annotated[int, Field(ge=1, le=365)] = 30
 
     # How long events from the integrations are kept, for a source that has no setting of its own.
     event_retention_days: Annotated[int, Field(ge=1, le=3650)] = 30

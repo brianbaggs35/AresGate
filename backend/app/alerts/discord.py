@@ -63,6 +63,8 @@ AMBER = 0xF59E0B
 # The limits of a message, from the pages above.
 MAX_TITLE = 256
 MAX_DESCRIPTION = 4096
+# The longest Discord is believed when it says how long to wait, in seconds.
+MAX_WAIT = 3600
 USER_AGENT = f"DiscordBot (https://github.com/brianbaggs35/AresGate, {__version__})"
 
 
@@ -199,6 +201,9 @@ class Sent:
     # The webhook itself is no good (deleted, or its token is wrong), so trying again will not
     # help and the address has to be replaced.
     gone: bool = False
+    # How long Discord's headers say the next message has to wait: it got this one, but the
+    # allowance for now is spent.
+    pause: float | None = None
 
 
 def _retry_after(body: object) -> float | None:
@@ -209,12 +214,33 @@ def _retry_after(body: object) -> float | None:
     return None
 
 
-def judge(status: int, body: object) -> Sent:
+def _seconds(value: str | None) -> float | None:
+    """A number of seconds a header gives, or none if it gives no such number."""
+    try:
+        seconds = float(value) if value is not None else None
+    except ValueError:
+        return None
+    return seconds if seconds is not None and 0 <= seconds < MAX_WAIT else None
+
+
+def _spent(headers: Mapping[str, str]) -> float | None:
+    """How long to wait before the next message, if the headers say none are left: Discord sends
+    ``X-RateLimit-Remaining`` and ``X-RateLimit-Reset-After`` with its answers."""
+    if headers.get("x-ratelimit-remaining") != "0":
+        return None
+    return _seconds(headers.get("x-ratelimit-reset-after"))
+
+
+def judge(status: int, body: object, headers: Mapping[str, str] | None = None) -> Sent:
     """What an answer from Discord means for sending."""
+    seen = headers or {}
     if status in (200, 204):
-        return Sent(True, status)
+        return Sent(True, status, pause=_spent(seen))
     if status == 429:
+        # The page says to rely on the header or the field; the field is the more exact.
         wait = _retry_after(body)
+        if wait is None:
+            wait = _seconds(seen.get("retry-after"))
         how_long = f" for {wait:g} seconds" if wait is not None else " for a moment"
         return Sent(
             False,
@@ -294,4 +320,4 @@ async def send(
             )
         except CallFailed as failure:
             return Sent(False, None, str(failure), retry=True)
-    return judge(reply.status, reply.json())
+    return judge(reply.status, reply.json(), reply.headers)

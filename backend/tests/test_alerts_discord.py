@@ -198,6 +198,39 @@ class TestWhatDiscordSaid:
         assert sent.problem is not None
         assert sent.problem.endswith("Wait for a moment.")
 
+    def test_a_limit_with_no_time_in_the_body_reads_it_from_the_header(self) -> None:
+        sent = discord.judge(429, None, {"retry-after": "4"})
+
+        assert (sent.retry, sent.retry_after) == (True, 4.0)
+
+    @pytest.mark.parametrize("value", ["soon", "-1", "99999", ""])
+    def test_a_time_in_the_header_that_makes_no_sense_is_not_believed(self, value: str) -> None:
+        assert discord.judge(429, None, {"retry-after": value}).retry_after is None
+
+    def test_the_body_is_believed_before_the_header(self) -> None:
+        sent = discord.judge(429, {"retry_after": 1.5}, {"retry-after": "4"})
+
+        assert sent.retry_after == 1.5
+
+    def test_a_message_that_used_the_last_of_the_allowance_says_how_long_to_wait(self) -> None:
+        sent = discord.judge(
+            204, None, {"x-ratelimit-remaining": "0", "x-ratelimit-reset-after": "1.5"}
+        )
+
+        assert (sent.ok, sent.pause) == (True, 1.5)
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"x-ratelimit-remaining": "3", "x-ratelimit-reset-after": "1.5"},
+            {"x-ratelimit-remaining": "0"},
+            {"x-ratelimit-remaining": "0", "x-ratelimit-reset-after": "nan?"},
+            {},
+        ],
+    )
+    def test_otherwise_there_is_nothing_to_wait_for(self, headers: dict[str, str]) -> None:
+        assert discord.judge(204, None, headers).pause is None
+
     @pytest.mark.parametrize("status", [401, 403, 404])
     def test_a_webhook_that_is_refused_is_gone(self, status: int) -> None:
         sent = discord.judge(status, {"message": "Unknown Webhook", "code": 10015})

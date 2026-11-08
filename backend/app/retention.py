@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.ai import retention as ai
+from app.alerts import log as alerts
 from app.config import Settings
 from app.events import retention as events
 from app.integrations import apilog
@@ -30,6 +31,7 @@ def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
         now = utcnow()
         apilog.purge_expired(db, settings, now)
         ai.purge_expired(db, settings, now)
+        alerts.purge_expired(db, settings, now)
         purged = audit.purge_expired(db, settings, now)
         removed = events.purge_expired(db, settings, now)
         if removed.deleted or removed.partitions_dropped:
