@@ -40,7 +40,7 @@ async function search() {
 <template>
   <SectionCard
     title="Look up a threat"
-    description="Ask VirusTotal about an IP address, a domain or a web address. Each search counts toward VirusTotal's limits, so AresGate spaces them out."
+    description="Ask VirusTotal about an IP address, a domain or a web address. An answer checked within the last week comes from what AresGate kept, with no search. Any other search counts toward VirusTotal's limits, so AresGate spaces them out."
     data-test="threat-lookup"
   >
     <form novalidate class="threat-lookup" data-test="threat-form" @submit.prevent="search">

@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import Settings
 from app.integrations import netguard, service
 from app.integrations.client import Call, CallFailed, Target
-from app.intel import budget, candidates, run, store, virustotal
-from app.models import Incident, IntegrationConnection, IntelLookup, IntelReport, Interface
+from app.intel import budget, candidates, run, store, subjects, virustotal
+from app.models import Incident, IntegrationConnection, IntelLookup, IntelSubject, Interface
 from app.models.base import utcnow
 from tests.test_incidents_search import incident as make_incident
 
@@ -153,26 +153,33 @@ def test_a_request_is_kept_as_pending_before_it_is_made(session: Session) -> Non
 
 
 @pytest.mark.parametrize(
-    ("answer", "outcome"),
-    [(virustotal.Unknown(), store.UNKNOWN), (virustotal.Failed("no answer"), store.FAILED)],
+    ("answer", "outcome", "kept"),
+    [
+        (virustotal.Unknown(), store.UNKNOWN, True),
+        (virustotal.Failed("no answer"), store.FAILED, False),
+    ],
 )
-def test_an_answer_without_a_report_is_kept_on_the_lookup_only(
-    session: Session, answer: virustotal.Answer, outcome: str
+def test_an_answer_without_a_report_is_kept_as_unknown_and_a_failure_is_not_kept(
+    session: Session, answer: virustotal.Answer, outcome: str, kept: bool
 ) -> None:
+    subject = subjects.of_address(ADDRESS)
     lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
 
-    store.finish(session, lookup_id, answer)
+    store.finish(session, lookup_id, subject, answer, NOW)
 
     row = session.get(IntelLookup, lookup_id)
     assert row is not None
     assert row.outcome == outcome
     assert store.report_for(session, PROVIDER, ADDRESS) is None
+    assert (store.cached(session, PROVIDER, subject, NOW) is not None) == kept
 
 
 def test_a_report_is_kept_with_the_lookup_that_brought_it(session: Session) -> None:
     lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
 
-    store.finish(session, lookup_id, virustotal.Reported(report=REPORT))
+    store.finish(
+        session, lookup_id, subjects.of_address(ADDRESS), virustotal.Reported(report=REPORT), NOW
+    )
 
     row = session.get(IntelLookup, lookup_id)
     assert row is not None
@@ -183,26 +190,75 @@ def test_a_report_is_kept_with_the_lookup_that_brought_it(session: Session) -> N
 
 
 def test_finishing_a_lookup_that_is_not_kept_changes_nothing(session: Session) -> None:
-    store.finish(session, 999_999, virustotal.Unknown())
+    store.finish(session, 999_999, subjects.of_address(ADDRESS), virustotal.Unknown(), NOW)
 
     assert session.get(IntelLookup, 999_999) is None
+    assert session.scalars(select(IntelSubject)).all() == []
 
 
 def test_a_newer_report_replaces_the_one_kept_for_the_address(session: Session) -> None:
-    store.save_report(session, PROVIDER, ADDRESS, REPORT)
-    store.save_report(session, PROVIDER, ADDRESS, replace(REPORT, malicious=9))
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), NOW)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(replace(REPORT, malicious=9)), NOW)
 
-    kept = session.scalars(select(IntelReport)).all()
+    kept = session.scalars(select(IntelSubject)).all()
     assert [row.malicious for row in kept] == [9]
 
 
 def test_reports_are_found_for_the_addresses_asked_about(session: Session) -> None:
-    store.save_report(session, PROVIDER, ADDRESS, REPORT)
-    store.save_report(session, "another", ADDRESS, REPORT)
+    store.keep(session, PROVIDER, subjects.of_address(ADDRESS), virustotal.Reported(REPORT), NOW)
+    store.keep(session, "another", subjects.of_address(ADDRESS), virustotal.Reported(REPORT), NOW)
 
     assert store.reports_for(session, PROVIDER, []) == []
     found = store.reports_for(session, PROVIDER, [ADDRESS, ip_address("198.51.100.10")])
-    assert [row.address for row in found] == [ADDRESS]
+    assert [row.subject for row in found] == [str(ADDRESS)]
+
+
+def test_an_answer_with_no_report_is_not_a_report_for_the_address(session: Session) -> None:
+    store.keep(session, PROVIDER, subjects.of_address(ADDRESS), virustotal.Unknown(), NOW)
+
+    assert store.report_for(session, PROVIDER, ADDRESS) is None
+    assert store.reports_for(session, PROVIDER, [ADDRESS]) == []
+
+
+def test_an_answer_is_fresh_for_a_week_after_its_subject_was_asked_about(session: Session) -> None:
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), NOW)
+
+    assert store.cached(session, PROVIDER, subject, NOW + store.FRESH - timedelta(hours=1))
+    assert store.cached(session, PROVIDER, subject, NOW + store.FRESH) is None
+
+
+def test_a_kept_answer_is_given_back_as_it_was_given(session: Session) -> None:
+    report = replace(
+        REPORT,
+        categories=("malware", "phishing"),
+        details=(("Owner", "Example Hosting"), ("Network", "AS64500")),
+    )
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(report), NOW)
+
+    kept = store.cached(session, PROVIDER, subject, NOW)
+    assert kept is not None
+    assert store.answer_of(kept) == virustotal.Reported(report=report)
+
+
+def test_a_kept_answer_with_no_report_is_given_back_as_unknown(session: Session) -> None:
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, virustotal.Unknown(), NOW)
+
+    kept = store.cached(session, PROVIDER, subject, NOW)
+    assert kept is not None
+    assert store.answer_of(kept) == virustotal.Unknown()
+
+
+def test_a_web_address_is_kept_as_the_hash_of_its_text(session: Session) -> None:
+    subject = subjects.parse("https://example.com/login?next=1")
+    store.keep(session, PROVIDER, subject, virustotal.Unknown(), NOW)
+
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert (kept.kind, kept.subject) == ("url", subjects.url_key(subject.text))
+    assert kept.subject != subject.text
 
 
 def test_lookups_older_than_the_keep_period_are_forgotten(session: Session) -> None:
@@ -379,6 +435,33 @@ def test_nothing_is_asked_while_the_spacing_has_not_passed(
     session.commit()
 
     assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_the_loop_waits_four_minutes_between_its_lookups_on_the_free_key(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    lookup_at(session, utcnow() - timedelta(minutes=1), address=str(OTHER))
+    session.commit()
+    answering(monkeypatch, virustotal.Unknown())
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_the_loop_asks_once_four_minutes_have_passed_on_the_free_key(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    lookup_at(session, utcnow() - timedelta(minutes=5), address=str(OTHER))
+    session.commit()
+    answering(monkeypatch, virustotal.Unknown())
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is True
+    session.expire_all()
+    kept = session.scalars(select(IntelSubject)).all()
+    assert [(row.kind, row.subject, row.outcome) for row in kept] == [
+        ("ip", str(ADDRESS), store.UNKNOWN)
+    ]
 
 
 def test_nothing_is_asked_when_no_address_may_be_sent(

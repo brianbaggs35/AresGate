@@ -18,7 +18,10 @@ export interface Lookup {
   /** The subject as it was searched for. */
   subject: string
   judgement: Judgement
+  /** When AresGate asked VirusTotal about the subject. */
   checked_at: string
+  /** Whether the answer was kept from an earlier check, so that no search was sent this time. */
+  cached: boolean
   /** When the subject was last analysed, as VirusTotal says, or null if it has no report. */
   analysed_at: string | null
   malicious: number
@@ -33,7 +36,8 @@ export interface Lookup {
   link: string
 }
 
-/** Searches VirusTotal for an address, a domain or a web address. Each search counts toward the
+/** Searches VirusTotal for an address, a domain or a web address. A subject checked within the last
+ * week is answered from what AresGate kept, and no search is sent. Any other search counts toward the
  * limits of the access level, so one may be refused for a while (with the time to wait). */
 export function searchThreatIntel(subject: string, csrfToken: string): Promise<Lookup> {
   return apiPost<Lookup>('/threat-intel/lookups', { subject }, csrfToken)

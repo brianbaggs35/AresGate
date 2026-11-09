@@ -10,6 +10,7 @@ const CLEAN: Lookup = {
   subject: 'example.com',
   judgement: 'clean',
   checked_at: '2026-11-09T12:00:00Z',
+  cached: false,
   analysed_at: '2026-11-08T09:30:00Z',
   malicious: 0,
   suspicious: 0,

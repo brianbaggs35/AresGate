@@ -236,6 +236,9 @@ const analysed = computed(() =>
         <p class="text-body-small text-medium-emphasis report__note">
           What you search for is added to VirusTotal's shared data, so keep private names out of
           searches. Checked {{ formatDateTime(lookup.checked_at) }}.
+          <span v-if="lookup.cached" data-test="report-cached">
+            This answer was kept from that check, so this search sent nothing to VirusTotal.
+          </span>
         </p>
       </v-card-text>
 

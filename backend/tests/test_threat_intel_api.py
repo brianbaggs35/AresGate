@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.integrations import netguard, service
 from app.integrations.client import CallFailed, Target
 from app.intel import store, subjects, virustotal
-from app.models import IntegrationConnection, IntelLookup, IntelReport, Interface
+from app.models import IntegrationConnection, IntelLookup, IntelSubject, Interface
 from app.models.base import utcnow
 
 URL = "/api/threat-intel/lookups"
@@ -237,13 +237,13 @@ def test_an_address_is_reported_with_its_judgement_counts_and_details_and_its_re
         {"label": "Network", "value": "AS64500"},
     ]
     assert body["link"] == "https://www.virustotal.com/gui/ip-address/93.184.216.34"
-    [report] = session.scalars(select(IntelReport)).all()
-    assert str(report.address) == ADDRESS
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert (kept.kind, kept.subject, kept.categories) == ("ip", ADDRESS, ["malware"])
     [lookup] = session.scalars(select(IntelLookup)).all()
     assert (lookup.kind, lookup.outcome, str(lookup.address)) == ("ip", store.REPORTED, ADDRESS)
 
 
-def test_a_domain_is_reported_but_its_report_is_not_kept(
+def test_a_domain_is_reported_and_its_answer_is_kept_for_the_domain(
     client: TestClient,
     csrf_token: str,
     connected: None,
@@ -258,7 +258,8 @@ def test_a_domain_is_reported_but_its_report_is_not_kept(
     body = response.json()
     assert (body["kind"], body["subject"]) == ("domain", "example.com")
     assert body["link"] == "https://www.virustotal.com/gui/domain/example.com"
-    assert session.scalars(select(IntelReport)).all() == []
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert (kept.kind, kept.subject) == ("domain", "example.com")
     [lookup] = session.scalars(select(IntelLookup)).all()
     assert (lookup.kind, lookup.address, lookup.subject) == ("domain", None, "example.com")
 
@@ -283,6 +284,8 @@ def test_a_web_address_is_shown_as_searched_but_only_its_host_is_kept(
     )
     [lookup] = session.scalars(select(IntelLookup)).all()
     assert (lookup.kind, lookup.address, lookup.subject) == ("url", None, "example.com")
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert kept.subject == subjects.url_key("https://example.com/login?token=secret")
 
 
 def test_an_address_with_no_report_is_unknown_and_has_no_counts(
@@ -311,7 +314,8 @@ def test_an_address_with_no_report_is_unknown_and_has_no_counts(
         [],
         [],
     )
-    assert session.scalars(select(IntelReport)).all() == []
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert kept.outcome == store.UNKNOWN
 
 
 @pytest.mark.parametrize(
@@ -370,3 +374,87 @@ def test_a_search_within_the_spacing_of_the_last_lookup_waits_and_says_how_long(
     }
     assert asked == []
     assert len(session.scalars(select(IntelLookup)).all()) == 1
+
+
+def age_every_lookup(session: Session, age: timedelta) -> None:
+    """Moves every lookup kept back by ``age``, so the spacing and the allowances have passed."""
+    for lookup in session.scalars(select(IntelLookup)).all():
+        lookup.requested_at = utcnow() - age
+    session.commit()
+
+
+def test_a_search_answered_lately_is_answered_from_what_was_kept_and_not_asked_again(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answering(monkeypatch, virustotal.Reported(report=REPORT))
+    first = search(client, csrf_token, ADDRESS)
+
+    second = search(client, csrf_token, ADDRESS)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert len(asked) == 1
+    assert (first.json()["cached"], second.json()["cached"]) == (False, True)
+    assert second.json()["checked_at"] == first.json()["checked_at"]
+    assert (second.json()["judgement"], second.json()["malicious"]) == ("malicious", 3)
+    assert len(session.scalars(select(IntelLookup)).all()) == 1
+
+
+def test_a_domain_or_web_address_answered_lately_is_answered_from_what_was_kept(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answering(monkeypatch, virustotal.Reported(report=REPORT))
+    search(client, csrf_token, "example.com")
+
+    again = search(client, csrf_token, "EXAMPLE.com.")
+
+    assert again.status_code == 200
+    assert again.json()["cached"] is True
+    assert again.json()["subject"] == "example.com"
+    assert len(asked) == 1
+
+
+def test_a_search_is_asked_again_once_its_answer_is_a_week_old(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answering(monkeypatch, virustotal.Unknown())
+    search(client, csrf_token, ADDRESS)
+    [kept] = session.scalars(select(IntelSubject)).all()
+    kept.checked_at = utcnow() - store.FRESH - timedelta(minutes=1)
+    age_every_lookup(session, timedelta(days=8))
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 200
+    assert response.json()["cached"] is False
+    assert len(asked) == 2
+
+
+def test_a_search_that_failed_is_not_kept_and_the_next_search_asks_again(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, CallFailed("Couldn't connect to www.virustotal.com:443."))
+    assert search(client, csrf_token, ADDRESS).status_code == 502
+    age_every_lookup(session, timedelta(minutes=1))
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 200
+    assert response.json()["cached"] is False
+    assert len(asked) == 1

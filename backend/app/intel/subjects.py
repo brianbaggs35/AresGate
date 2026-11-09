@@ -7,6 +7,7 @@ AresGate never looks a name up in DNS, so a search can't reach a device on the h
 
 import string
 from dataclasses import dataclass
+from hashlib import sha256
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -68,10 +69,21 @@ class Subject:
             return self.address, None
         return None, self.host
 
+    @property
+    def key(self) -> str:
+        """What the subject's answer is kept under: its address or domain as text, and for a web
+        address the hash of its text, so that the web address itself is kept nowhere."""
+        return url_key(self.text) if self.kind == "url" else self.text
+
 
 def of_address(address: Address) -> Subject:
     """The subject of a lookup about one internet address."""
     return Subject(kind="ip", text=str(address), host=str(address), address=address)
+
+
+def url_key(url: str) -> str:
+    """The identifier of a web address, which VirusTotal uses too: the SHA-256 of its text."""
+    return sha256(url.encode()).hexdigest()
 
 
 def parse(text: str) -> Subject:

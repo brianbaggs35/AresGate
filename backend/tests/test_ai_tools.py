@@ -3,7 +3,7 @@ finds through the redactor, so a provider that must not see an address sees a st
 
 from dataclasses import replace
 from datetime import timedelta
-from ipaddress import ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address
 
 import pytest
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from app.config import Settings
 from app.events.event import Severity
 from app.events.store import record as record_events
 from app.intel import store as intel_store
-from app.intel import virustotal
+from app.intel import subjects, virustotal
 from app.intel.virustotal import Report
 from app.models import (
     CollectorHealth,
@@ -30,6 +30,19 @@ from tests.test_ai_triage import ATTACKER, DEVICE, incident, kept, signals
 HOUR = timedelta(hours=1)
 PUBLIC = ip_address("93.184.216.34")
 HOME = ip_address(DEVICE)
+
+
+def save_report(session: Session, address: IPv4Address | IPv6Address, report: Report) -> None:
+    """Keeps what VirusTotal reported of an address, as the address's answer."""
+    intel_store.keep(
+        session,
+        virustotal.PROVIDER,
+        subjects.of_address(address),
+        virustotal.Reported(report),
+        report.analysed_at,
+    )
+
+
 REPORT = Report(
     malicious=3,
     suspicious=1,
@@ -463,7 +476,7 @@ class TestReputation:
     def test_an_address_on_the_internet_is_described_by_the_engines_and_its_owner(
         self, session: Session
     ) -> None:
-        intel_store.save_report(session, virustotal.PROVIDER, PUBLIC, REPORT)
+        save_report(session, PUBLIC, REPORT)
         session.commit()
 
         found = run(session, "reputation", Args(name=str(PUBLIC)))
@@ -477,9 +490,7 @@ class TestReputation:
         assert found.summary == f"VirusTotal's report on {PUBLIC}"
 
     def test_a_report_without_an_owner_or_country_says_so(self, session: Session) -> None:
-        intel_store.save_report(
-            session, virustotal.PROVIDER, PUBLIC, replace(REPORT, owner=None, country=None)
-        )
+        save_report(session, PUBLIC, replace(REPORT, owner=None, country=None))
         session.commit()
 
         found = run(session, "reputation", Args(name=str(PUBLIC)))
@@ -510,7 +521,7 @@ class TestReputation:
         assert found.summary == "no address given"
 
     def test_at_the_strictest_level_the_address_is_a_stand_in(self, session: Session) -> None:
-        intel_store.save_report(session, virustotal.PROVIDER, PUBLIC, REPORT)
+        save_report(session, PUBLIC, REPORT)
         session.commit()
 
         found = run(session, "reputation", Args(name=str(PUBLIC)), level=Level.STRICT)

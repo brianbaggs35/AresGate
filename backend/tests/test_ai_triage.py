@@ -9,7 +9,7 @@ import logging
 import re
 from collections.abc import Callable
 from datetime import timedelta
-from ipaddress import ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Any
 
 import anyio
@@ -24,7 +24,7 @@ from app.ai.redaction import Level, Redactor
 from app.config import Settings
 from app.incidents import queries
 from app.intel import store as intel_store
-from app.intel import virustotal
+from app.intel import subjects, virustotal
 from app.models import (
     CLASSES,
     USAGE_LEVELS,
@@ -41,9 +41,23 @@ from tests.test_ai_service import NOW, saved
 from tests.test_incidents_search import incident as make_incident
 
 ATTACKER = "203.0.113.5"
+
 DEVICE = "192.168.1.20"
 MINUTE = timedelta(minutes=1)
 events = itertools.count(1)
+
+
+def save_report(
+    session: Session, address: IPv4Address | IPv6Address, report: virustotal.Report
+) -> None:
+    """Keeps what VirusTotal reported of an address, as the address's answer."""
+    intel_store.keep(
+        session,
+        virustotal.PROVIDER,
+        subjects.of_address(address),
+        virustotal.Reported(report),
+        report.analysed_at,
+    )
 
 
 def incident(session: Session, **changes: object) -> Incident:
@@ -950,7 +964,7 @@ class TestReputationInThePrompt:
             owner="Example Hosting",
             asn=64500,
         )
-        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+        save_report(session, ip_address(ATTACKER), report)
 
         said = self.prompt(session, found)
 
@@ -974,7 +988,7 @@ class TestReputationInThePrompt:
             owner=None,
             asn=None,
         )
-        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+        save_report(session, ip_address(ATTACKER), report)
 
         said = self.prompt(session, found)
 
@@ -1000,7 +1014,7 @@ class TestReputationInThePrompt:
             owner="Example Hosting",
             asn=64500,
         )
-        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+        save_report(session, ip_address(ATTACKER), report)
 
         said = self.prompt(session, found, Level.STRICT)
 

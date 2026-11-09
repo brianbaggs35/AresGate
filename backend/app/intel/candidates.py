@@ -15,8 +15,9 @@ type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # Incidents seen this recently are worth asking about: an older one is no longer happening.
 RECENT = timedelta(days=7)
-# How long a report, or a lookup that found none, is taken as the answer for an address.
-ANSWER_FOR = timedelta(days=7)
+# How long a report, or a lookup that found none, is taken as the answer for an address: as long as
+# the answer is kept as fresh, so an address is not asked about again while it is.
+ANSWER_FOR = store.FRESH
 # How soon an address whose lookup failed, or was cut short, is asked about again.
 RETRY = timedelta(hours=1)
 # How many incidents are looked through, most recent first.

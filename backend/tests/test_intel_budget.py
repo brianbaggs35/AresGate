@@ -8,8 +8,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.intel import budget, store, virustotal
-from app.models import IntelLookup, IntelReport
+from app.intel import budget, store, subjects, virustotal
+from app.models import IntelLookup, IntelSubject
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 PROVIDER = virustotal.PROVIDER
@@ -120,14 +120,69 @@ def test_a_search_of_a_domain_is_kept_with_the_domain_and_no_address(session: Se
     assert (row.kind, row.address, row.subject) == ("domain", None, "example.com")
 
 
-def test_a_domain_report_is_shown_but_not_kept_as_a_report_of_an_address(session: Session) -> None:
+def test_a_domain_report_is_kept_as_the_answer_about_the_domain_and_not_an_address(
+    session: Session,
+) -> None:
     lookup_id = budget.reserve(
         session, PROVIDER, budget.PREMIUM, NOW, kind="domain", subject="example.com"
     )
 
-    store.finish(session, lookup_id, virustotal.Reported(report=REPORT))
+    store.finish(
+        session,
+        lookup_id,
+        subjects.parse("example.com"),
+        virustotal.Reported(report=REPORT),
+        NOW,
+    )
 
     row = session.get(IntelLookup, lookup_id)
     assert row is not None
     assert row.outcome == store.REPORTED
-    assert session.scalars(select(IntelReport)).all() == []
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert (kept.kind, kept.subject, kept.outcome) == ("domain", "example.com", store.REPORTED)
+    assert store.report_for(session, PROVIDER, ADDRESS) is None
+
+
+def test_the_background_loop_leaves_four_minutes_between_its_lookups_on_the_free_key(
+    session: Session,
+) -> None:
+    lookup_at(session, NOW - timedelta(minutes=1))
+
+    assert budget.wait_for(session, PROVIDER, budget.FREE, NOW, background=True) == timedelta(
+        minutes=3
+    )
+
+
+def test_a_search_is_held_back_only_by_the_short_spacing_of_the_free_key(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(minutes=1))
+
+    assert budget.wait_for(session, PROVIDER, budget.FREE, NOW) == timedelta(0)
+
+
+def test_the_background_loop_may_look_up_once_its_spacing_has_passed(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(minutes=4))
+
+    assert budget.wait_for(session, PROVIDER, budget.FREE, NOW, background=True) == timedelta(0)
+
+
+def test_premium_background_lookups_keep_only_the_premium_spacing(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(seconds=2))
+
+    assert budget.wait_for(session, PROVIDER, budget.PREMIUM, NOW, background=True) == timedelta(0)
+
+
+def test_a_background_lookup_that_comes_too_soon_is_refused_and_keeps_nothing(
+    session: Session,
+) -> None:
+    lookup_at(session, NOW - timedelta(minutes=1))
+
+    with pytest.raises(budget.Wait) as waiting:
+        budget.reserve(session, PROVIDER, budget.FREE, NOW, background=True, address=ADDRESS)
+
+    assert waiting.value.wait == timedelta(minutes=3)
+    assert len(session.scalars(select(IntelLookup)).all()) == 1
+
+
+def test_the_free_key_spreads_its_background_lookups_over_the_day() -> None:
+    # Four minutes apart is 360 a day, which leaves 140 of the 500 for searches by hand.
+    assert timedelta(days=1) // budget.FREE.background_spacing == 360

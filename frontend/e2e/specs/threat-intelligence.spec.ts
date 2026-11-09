@@ -1,4 +1,18 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from '../support'
+
+/** The list as it is after VirusTotal's connection has been tested, which is when the search is offered. */
+async function showVirusTotalConnected(page: Page) {
+  await page.route('**/api/integrations', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { key: string; status: string }[]
+    for (const item of body) {
+      if (item.key === 'virustotal') item.status = 'connected'
+    }
+    await route.fulfill({ status: response.status(), json: body })
+  })
+}
 
 test.describe('threat intelligence page', () => {
   test('is in the menu, and says VirusTotal must be set up before it can search', async ({
@@ -29,15 +43,7 @@ test.describe('threat intelligence page', () => {
     page,
     shell,
   }) => {
-    // The list as it is after VirusTotal's connection has been tested, which is when the search is offered.
-    await page.route('**/api/integrations', async (route) => {
-      const response = await route.fetch()
-      const body = (await response.json()) as { key: string; status: string }[]
-      for (const item of body) {
-        if (item.key === 'virustotal') item.status = 'connected'
-      }
-      await route.fulfill({ status: response.status(), json: body })
-    })
+    await showVirusTotalConnected(page)
     const searched: string[] = []
     await page.route('**/api/threat-intel/lookups', async (route) => {
       const sent = route.request().postDataJSON() as { subject: string }
@@ -49,6 +55,7 @@ test.describe('threat intelligence page', () => {
             subject: 'example.com',
             judgement: 'clean',
             checked_at: '2026-11-09T12:00:00Z',
+            cached: false,
             analysed_at: '2026-11-08T09:30:00Z',
             malicious: 0,
             suspicious: 0,
@@ -85,6 +92,7 @@ test.describe('threat intelligence page', () => {
     await expect(report.locator('[data-test="report-judgement"]')).toHaveText(
       'No engine flagged it',
     )
+    await expect(report.locator('[data-test="report-cached"]')).toHaveCount(0)
     await expect(report.getByRole('link', { name: 'Open in VirusTotal' })).toHaveAttribute(
       'href',
       'https://www.virustotal.com/gui/domain/example.com',
@@ -102,5 +110,60 @@ test.describe('threat intelligence page', () => {
     )
     await expect(report).toBeHidden()
     expect(searched).toEqual(['example.com', '203.0.113.9'])
+  })
+
+  test('says when a search was answered from what AresGate kept, and so sent nothing to VirusTotal', async ({
+    page,
+    shell,
+  }) => {
+    await showVirusTotalConnected(page)
+    let answered = 0
+    await page.route('**/api/threat-intel/lookups', async (route) => {
+      answered += 1
+      await route.fulfill({
+        json: {
+          kind: 'domain',
+          subject: 'example.com',
+          judgement: 'clean',
+          checked_at: '2026-11-09T12:00:00Z',
+          cached: answered > 1,
+          analysed_at: '2026-11-08T09:30:00Z',
+          malicious: 0,
+          suspicious: 0,
+          harmless: 70,
+          undetected: 12,
+          reputation: 4,
+          categories: [],
+          details: [],
+          link: 'https://www.virustotal.com/gui/domain/example.com',
+        },
+      })
+    })
+
+    await page.goto('/')
+    await shell.dashboardLink.waitFor()
+    await shell.goTo('threat-intelligence')
+
+    const panel = page.locator('[data-test="threat-lookup"]')
+    const report = page.locator('[data-test="threat-report"]')
+    const subject = panel.getByRole('textbox', {
+      name: 'IP address, domain or web address',
+      exact: true,
+    })
+    await subject.fill('example.com')
+    await panel.getByRole('button', { name: 'Search' }).click()
+    await expect(report).toBeVisible()
+    await expect(report.locator('[data-test="report-cached"]')).toHaveCount(0)
+    await report.getByRole('button', { name: 'Done' }).click()
+    await expect(report).toBeHidden()
+
+    await subject.fill('example.com')
+    await panel.getByRole('button', { name: 'Search' }).click()
+
+    await expect(report).toBeVisible()
+    await expect(report.locator('[data-test="report-cached"]')).toContainText(
+      'sent nothing to VirusTotal',
+    )
+    expect(answered).toBe(2)
   })
 })

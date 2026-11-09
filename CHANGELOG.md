@@ -17,11 +17,20 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **VirusTotal's free allowance lasts the day.** On a free key the background lookups are four
+  minutes apart, so they use at most 360 of its 500 a day, spread over the day, and the other 140
+  stay for searches by hand. Before, the free key's 15-second spacing let a backlog of addresses use
+  the whole day's 500 in about two hours.
 - **An internet integration is narrower.** It reaches only its own address and port, over HTTPS,
   and AresGate sends it nothing but GET requests.
 
 ### Fixed
 
+- **A search you've already made isn't sent again.** AresGate keeps VirusTotal's answer about each
+  address, domain and web address in one row each, for a week. A search for a subject answered in
+  that week is shown from what was kept, with no request and nothing counted, so repeated searches
+  no longer use up the free key's day. This adds migration `0036`, which moves the reports of
+  addresses into the new table.
 - **VirusTotal connects again.** Its address is on the internet, and AresGate looked for it on your
   own network, which refused it. Its certificate is now checked by the certificates this computer
   trusts, as any public site's is, so there is no certificate step to look up for it. Its address

@@ -35,7 +35,7 @@ from app.models.incidents import (
     ThreatSettings,
 )
 from app.models.integrations import ApiCall, IntegrationConnection
-from app.models.intel import IntelLookup, IntelReport
+from app.models.intel import IntelLookup, IntelSubject
 from app.models.interfaces import ROLES as INTERFACE_ROLES
 from app.models.interfaces import Interface, InterfaceFeed
 from app.models.metrics import MetricRetention, MetricSample, MetricSeries
@@ -76,7 +76,7 @@ __all__ = [
     "IncidentSignal",
     "IntegrationConnection",
     "IntelLookup",
-    "IntelReport",
+    "IntelSubject",
     "Interface",
     "InterfaceFeed",
     "LoginThrottle",
