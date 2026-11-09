@@ -260,7 +260,7 @@ defineExpose({ reviewCertificate })
       </div>
 
       <TlsSettings
-        v-if="usesTls(draft.url)"
+        v-if="usesTls(draft.url) && !definition.internet"
         ref="tls"
         v-model:mode="draft.tlsMode"
         v-model:authority="draft.tlsCaPem"

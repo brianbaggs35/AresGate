@@ -110,12 +110,13 @@ def last_success(rows: Mapping[str, IntegrationConnection]) -> datetime | None:
 
 
 def _tls_settings(
-    submission: Submission, secure: bool
+    submission: Submission, secure: bool, internet: bool
 ) -> tuple[str, str | None, str | None, dict[str, str]]:
     """The certificate settings to keep: the mode, the certificate authority and the fingerprint,
-    and what is wrong with them. A plain http address has no certificate to check, so whatever
-    was filled in is dropped."""
-    if not secure:
+    and what is wrong with them. A plain http address has no certificate to check, and a service
+    on the internet is checked by the certificates this computer trusts, as any site is, so
+    whatever was filled in is dropped for either."""
+    if not secure or internet:
         return "system", None, None, {}
     problems: dict[str, str] = {}
     mode, ca_pem, fingerprint = submission.tls_mode, None, None
@@ -191,7 +192,9 @@ def _prepare(
     except Refused as refusal:
         problems["url"] = str(refusal)
     mode, ca_pem, fingerprint, tls_problems = _tls_settings(
-        submission, secure=origin is None or origin.scheme == "https"
+        submission,
+        secure=origin is None or origin.scheme == "https",
+        internet=connection.internet,
     )
     problems.update(tls_problems)
     options: dict[str, str | int] | None = None

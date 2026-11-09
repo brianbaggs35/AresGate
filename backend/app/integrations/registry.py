@@ -144,7 +144,9 @@ class ConnectionDef(BaseModel):
     # key is only ever sent to the service it belongs to.
     address: str = ""
     # Whether the service is on the internet rather than the home network. Its address is then
-    # checked against the internet's addresses, and never against the home network's.
+    # checked against the internet's addresses, and never against the home network's. Its
+    # certificate is checked by the certificates this computer trusts, as any site's is, so there
+    # is none to look up, pin or paste.
     internet: bool = False
 
 
@@ -167,6 +169,12 @@ class IntegrationDef(BaseModel):
 
     def connection(self, key: str) -> ConnectionDef | None:
         return next((item for item in self.connections if item.key == key), None)
+
+    @property
+    def internet_only(self) -> bool:
+        """Whether every connection is on the internet, so no certificate on the home network is
+        there to look up."""
+        return all(item.internet for item in self.connections)
 
 
 OPNSENSE_MODULES = (

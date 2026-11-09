@@ -242,6 +242,13 @@ def _services(
     ]
 
 
+def _certificate_problem(connection: ConnectionDef, message: str | None) -> bool:
+    """Whether a failure is about the certificate, which can be reviewed and trusted. A service on
+    the internet is checked by the certificates this computer trusts, so there is nothing to
+    review."""
+    return not connection.internet and certdiag.is_about_a_certificate(message)
+
+
 def _connection_out(
     db: Session, integration: str, definition: ConnectionDef, row: IntegrationConnection | None
 ) -> ConnectionOut:
@@ -258,7 +265,7 @@ def _connection_out(
         last_attempt_at=row.last_attempt_at if row else None,
         last_success_at=row.last_success_at if row else None,
         last_error=row.last_error if row else None,
-        certificate_problem=certdiag.is_about_a_certificate(row.last_error if row else None),
+        certificate_problem=_certificate_problem(definition, row.last_error if row else None),
     )
 
 
@@ -413,7 +420,7 @@ def test_integration(
                 ok=verdict.ok,
                 message=verdict.message,
                 certificate_problem=not verdict.ok
-                and certdiag.is_about_a_certificate(verdict.message),
+                and _certificate_problem(connection, verdict.message),
             )
         )
     ok = all(check.ok for check in checks)
@@ -508,7 +515,13 @@ def look_up_certificate(
     """The certificate the system at an address presents, so that it can be compared with what
     that system shows for itself and then trusted, with whether the way of checking given would
     accept it already. Nothing is sent to it but the connection."""
-    _definition(key)
+    definition = _definition(key)
+    if definition.internet_only:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"There is no certificate to look up for {definition.name}. Its certificate is "
+            "checked by the certificates this computer trusts.",
+        )
     if body.tls_mode not in service.TLS_MODES:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,

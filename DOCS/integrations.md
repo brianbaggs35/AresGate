@@ -542,6 +542,10 @@ from VirusTotal's API key page, `https://www.virustotal.com/gui/my-apikey`, whil
 it on the card, choose the access level and test the connection. AresGate asks nothing until a test
 has worked.
 
+Its certificate is one that public authorities vouch for, so AresGate checks it against the
+certificates this computer trusts, as a browser checks a site's. There is no certificate to look up,
+pin or paste for VirusTotal.
+
 ### Access levels
 
 The free public API allows 4 lookups a minute and 500 a day. VirusTotal says it must not be used in
