@@ -108,9 +108,7 @@ describe('ThreatReportDialog', () => {
     const { inWindow, all } = await mountReport()
 
     const bar = inWindow('[data-test="report-bar"]')
-    expect(bar?.getAttribute('aria-label')).toBe(
-      'Engine verdicts: 3 malicious, 1 suspicious, 60 harmless, 20 undetected',
-    )
+    expect(bar?.getAttribute('aria-hidden')).toBe('true')
     const malicious = inWindow('[data-part="malicious"]') as HTMLElement
     const harmless = inWindow('[data-part="harmless"]') as HTMLElement
     expect(parseFloat(malicious.style.width)).toBeCloseTo((3 / 84) * 100, 5)

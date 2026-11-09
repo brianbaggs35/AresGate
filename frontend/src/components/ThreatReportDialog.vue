@@ -105,10 +105,6 @@ const segments = computed(() => {
   return parts.map((part) => ({ ...part, share: total ? (part.count / total) * 100 : 0 }))
 })
 
-const barLabel = computed(() =>
-  segments.value.map((part) => `${part.count} ${part.label.toLowerCase()}`).join(', '),
-)
-
 /** The community's score, with its sign, or that there is none yet. */
 const reputation = computed(() => {
   const score = props.lookup.reputation
@@ -184,8 +180,7 @@ const analysed = computed(() =>
         <div
           v-if="lookup.judgement !== 'unknown'"
           class="verdict-bar"
-          role="img"
-          :aria-label="`Engine verdicts: ${barLabel}`"
+          aria-hidden="true"
           data-test="report-bar"
         >
           <span

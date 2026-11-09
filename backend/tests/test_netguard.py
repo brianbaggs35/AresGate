@@ -261,17 +261,22 @@ def test_a_name_or_port_that_is_not_the_services_is_refused_before_anything_is_l
     monkeypatch.setattr(netguard, "lookup_async", no_lookup)
     policy = netguard.internet_service(parse_origin("https://www.virustotal.com", allow_http=False))
 
+    def dial(host: str, port: int) -> None:
+        asyncio.run(GuardedBackend(policy).connect_tcp(host, port))
+
     with pytest.raises(Refused, match=r"only at www\.virustotal\.com, not at evil\.example"):
-        asyncio.run(GuardedBackend(policy).connect_tcp("evil.example", 443))
+        dial("evil.example", 443)
     with pytest.raises(Refused, match="only on port 443"):
-        asyncio.run(GuardedBackend(policy).connect_tcp("www.virustotal.com", 8443))
+        dial("www.virustotal.com", 8443)
 
 
 def test_the_internet_service_says_what_it_reaches_when_an_address_is_at_home() -> None:
     policy = netguard.internet_service(parse_origin("https://www.virustotal.com", allow_http=False))
 
+    address = ipaddress.ip_address("192.168.1.1")
+
     with pytest.raises(Refused) as refused:
-        allowed_addresses(policy, "www.virustotal.com", [ipaddress.ip_address("192.168.1.1")])
+        allowed_addresses(policy, "www.virustotal.com", [address])
 
     assert "isn't an address on the internet" in str(refused.value)
     assert "reaches it only at its own address" in str(refused.value)
