@@ -565,14 +565,39 @@ VirusTotal's API documentation says that any indicator queried through the API i
 to its dataset. So every address sent becomes known to VirusTotal, which is worth knowing before
 you connect a key.
 
+### Searching by hand
+
+Once the connection has been tested, the VirusTotal page has a search. It takes an IP address, a
+domain such as `example.com`, or a web address that starts with `https://` or `http://`, and shows
+what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many engines
+gave a verdict and what each said, the community's score, the categories it was given, what else
+VirusTotal says (the owner and country of an address, the registrar of a domain, the title and final
+address of a web address), and a link to its page on VirusTotal's own site.
+
+A search is refused, and nothing is sent, for a private or other non-public address, a name that
+only exists on a network of its own (`router`, `nas.local`, `printer.lan`, `box.test` and the like),
+one of the home's own addresses on the internet, a web address with a username or password in it,
+and anything that is none of these. The reason is shown in the search. A domain is judged by its
+text alone: AresGate doesn't resolve it, so a search can't reach a device on the home network.
+
+Only the host of a web address is kept with the search, not the rest of it. Its query string is sent,
+since it is part of what VirusTotal scans. A domain or web address that VirusTotal has never analysed
+is shown as having no report yet, and AresGate doesn't ask VirusTotal to scan it.
+
+A search counts toward the same limits as the lookups above. When a search would go over one, it is
+refused with the seconds to wait (HTTP 429, with a `Retry-After` header), and nothing is sent. The
+report of a domain or web address is shown on screen and not kept, so the AI doesn't read it yet.
+The report of an address is kept as the lookups are, and the AI reads it.
+
 ### What is kept, and what the AI does with it
 
 For each address AresGate keeps the counts of VirusTotal's last analysis (how many engines call it
 malicious, suspicious, harmless or undetected), its community reputation score, its country, and the
 owner and number of the network it belongs to. The AI reads these as part of an incident's brief,
 and can look one up with its reputation tool. The last report for an address is kept until another
-replaces it. Each lookup is logged with its address and outcome, and forgotten after 40 days, which
-is longer than the month the allowance counts over.
+replaces it. Each lookup is logged with its address, or for a domain or web address its domain or
+host, and its outcome, and is forgotten after 40 days, which is longer than the month the allowance
+counts over.
 
 ### Where this comes from, and what isn't tried
 
@@ -585,17 +610,28 @@ Taken from VirusTotal's documentation:
   read are described in the [IP address report](https://docs.virustotal.com/reference/ip-info) and
   its [object](https://docs.virustotal.com/reference-link/ip-object), and the errors in
   [the errors page](https://docs.virustotal.com/reference/errors).
+- A search of a domain is `GET /api/v3/domains/{domain}`, and of a web address
+  `GET /api/v3/urls/{id}`, with the key in the same header. The docs describe the URL id as the URL
+  identifier or the URL in base64 without padding. AresGate sends the SHA-256 of the address as the
+  identifier, which keeps the whole address out of the request path in its log. That reading of the
+  docs is inferred, not confirmed against the live service.
 
 Worked out here, not in the documentation:
 
-- A 404 (`NotFoundError`) is taken as no report for that address. The errors page says only that the
-  resource was not found, and doesn't say what that means for an address with no report.
+- A 404 (`NotFoundError`) is taken as no report for that address, domain or web address. The errors
+  page says only that the resource was not found, and doesn't say what that means for one with no
+  report.
+- The links to VirusTotal's website (`/gui/ip-address/`, `/gui/domain/` and `/gui/url/`, the last with
+  the SHA-256 of the address) are inferred from its site, not from these pages.
+- The domain and web address fields (the registrar, the title, the final address and the times
+  submitted) are read the same way as an address's, and one that isn't there is left out. The pages
+  above don't show these objects' fields.
 - The 15,000 a month is AresGate's margin, not a figure from VirusTotal.
 - The last analysis date is read as a whole number of seconds since 1970 in UTC, which the object's
   example suggests but the page doesn't state.
 
-Not tried against the live service: the answers are tested against a stand-in built from these
-pages. An answer that doesn't match is logged as a failed lookup, with the reason, and tried again
+Not tried against the live service: the answers, for addresses, domains and web addresses, are
+tested against a stand-in built from these pages. An answer that doesn't match is logged as a failed lookup, with the reason, and tried again
 later.
 
 ## Setup instructions

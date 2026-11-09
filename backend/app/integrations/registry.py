@@ -10,8 +10,9 @@ adding one here, and a probe in ``probes``.
 
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.integrations import guides
 from app.integrations.guides import Guide
@@ -148,6 +149,14 @@ class ConnectionDef(BaseModel):
     # certificate is checked by the certificates this computer trusts, as any site's is, so there
     # is none to look up, pin or paste.
     internet: bool = False
+
+    @model_validator(mode="after")
+    def _internet_is_its_own_address(self) -> Self:
+        """A service on the internet is reached at its own https address and nowhere else, so a
+        definition that gives it plain http, or no address, is refused when the app starts."""
+        if self.internet and (self.allow_http or not self.address.startswith("https://")):
+            raise ValueError("A service on the internet needs its own https address.")
+        return self
 
 
 class IntegrationDef(BaseModel):

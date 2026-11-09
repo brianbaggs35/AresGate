@@ -1,0 +1,132 @@
+import { ApiError } from '@/api/client'
+import * as threatIntel from '@/api/threatIntel'
+import type { Lookup } from '@/api/threatIntel'
+import ThreatLookup from '@/components/ThreatLookup.vue'
+import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
+import { flushPromises, mountWithPlugins } from '@/test/mount'
+
+const CLEAN: Lookup = {
+  kind: 'domain',
+  subject: 'example.com',
+  judgement: 'clean',
+  checked_at: '2026-11-09T12:00:00Z',
+  analysed_at: '2026-11-08T09:30:00Z',
+  malicious: 0,
+  suspicious: 0,
+  harmless: 70,
+  undetected: 12,
+  reputation: 4,
+  categories: [],
+  details: [{ label: 'Registrar', value: 'Example Registrar' }],
+  link: 'https://www.virustotal.com/gui/domain/example.com',
+}
+
+async function mountLookup() {
+  const mounted = await mountWithPlugins(ThreatLookup, { signedIn: 'brian' })
+  const { wrapper } = mounted
+  const type = async (text: string) => {
+    await wrapper.find<HTMLInputElement>('[data-test="threat-subject"] input').setValue(text)
+  }
+  const submit = async () => {
+    await wrapper.find('[data-test="threat-form"]').trigger('submit')
+    await flushPromises()
+  }
+  const reportWindow = () =>
+    document.querySelector<HTMLElement>('.v-overlay--active [data-test="threat-report"]')
+  return { ...mounted, type, submit, reportWindow }
+}
+
+describe('ThreatLookup', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('has nothing to search until something is typed', async () => {
+    const { wrapper, type } = await mountLookup()
+
+    expect(wrapper.find('[data-test="threat-search"]').attributes('disabled')).toBeDefined()
+
+    await type('example.com')
+
+    expect(wrapper.find('[data-test="threat-search"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('searches what is typed without its spaces, with the security token, and opens the report', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { wrapper, type, submit, reportWindow } = await mountLookup()
+    await type('  example.com  ')
+
+    await submit()
+
+    expect(search).toHaveBeenCalledWith('example.com', 'a-security-token')
+    expect(wrapper.find('[data-test="threat-last-subject"]').text()).toBe('example.com')
+    expect(reportWindow()).not.toBeNull()
+    expect(wrapper.find('[data-test="threat-problem"]').exists()).toBe(false)
+  })
+
+  it('searches when the search button is pressed', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { wrapper, type } = await mountLookup()
+    await type('example.com')
+
+    await wrapper.find('[data-test="threat-search"]').trigger('click')
+    await flushPromises()
+
+    expect(search).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks nothing for a search that is only spaces', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { type, submit, reportWindow } = await mountLookup()
+    await type('   ')
+
+    await submit()
+
+    expect(search).not.toHaveBeenCalled()
+    expect(reportWindow()).toBeNull()
+  })
+
+  it('says why a search was refused, and how long to wait, without opening a report', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockRejectedValue(
+      new ApiError(
+        429,
+        "VirusTotal's limit on searches is reached. Try again in 5 seconds.",
+        'rate_limited',
+      ),
+    )
+    const { wrapper, type, submit, reportWindow } = await mountLookup()
+    await type('203.0.113.7')
+
+    await submit()
+
+    expect(wrapper.find('[data-test="threat-problem"]').text()).toContain('Try again in 5 seconds.')
+    expect(reportWindow()).toBeNull()
+    expect(wrapper.find('[data-test="threat-last"]').exists()).toBe(false)
+  })
+
+  it('says something useful when a search fails in a way that was not expected', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockRejectedValue(new Error('boom'))
+    const { wrapper, type, submit } = await mountLookup()
+    await type('example.com')
+
+    await submit()
+
+    expect(wrapper.find('[data-test="threat-problem"]').text()).toMatch(/\S/)
+  })
+
+  it('keeps the last search one click away once its report is closed', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { wrapper, type, submit, reportWindow } = await mountLookup()
+    await type('example.com')
+    await submit()
+    reportWindow()?.querySelector<HTMLElement>('[data-test="report-done"]')?.click()
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('modelValue')).toBe(false)
+    expect(wrapper.find('[data-test="threat-last"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="threat-reopen"]').trigger('click')
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('modelValue')).toBe(true)
+  })
+})

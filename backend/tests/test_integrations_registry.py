@@ -2,6 +2,7 @@ import re
 from urllib.parse import urlsplit
 
 import pytest
+from pydantic import ValidationError
 
 from app.integrations import probes, registry
 from app.integrations.registry import (
@@ -52,6 +53,21 @@ def test_virustotal_is_threat_intelligence_on_the_internet_with_a_warned_tier() 
 def test_an_integration_is_internet_only_when_every_connection_is_on_the_internet() -> None:
     assert INTEGRATIONS["virustotal"].internet_only
     assert not INTEGRATIONS["wazuh"].internet_only
+
+
+def test_a_service_on_the_internet_is_only_defined_with_its_own_https_address() -> None:
+    for address, allow_http in (("http://www.example.com", True), ("", False)):
+        with pytest.raises(ValidationError, match="needs its own https address"):
+            registry.ConnectionDef(
+                key="api",
+                label="API",
+                summary="A service.",
+                url_example="https://www.example.com",
+                allow_http=allow_http,
+                fields=(),
+                internet=True,
+                address=address,
+            )
 
 
 def test_a_connection_with_a_fixed_address_takes_no_other_address() -> None:

@@ -70,6 +70,11 @@ class AddressPolicy:
     # What a refusal says of an address that leads back to the machine itself, if that is not
     # the same thing as any other: in a container it is the container, not the computer.
     loopback_problem: str | None = None
+    # For one service: the only name it is reached at, the only ports, and whether only reads go to
+    # it. Empty, and False, for a policy that reaches any name and port and sends any request.
+    hosts: tuple[str, ...] = ()
+    ports: tuple[int, ...] = ()
+    read_only: bool = False
 
     def allows(self, address: IPAddress) -> bool:
         address = _unmapped(address)
@@ -212,6 +217,21 @@ def parse_origin(url: str, *, allow_http: bool) -> Origin:
     return Origin(parts.scheme, host, port or (443 if parts.scheme == "https" else 80))
 
 
+def internet_service(origin: Origin) -> AddressPolicy:
+    """The policy for one service on the internet. It is reached at the one name and port its
+    address has, only at addresses on the internet, and only to read. Nothing else on the internet
+    is reached through it: that is the explicit, narrow allowance for an external service."""
+    return AddressPolicy(
+        allowed=PUBLIC_INTERNET.allowed,
+        refused=PUBLIC_INTERNET.refused,
+        problem=PUBLIC_INTERNET.problem,
+        advice="This service is on the internet, so AresGate reaches it only at its own address.",
+        hosts=(origin.host,),
+        ports=(origin.port,),
+        read_only=True,
+    )
+
+
 class NotFound(Refused):
     pass
 
@@ -243,6 +263,17 @@ def _addresses(found: Iterable[tuple[object, ...]]) -> list[IPAddress]:
     return list(seen)
 
 
+def named_problem(policy: AddressPolicy, host: str, port: int) -> None:
+    """Refuses a name or a port that a policy for one service doesn't reach at all, before anything
+    is looked up."""
+    if policy.hosts and host not in policy.hosts:
+        names = ", ".join(policy.hosts)
+        raise Refused(f"AresGate reaches this service only at {names}, not at {host}.")
+    if policy.ports and port not in policy.ports:
+        ports = ", ".join(str(number) for number in policy.ports)
+        raise Refused(f"AresGate reaches this service only on port {ports}, not on port {port}.")
+
+
 def allowed_addresses(
     policy: AddressPolicy, host: str, addresses: list[IPAddress]
 ) -> list[IPAddress]:
@@ -263,6 +294,7 @@ def allowed_addresses(
 
 def check_reachable(policy: AddressPolicy, origin: Origin) -> None:
     """Refuses an address that leads outside the private ranges, or leads nowhere."""
+    named_problem(policy, origin.host, origin.port)
     allowed_addresses(policy, origin.host, lookup(origin.host, origin.port))
 
 
@@ -435,6 +467,7 @@ class GuardedBackend(httpcore2.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: Iterable[httpcore2.SOCKET_OPTION] | None = None,
     ) -> httpcore2.AsyncNetworkStream:
+        named_problem(self._policy, host, port)
         addresses = allowed_addresses(self._policy, host, await lookup_async(host, port))
         failure: Exception | None = None
         for address in addresses:

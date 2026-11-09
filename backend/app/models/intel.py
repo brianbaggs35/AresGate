@@ -16,8 +16,9 @@ from app.models.base import Base, UTCDateTime, utcnow
 
 
 class IntelLookup(Base):
-    """One request AresGate made to a threat-intelligence service about an address. One that failed
-    is kept too, since a request that went out counts toward the allowance."""
+    """One request AresGate made to a threat-intelligence service about a subject. One that failed
+    is kept too, since a request that went out counts toward the allowance. An address is kept as
+    an address; a domain, or the host of a web address, is kept as its text."""
 
     __tablename__ = "threat_intel_lookups"
     __table_args__ = (
@@ -27,7 +28,12 @@ class IntelLookup(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     provider: Mapped[str] = mapped_column(String(32))
-    address: Mapped[IPv4Address | IPv6Address] = mapped_column(INET)
+    # The address asked about, when the subject is an address; None otherwise.
+    address: Mapped[IPv4Address | IPv6Address | None] = mapped_column(INET, default=None)
+    # What kind of subject it was: ip, domain or url.
+    kind: Mapped[str] = mapped_column(String(8), default="ip")
+    # The domain asked about, or the host of a web address; None for an address.
+    subject: Mapped[str | None] = mapped_column(String(253), default=None)
     requested_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     # What came of it: pending while it is being asked, then reported, unknown (the service has no
     # report on the address) or failed.

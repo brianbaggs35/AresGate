@@ -186,6 +186,17 @@ def test_a_proxy_in_the_environment_is_not_used(
     assert request(target(server), Log(), "GET", "/").text == "direct"
 
 
+def test_a_service_that_is_only_read_gets_reads_and_nothing_that_changes(serve: Serve) -> None:
+    server = serve(lambda seen: Answer())
+    log = Log()
+    reading = replace(HOME_NETWORK_AND_LOOPBACK, read_only=True)
+
+    assert request(target(server), log, "GET", "/api/things", policy=reading).status == 200
+    with pytest.raises(CallFailed, match="sends it nothing that changes"):
+        request(target(server), log, "POST", "/api/things", json_body={"x": 1}, policy=reading)
+    assert len(server.seen) == 1
+
+
 def test_an_address_outside_the_home_network_is_refused_and_logged(serve: Serve) -> None:
     server = serve(lambda seen: Answer())
     log = Log()

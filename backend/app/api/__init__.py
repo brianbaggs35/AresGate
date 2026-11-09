@@ -27,6 +27,7 @@ from app.api import (
     setup,
     status,
     system,
+    threat_intel,
     threat_settings,
     threats,
     two_factor,
@@ -58,6 +59,7 @@ api_router.include_router(searches.router)
 api_router.include_router(verdicts.router)
 api_router.include_router(noise.router)
 api_router.include_router(threats.router)
+api_router.include_router(threat_intel.router)
 api_router.include_router(threat_settings.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audit.router)
