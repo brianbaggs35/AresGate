@@ -215,6 +215,19 @@ export interface AssetsRecord {
   hosts: number
 }
 
+/** What ntopng read of one host: the bytes it sent and received, an hour apart, oldest first. */
+export interface TrafficHostRequest {
+  /** The address of the host. */
+  host: string
+  sent?: number[]
+  received?: number[]
+}
+
+/** How many readings `createTraffic()` stored. */
+export interface TrafficRecord {
+  readings: number
+}
+
 /** What a program reports about one of its ports, as discovery finds it and as the Interfaces
  * page leaves it. Left out, it is OPNsense's, with no name: a whole connection. */
 export interface FeedRequest {
@@ -469,6 +482,14 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/assets', { data: request })
       .then((response) => readJson<AssetsRecord>(response, 'Making assets'))
+  }
+
+  /** Stores what ntopng read of hosts, an hour apart, for an asset's page to chart the traffic of.
+   * Each reading is a counter, so the traffic is what it rose by. */
+  createTraffic(hosts: TrafficHostRequest[]): Promise<TrafficRecord> {
+    return this.api
+      .post('/api/__test__/factories/traffic', { data: { hosts } })
+      .then((response) => readJson<TrafficRecord>(response, 'Making traffic'))
   }
 
   /** Makes feeds, and the interfaces they are placed on, as the Interfaces page leaves them. */

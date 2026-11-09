@@ -89,4 +89,9 @@ export class AssetsPage {
   async goto(query = ''): Promise<void> {
     await this.page.goto(`/assets${query}`)
   }
+
+  /** Opens the asset with this name from its card, as someone who clicks it would. */
+  async open(name: string): Promise<void> {
+    await this.card(name).getByTestId('asset-link').click()
+  }
 }

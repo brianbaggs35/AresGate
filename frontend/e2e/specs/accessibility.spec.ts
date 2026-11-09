@@ -77,6 +77,53 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('an asset, with its traffic and its events, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      assets,
+      asset,
+      shell,
+    }) => {
+      await harness.createAssets({
+        devices: [
+          {
+            hostname: 'laptop',
+            mac: '00:11:22:0a:0b:0c',
+            vendor: 'Example Devices Inc.',
+            addresses: ['192.168.1.20'],
+            earlier: ['192.168.1.19'],
+            listed: [
+              { source: 'opnsense', via: 'arp', minutes_ago: 1 },
+              { source: 'ntopng', via: 'hosts', minutes_ago: 1 },
+            ],
+          },
+        ],
+      })
+      await harness.createTraffic([
+        { host: '192.168.1.20', sent: [1000, 3000, 6000, 10000], received: [500, 600, 700, 900] },
+      ])
+      await harness.createEvents([
+        {
+          source: 'opnsense',
+          kind: 'firewall',
+          severity: 'info',
+          summary: 'Blocked tcp from 192.168.1.20 to 52.1.2.3',
+          src_address: '192.168.1.20',
+          dst_address: '52.1.2.3',
+          dst_port: 443,
+          protocol: 'tcp',
+          seconds_ago: 60,
+        },
+      ])
+      await assets.goto()
+      await assets.open('laptop')
+      await expect(asset.heading).toHaveText('laptop')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+
+      await expectAccessible(page)
+    })
+
     test('the incidents, and the page of one, have no WCAG 2.2 AA problems', async ({
       page,
       harness,
