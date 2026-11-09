@@ -1,16 +1,21 @@
 """Assets: the devices on the network, as every integration that can list them tells it, merged
 into one list. Read-only, for someone signed in."""
 
+from collections.abc import Sequence
+from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import AwareDatetime, BaseModel
 
+from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, signed_in
-from app.assets import inventory, search
+from app.assets import detail, inventory, search
+from app.assets.detail import Reading
 from app.assets.inventory import Asset, Inventory, Listing
 from app.assets.search import Sort
 from app.devices import ways
+from app.events.event import Severity
 from app.models import utcnow
 
 router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(signed_in)])
@@ -29,6 +34,7 @@ class ListingOut(BaseModel):
     source_name: str
     via: str
     via_label: str
+    first_seen_at: AwareDatetime
     last_seen_at: AwareDatetime
     # Whether being listed this way says it is on the network now.
     presence: bool
@@ -113,6 +119,7 @@ def _listing(item: Listing) -> ListingOut:
         source_name=inventory.name_of(item.source),
         via=item.via,
         via_label=way.label if way else item.via,
+        first_seen_at=item.first_seen_at,
         last_seen_at=item.last_seen_at,
         presence=item.presence,
         matched_by=item.matched_by,
@@ -215,3 +222,231 @@ def list_assets(
         sort=sort,
     )
     return _out(found, search.search(found, query, limit=limit, offset=offset))
+
+
+AssetKey = Annotated[
+    str,
+    Path(
+        pattern=r"^(device|host)-[1-9][0-9]{0,18}$",
+        description="An asset's key, such as device-12 or host-3.",
+    ),
+]
+
+
+class AddressOut(BaseModel):
+    """An address the asset has had, and whether it has it now."""
+
+    address: str
+    current: bool
+    first_seen_at: AwareDatetime
+    last_seen_at: AwareDatetime
+
+
+class NetworkOut(BaseModel):
+    """An interface whose networks hold one of the asset's addresses."""
+
+    id: int
+    name: str
+
+
+class EventOut(BaseModel):
+    """An event one of the asset's addresses was in, as the program that reported it saw it."""
+
+    id: int
+    occurred_at: AwareDatetime
+    source: str
+    source_name: str
+    kind: str
+    severity: SeverityName
+    summary: str
+    signature: str | None
+    src_address: str | None
+    src_port: int | None
+    dst_address: str | None
+    dst_port: int | None
+    protocol: str | None
+    # Whether the asset sent it, rather than the one it was sent to.
+    outbound: bool
+
+
+class PeerOut(BaseModel):
+    """Another address the asset's traffic went to, or came from."""
+
+    address: str
+    events: int
+    last_seen_at: AwareDatetime
+
+
+class ReadingOut(BaseModel):
+    """What was sent and received in a stretch of time, in bytes, or null if it was not measured."""
+
+    at: AwareDatetime
+    sent: float | None
+    received: float | None
+
+
+class TrafficOut(BaseModel):
+    """The asset's traffic as ntopng measured it: the last day by the hour, the last week by the
+    day, and the totals of each."""
+
+    measured: bool
+    hours: list[ReadingOut]
+    days: list[ReadingOut]
+    sent_day: float
+    received_day: float
+    sent_week: float
+    received_week: float
+
+
+class IncidentOut(BaseModel):
+    """An incident one of the asset's addresses is in."""
+
+    id: int
+    title: str
+    severity: SeverityName
+    confidence: int
+    status: str
+    verdict: str | None
+    last_seen_at: AwareDatetime
+    signal_count: int
+    sources: list[str]
+
+
+class VerdictOut(BaseModel):
+    """A verdict the owner gave about one of the asset's addresses."""
+
+    id: int
+    verdict: str
+    address: str | None
+    destination: str | None
+    source: str | None
+    signature: str | None
+    note: str | None
+    created_at: AwareDatetime
+
+
+class AssetDetailOut(BaseModel):
+    """One asset's page: everything AresGate knows of it."""
+
+    asset: AssetOut
+    networks: list[NetworkOut]
+    addresses: list[AddressOut]
+    events: list[EventOut]
+    # How many events its addresses were in, in the last day and in the last week.
+    events_day: int
+    events_week: int
+    talks_to: list[PeerOut]
+    contacted_by: list[PeerOut]
+    traffic: TrafficOut
+    incidents: list[IncidentOut]
+    verdicts: list[VerdictOut]
+
+
+def _text(address: IPv4Address | IPv6Address | None) -> str | None:
+    return None if address is None else str(address)
+
+
+def _reading(item: Reading) -> ReadingOut:
+    return ReadingOut(at=item.at, sent=item.sent, received=item.received)
+
+
+def _total(readings: Sequence[Reading]) -> tuple[float, float]:
+    """What was sent and received over some hours, counting nothing where it was not measured."""
+    return (
+        sum(item.sent or 0.0 for item in readings),
+        sum(item.received or 0.0 for item in readings),
+    )
+
+
+def _event(item: detail.EventSeen, mine: set[str]) -> EventOut:
+    source = _text(item.src_address)
+    return EventOut(
+        id=item.id,
+        occurred_at=item.occurred_at,
+        source=item.source,
+        source_name=inventory.name_of(item.source),
+        kind=item.kind,
+        severity=SEVERITY_NAMES[Severity(item.severity)],
+        summary=item.summary,
+        signature=item.signature,
+        src_address=source,
+        src_port=item.src_port,
+        dst_address=_text(item.dst_address),
+        dst_port=item.dst_port,
+        protocol=item.protocol,
+        outbound=source is not None and source in mine,
+    )
+
+
+def _peer(item: detail.Peer) -> PeerOut:
+    return PeerOut(address=str(item.address), events=item.events, last_seen_at=item.last_seen_at)
+
+
+def _detail_out(found: detail.Detail) -> AssetDetailOut:
+    mine = {str(address) for address in found.asset.addresses}
+    sent_day, received_day = _total(found.traffic.hours[-detail.HOURS_PER_DAY :])
+    sent_week, received_week = _total(found.traffic.hours)
+    return AssetDetailOut(
+        asset=asset_out(found.asset),
+        networks=[NetworkOut(id=item.id, name=item.name) for item in found.networks],
+        addresses=[
+            AddressOut(
+                address=str(item.address),
+                current=item.current,
+                first_seen_at=item.first_seen_at,
+                last_seen_at=item.last_seen_at,
+            )
+            for item in found.addresses
+        ],
+        events=[_event(item, mine) for item in found.events],
+        events_day=found.events_day,
+        events_week=found.events_week,
+        talks_to=[_peer(item) for item in found.talks_to],
+        contacted_by=[_peer(item) for item in found.contacted_by],
+        traffic=TrafficOut(
+            measured=found.traffic.measured,
+            hours=[_reading(item) for item in found.traffic.hours[-detail.HOURS_PER_DAY :]],
+            days=[_reading(item) for item in found.traffic.days],
+            sent_day=sent_day,
+            received_day=received_day,
+            sent_week=sent_week,
+            received_week=received_week,
+        ),
+        incidents=[
+            IncidentOut(
+                id=item.id,
+                title=item.title,
+                severity=SEVERITY_NAMES[Severity(item.severity)],
+                confidence=item.confidence,
+                status=item.status,
+                verdict=item.verdict,
+                last_seen_at=item.last_seen_at,
+                signal_count=item.signal_count,
+                sources=list(item.sources),
+            )
+            for item in found.incidents
+        ],
+        verdicts=[
+            VerdictOut(
+                id=item.id,
+                verdict=item.verdict,
+                address=_text(item.address),
+                destination=item.destination,
+                source=item.source,
+                signature=item.signature,
+                note=item.note,
+                created_at=item.created_at,
+            )
+            for item in found.verdicts
+        ],
+    )
+
+
+@router.get("/{key}")
+def get_asset(key: AssetKey, db: Db) -> AssetDetailOut:
+    """One asset's page: what the connected programs and AresGate's own records say of it. An
+    asset on the Internet side has no page, as it is not on the list."""
+    found = detail.load(db, key, utcnow())
+    if found is None:
+        raise HTTPException(status_code=404, detail="There is no asset with that key.")
+    return _detail_out(found)
