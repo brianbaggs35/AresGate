@@ -442,7 +442,7 @@ test.describe('layout on a phone', () => {
 
     test('the list fits the screen, one card above the next', async ({ page, integrations }) => {
       await integrations.goto()
-      await expect(integrations.names).toHaveCount(4)
+      await expect(integrations.names).toHaveCount(5)
 
       expect(await overflow(page)).toBeLessThanOrEqual(0)
       const first = await integrations.card('opnsense').boundingBox()

@@ -21,7 +21,7 @@ import {
   suggestedEntries,
   usesTls,
 } from '@/integrations'
-import { module, ntopngApi, opnsense } from '@/test/integrations'
+import { module, ntopngApi, opnsense, virustotal } from '@/test/integrations'
 
 describe('integrationIcon', () => {
   it('has a picture for each kind', () => {
@@ -100,6 +100,14 @@ describe('draftFrom', () => {
     expect(draftFrom(api!).enabled).toBe(true)
     expect(draftFrom(zenarmor!).enabled).toBe(false)
     expect(draftFrom({ ...zenarmor!, url: 'https://192.168.1.1:8090' }).enabled).toBe(true)
+  })
+
+  it('gives a service with one address that address, whether or not it was saved', () => {
+    const [api] = virustotal().connections
+    expect(draftFrom(api!).url).toBe('https://www.virustotal.com')
+    expect(draftFrom({ ...api!, url: 'https://elsewhere.example' }).url).toBe(
+      'https://www.virustotal.com',
+    )
   })
 })
 

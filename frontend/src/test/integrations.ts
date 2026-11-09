@@ -18,6 +18,7 @@ export const field = (
   overrides: Partial<Field> & Pick<Field, 'key' | 'label' | 'kind'>,
 ): Field => ({
   help: '',
+  caution: '',
   placeholder: '',
   default: null,
   choices: [],
@@ -48,6 +49,8 @@ export function connection(
       fields: [],
       optional: false,
       certificate_note: '',
+      address: '',
+      internet: false,
       ...definition,
     },
     url: null,
@@ -90,6 +93,7 @@ export function summary(overrides: Partial<IntegrationSummary> = {}): Integratio
     name: 'ntopng',
     provides: 'Who talks to whom on the network.',
     icon: 'traffic',
+    category: '',
     status: 'not_connected',
     last_success_at: null,
     services: [],
@@ -238,6 +242,44 @@ export function opnsense(overrides: Partial<Integration> = {}): Integration {
         fields: [
           field({ key: 'user', label: 'API user', kind: 'text' }),
           field({ key: 'api_key', label: 'API key', kind: 'secret' }),
+        ],
+      }),
+    ],
+    ...overrides,
+  })
+}
+
+/** VirusTotal, which has one address that cannot be changed, and an access level that costs money
+ * above the free one. */
+export function virustotal(overrides: Partial<Integration> = {}): Integration {
+  return integration({
+    key: 'virustotal',
+    name: 'VirusTotal',
+    provides: 'How many security vendors flag each internet address, and who owns it.',
+    icon: 'threats',
+    category: 'Threat intelligence',
+    docs_url: 'https://docs.virustotal.com/reference/overview',
+    connections: [
+      connection({
+        key: 'api',
+        label: 'VirusTotal API',
+        url_example: 'https://www.virustotal.com',
+        address: 'https://www.virustotal.com',
+        internet: true,
+        fields: [
+          field({ key: 'api_key', label: 'API key', kind: 'secret' }),
+          field({
+            key: 'tier',
+            label: 'Access level',
+            kind: 'choice',
+            default: 'free',
+            choices: [
+              { value: 'free', label: 'Free public API' },
+              { value: 'premium', label: 'Premium API' },
+            ],
+            caution:
+              'Free and premium differ. The free public API must not be used in business workflows, commercial products or services.',
+          }),
         ],
       }),
     ],

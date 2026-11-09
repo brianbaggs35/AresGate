@@ -32,6 +32,9 @@ export interface Field {
   action: string
   /** For a lookup: more than one can be chosen, and are kept as values joined by commas. */
   multiple: boolean
+  /** What the owner must know before choosing, shown as a warning beside the field. Empty when
+   * there is nothing to warn of. */
+  caution: string
 }
 
 /** What a connection takes, from the integration's definition. */
@@ -50,6 +53,11 @@ export interface ConnectionDefinition {
    * to trust it. Empty when there is nothing.
    */
   certificate_note: string
+  /** The address the connection always uses, when the service has one for everyone. Empty when
+   * the owner gives the address. */
+  address: string
+  /** Whether the service is on the internet rather than the home network. */
+  internet: boolean
 }
 
 /** A service that runs on the system, and whether AresGate reads it. */
@@ -94,6 +102,8 @@ export interface IntegrationSummary {
   provides: string
   /** The kind of thing it is, such as `firewall`. */
   icon: string
+  /** What family it belongs to, such as `Threat intelligence`. Empty when it belongs to none. */
+  category: string
   status: Status
   last_success_at: string | null
   services: Service[]

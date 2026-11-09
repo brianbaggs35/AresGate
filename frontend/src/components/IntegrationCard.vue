@@ -27,6 +27,14 @@ const notSetUp = computed(() => props.integration.status === 'not_connected')
       </span>
       <div class="integration-card__title">
         <h2 class="text-title-large" data-test="integration-name">{{ integration.name }}</h2>
+        <v-chip
+          v-if="integration.category"
+          size="small"
+          variant="tonal"
+          data-test="integration-category"
+        >
+          {{ integration.category }}
+        </v-chip>
         <StatusChip :status="integration.status" size="small" />
       </div>
     </div>

@@ -13,6 +13,7 @@ import {
   module,
   ntopngApi,
   opnsense,
+  virustotal,
 } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -444,6 +445,33 @@ describe('ConnectionCard', () => {
     it('has no such switch for a connection everyone needs', async () => {
       const { find } = await open()
       expect(find('connection-enabled').exists()).toBe(false)
+    })
+  })
+
+  describe('a service with one address', () => {
+    const [virustotalApi] = virustotal().connections
+
+    it('shows its address, which cannot be changed, and says so', async () => {
+      const { find, input, draft } = await open(virustotalApi)
+      expect(input('connection-url').element.value).toBe('https://www.virustotal.com')
+      expect(input('connection-url').element.readOnly).toBe(true)
+      expect(find('connection-url').text()).toContain(
+        'This service has one address, so AresGate only ever sends its key there.',
+      )
+      expect(draft.url).toBe('https://www.virustotal.com')
+    })
+
+    it('warns, where the access level is chosen, about business use of the free API', async () => {
+      const { find, draft } = await open(virustotalApi)
+      expect(draft.options.tier).toBe('free')
+      expect(find('field-tier').text()).toContain('Premium API')
+      expect(find('caution-tier').text()).toContain('must not be used in business workflows')
+      expect(find('caution-api_key').exists()).toBe(false)
+
+      await find('field-tier').findAll('input')[1]?.setValue(true)
+
+      expect(draft.options.tier).toBe('premium')
+      expect(find('caution-tier').exists()).toBe(true)
     })
   })
 })
