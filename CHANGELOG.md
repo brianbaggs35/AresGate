@@ -6,6 +6,19 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **Search VirusTotal by hand.** Once VirusTotal is connected and tested, its page takes an IP
+  address, a domain or a web address and shows what VirusTotal reported of it: whether engines
+  flagged it as malicious or suspicious, their counts, the community score, the categories and a
+  link to its page there. A search shares the free key's limits, so one that would go over them
+  waits, and says how long. Nothing private, and nothing on the home's own network, is sent.
+
+### Changed
+
+- **An internet integration is narrower.** It reaches only its own address and port, over HTTPS,
+  and AresGate sends it nothing but GET requests.
+
 ### Fixed
 
 - **VirusTotal connects again.** Its address is on the internet, and AresGate looked for it on your

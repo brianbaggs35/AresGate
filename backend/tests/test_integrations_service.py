@@ -592,8 +592,10 @@ def named_on_the_internet(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(netguard, "lookup", lookup)
 
 
-def test_a_connection_on_the_internet_is_checked_with_the_internet_policy() -> None:
-    assert service.policy_for(VIRUSTOTAL.connections[0], HOME_NETWORK) is netguard.PUBLIC_INTERNET
+def test_a_connection_on_the_internet_is_checked_with_the_policy_of_its_own_service() -> None:
+    policy = service.policy_for(VIRUSTOTAL.connections[0], HOME_NETWORK)
+
+    assert (policy.hosts, policy.ports, policy.read_only) == (("www.virustotal.com",), (443,), True)
     assert service.policy_for(registry.CROWDSEC.connections[0], HOME_NETWORK) is HOME_NETWORK
 
 

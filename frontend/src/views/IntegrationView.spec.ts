@@ -11,6 +11,7 @@ import {
   module,
   ntopngApi,
   opnsense,
+  virustotal,
 } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import ConnectionCard from '@/components/ConnectionCard.vue'
@@ -211,6 +212,23 @@ describe('IntegrationView', () => {
       opened.test.mockResolvedValue(passed())
       await opened.click('test')
       expect(opened.collectors).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('the threat lookup', () => {
+    it('is offered on VirusTotal once its connection has been tested', async () => {
+      const { find } = await open(virustotal({ status: 'connected' }), { key: 'virustotal' })
+      expect(find('threat-lookup').exists()).toBe(true)
+    })
+
+    it('is not offered until the connection has been tested', async () => {
+      const { find } = await open(virustotal({ status: 'untested' }), { key: 'virustotal' })
+      expect(find('threat-lookup').exists()).toBe(false)
+    })
+
+    it('is not offered on the other integrations', async () => {
+      const { find } = await open(working())
+      expect(find('threat-lookup').exists()).toBe(false)
     })
   })
 

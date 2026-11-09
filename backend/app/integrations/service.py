@@ -162,10 +162,12 @@ def _secrets(
 
 
 def policy_for(connection: ConnectionDef, home: AddressPolicy) -> AddressPolicy:
-    """The address policy a connection is checked with: the internet's for one that is on the
-    internet, so that its address is never looked for on the home network, and the home network's
-    for the rest."""
-    return netguard.PUBLIC_INTERNET if connection.internet else home
+    """The address policy a connection is checked with: for one on the internet, the policy of that
+    one service, which reaches nothing but its own address, so that it is never looked for on the
+    home network; the home network's for the rest."""
+    if not connection.internet:
+        return home
+    return netguard.internet_service(netguard.parse_origin(connection.address, allow_http=False))
 
 
 def _reached_with(target: Target, home: AddressPolicy) -> AddressPolicy:

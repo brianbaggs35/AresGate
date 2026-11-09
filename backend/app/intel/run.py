@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.integrations import netguard, registry, service
-from app.integrations.client import ApiClient, CallFailed, Recorder, Target
-from app.intel import budget, candidates, store, virustotal
-from app.intel.candidates import Address
+from app.integrations.client import Recorder, Target
+from app.intel import budget, candidates, store, subjects, virustotal
+from app.intel.subjects import Subject
 from app.models import utcnow
 
 logger = logging.getLogger(__name__)
@@ -27,17 +27,14 @@ CONNECTION = DEFINITION.connections[0]
 
 def _start(
     new_session: Callable[[], Session], settings: Settings
-) -> tuple[Target, Address, int] | None:
-    """Picks the address to ask about, if the limits allow one now, and keeps that a request is
-    about to be made. Returns the connection to ask with, the address and the lookup's id."""
+) -> tuple[Target, Subject, int] | None:
+    """Picks the address to ask about, and keeps that a request is about to be made if the limits
+    allow one now. Returns the connection to ask with, what is asked about and the lookup's id."""
     with new_session() as db:
         now = utcnow()
         store.prune(db, virustotal.PROVIDER, now)
         row = service.rows_for(db, DEFINITION.key).get(CONNECTION.key)
         if row is None or row.last_success_at is None:
-            db.commit()
-            return None
-        if not budget.may_look_up(db, virustotal.PROVIDER, budget.level_of(row.options), now):
             db.commit()
             return None
         address = candidates.next_address(db, virustotal.PROVIDER, now)
@@ -46,12 +43,14 @@ def _start(
             return None
         try:
             target = service.load_target(db, settings, DEFINITION, CONNECTION, row)
-        except service.Incomplete:
+            lookup_id = budget.reserve(
+                db, virustotal.PROVIDER, budget.level_of(row.options), now, address=address
+            )
+        except service.Incomplete, budget.Wait:
             db.commit()
             return None
-        lookup_id = store.record(db, virustotal.PROVIDER, address, now)
         db.commit()
-        return target, address, lookup_id
+        return target, subjects.of_address(address), lookup_id
 
 
 def _finish(new_session: Callable[[], Session], lookup_id: int, answer: virustotal.Answer) -> None:
@@ -68,12 +67,9 @@ async def lookup_once(
     started = await asyncio.to_thread(_start, new_session, settings)
     if started is None:
         return False
-    target, address, lookup_id = started
-    try:
-        async with ApiClient(target, recorder, netguard.PUBLIC_INTERNET) as client:
-            answer = await virustotal.look_up(client, target, address, utcnow())
-    except CallFailed as failure:
-        answer = virustotal.Failed(str(failure))
+    target, subject, lookup_id = started
+    policy = service.policy_for(CONNECTION, netguard.HOME_NETWORK)
+    answer = await virustotal.ask(target, recorder, policy, subject, utcnow())
     if isinstance(answer, virustotal.Failed):
         logger.info("A VirusTotal lookup didn't give a report: %s", answer.message)
     await asyncio.to_thread(_finish, new_session, lookup_id, answer)

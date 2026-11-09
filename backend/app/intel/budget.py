@@ -4,16 +4,27 @@ The free public API allows 4 lookups a minute and 500 a day, so lookups are at l
 apart and counted over the last day. VirusTotal's pages give no monthly figure, so the count over
 any 30 days stops at 15,000, as a margin. A premium key's limits depend on its plan, so only a
 second is kept between its lookups.
+
+Every lookup, whether the background loop makes it or a person searches, is kept through
+``reserve``. It takes a lock first, so two lookups that are asked for at the same time can't both
+see room for one more.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from ipaddress import IPv4Address, IPv6Address
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.intel import store
 from app.models import IntelLookup
+
+# The lock every lookup takes while it checks the limits and keeps its place: a number that stands
+# for the letters ARIT, so that it is recognisable in the database.
+_LOCK = 0x41524954
+NONE = timedelta(0)
 
 
 @dataclass(frozen=True)
@@ -23,6 +34,14 @@ class Level:
     spacing: timedelta
     per_day: int | None
     per_month: int | None
+
+
+class Wait(Exception):
+    """A lookup may not go yet. ``wait`` is how long until one may."""
+
+    def __init__(self, wait: timedelta) -> None:
+        super().__init__(f"A lookup may go in {wait}.")
+        self.wait = wait
 
 
 FREE = Level(spacing=timedelta(seconds=15), per_day=500, per_month=15_000)
@@ -37,22 +56,71 @@ def level_of(options: Mapping[str, str | int]) -> Level:
 
 
 def _requested_since(db: Session, provider: str, since: datetime) -> int:
+    """How many lookups were requested after ``since``."""
     count = db.scalar(
         select(func.count(IntelLookup.id)).where(
-            IntelLookup.provider == provider, IntelLookup.requested_at >= since
+            IntelLookup.provider == provider, IntelLookup.requested_at > since
         )
     )
     return count or 0
 
 
-def may_look_up(db: Session, provider: str, level: Level, now: datetime) -> bool:
-    """Whether a lookup may go now: the spacing since the last one has passed, and neither the
-    day's nor the month's allowance is used up."""
+def _until_room(
+    db: Session, provider: str, now: datetime, window: timedelta, limit: int
+) -> timedelta:
+    """How long until fewer than ``limit`` lookups fall within the last ``window``. The lookup that
+    has to leave the window first is the one at position count - limit, oldest first."""
+    since = now - window
+    count = _requested_since(db, provider, since)
+    if count < limit:
+        return NONE
+    # There is one, since the count is at least the limit, so ``one`` finds it.
+    leaving = db.scalars(
+        select(IntelLookup.requested_at)
+        .where(IntelLookup.provider == provider, IntelLookup.requested_at > since)
+        .order_by(IntelLookup.requested_at)
+        .offset(count - limit)
+        .limit(1)
+    ).one()
+    return leaving + window - now
+
+
+def wait_for(db: Session, provider: str, level: Level, now: datetime) -> timedelta:
+    """How long until a lookup may go: none if one may go now. Each limit is looked at on its own,
+    and the longest wait is the one given."""
+    waits = [NONE]
     last = db.scalar(
         select(func.max(IntelLookup.requested_at)).where(IntelLookup.provider == provider)
     )
     if last is not None and now - last < level.spacing:
-        return False
-    if level.per_day is not None and _requested_since(db, provider, now - DAY) >= level.per_day:
-        return False
-    return level.per_month is None or _requested_since(db, provider, now - MONTH) < level.per_month
+        waits.append(last + level.spacing - now)
+    if level.per_day is not None:
+        waits.append(_until_room(db, provider, now, DAY, level.per_day))
+    if level.per_month is not None:
+        waits.append(_until_room(db, provider, now, MONTH, level.per_month))
+    return max(waits)
+
+
+def may_look_up(db: Session, provider: str, level: Level, now: datetime) -> bool:
+    """Whether a lookup may go now: the spacing since the last one has passed, and neither the
+    day's nor the month's allowance is used up."""
+    return wait_for(db, provider, level, now) == NONE
+
+
+def reserve(
+    db: Session,
+    provider: str,
+    level: Level,
+    now: datetime,
+    *,
+    kind: str = "ip",
+    address: IPv4Address | IPv6Address | None = None,
+    subject: str | None = None,
+) -> int:
+    """Keeps that a lookup is about to be made, if the limits allow one now, and returns its id.
+    Raises ``Wait`` if they don't. The caller commits, which also lets go of the lock."""
+    db.execute(select(func.pg_advisory_xact_lock(_LOCK)))
+    wait = wait_for(db, provider, level, now)
+    if wait > NONE:
+        raise Wait(wait)
+    return store.record(db, provider, address, now, kind=kind, subject=subject)

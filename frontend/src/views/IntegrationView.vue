@@ -21,6 +21,7 @@ import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SetupGuideDialog from '@/components/SetupGuideDialog.vue'
 import StatusChip from '@/components/StatusChip.vue'
+import ThreatLookup from '@/components/ThreatLookup.vue'
 import { formatAgo, formatDateTime } from '@/format'
 import {
   draftFrom,
@@ -417,6 +418,8 @@ onMounted(load)
         AresGate forgets the addresses, settings and keys it has for {{ integration.name }}. Nothing
         changes on {{ integration.name }} itself, and you can connect it again later.
       </ConfirmDialog>
+
+      <ThreatLookup v-if="integration.key === 'virustotal' && integration.status === 'connected'" />
 
       <CollectionCard
         v-if="connected"

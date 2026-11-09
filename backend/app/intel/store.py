@@ -35,10 +35,25 @@ _REFRESHED = (
 )
 
 
-def record(db: Session, provider: str, address: Address, now: datetime) -> int:
+def record(
+    db: Session,
+    provider: str,
+    address: Address | None,
+    now: datetime,
+    *,
+    kind: str = "ip",
+    subject: str | None = None,
+) -> int:
     """Keeps that a request is about to be made, before it is, so that one that fails or is cut
     short still counts toward the allowance. Returns the lookup's id."""
-    row = IntelLookup(provider=provider, address=address, requested_at=now, outcome=PENDING)
+    row = IntelLookup(
+        provider=provider,
+        address=address,
+        kind=kind,
+        subject=subject,
+        requested_at=now,
+        outcome=PENDING,
+    )
     db.add(row)
     db.flush()
     return row.id
@@ -75,7 +90,10 @@ def finish(db: Session, lookup_id: int, answer: virustotal.Answer) -> None:
         return
     if isinstance(answer, virustotal.Reported):
         row.outcome = REPORTED
-        save_report(db, row.provider, row.address, answer.report)
+        # Only an address keeps a report: the AI reads reports of addresses, and a domain or web
+        # address is shown to the person who searched it, then not kept.
+        if row.kind == "ip" and row.address is not None:
+            save_report(db, row.provider, row.address, answer.report)
     elif isinstance(answer, virustotal.Unknown):
         row.outcome = UNKNOWN
     else:

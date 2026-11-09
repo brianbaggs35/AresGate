@@ -247,6 +247,10 @@ class ApiClient:
         headers: Mapping[str, str] | None,
         auth: tuple[str, str] | None,
     ) -> Reply:
+        if self._policy.read_only and method.upper() != "GET":
+            raise CallFailed(
+                "This service is only read, so AresGate sends it nothing that changes."
+            )
         async with (
             asyncio.timeout(self._deadline),
             self._http.stream(

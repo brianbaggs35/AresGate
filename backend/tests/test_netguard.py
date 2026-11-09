@@ -239,6 +239,45 @@ def test_the_inside_of_a_network_is_not(address: str) -> None:
     assert not PUBLIC_INTERNET.allows(ipaddress.ip_address(address))
 
 
+def test_a_service_on_the_internet_is_reached_at_its_own_name_and_port_only() -> None:
+    policy = netguard.internet_service(parse_origin("https://www.virustotal.com", allow_http=False))
+
+    assert (policy.hosts, policy.ports, policy.read_only) == (("www.virustotal.com",), (443,), True)
+    assert policy.allows(ipaddress.ip_address("93.184.216.34"))
+    assert not policy.allows(ipaddress.ip_address("192.168.1.1"))
+    netguard.named_problem(policy, "www.virustotal.com", 443)
+    with pytest.raises(Refused, match=r"only at www\.virustotal\.com, not at evil\.example"):
+        netguard.named_problem(policy, "evil.example", 443)
+    with pytest.raises(Refused, match="only on port 443, not on port 8443"):
+        netguard.named_problem(policy, "www.virustotal.com", 8443)
+
+
+def test_a_name_or_port_that_is_not_the_services_is_refused_before_anything_is_looked_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_lookup(host: str, port: int) -> list[Any]:
+        raise AssertionError(f"looked up {host}:{port}")
+
+    monkeypatch.setattr(netguard, "lookup_async", no_lookup)
+    policy = netguard.internet_service(parse_origin("https://www.virustotal.com", allow_http=False))
+
+    with pytest.raises(Refused, match=r"only at www\.virustotal\.com, not at evil\.example"):
+        asyncio.run(GuardedBackend(policy).connect_tcp("evil.example", 443))
+    with pytest.raises(Refused, match="only on port 443"):
+        asyncio.run(GuardedBackend(policy).connect_tcp("www.virustotal.com", 8443))
+
+
+def test_the_internet_service_says_what_it_reaches_when_an_address_is_at_home() -> None:
+    policy = netguard.internet_service(parse_origin("https://www.virustotal.com", allow_http=False))
+
+    with pytest.raises(Refused) as refused:
+        allowed_addresses(policy, "www.virustotal.com", [ipaddress.ip_address("192.168.1.1")])
+
+    assert "isn't an address on the internet" in str(refused.value)
+    assert "reaches it only at its own address" in str(refused.value)
+    assert "AI providers" not in str(refused.value)
+
+
 def test_the_test_server_policy_for_providers_adds_only_loopback() -> None:
     assert PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("127.0.0.1"))
     assert PUBLIC_INTERNET_AND_LOOPBACK.allows(ipaddress.ip_address("::1"))
