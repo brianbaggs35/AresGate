@@ -11,6 +11,7 @@ connect it, change its settings, test it or disconnect it.
 | ntopng | Traffic of each host and of the interface, the devices it sees, and its alerts | Authentication token, or user name and password |
 | Wazuh | Alerts from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
+| VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
 documentation, and a link to that documentation. The steps below are the same ones.
@@ -533,6 +534,66 @@ country and network (AS) the attacker came from, and a decision lifted early sho
 decisions stream. Both need a machine login (`cscli machines add`) or the stream rather than a
 bouncer's key. AresGate doesn't read those yet.
 
+## VirusTotal
+
+VirusTotal is the one integration AresGate reaches on the internet. Its address is fixed at
+`https://www.virustotal.com`, and the API key goes to that address and nowhere else. Copy the key
+from VirusTotal's API key page, `https://www.virustotal.com/gui/my-apikey`, while signed in, paste
+it on the card, choose the access level and test the connection. AresGate asks nothing until a test
+has worked.
+
+### Access levels
+
+The free public API allows 4 lookups a minute and 500 a day. VirusTotal says it must not be used in
+commercial products or services, or in business workflows that do not contribute new files. A
+premium key's limits depend on its plan, so the card asks which kind of key you have. AresGate keeps
+a free key to 4 lookups a minute, 500 a day and 15,000 in any 30 days. The monthly figure is a
+margin of its own, because VirusTotal's pages give none. A premium key is asked about once a second.
+
+### What is asked about
+
+Each lookup is about one internet address that an incident from the last seven days names. A
+private address is never sent, nor one in the networks of the home's own internet side, since that
+would tell VirusTotal where the home is. Lookups go one at a time. An address that got an answer,
+a report or none, is not asked about again for a week, and one whose lookup failed waits an hour.
+
+VirusTotal's API documentation says that any indicator queried through the API is scanned and added
+to its dataset. So every address sent becomes known to VirusTotal, which is worth knowing before
+you connect a key.
+
+### What is kept, and what the AI does with it
+
+For each address AresGate keeps the counts of VirusTotal's last analysis (how many engines call it
+malicious, suspicious, harmless or undetected), its community reputation score, its country, and the
+owner and number of the network it belongs to. The AI reads these as part of an incident's brief,
+and can look one up with its reputation tool. The last report for an address is kept until another
+replaces it. Each lookup is logged with its address and outcome, and forgotten after 40 days, which
+is longer than the month the allowance counts over.
+
+### Where this comes from, and what isn't tried
+
+Taken from VirusTotal's documentation:
+
+- The access levels and the usage rule are on
+  [Public vs Premium API](https://docs.virustotal.com/reference/public-vs-premium-api), and where the
+  key is found is on the [overview](https://docs.virustotal.com/reference/overview).
+- The lookup is `GET /api/v3/ip_addresses/{ip}` with the key in the `x-apikey` header. The fields
+  read are described in the [IP address report](https://docs.virustotal.com/reference/ip-info) and
+  its [object](https://docs.virustotal.com/reference-link/ip-object), and the errors in
+  [the errors page](https://docs.virustotal.com/reference/errors).
+
+Worked out here, not in the documentation:
+
+- A 404 (`NotFoundError`) is taken as no report for that address. The errors page says only that the
+  resource was not found, and doesn't say what that means for an address with no report.
+- The 15,000 a month is AresGate's margin, not a figure from VirusTotal.
+- The last analysis date is read as a whole number of seconds since 1970 in UTC, which the object's
+  example suggests but the page doesn't state.
+
+Not tried against the live service: the answers are tested against a stand-in built from these
+pages. An answer that doesn't match is logged as a failed lookup, with the reason, and tried again
+later.
+
 ## Setup instructions
 
 Each integration's page has a **Setup instructions** button that opens the steps for getting what
@@ -546,6 +607,7 @@ window lists the pages at its end:
 | ntopng | [authentication](https://www.ntop.org/guides/ntopng/authentication.html#token-based-authentication), [settings](https://www.ntop.org/guides/ntopng/web_gui/settings.html), and the source of `add/ntopng/user.lua`, `create/ntopng/api_token.lua` and the user form's labels |
 | Wazuh | [API](https://documentation.wazuh.com/current/user-manual/api/getting-started.html), [RBAC](https://documentation.wazuh.com/current/user-manual/api/rbac/configuration.html), [internal users](https://documentation.wazuh.com/current/user-manual/user-administration/rbac.html) and the default roles in Wazuh's source |
 | CrowdSec | [local API authentication](https://docs.crowdsec.net/docs/local_api/authentication/) and [configuration](https://docs.crowdsec.net/docs/configuration/crowdsec_configuration/) |
+| VirusTotal | [Public vs Premium API](https://docs.virustotal.com/reference/public-vs-premium-api), the [overview](https://docs.virustotal.com/reference/overview) for where the key is found, the [IP address report](https://docs.virustotal.com/reference/ip-info) and its [object](https://docs.virustotal.com/reference-link/ip-object), and the [errors](https://docs.virustotal.com/reference/errors) |
 
 A step marked **Not from the documentation** says what was worked out and why. These were
 read, not run against every release, so the connection test is what tells whether a step worked.
@@ -589,7 +651,8 @@ Every integration is reached the same way, and a few rules are not settings:
 - **Only your own network.** The address must be a private one (`10.0.0.0/8`, `172.16.0.0/12`,
   `192.168.0.0/16`, the link-local and unique-local ranges, and loopback only where the
   deployment allows it). A name is resolved once and the connection goes to that address, so a
-  name that changes its answer afterwards can't send AresGate somewhere else.
+  name that changes its answer afterwards can't send AresGate somewhere else. The one exception is
+  [VirusTotal](#virustotal), which is on the internet at a fixed public address.
 - **Never the cloud metadata addresses** (`169.254.169.254` and its relatives), even though they
   are link-local.
 - **No redirects and no proxy.** A redirect is reported as the answer it is, not followed, so an
