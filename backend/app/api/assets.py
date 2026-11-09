@@ -442,7 +442,7 @@ def _detail_out(found: detail.Detail) -> AssetDetailOut:
     )
 
 
-@router.get("/{key}")
+@router.get("/{key}", responses={404: {"description": "There is no asset with that key."}})
 def get_asset(key: AssetKey, db: Db) -> AssetDetailOut:
     """One asset's page: what the connected programs and AresGate's own records say of it. An
     asset on the Internet side has no page, as it is not on the list."""
