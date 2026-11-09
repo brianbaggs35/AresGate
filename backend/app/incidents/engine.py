@@ -25,7 +25,8 @@ aside (see ``filters.py``), when no verdict is about it: a verdict outranks a fi
 given, changed or taken back.
 """
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
@@ -65,6 +66,15 @@ CURSOR: Final = "incidents.cursor"
 # Held while a run is under way, so that two never are; the same lock key as the partitions'
 # (0x41524553) with its last digit changed.
 LOCK: Final = 0x41524554
+# The first alerts an interface sends from ntopng are a catch-up: ntopng raised them before
+# AresGate read that interface, and the collector reads their first half hour at once. They file
+# as one incident for the interface, which says how many alerts it folded in, and not one for each
+# address they are about. An interface the engine has read alerts of before has none (see
+# ``_read_before``). Where each interface's catch-up began is kept under CATCH_UP_KEY.
+CATCH_UP: Final = timedelta(minutes=30)
+CATCH_UP_SOURCE: Final = "ntopng"
+CATCH_UP_PREFIX: Final = "catch-up:"
+CATCH_UP_KEY: Final = "incidents.catch_up"
 
 
 @dataclass(frozen=True)
@@ -93,6 +103,89 @@ def _move_cursor(db: Session, event_id: int) -> None:
         db.add(SystemInfo(key=CURSOR, value=str(event_id)))
     else:
         row.value = str(event_id)
+
+
+def _read_before(db: Session, iface: str, cursor: int) -> bool:
+    """Whether the engine has read an alert of that interface before: one stored up to the cursor.
+    A first run has read none."""
+    if cursor == 0:
+        return False
+    found = db.scalar(
+        select(Event.id)
+        .where(
+            Event.id <= cursor,
+            Event.source == CATCH_UP_SOURCE,
+            Event.iface == iface,
+            Event.kind.in_(KINDS),
+            Event.severity >= MIN_SEVERITY,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+def _catch_up_starts(db: Session, events: Sequence[Event], cursor: int) -> dict[str, datetime]:
+    """Where the catch-up of each interface began, for those that have one. An interface that no
+    run has read an alert of yet begins at the first of its alerts stored in this run, and that is
+    kept, so that the runs after it read the same half hour. One that the engine has read before
+    is kept as None, so that it is not looked at again."""
+    row = db.get(SystemInfo, CATCH_UP_KEY)
+    recorded: dict[str, str | None] = json.loads(row.value) if row else {}
+    unread: dict[str, datetime] = {}
+    for event in events:
+        if event.source == CATCH_UP_SOURCE and event.iface and event.iface not in recorded:
+            earliest = unread.get(event.iface, event.received_at)
+            unread[event.iface] = min(earliest, event.received_at)
+    if unread:
+        recorded.update(
+            {
+                iface: None if _read_before(db, iface, cursor) else began.isoformat()
+                for iface, began in unread.items()
+            }
+        )
+        if row is None:
+            db.add(SystemInfo(key=CATCH_UP_KEY, value=json.dumps(recorded)))
+        else:
+            row.value = json.dumps(recorded)
+    return {
+        iface: datetime.fromisoformat(began)
+        for iface, began in recorded.items()
+        if began is not None
+    }
+
+
+def _catch_up_of(event: Event, starts: Mapping[str, datetime]) -> str | None:
+    """The subject of an alert that is part of its interface's catch-up, or none if it is not."""
+    if event.source != CATCH_UP_SOURCE or event.iface is None:
+        return None
+    began = starts.get(event.iface)
+    if began is None or event.received_at >= began + CATCH_UP:
+        return None
+    return f"{CATCH_UP_PREFIX}{event.iface}"
+
+
+def _place(
+    db: Session, event: Event, starts: Mapping[str, datetime], gaps: episode.Gaps
+) -> tuple[Incident, bool]:
+    """The incident a stored event is filed under, started if none is going, and whether it was."""
+    catch_up = _catch_up_of(event, starts)
+    if catch_up is not None:
+        incident = _current(db, catch_up, None, None, event.occurred_at, gaps)
+        if incident is None:
+            return _start(db, event, catch_up), True
+        return incident, False
+    subject = subject_of(event)
+    incident = _current(
+        db,
+        subject,
+        episode.block_of_subject(subject),
+        episode.activity_of(event),
+        event.occurred_at,
+        gaps,
+    )
+    if incident is None:
+        return _start(db, event, subject), True
+    return incident, False
 
 
 def _going(when: datetime, activity: str | None, gaps: episode.Gaps) -> ColumnElement[bool]:
@@ -285,6 +378,15 @@ def _with(known: list[Address], new: list[Address], subject: str) -> list[Addres
     return sorted([*known, *wanted], key=lambda address: str(address) != subject)[:MAX_ADDRESSES]
 
 
+def _title_of(incident: Incident, rule_title: str) -> str:
+    """The title the rules give an incident, except that a catch-up says how many alerts it folded
+    in, and from which interface."""
+    if not incident.subject.startswith(CATCH_UP_PREFIX):
+        return rule_title
+    iface = incident.subject.removeprefix(CATCH_UP_PREFIX)
+    return f"{incident.signal_count} ntopng alerts folded in from the first half hour on {iface}"
+
+
 def _score(incident: Incident) -> None:
     others = [address for address in incident.addresses if str(address) != incident.subject]
     muted = verdicts.muted(incident.verdict_counts)
@@ -309,7 +411,7 @@ def _score(incident: Incident) -> None:
     assessment = rules.assess(facts)
     incident.confidence = assessment.confidence
     incident.reasons = assessment.as_json()
-    incident.title = rules.title_of(facts)
+    incident.title = _title_of(incident, rules.title_of(facts))
     key = families.key_of(incident)
     if incident.family_key != key:
         # Said differently now: it is another kind of thing, and its family follows.
@@ -358,9 +460,12 @@ def _backfill(db: Session) -> list[Incident]:
     return [incident for incident in old if incident.status != "resolved"]
 
 
-def _fits(one: Incident, other: Incident, gaps: episode.Gaps) -> bool:
+def fits(one: Incident, other: Incident, gaps: episode.Gaps) -> bool:
     """Whether two incidents are one episode: a scan or a brute force that both did, no further
-    apart than the gap for it, and no longer together than an incident goes."""
+    apart than the gap for it, and no longer together than an incident goes. A catch-up is about
+    an interface, not an address, so it is never one."""
+    if one.subject.startswith(CATCH_UP_PREFIX) or other.subject.startswith(CATCH_UP_PREFIX):
+        return False
     shared = next(
         (item for item in episode.GROUPED if item in one.activities and item in other.activities),
         None,
@@ -420,7 +525,7 @@ def _consolidate(
                     Incident.status == current.status,
                 )
             ).all()
-            other = next((item for item in others if _fits(current, item, gaps)), None)
+            other = next((item for item in others if fits(current, item, gaps)), None)
             if other is None:
                 break
             keep, drop = sorted((current, other), key=lambda item: (item.first_seen_at, item.id))
@@ -440,10 +545,11 @@ def correlate(db: Session, now: datetime) -> Result:
     verdict_rules = verdicts.load(db)
     noise = filters.load(db)
     old = _backfill(db)
+    cursor = _cursor(db)
     events = db.scalars(
         select(Event)
         .where(
-            Event.id > _cursor(db),
+            Event.id > cursor,
             Event.occurred_at >= now - LOOKBACK,
             Event.received_at <= now - SETTLE,
             Event.kind.in_(KINDS),
@@ -457,19 +563,11 @@ def correlate(db: Session, now: datetime) -> Result:
     touched: dict[int, Incident] = {}
     created = 0
     gaps = noise.gaps()
+    starts = _catch_up_starts(db, events, cursor)
     # In the order they happened, so a signal that was stored late still lands in place.
     for event in sorted(events, key=lambda item: (item.occurred_at, item.id)):
-        subject = subject_of(event)
-        incident = _current(
-            db,
-            subject,
-            episode.block_of_subject(subject),
-            episode.activity_of(event),
-            event.occurred_at,
-            gaps,
-        )
-        if incident is None:
-            incident = _start(db, event, subject)
+        incident, started = _place(db, event, starts, gaps)
+        if started:
             created += 1
         _join(db, incident, event, verdict_rules, noise)
         touched[incident.id] = incident
