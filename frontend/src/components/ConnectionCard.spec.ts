@@ -473,5 +473,13 @@ describe('ConnectionCard', () => {
       expect(draft.options.tier).toBe('premium')
       expect(find('caution-tier').exists()).toBe(true)
     })
+
+    it('has no certificate step, because public trust covers it', async () => {
+      const { find, draft } = await open(virustotalApi)
+      // Its address is https, so the step would show for a connection on the home network.
+      expect(draft.url).toMatch(/^https:/)
+      expect(find('tls-mode').exists()).toBe(false)
+      expect(find('tls-look-up').exists()).toBe(false)
+    })
   })
 })

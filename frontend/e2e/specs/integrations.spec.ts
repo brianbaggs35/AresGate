@@ -1391,6 +1391,8 @@ test.describe('integrations', () => {
       await expect(integration.connection('api')).toContainText(
         'This service has one address, so AresGate only ever sends its key there.',
       )
+      // Its certificate is one the public authorities vouch for, so there is none to look up.
+      await expect(integration.lookUp('api')).toHaveCount(0)
       // The key is typed in, as a secret.
       await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
       // The free public API is chosen, and its terms are said beside the choice. Choosing the

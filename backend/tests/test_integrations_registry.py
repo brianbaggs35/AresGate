@@ -49,6 +49,11 @@ def test_virustotal_is_threat_intelligence_on_the_internet_with_a_warned_tier() 
     assert tier.caution.startswith("Free and premium differ.")
 
 
+def test_an_integration_is_internet_only_when_every_connection_is_on_the_internet() -> None:
+    assert INTEGRATIONS["virustotal"].internet_only
+    assert not INTEGRATIONS["wazuh"].internet_only
+
+
 def test_a_connection_with_a_fixed_address_takes_no_other_address() -> None:
     for integration in INTEGRATIONS.values():
         for connection in integration.connections:

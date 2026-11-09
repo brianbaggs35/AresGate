@@ -4,6 +4,15 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **VirusTotal connects again.** Its address is on the internet, and AresGate looked for it on your
+  own network, which refused it. Its certificate is now checked by the certificates this computer
+  trusts, as any public site's is, so there is no certificate step to look up for it. Its address
+  stays the one VirusTotal has.
+
 ## 0.0.8
 
 ### Added

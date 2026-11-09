@@ -633,6 +633,36 @@ def test_an_address_on_the_internet_is_refused_for_a_system_on_the_home_network(
     assert "lapi.url" in refused
 
 
+def test_virustotal_is_always_checked_by_the_certificates_this_computer_trusts(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named_on_the_internet(monkeypatch)
+
+    save(
+        session,
+        settings,
+        VIRUSTOTAL,
+        {"api": virustotal_api(tls_mode="pinned", tls_fingerprint="AB" * 32)},
+    )
+
+    row = service.rows_for(session, "virustotal")["api"]
+    assert (row.tls_mode, row.tls_ca_pem, row.tls_fingerprint) == ("system", None, None)
+
+
+def test_a_name_for_virustotal_that_leads_to_the_home_network_is_refused(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def lookup(host: str, port: int) -> list[IPv4Address | IPv6Address]:
+        del host, port
+        return [ip_address("192.168.1.10")]
+
+    monkeypatch.setattr(netguard, "lookup", lookup)
+
+    refused = problems(session, settings, VIRUSTOTAL, {"api": virustotal_api()})
+
+    assert "isn't an address on the internet" in refused["api.url"]
+
+
 def test_a_check_is_made_with_the_policy_of_its_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -630,6 +630,63 @@ def test_a_certificate_lookup_that_fails_says_why(
     assert "Couldn't make a secure connection" in response.json()["detail"][0]["msg"]
 
 
+def test_a_service_on_the_internet_has_no_certificate_to_look_up(
+    client: TestClient, csrf_token: str
+) -> None:
+    response = client.post(
+        f"{BASE}/virustotal/certificate",
+        json={"url": "https://www.virustotal.com"},
+        headers=headers(csrf_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": (
+            "There is no certificate to look up for VirusTotal. Its certificate is checked by the "
+            "certificates this computer trusts."
+        )
+    }
+
+
+def test_a_failed_test_on_the_internet_never_offers_a_certificate_to_review(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    message = "The certificate has changed: this system now presents something else."
+    session.add_all(
+        [
+            IntegrationConnection(
+                integration="virustotal",
+                connection="api",
+                base_url="https://www.virustotal.com",
+                tls_mode="system",
+                options={"tier": "free"},
+                last_error=message,
+                created_at=now,
+                updated_at=now,
+            ),
+            IntegrationConnection(
+                integration="crowdsec",
+                connection="lapi",
+                base_url="http://192.168.1.4:8080",
+                tls_mode="system",
+                options={},
+                last_error=message,
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+    )
+    session.commit()
+
+    internet = client.get(f"{BASE}/virustotal").json()["connections"][0]
+    home = client.get(f"{BASE}/crowdsec").json()["connections"][0]
+
+    assert internet["last_error"] == message
+    assert internet["certificate_problem"] is False
+    assert home["certificate_problem"] is True
+
+
 NTOPNG_TOKEN = "an-ntopng-token-for-tests"
 
 
