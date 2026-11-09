@@ -6,7 +6,7 @@ nothing until the connection has been tested and has worked.
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,8 @@ from app.models import utcnow
 
 logger = logging.getLogger(__name__)
 
-# At most one lookup every 15 seconds: the free API's 4 a minute, with nothing to spare.
+# How often the loop asks whether it may look one up. Its own lookups are spaced further apart by
+# the access level (four minutes on the free key), so most of these checks find that it may not.
 INTERVAL = timedelta(seconds=15)
 DEFINITION = registry.VIRUSTOTAL
 CONNECTION = DEFINITION.connections[0]
@@ -44,7 +45,12 @@ def _start(
         try:
             target = service.load_target(db, settings, DEFINITION, CONNECTION, row)
             lookup_id = budget.reserve(
-                db, virustotal.PROVIDER, budget.level_of(row.options), now, address=address
+                db,
+                virustotal.PROVIDER,
+                budget.level_of(row.options),
+                now,
+                background=True,
+                address=address,
             )
         except service.Incomplete, budget.Wait:
             db.commit()
@@ -53,9 +59,15 @@ def _start(
         return target, subjects.of_address(address), lookup_id
 
 
-def _finish(new_session: Callable[[], Session], lookup_id: int, answer: virustotal.Answer) -> None:
+def _finish(
+    new_session: Callable[[], Session],
+    lookup_id: int,
+    subject: Subject,
+    answer: virustotal.Answer,
+    asked_at: datetime,
+) -> None:
     with new_session() as db:
-        store.finish(db, lookup_id, answer)
+        store.finish(db, lookup_id, subject, answer, asked_at)
         db.commit()
 
 
@@ -69,10 +81,11 @@ async def lookup_once(
         return False
     target, subject, lookup_id = started
     policy = service.policy_for(CONNECTION, netguard.HOME_NETWORK)
-    answer = await virustotal.ask(target, recorder, policy, subject, utcnow())
+    asked_at = utcnow()
+    answer = await virustotal.ask(target, recorder, policy, subject, asked_at)
     if isinstance(answer, virustotal.Failed):
         logger.info("A VirusTotal lookup didn't give a report: %s", answer.message)
-    await asyncio.to_thread(_finish, new_session, lookup_id, answer)
+    await asyncio.to_thread(_finish, new_session, lookup_id, subject, answer, asked_at)
     return True
 
 

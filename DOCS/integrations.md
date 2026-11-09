@@ -565,6 +565,21 @@ VirusTotal's API documentation says that any indicator queried through the API i
 to its dataset. So every address sent becomes known to VirusTotal, which is worth knowing before
 you connect a key.
 
+### How the allowance is spent
+
+A search and a background lookup count toward the same allowance, and each request counts, whether
+it is answered or not. On a free key the background lookups are four minutes apart, so they use at
+most 360 of the 500 a day and spread them over the whole day, which leaves 140 for searches. A search
+is held back only by the 15 seconds between any two lookups and by the day's and the month's
+allowances, not by the background's spacing.
+
+An answer is kept for a week, for each address, domain and web address that was asked about. A
+search for a subject answered within that week is answered from what was kept: no request is sent,
+nothing is counted, and the report says so. A subject is asked about again only once its answer is a
+week old. A request that got no answer keeps no answer, so its subject is asked about again.
+
+A connection test is one request made by hand, and it is not counted toward the allowance.
+
 ### Searching by hand
 
 Once the connection has been tested, the Threat intelligence page has a search. It takes an IP
@@ -580,24 +595,29 @@ one of the home's own addresses on the internet, a web address with a username o
 and anything that is none of these. The reason is shown in the search. A domain is judged by its
 text alone: AresGate doesn't resolve it, so a search can't reach a device on the home network.
 
-Only the host of a web address is kept with the search, not the rest of it. Its query string is sent,
-since it is part of what VirusTotal scans. A domain or web address that VirusTotal has never analysed
-is shown as having no report yet, and AresGate doesn't ask VirusTotal to scan it.
+Only the host of a web address is kept with the search, not the rest of it, and its answer is kept
+under the SHA-256 of the whole address, so the address itself is kept nowhere. Its query string is
+sent, since it is part of what VirusTotal scans. A domain or web address that VirusTotal has never
+analysed is shown as having no report yet, and AresGate doesn't ask VirusTotal to scan it.
 
-A search counts toward the same limits as the lookups above. When a search would go over one, it is
-refused with the seconds to wait (HTTP 429, with a `Retry-After` header), and nothing is sent. The
-report of a domain or web address is shown on screen and not kept, so the AI doesn't read it yet.
-The report of an address is kept as the lookups are, and the AI reads it.
+A search that isn't answered from what was kept counts toward the same limits as the lookups above.
+When it would go over one, it is refused with the seconds to wait (HTTP 429, with a `Retry-After`
+header), and nothing is sent. A search that is answered from what was kept says so in its report,
+with the time VirusTotal was asked.
 
 ### What is kept, and what the AI does with it
 
-For each address AresGate keeps the counts of VirusTotal's last analysis (how many engines call it
-malicious, suspicious, harmless or undetected), its community reputation score, its country, and the
-owner and number of the network it belongs to. The AI reads these as part of an incident's brief,
-and can look one up with its reputation tool. The last report for an address is kept until another
-replaces it. Each lookup is logged with its address, or for a domain or web address its domain or
-host, and its outcome, and is forgotten after 40 days, which is longer than the month the allowance
-counts over.
+For each subject AresGate keeps one row: VirusTotal's last answer about an address, a domain or a web
+address, and when it was asked about. A report keeps the counts of VirusTotal's last analysis (how
+many engines call it malicious, suspicious, harmless or undetected), its community reputation score,
+its country, and for an address the owner and number of the network it belongs to, plus the
+categories and what else VirusTotal says of it. An answer with no report keeps only that. A newer
+answer replaces the one kept, once the subject is asked about after a week.
+
+The AI reads the reports of addresses as part of an incident's brief, and can look one up with its
+reputation tool. Domains and web addresses are not read by the AI. Each request is logged with its
+address, or for a domain or web address its domain or host, and its outcome, and is forgotten after
+40 days, which is longer than the month the allowance counts over.
 
 ### Where this comes from, and what isn't tried
 

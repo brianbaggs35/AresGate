@@ -1,6 +1,7 @@
 """Searches threat intelligence by hand: an internet address, a domain or a web address, and what
 VirusTotal reported of it. A search shares its limits with the background lookups, so the two
-together never ask VirusTotal more often than its free API allows."""
+together never ask VirusTotal more often than its free API allows. A subject that was answered
+within the last week is shown from what was kept, and VirusTotal isn't asked about it again."""
 
 import math
 from datetime import datetime
@@ -37,12 +38,14 @@ class DetailOut(BaseModel):
 
 
 class LookupOut(BaseModel):
-    """What VirusTotal reported of the subject, with the counts its judgement is made from."""
+    """What VirusTotal reported of the subject, with the counts its judgement is made from. A
+    ``cached`` answer was kept from an earlier check, so no search was sent for it this time."""
 
     kind: Literal["ip", "domain", "url"]
     subject: str
     judgement: Literal["malicious", "suspicious", "clean", "unknown"]
     checked_at: AwareDatetime
+    cached: bool
     analysed_at: AwareDatetime | None
     malicious: int
     suspicious: int
@@ -61,7 +64,8 @@ def look_up(
     settings: SettingsDep,
     recorder: RecorderDep,
 ) -> LookupOut:
-    """Asks VirusTotal about one subject, if the access level's limits allow a lookup now."""
+    """Looks one subject up: from the answer kept for it while that is fresh, or else by asking
+    VirusTotal, if the access level's limits allow a lookup now."""
     row = service.rows_for(db, DEFINITION.key).get(CONNECTION.key)
     if row is None or row.last_success_at is None:
         raise HTTPException(
@@ -78,11 +82,14 @@ def look_up(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "That is this home's own address on the internet, so it isn't sent to VirusTotal.",
         )
+    now = utcnow()
+    kept = store.cached(db, virustotal.PROVIDER, subject, now)
+    if kept is not None:
+        return _out(subject, store.answer_of(kept), kept.checked_at, cached=True)
     try:
         target = service.load_target(db, settings, DEFINITION, CONNECTION, row)
     except service.Incomplete as incomplete:
         raise HTTPException(status.HTTP_409_CONFLICT, str(incomplete)) from incomplete
-    now = utcnow()
     level = budget.level_of(row.options)
     address, name = subject.recorded()
     try:
@@ -106,14 +113,16 @@ def look_up(
     db.commit()
     policy = service.policy_for(CONNECTION, netguard.HOME_NETWORK)
     answer = anyio.from_thread.run(virustotal.ask, target, recorder, policy, subject, now)
-    store.finish(db, lookup_id, answer)
+    store.finish(db, lookup_id, subject, answer, now)
     db.commit()
     if isinstance(answer, virustotal.Failed):
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, answer.message)
-    return _out(subject, answer, now)
+    return _out(subject, answer, now, cached=False)
 
 
-def _out(subject: subjects.Subject, answer: virustotal.Answer, checked_at: datetime) -> LookupOut:
+def _out(
+    subject: subjects.Subject, answer: virustotal.Answer, checked_at: datetime, *, cached: bool
+) -> LookupOut:
     report = answer.report if isinstance(answer, virustotal.Reported) else None
     if report is None:
         return LookupOut(
@@ -121,6 +130,7 @@ def _out(subject: subjects.Subject, answer: virustotal.Answer, checked_at: datet
             subject=subject.text,
             judgement=virustotal.judge(None),
             checked_at=checked_at,
+            cached=cached,
             analysed_at=None,
             malicious=0,
             suspicious=0,
@@ -136,6 +146,7 @@ def _out(subject: subjects.Subject, answer: virustotal.Answer, checked_at: datet
         subject=subject.text,
         judgement=virustotal.judge(report),
         checked_at=checked_at,
+        cached=cached,
         analysed_at=report.analysed_at,
         malicious=report.malicious,
         suspicious=report.suspicious,

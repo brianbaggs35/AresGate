@@ -7,6 +7,7 @@ const MALICIOUS: Lookup = {
   subject: '93.184.216.34',
   judgement: 'malicious',
   checked_at: '2026-11-09T12:00:00Z',
+  cached: false,
   analysed_at: '2026-11-07T00:00:00Z',
   malicious: 3,
   suspicious: 1,
@@ -178,6 +179,18 @@ describe('ThreatReportDialog', () => {
     done.click()
 
     expect(onUpdate).toHaveBeenLastCalledWith(false)
+  })
+
+  it('says when the answer was kept from an earlier check, so that no search was sent', async () => {
+    const { inWindow } = await mountReport({ ...MALICIOUS, cached: true })
+
+    expect(inWindow('[data-test="report-cached"]')?.textContent).toContain('sent nothing')
+  })
+
+  it('says nothing about a kept answer when the search was sent', async () => {
+    const { inWindow } = await mountReport(MALICIOUS)
+
+    expect(inWindow('[data-test="report-cached"]')).toBeNull()
   })
 
   it('fills the whole screen on a phone', async () => {

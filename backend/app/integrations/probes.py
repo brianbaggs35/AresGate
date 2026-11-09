@@ -687,8 +687,8 @@ VIRUSTOTAL_ADDRESS = "8.8.8.8"
 
 async def virustotal(client: ApiClient, target: Target) -> Verdict:
     """Asks for one address's report with the key. A key VirusTotal accepts answers with the
-    report; one it refuses answers 401 or 403. The test is one lookup, so it counts toward the
-    access level's allowance like any other."""
+    report; one it refuses answers 401 or 403. The test is one request, made by hand, so it is not
+    kept as a lookup and doesn't count toward the access level's allowance."""
     reply = await client.request(
         "GET",
         f"/api/v3/ip_addresses/{VIRUSTOTAL_ADDRESS}",

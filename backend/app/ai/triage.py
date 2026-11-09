@@ -33,7 +33,7 @@ from app.incidents import attention, filters, occurrences, queries
 from app.incidents.verdicts import MUTING
 from app.intel import store as intel_store
 from app.intel import virustotal
-from app.models import CLASSES, AiCall, AiTriage, Incident, IncidentSignal, IntelReport
+from app.models import CLASSES, AiCall, AiTriage, Incident, IncidentSignal, IntelSubject
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
 from app.threats import calls, settings
@@ -249,12 +249,12 @@ def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> li
     ]
 
 
-def _reputation(report: IntelReport, redactor: Redactor) -> str:
+def _reputation(report: IntelSubject, redactor: Redactor) -> str:
     """One address's report, as the AI reads it: what the engines made of it, and who owns it."""
     owner = redactor.text(report.owner, 60) if report.owner else "unknown owner"
     total = report.malicious + report.suspicious + report.harmless + report.undetected
     return (
-        f"{redactor.address(str(report.address))}: {report.malicious} of {total} engines flag it "
+        f"{redactor.address(report.subject)}: {report.malicious} of {total} engines flag it "
         f"as malicious and {report.suspicious} as suspicious; owner {owner}, "
         f"{report.country or 'unknown country'}; community score {report.reputation}; "
         f"analysed {report.analysed_at:%Y-%m-%d}"

@@ -1,15 +1,15 @@
 """What AresGate asked threat-intelligence services, and what they said.
 
 A lookup is kept for as long as its access level's allowance is counted over, so that a restart
-doesn't hand the allowance back. A report is the last thing a service said of one address, and it
-is what the AI reads of that address.
+doesn't hand the allowance back. The answer about a subject is kept until it is asked about again:
+it is what the AI reads of an address, and what a search is answered with while the answer is fresh.
 """
 
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 
 from sqlalchemy import BigInteger, Identity, Index, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
@@ -40,25 +40,38 @@ class IntelLookup(Base):
     outcome: Mapped[str] = mapped_column(String(16), default="pending")
 
 
-class IntelReport(Base):
-    """The last thing a threat-intelligence service said of one address."""
+class IntelSubject(Base):
+    """The last answer a threat-intelligence service gave about one subject: an internet address, a
+    domain or a web address. A subject is kept once, so a search or a lookup of it is answered from
+    here while the answer is fresh. A web address is kept as the hash of its text, not the text, and
+    a subject the service has no report on is kept as unknown, with no counts."""
 
-    __tablename__ = "threat_intel_reports"
+    __tablename__ = "threat_intel_subjects"
     __table_args__ = (
-        UniqueConstraint("provider", "address", name="uq_threat_intel_reports_address"),
+        UniqueConstraint("provider", "kind", "subject", name="uq_threat_intel_subjects_subject"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     provider: Mapped[str] = mapped_column(String(32))
-    address: Mapped[IPv4Address | IPv6Address] = mapped_column(INET)
-    # When the service last analysed the address, as it says.
-    analysed_at: Mapped[datetime] = mapped_column(UTCDateTime)
-    malicious: Mapped[int] = mapped_column(Integer)
-    suspicious: Mapped[int] = mapped_column(Integer)
-    harmless: Mapped[int] = mapped_column(Integer)
-    undetected: Mapped[int] = mapped_column(Integer)
+    # What kind of subject it is: ip, domain or url.
+    kind: Mapped[str] = mapped_column(String(8))
+    # The address as text, the domain, or the SHA-256 of a web address.
+    subject: Mapped[str] = mapped_column(String(253))
+    # When the service was asked about the subject. The answer is fresh for a while after this.
+    checked_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # reported, or unknown when the service has no report on the subject.
+    outcome: Mapped[str] = mapped_column(String(16))
+    # When the service last analysed the subject, as it says. None when it has no report.
+    analysed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    malicious: Mapped[int] = mapped_column(Integer, default=0)
+    suspicious: Mapped[int] = mapped_column(Integer, default=0)
+    harmless: Mapped[int] = mapped_column(Integer, default=0)
+    undetected: Mapped[int] = mapped_column(Integer, default=0)
     # The community's score: below zero leans malicious, above zero leans harmless.
-    reputation: Mapped[int] = mapped_column(Integer)
+    reputation: Mapped[int] = mapped_column(Integer, default=0)
     country: Mapped[str | None] = mapped_column(String(8), default=None)
     owner: Mapped[str | None] = mapped_column(String(120), default=None)
     asn: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    # The categories the engines gave, and what else the service says: each one's label and text.
+    categories: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    details: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)

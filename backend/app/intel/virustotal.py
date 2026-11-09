@@ -8,12 +8,12 @@ reports as a failure.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from hashlib import sha256
 from typing import Literal, cast
 
 from app import audit
 from app.integrations.client import ApiClient, CallFailed, Recorder, Target
 from app.integrations.netguard import AddressPolicy
+from app.intel import subjects
 from app.intel.subjects import Subject
 
 PROVIDER = "virustotal"
@@ -170,7 +170,7 @@ def parse(body: object, now: datetime, kind: str = "ip") -> Report | None:
 def url_id(url: str) -> str:
     """The identifier VirusTotal gives a web address: the SHA-256 of the address. It keeps the
     address out of the request path, which the API log holds."""
-    return sha256(url.encode()).hexdigest()
+    return subjects.url_key(url)
 
 
 def _path(subject: Subject) -> str:
