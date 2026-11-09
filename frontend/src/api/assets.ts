@@ -1,4 +1,7 @@
 import { apiGet } from '@/api/client'
+import type { IncidentStatus } from '@/api/incidents'
+import type { VerdictKind } from '@/api/verdicts'
+import type { Severity } from '@/severity'
 
 /** Whether a device is on the network: online now, listed within a day, or not for longer. */
 export const ASSET_STATUSES = ['online', 'recent', 'away'] as const
@@ -118,4 +121,113 @@ export function fetchAssets(query: AssetQuery = {}): Promise<AssetPage> {
   if (query.offset) params.set('offset', query.offset.toString())
   const search = params.toString()
   return apiGet<AssetPage>(search ? `/assets?${search}` : '/assets')
+}
+
+/** An address the asset has had, and whether it has it now. */
+export interface AssetAddress {
+  address: string
+  current: boolean
+  first_seen_at: string
+  last_seen_at: string
+}
+
+/** An interface whose networks hold one of the asset's addresses. */
+export interface AssetNetwork {
+  id: number
+  name: string
+}
+
+/** An event one of the asset's addresses was in, as the program that reported it saw it. */
+export interface AssetEvent {
+  id: number
+  occurred_at: string
+  source: string
+  source_name: string
+  kind: string
+  severity: Severity
+  summary: string
+  signature: string | null
+  src_address: string | null
+  src_port: number | null
+  dst_address: string | null
+  dst_port: number | null
+  protocol: string | null
+  /** Whether the asset sent it, rather than the one it was sent to. */
+  outbound: boolean
+}
+
+/** Another address the asset's traffic went to, or came from. */
+export interface AssetPeer {
+  address: string
+  /** How many events it was in with the asset, in the last week. */
+  events: number
+  last_seen_at: string
+}
+
+/** What was sent and received in a stretch of time, in bytes; null where nothing was measured. */
+export interface AssetReading {
+  at: string
+  sent: number | null
+  received: number | null
+}
+
+/** The asset's traffic as ntopng measured it. */
+export interface AssetTraffic {
+  /** Whether ntopng measured any of it. */
+  measured: boolean
+  /** The last day, by the hour. */
+  hours: AssetReading[]
+  /** The last week, by the day. */
+  days: AssetReading[]
+  sent_day: number
+  received_day: number
+  sent_week: number
+  received_week: number
+}
+
+/** An incident one of the asset's addresses is in. */
+export interface AssetIncident {
+  id: number
+  title: string
+  severity: Severity
+  confidence: number
+  status: IncidentStatus
+  verdict: string | null
+  last_seen_at: string
+  signal_count: number
+  sources: string[]
+}
+
+/** A verdict the owner gave about one of the asset's addresses. */
+export interface AssetVerdict {
+  id: number
+  verdict: VerdictKind
+  address: string | null
+  /** The network the device's traffic to it is about, when the verdict names one. */
+  destination: string | null
+  source: string | null
+  signature: string | null
+  note: string | null
+  created_at: string
+}
+
+/** Everything AresGate knows of one asset. */
+export interface AssetDetail {
+  asset: Asset
+  networks: AssetNetwork[]
+  addresses: AssetAddress[]
+  events: AssetEvent[]
+  /** How many events its addresses were in, in the last day and in the last week. */
+  events_day: number
+  events_week: number
+  talks_to: AssetPeer[]
+  contacted_by: AssetPeer[]
+  traffic: AssetTraffic
+  incidents: AssetIncident[]
+  verdicts: AssetVerdict[]
+}
+
+/** One asset's page, by its key: device-12 or host-3, as the Assets page links to it. */
+export function fetchAsset(key: string): Promise<AssetDetail> {
+  return apiGet<AssetDetail>(`/assets/${encodeURIComponent(key)}`)
 }

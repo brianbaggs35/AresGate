@@ -41,7 +41,15 @@ const kind = computed(() =>
         <v-icon :icon="machine ? Server : MonitorSmartphone" size="24" />
       </span>
       <div class="asset__who">
-        <h3 class="asset__name text-title-large" data-test="asset-name">{{ asset.name }}</h3>
+        <h3 class="asset__name text-title-large" data-test="asset-name">
+          <router-link
+            class="asset__link"
+            :to="{ name: 'asset', params: { key: asset.key } }"
+            data-test="asset-link"
+          >
+            {{ asset.name }}
+          </router-link>
+        </h3>
         <p
           v-if="machine || vendor || mac"
           class="asset__identity text-body-medium text-medium-emphasis"
@@ -177,6 +185,16 @@ const kind = computed(() =>
 .asset__name {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.asset__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.asset__link:hover,
+.asset__link:focus-visible {
+  text-decoration: underline;
 }
 
 .asset__identity {

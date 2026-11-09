@@ -19,6 +19,13 @@ describe('AssetCard', () => {
     expect(text('asset-identity')).toBe('Example Devices Inc. · 00:11:22:0a:0b:0c')
   })
 
+  it('links the name to the page of the asset', async () => {
+    const { text, wrapper } = await open(asset({ key: 'device-9' }))
+
+    expect(text('asset-name')).toBe('Laptop')
+    expect(wrapper.find('[data-test="asset-link"]').attributes('href')).toBe('/assets/device-9')
+  })
+
   it('does not say the name twice when the name is the maker or the hardware address', async () => {
     const byMaker = await open(asset({ name: 'Example Devices Inc.' }))
     expect(byMaker.text('asset-identity')).toBe('00:11:22:0a:0b:0c')

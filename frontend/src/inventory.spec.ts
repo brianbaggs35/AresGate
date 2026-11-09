@@ -6,13 +6,19 @@ import {
   STATUS,
   activeFilters,
   addressesOf,
+  chartOf,
+  descriptionOf,
+  eventFlow,
+  eventsNoteOf,
   filtersOf,
   queryOf,
   routeQuery,
+  scopeOfVerdict,
   sourcesOf,
   wayOf,
 } from '@/inventory'
-import { asset, listed } from '@/test/assets'
+import { asset, listed, machine } from '@/test/assets'
+import { event, reading, traffic, verdict } from '@/test/assetDetail'
 
 describe('what the address of the page says', () => {
   it('is no filters when it says nothing', () => {
@@ -216,5 +222,61 @@ describe('the states', () => {
       expect(look.description).not.toBe('')
       expect(look.icon).toBeDefined()
     }
+  })
+})
+
+describe('what an asset page says', () => {
+  it('describes a device by its maker and hardware address, and a machine as one', () => {
+    expect(descriptionOf(asset())).toBe('Device · Example Devices Inc. · 00:11:22:0a:0b:0c')
+    expect(descriptionOf(asset({ name: 'Example Devices Inc.' }))).toBe(
+      'Device · 00:11:22:0a:0b:0c',
+    )
+    expect(descriptionOf(asset({ name: '00:11:22:0a:0b:0c', vendor: null }))).toBe('Device')
+    expect(descriptionOf(machine())).toBe('Machine')
+  })
+
+  it('charts the last day by the hour and the last week by the day, with gaps where nothing was measured', () => {
+    const measured = traffic({
+      hours: [reading({ at: '2026-11-01T10:00:00Z', sent: 5, received: null })],
+      days: [reading({ at: '2026-11-01T00:00:00Z', sent: 9, received: 2 })],
+    })
+
+    expect(chartOf(measured, '24h')).toEqual({
+      times: [Date.parse('2026-11-01T10:00:00Z')],
+      series: [
+        { id: 'sent', label: 'Sent', values: [5] },
+        { id: 'received', label: 'Received', values: [null] },
+      ],
+    })
+    expect(chartOf(measured, '7d').times).toEqual([Date.parse('2026-11-01T00:00:00Z')])
+    expect(chartOf(measured, '7d').series.at(1)?.values).toEqual([2])
+  })
+
+  it('says where an event went, or came from, or that its address is not known', () => {
+    expect(eventFlow(event())).toBe('To 52.1.2.3:443')
+    expect(eventFlow(event({ dst_port: null }))).toBe('To 52.1.2.3')
+    expect(eventFlow(event({ dst_address: null, dst_port: null }))).toBe('To an unknown address')
+    expect(eventFlow(event({ outbound: false, src_address: '52.1.2.4', src_port: 22 }))).toBe(
+      'From 52.1.2.4:22',
+    )
+    expect(eventFlow(event({ outbound: false, src_address: null, src_port: null }))).toBe(
+      'From an unknown address',
+    )
+  })
+
+  it('says what a verdict is about, beyond its device', () => {
+    expect(scopeOfVerdict(verdict())).toBe('everything it does')
+    expect(scopeOfVerdict(verdict({ destination: '52.1.2.0/24' }))).toBe(
+      'its traffic to 52.1.2.0/24',
+    )
+    expect(scopeOfVerdict(verdict({ signature: 'Port scan' }))).toBe('the alert "Port scan"')
+    expect(scopeOfVerdict(verdict({ destination: '52.1.2.0/24', signature: 'Port scan' }))).toBe(
+      'its traffic to 52.1.2.0/24 and the alert "Port scan"',
+    )
+  })
+
+  it('says how many events there were in the week, or that there were none', () => {
+    expect(eventsNoteOf(0)).toBe('Nothing in the last week.')
+    expect(eventsNoteOf(4)).toBe('4 in the last week, newest first.')
   })
 })

@@ -91,10 +91,22 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Logs' },
   },
   {
+    // The list, and a page for each asset. Both belong to the one place in the menu.
     path: '/assets',
-    name: 'assets',
-    component: () => import('@/views/AssetsView.vue'),
-    meta: { title: 'Assets' },
+    children: [
+      {
+        path: '',
+        name: 'assets',
+        component: () => import('@/views/AssetsView.vue'),
+        meta: { title: 'Assets' },
+      },
+      {
+        path: String.raw`:key(device-\d+|host-\d+)`,
+        name: 'asset',
+        component: () => import('@/views/AssetView.vue'),
+        meta: { title: 'Assets' },
+      },
+    ],
   },
   {
     // The list, and a page for each integration. Both belong to the one place in the menu.
