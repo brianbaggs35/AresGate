@@ -504,5 +504,5 @@ def test_the_loop_asks_nothing_when_collecting_is_off(
     assert calls == []
 
 
-async def _record(call: Call) -> None:
-    del call
+async def _record(_call: Call) -> None:
+    pass  # Keeps nothing: the test needs only that the call was made.

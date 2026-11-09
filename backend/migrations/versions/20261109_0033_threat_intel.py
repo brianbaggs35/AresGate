@@ -20,6 +20,7 @@ __all__ = ["branch_labels", "depends_on", "down_revision", "revision"]
 
 
 def upgrade() -> None:
+    # Each of these is made only if it is not there, so applying this again changes nothing.
     op.create_table(
         "threat_intel_lookups",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -28,18 +29,21 @@ def upgrade() -> None:
         sa.Column("requested_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("outcome", sa.String(length=16), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_threat_intel_lookups")),
+        if_not_exists=True,
     )
     op.create_index(
         "ix_threat_intel_lookups_provider_requested_at",
         "threat_intel_lookups",
         ["provider", "requested_at"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_threat_intel_lookups_provider_address",
         "threat_intel_lookups",
         ["provider", "address", "requested_at"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_table(
         "threat_intel_reports",
@@ -57,13 +61,20 @@ def upgrade() -> None:
         sa.Column("asn", sa.BigInteger(), nullable=True),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_threat_intel_reports")),
         sa.UniqueConstraint("provider", "address", name=op.f("uq_threat_intel_reports_address")),
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
-    op.drop_table("threat_intel_reports")
-    op.drop_index("ix_threat_intel_lookups_provider_address", table_name="threat_intel_lookups")
+    op.drop_table("threat_intel_reports", if_exists=True)
     op.drop_index(
-        "ix_threat_intel_lookups_provider_requested_at", table_name="threat_intel_lookups"
+        "ix_threat_intel_lookups_provider_address",
+        table_name="threat_intel_lookups",
+        if_exists=True,
     )
-    op.drop_table("threat_intel_lookups")
+    op.drop_index(
+        "ix_threat_intel_lookups_provider_requested_at",
+        table_name="threat_intel_lookups",
+        if_exists=True,
+    )
+    op.drop_table("threat_intel_lookups", if_exists=True)
