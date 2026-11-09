@@ -24,6 +24,13 @@ Every release's notes are here, newest first. The format follows
   it, and the AI reads those reports with the incident. Only addresses on the internet are sent,
   never one of your own. Its address is fixed, its key is write-only, and the access level is
   chosen on its page, with the free public API's terms said beside the choice.
+- **Noise filters say how long a repeating scan may pause, and how few low alerts are too few to
+  ask about.** Settings > Noise filters has two more settings. A scan or a brute force that goes
+  quiet for less than the time you choose (1 to 24 hours; 4 and 6 hours until you change them) is
+  still one incident, up to a day. An incident made of one program's low-severity alerts is set
+  aside until it has as many as you choose (1 to 10; 1, the default, is no minimum), so a lone low
+  alert is never asked about. Both appear in *What this changes* and in the activity log. A new gap
+  applies to the signals that arrive after it is saved.
 
 ### Fixed
 

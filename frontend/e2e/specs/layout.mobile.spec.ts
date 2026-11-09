@@ -812,6 +812,26 @@ test.describe('layout on a phone', () => {
     ).toBeLessThanOrEqual(0)
   })
 
+  test('the gap and the minimum keep their selects as big as a thumb, and inside the width of the phone', async ({
+    noiseFilters,
+    page,
+  }) => {
+    await noiseFilters.goto()
+    await expect(noiseFilters.gapCard).toBeVisible()
+
+    const scan = await noiseFilters.scanGap.boundingBox()
+    const brute = await noiseFilters.bruteForceGap.boundingBox()
+    const minimum = await noiseFilters.thinSelect.boundingBox()
+    const viewport = page.viewportSize()
+
+    expect(scan?.height).toBeGreaterThanOrEqual(44)
+    expect(brute?.height).toBeGreaterThanOrEqual(44)
+    expect(minimum?.height).toBeGreaterThanOrEqual(44)
+    expect((scan?.x ?? 0) + (scan?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+    expect((brute?.x ?? 0) + (brute?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+    expect((minimum?.x ?? 0) + (minimum?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+  })
+
   test('draws a chart within the card, and keeps what a tap reads on the screen', async ({
     page,
     harness,

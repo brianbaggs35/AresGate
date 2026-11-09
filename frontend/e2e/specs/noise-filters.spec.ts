@@ -43,6 +43,19 @@ test.describe('noise filters page', () => {
     await expect(noiseFilters.floorValue).toHaveText('35 out of 100 (medium)')
     await expect(noiseFilters.floorSentence).toContainText('at least 35 sure it is real')
     await expect(noiseFilters.floorReset).toBeHidden()
+    await expect(noiseFilters.gapCard).toBeVisible()
+    await expect(noiseFilters.scanGap).toContainText('4 hours')
+    await expect(noiseFilters.bruteForceGap).toContainText('6 hours')
+    await expect(noiseFilters.gapSentence).toHaveText(
+      'A scan that goes quiet for less than 4 hours is still one incident, and so is a brute force that goes quiet for less than 6 hours. A longer quiet starts another incident.',
+    )
+    await expect(noiseFilters.gapReset).toBeHidden()
+    await expect(noiseFilters.thinCard).toBeVisible()
+    await expect(noiseFilters.thinSelect).toContainText('1 (no minimum)')
+    await expect(noiseFilters.thinSentence).toHaveText(
+      'No minimum: every incident is asked about, as it was before this setting.',
+    )
+    await expect(noiseFilters.thinReset).toBeHidden()
     await expect(noiseFilters.noSources).toContainText('No program has reported an alert yet')
     await expect(noiseFilters.insideSwitch).not.toBeChecked()
     await expect(noiseFilters.effectIdle).toContainText('Change something above')
@@ -162,6 +175,84 @@ test.describe('noise filters page', () => {
       'Set aside: inside your network',
       'Set aside: inside your network',
     ])
+  })
+
+  test('says how long a scan or a brute force may pause within one incident, and keeps it when saved', async ({
+    noiseFilters,
+  }) => {
+    await noiseFilters.goto()
+
+    await noiseFilters.chooseGap('scan', '8 hours')
+    await noiseFilters.chooseGap('brute force', '12 hours')
+
+    await expect(noiseFilters.gapSentence).toHaveText(
+      'A scan that goes quiet for less than 8 hours is still one incident, and so is a brute force that goes quiet for less than 12 hours. A longer quiet starts another incident.',
+    )
+    await expect(noiseFilters.gapReset).toHaveText('Back to the defaults')
+    await expect(noiseFilters.effectSentence).toContainText(
+      'From now on a scan starts another incident after a quiet of 8 hours, and a brute force after 12 hours. Incidents already made keep their grouping.',
+    )
+
+    await noiseFilters.save.click()
+    await expect(noiseFilters.saved).toBeVisible()
+    await noiseFilters.goto()
+
+    await expect(noiseFilters.scanGap).toContainText('8 hours')
+    await expect(noiseFilters.bruteForceGap).toContainText('12 hours')
+    await noiseFilters.gapReset.click()
+    await expect(noiseFilters.scanGap).toContainText('4 hours')
+    await expect(noiseFilters.bruteForceGap).toContainText('6 hours')
+    await expect(noiseFilters.save).toBeDisabled()
+  })
+
+  test('asks about a thin incident only once one program has enough low alerts, and sets its lone low alert aside until then', async ({
+    harness,
+    noiseFilters,
+    incidents,
+    incident,
+  }) => {
+    await harness.createIncidents([REAL, DOUBTFUL, FAINT])
+    await noiseFilters.goto()
+
+    await noiseFilters.chooseMinimum('2 low alerts')
+
+    await expect(noiseFilters.thinReset).toHaveText('Back to 1')
+    await expect(noiseFilters.thinSentence).toHaveText(
+      "An incident of one program's low alerts is asked about once it has 2 of them. A lone low alert is never asked about.",
+    )
+    await expect(noiseFilters.effectSentence).toContainText(
+      "An incident of one program's low alerts is asked about once it has 2 of them.",
+    )
+    await expect(noiseFilters.figure('set-aside').now).toHaveText('0')
+    await expect(noiseFilters.figure('set-aside').after).toHaveText('1')
+    await noiseFilters.save.click()
+    await expect(noiseFilters.saved).toBeVisible()
+
+    await incidents.goto('?address=8.8.8.8')
+    await incidents.cards.first().click()
+    await expect(incident.signals).toHaveCount(1)
+    await expect(incident.signals.getByTestId('signal-filtered')).toHaveText([
+      "Set aside: one program's low alerts, too few to ask about",
+    ])
+    await expect(incident.standing).toContainText('Every signal in it was left out')
+  })
+
+  test('puts the gaps and the minimum back to what is kept when discarded', async ({
+    noiseFilters,
+  }) => {
+    await noiseFilters.goto()
+
+    await noiseFilters.chooseGap('scan', '8 hours')
+    await noiseFilters.chooseMinimum('2 low alerts')
+    await expect(noiseFilters.gapReset).toBeVisible()
+    await expect(noiseFilters.thinReset).toBeVisible()
+
+    await noiseFilters.discard.click()
+
+    await expect(noiseFilters.scanGap).toContainText('4 hours')
+    await expect(noiseFilters.thinSelect).toContainText('1 (no minimum)')
+    await expect(noiseFilters.gapReset).toBeHidden()
+    await expect(noiseFilters.save).toBeDisabled()
   })
 
   test('says why it could not be worked out when it cannot reach AresGate', async ({

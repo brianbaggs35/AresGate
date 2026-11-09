@@ -25,6 +25,14 @@ export interface NoiseFilters {
   high_from: number
   /** Whether alerts between two addresses on your own network are set aside. */
   quiet_inside: boolean
+  /** How long a scan or a brute force may go quiet before its next signal is another incident. */
+  scan_gap_hours: number
+  default_scan_gap_hours: number
+  brute_force_gap_hours: number
+  default_brute_force_gap_hours: number
+  /** The fewest low alerts from one program an incident needs before it is asked about; 1 is none. */
+  thin_low_signals: number
+  default_thin_low_signals: number
   sources: NoiseSource[]
   /** How many verdicts there are, which set signals aside too. */
   verdicts: number
@@ -36,6 +44,9 @@ export interface NoiseDraft {
   confidence_floor: number
   quiet_inside: boolean
   source_floors: Record<string, Floor>
+  scan_gap_hours: number
+  brute_force_gap_hours: number
+  thin_low_signals: number
 }
 
 /** The incidents that are going on, by how they stand. */
@@ -53,12 +64,17 @@ export interface SetAside {
   total: number
   inside: number
   severity: number
+  thin: number
   by_source: Record<string, number>
 }
 
 export interface Effect {
   incidents: Tally
   set_aside: SetAside
+  /** The gaps and the minimum the incidents above were judged by. */
+  scan_gap_hours: number
+  brute_force_gap_hours: number
+  thin_low_signals: number
 }
 
 /** What the filters do now, and what they would do as asked. */

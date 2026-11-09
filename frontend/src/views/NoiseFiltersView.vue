@@ -14,8 +14,10 @@ import {
 import LoadError from '@/components/LoadError.vue'
 import NoiseEffect from '@/components/NoiseEffect.vue'
 import NoiseFloorCard from '@/components/NoiseFloorCard.vue'
+import NoiseGapCard from '@/components/NoiseGapCard.vue'
 import NoiseInsideCard from '@/components/NoiseInsideCard.vue'
 import NoiseSourcesCard from '@/components/NoiseSourcesCard.vue'
+import NoiseThinCard from '@/components/NoiseThinCard.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import { formatCount } from '@/format'
 import { draftOf, sameDraft, withFloor } from '@/noiseFilters'
@@ -152,7 +154,17 @@ onBeforeUnmount(() => {
       :floors="draft.source_floors"
       @change="(key, floor) => (draft = withFloor(draft as NoiseDraft, key, floor))"
     />
+    <NoiseThinCard
+      v-model="draft.thin_low_signals"
+      :default-minimum="kept.default_thin_low_signals"
+    />
     <NoiseInsideCard v-model="draft.quiet_inside" />
+    <NoiseGapCard
+      v-model:scan-hours="draft.scan_gap_hours"
+      v-model:brute-force-hours="draft.brute_force_gap_hours"
+      :default-scan-hours="kept.default_scan_gap_hours"
+      :default-brute-force-hours="kept.default_brute_force_gap_hours"
+    />
     <SectionCard
       title="Verdicts"
       description="Your own verdicts come first. What you called not suspicious or low priority is left out whatever these settings say, and a real threat is never set aside."

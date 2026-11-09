@@ -97,6 +97,12 @@ class TestReadingThem:
             "medium_from": 35,
             "high_from": 65,
             "quiet_inside": False,
+            "scan_gap_hours": 4,
+            "default_scan_gap_hours": 4,
+            "brute_force_gap_hours": 6,
+            "default_brute_force_gap_hours": 6,
+            "thin_low_signals": 1,
+            "default_thin_low_signals": 1,
             "sources": [],
             "verdicts": 0,
             "updated_at": None,
@@ -303,7 +309,10 @@ class TestPreviewingThem:
                 "cleared": 0,
                 "muted": 0,
             },
-            "set_aside": {"total": 0, "inside": 0, "severity": 0, "by_source": {}},
+            "set_aside": {"total": 0, "inside": 0, "severity": 0, "thin": 0, "by_source": {}},
+            "scan_gap_hours": 4,
+            "brute_force_gap_hours": 6,
+            "thin_low_signals": 1,
         }
         assert body["after"] == {
             "incidents": {
@@ -314,7 +323,16 @@ class TestPreviewingThem:
                 "cleared": 0,
                 "muted": 0,
             },
-            "set_aside": {"total": 2, "inside": 1, "severity": 1, "by_source": {"wazuh": 2}},
+            "set_aside": {
+                "total": 2,
+                "inside": 1,
+                "severity": 1,
+                "thin": 0,
+                "by_source": {"wazuh": 2},
+            },
+            "scan_gap_hours": 4,
+            "brute_force_gap_hours": 6,
+            "thin_low_signals": 1,
         }
 
     def test_it_changes_nothing(
@@ -385,3 +403,84 @@ class TestPreviewingThem:
 
         assert body["after"]["incidents"]["active"] == 0
         assert body["after"]["set_aside"]["total"] == 0
+
+
+class TestTheGapsAndTheMinimum:
+    def test_they_are_saved_and_said_back(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        response = change(
+            client, csrf_token, scan_gap_hours=8, brute_force_gap_hours=2, thin_low_signals=3
+        )
+
+        assert response.status_code == 200
+        assert response.json()["scan_gap_hours"] == 8
+        assert response.json()["brute_force_gap_hours"] == 2
+        assert response.json()["thin_low_signals"] == 3
+        assert filters.load(session) == filters.Filters(
+            scan_gap_hours=8, brute_force_gap_hours=2, thin_low_signals=3
+        )
+
+    def test_the_record_says_what_changed_in_them(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        change(client, csrf_token, scan_gap_hours=8, thin_low_signals=3)
+
+        (record,) = audited(session)
+        assert record.detail == {
+            "scan_gap_hours": 8,
+            "from_scan_gap_hours": 4,
+            "thin_low_signals": 3,
+            "from_thin_low_signals": 1,
+        }
+
+    @pytest.mark.parametrize(
+        ("setting", "value"),
+        [
+            ("scan_gap_hours", 0),
+            ("scan_gap_hours", 25),
+            ("brute_force_gap_hours", 0),
+            ("brute_force_gap_hours", 25),
+            ("thin_low_signals", 0),
+            ("thin_low_signals", 11),
+        ],
+    )
+    def test_one_outside_its_range_is_refused(
+        self, client: TestClient, csrf_token: str, session: Session, setting: str, value: int
+    ) -> None:
+        response = change(client, csrf_token, **{setting: value})
+
+        assert response.status_code == 422
+        assert session.scalars(select(NoiseSettings)).first() is None
+
+    @pytest.mark.parametrize(
+        ("setting", "value"),
+        [
+            ("scan_gap_hours", 1),
+            ("scan_gap_hours", 24),
+            ("brute_force_gap_hours", 24),
+            ("thin_low_signals", 10),
+        ],
+    )
+    def test_the_ends_of_their_ranges_are_allowed(
+        self, client: TestClient, csrf_token: str, setting: str, value: int
+    ) -> None:
+        assert change(client, csrf_token, **{setting: value}).status_code == 200
+
+    def test_the_preview_says_how_many_signals_a_minimum_would_set_aside(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        noisy(session, settings)
+
+        body = preview(client, csrf_token, thin_low_signals=2).json()
+
+        assert body["now"]["thin_low_signals"] == 1
+        assert body["now"]["set_aside"]["thin"] == 0
+        assert body["after"]["thin_low_signals"] == 2
+        assert body["after"]["set_aside"] == {
+            "total": 1,
+            "inside": 0,
+            "severity": 0,
+            "thin": 1,
+            "by_source": {"wazuh": 1},
+        }

@@ -5,6 +5,9 @@ const DRAFT = {
   confidence_floor: 50,
   quiet_inside: true,
   source_floors: { wazuh: 'high' },
+  scan_gap_hours: 8,
+  brute_force_gap_hours: 2,
+  thin_low_signals: 3,
 } as const
 
 describe('noise filters', () => {

@@ -54,6 +54,14 @@ class NoiseOut(BaseModel):
     medium_from: int
     high_from: int
     quiet_inside: bool
+    # How long a scan or a brute force may go quiet before the next signal is a new incident, in
+    # hours; the fewest signals of a thin incident (1 is none); and what each is by default.
+    scan_gap_hours: int
+    default_scan_gap_hours: int
+    brute_force_gap_hours: int
+    default_brute_force_gap_hours: int
+    thin_low_signals: int
+    default_thin_low_signals: int
     sources: list[SourceOut]
     # How many verdicts there are, which set aside signals too (and are managed on their own page).
     verdicts: int
@@ -66,6 +74,15 @@ class NoiseIn(BaseModel):
     confidence_floor: int = Field(ge=1, le=rules.MAX_CONFIDENCE)
     quiet_inside: bool
     source_floors: dict[str, FloorName]
+    scan_gap_hours: int = Field(
+        default=filters.DEFAULT_SCAN_GAP_HOURS, ge=1, le=filters.MAX_GAP_HOURS
+    )
+    brute_force_gap_hours: int = Field(
+        default=filters.DEFAULT_BRUTE_FORCE_GAP_HOURS, ge=1, le=filters.MAX_GAP_HOURS
+    )
+    thin_low_signals: int = Field(
+        default=filters.DEFAULT_THIN_LOW_SIGNALS, ge=1, le=filters.MAX_THIN_LOW_SIGNALS
+    )
 
     @field_validator("source_floors")
     @classmethod
@@ -93,12 +110,20 @@ class SetAsideOut(BaseModel):
     total: int
     inside: int
     severity: int
+    thin: int
     by_source: dict[str, int]
 
 
 class EffectOut(BaseModel):
+    """What the filters do to the incidents that are going on, and the settings they do it with."""
+
     incidents: TallyOut
     set_aside: SetAsideOut
+    # A new gap only applies to the signals that arrive after it is saved, so it changes no count
+    # above; it is shown so the preview can say what would change.
+    scan_gap_hours: int
+    brute_force_gap_hours: int
+    thin_low_signals: int
 
 
 class PreviewOut(BaseModel):
@@ -113,6 +138,9 @@ def _filters(body: NoiseIn) -> Filters:
         confidence_floor=body.confidence_floor,
         quiet_inside=body.quiet_inside,
         source_floors={source: int(FLOORS[name]) for source, name in body.source_floors.items()},
+        scan_gap_hours=body.scan_gap_hours,
+        brute_force_gap_hours=body.brute_force_gap_hours,
+        thin_low_signals=body.thin_low_signals,
     )
 
 
@@ -155,15 +183,22 @@ def _shown(db: Db) -> NoiseOut:
         medium_from=rules.MEDIUM_FROM,
         high_from=rules.HIGH_FROM,
         quiet_inside=noise.quiet_inside,
+        scan_gap_hours=noise.scan_gap_hours,
+        default_scan_gap_hours=filters.DEFAULT_SCAN_GAP_HOURS,
+        brute_force_gap_hours=noise.brute_force_gap_hours,
+        default_brute_force_gap_hours=filters.DEFAULT_BRUTE_FORCE_GAP_HOURS,
+        thin_low_signals=noise.thin_low_signals,
+        default_thin_low_signals=filters.DEFAULT_THIN_LOW_SIGNALS,
         sources=_sources(db, noise),
         verdicts=db.scalar(select(func.count()).select_from(VerdictRule)) or 0,
         updated_at=row.updated_at if row else None,
     )
 
 
-def _effect(db: Db, floor: int) -> EffectOut:
-    """What the filters do to the incidents that are going on, as they are stored."""
-    found = attention.tally(db, floor, threat_settings.load(db))
+def _effect(db: Db, noise: Filters) -> EffectOut:
+    """What the filters do to the incidents that are going on, as they are stored (or, for a
+    preview, as they would be)."""
+    found = attention.tally(db, noise.confidence_floor, threat_settings.load(db))
     rows = db.execute(
         select(IncidentSignal.source, IncidentSignal.filtered_by, func.count())
         .join(Incident, Incident.id == IncidentSignal.incident_id)
@@ -171,7 +206,7 @@ def _effect(db: Db, floor: int) -> EffectOut:
         .group_by(IncidentSignal.source, IncidentSignal.filtered_by)
     ).all()
     by_source: dict[str, int] = {}
-    by_reason = {filters.INSIDE: 0, filters.SEVERITY: 0}
+    by_reason: dict[str, int] = {filters.INSIDE: 0, filters.SEVERITY: 0, filters.THIN: 0}
     for source, reason, count in rows:
         by_source[source] = by_source.get(source, 0) + count
         by_reason[cast(str, reason)] += count
@@ -188,20 +223,32 @@ def _effect(db: Db, floor: int) -> EffectOut:
             total=sum(by_source.values()),
             inside=by_reason[filters.INSIDE],
             severity=by_reason[filters.SEVERITY],
+            thin=by_reason[filters.THIN],
             by_source=by_source,
         ),
+        scan_gap_hours=noise.scan_gap_hours,
+        brute_force_gap_hours=noise.brute_force_gap_hours,
+        thin_low_signals=noise.thin_low_signals,
     )
+
+
+def _changed(
+    facts: dict[str, str | int | bool], name: str, was: str | int | bool, now: str | int | bool
+) -> None:
+    """Records a setting in the facts of a change, with what it was, if it changed."""
+    if was != now:
+        facts[name] = now
+        facts[f"from_{name}"] = was
 
 
 def _facts(was: Filters, now: Filters) -> dict[str, str | int | bool]:
     """What the audit log says of a change: each setting that changed, and what it was."""
     facts: dict[str, str | int | bool] = {}
-    if was.confidence_floor != now.confidence_floor:
-        facts["confidence_floor"] = now.confidence_floor
-        facts["from_confidence_floor"] = was.confidence_floor
-    if was.quiet_inside != now.quiet_inside:
-        facts["quiet_inside"] = now.quiet_inside
-        facts["from_quiet_inside"] = was.quiet_inside
+    _changed(facts, "confidence_floor", was.confidence_floor, now.confidence_floor)
+    _changed(facts, "quiet_inside", was.quiet_inside, now.quiet_inside)
+    _changed(facts, "scan_gap_hours", was.scan_gap_hours, now.scan_gap_hours)
+    _changed(facts, "brute_force_gap_hours", was.brute_force_gap_hours, now.brute_force_gap_hours)
+    _changed(facts, "thin_low_signals", was.thin_low_signals, now.thin_low_signals)
     if dict(was.source_floors) != dict(now.source_floors):
         facts["source_floors"] = _written(now)
         facts["from_source_floors"] = _written(was)
@@ -253,7 +300,7 @@ def change_noise_filters(
 def preview_noise_filters(body: NoiseIn, db: Db) -> PreviewOut:
     """What the filters would do if they were as asked, without changing them: the incidents are
     judged as they would be, counted, and put back."""
-    now = _effect(db, filters.load(db).confidence_floor)
+    now = _effect(db, filters.load(db))
     asked = _filters(body)
     trial = db.begin_nested()
     try:
@@ -261,7 +308,7 @@ def preview_noise_filters(body: NoiseIn, db: Db) -> PreviewOut:
         filters.save(db, asked)
         engine.reapply(db)
         db.flush()
-        after = _effect(db, asked.confidence_floor)
+        after = _effect(db, asked)
     finally:
         trial.rollback()
     return PreviewOut(now=now, after=after)

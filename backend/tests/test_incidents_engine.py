@@ -968,7 +968,7 @@ class TestOneEpisodeIsOneIncident:
     def test_a_neighbour_joins_the_incident_that_is_still_going_not_one_that_is_over(
         self, session: Session, settings: Settings
     ) -> None:
-        later = NOW + episode.gap_of("scan") + timedelta(minutes=1)
+        later = NOW + episode.DEFAULT_GAPS.of("scan") + timedelta(minutes=1)
         store(session, settings, scan(n=1), scan(later, n=2, src_address=NEIGHBOUR))
 
         assert run(session).created == 2
@@ -996,7 +996,7 @@ class TestWhenAnEpisodeIsOver:
     def test_a_scan_is_over_after_four_hours_of_quiet(
         self, session: Session, settings: Settings
     ) -> None:
-        gap = episode.gap_of("scan")
+        gap = episode.DEFAULT_GAPS.of("scan")
         store(
             session,
             settings,
@@ -1012,7 +1012,7 @@ class TestWhenAnEpisodeIsOver:
         assert (first.signal_count, second.signal_count) == (2, 1)
 
     def test_a_brute_force_goes_on_for_longer(self, session: Session, settings: Settings) -> None:
-        later = NOW + episode.gap_of("scan") + timedelta(minutes=1)
+        later = NOW + episode.DEFAULT_GAPS.of("scan") + timedelta(minutes=1)
         store(session, settings, brute(n=1), brute(later, n=2))
 
         assert run(session).created == 1

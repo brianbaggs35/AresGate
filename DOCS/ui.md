@@ -94,9 +94,11 @@ Settings page (`VerdictsView`) is where verdicts are reviewed, changed (`Verdict
 taken back (`ConfirmDialog`, which says how many signals are judged again).
 
 Settings > Noise filters (`NoiseFiltersView`) keeps a draft beside what is kept, so the page never
-shows a half-saved state: four cards edit it (`NoiseFloorCard`, a slider that says its number and
+shows a half-saved state: six cards edit it (`NoiseFloorCard`, a slider that says its number and
 its word, `NoiseSourcesCard`, a select for each program with what it reported this week beside
-it, `NoiseInsideCard`, a switch, and a link to the verdicts) and `NoiseEffect` shows what it would
+it, `NoiseThinCard`, a select for the fewest low alerts an incident needs, `NoiseInsideCard`, a
+switch, `NoiseGapCard`, two selects for how long a scan or a brute force may pause, and a link to
+the verdicts) and `NoiseEffect` shows what it would
 do beside what is so now, with *Save* and *Discard changes*. The question is asked a moment after
 the last change (a slider being dragged is one question, and an answer to an older one is
 dropped), and `role="status"` makes a screen reader say the answer. The figures are the server's

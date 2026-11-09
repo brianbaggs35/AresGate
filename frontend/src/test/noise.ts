@@ -20,6 +20,12 @@ export function noiseFilters(changes: Partial<NoiseFilters> = {}): NoiseFilters 
     medium_from: 35,
     high_from: 65,
     quiet_inside: false,
+    scan_gap_hours: 4,
+    default_scan_gap_hours: 4,
+    brute_force_gap_hours: 6,
+    default_brute_force_gap_hours: 6,
+    thin_low_signals: 1,
+    default_thin_low_signals: 1,
     sources: [source(), source({ key: 'ntopng', name: 'ntopng', week: { medium: 40 } })],
     verdicts: 3,
     updated_at: null,
@@ -32,7 +38,10 @@ export function noiseFilters(changes: Partial<NoiseFilters> = {}): NoiseFilters 
 export function effect(changes: Partial<Effect> = {}): Effect {
   return {
     incidents: { active: 31, needs_you: 5, urgent: 1, unsure: 24, cleared: 0, muted: 2 },
-    set_aside: { total: 0, inside: 0, severity: 0, by_source: {} },
+    set_aside: { total: 0, inside: 0, severity: 0, thin: 0, by_source: {} },
+    scan_gap_hours: 4,
+    brute_force_gap_hours: 6,
+    thin_low_signals: 1,
     ...changes,
   }
 }
@@ -43,7 +52,7 @@ export function preview(changes: Partial<Preview> = {}): Preview {
     now: effect(),
     after: effect({
       incidents: { active: 31, needs_you: 2, urgent: 0, unsure: 27, cleared: 0, muted: 2 },
-      set_aside: { total: 2901, inside: 0, severity: 2901, by_source: { wazuh: 2901 } },
+      set_aside: { total: 2901, inside: 0, severity: 2901, thin: 0, by_source: { wazuh: 2901 } },
     }),
     ...changes,
   }

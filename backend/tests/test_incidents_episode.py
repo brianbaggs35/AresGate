@@ -48,9 +48,21 @@ class TestWhatKindOfActivityASignalIs:
 
 class TestHowLongTheQuietMayBe:
     def test_a_scan_is_over_sooner_than_a_brute_force_or_anything_else(self) -> None:
-        assert episode.gap_of(episode.SCAN) < episode.gap_of(episode.BRUTE_FORCE)
-        assert episode.gap_of(None) == episode.DEFAULT_GAP
-        assert episode.gap_of("something else") == episode.DEFAULT_GAP
+        assert episode.DEFAULT_GAPS.of(episode.SCAN) < episode.DEFAULT_GAPS.of(episode.BRUTE_FORCE)
+        assert episode.DEFAULT_GAPS.of(None) == episode.DEFAULT_GAP
+        assert episode.DEFAULT_GAPS.of("something else") == episode.DEFAULT_GAP
+
+    def test_the_owner_sets_the_gap_for_a_scan_and_a_brute_force(self) -> None:
+        gaps = episode.Gaps(scan=timedelta(hours=8), brute_force=timedelta(hours=2))
+
+        assert gaps.of(episode.SCAN) == timedelta(hours=8)
+        assert gaps.of(episode.BRUTE_FORCE) == timedelta(hours=2)
+        assert gaps.of("something else") == episode.DEFAULT_GAP
+
+    def test_what_the_owner_does_not_set_is_what_it_was(self) -> None:
+        gaps = episode.Gaps(scan=timedelta(hours=8))
+
+        assert gaps.brute_force == episode.GAPS[episode.BRUTE_FORCE]
 
 
 class TestWhoTheNeighboursAre:
@@ -191,9 +203,12 @@ class TestWhyTheyAreOne:
         assert "1 signal in bursts" in lines[2]
         assert lines[3] == "It touched 2 ports."
 
-    def test_an_hour_is_an_hour(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(episode.GAPS, episode.SCAN, timedelta(hours=1))
-
-        lines = self.explain(activities=[episode.SCAN])
+    def test_an_hour_is_an_hour(self) -> None:
+        lines = self.explain(activities=[episode.SCAN], gaps=episode.Gaps(scan=timedelta(hours=1)))
 
         assert "less than 1 hour after" in lines[1]
+
+    def test_the_gap_it_is_grouped_with_is_the_owners(self) -> None:
+        lines = self.explain(activities=[episode.SCAN], gaps=episode.Gaps(scan=timedelta(hours=8)))
+
+        assert lines[1].startswith("Each scanning signal came less than 8 hours after")

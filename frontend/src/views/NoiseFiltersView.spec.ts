@@ -2,12 +2,16 @@ import { VSelect, VSlider, VSwitch } from 'vuetify/components'
 
 import { ApiError } from '@/api/client'
 import * as noiseApi from '@/api/noise'
+import NoiseGapCard from '@/components/NoiseGapCard.vue'
+import NoiseThinCard from '@/components/NoiseThinCard.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { noiseFilters, preview, source } from '@/test/noise'
 import NoiseFiltersView from '@/views/NoiseFiltersView.vue'
 
 const settle = () => vi.advanceTimersByTimeAsync(0)
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
+// The gaps and the minimum as they are until the owner changes them, which the page sends too.
+const KEPT_GAPS = { scan_gap_hours: 4, brute_force_gap_hours: 6, thin_low_signals: 1 }
 
 async function open(kept: noiseApi.NoiseFilters | Error = noiseFilters()) {
   const fetchIt = vi.spyOn(noiseApi, 'fetchNoiseFilters')
@@ -77,6 +81,13 @@ describe('NoiseFiltersView', () => {
       expect(find('manage-verdicts').text()).toBe('Manage your 1 verdict')
     })
 
+    it('shows the gaps and the minimum as they are kept', async () => {
+      const { find } = await open(noiseFilters({ scan_gap_hours: 8, thin_low_signals: 3 }))
+
+      expect(find('gap-sentence').text()).toContain('less than 8 hours')
+      expect(find('thin-sentence').text()).toContain('once it has 3 of them')
+    })
+
     it('says why it could not load, and tries again on request', async () => {
       const { find, fetchIt } = await open(offline())
 
@@ -104,7 +115,7 @@ describe('NoiseFiltersView', () => {
 
       expect(ask).toHaveBeenCalledTimes(1)
       expect(ask).toHaveBeenCalledWith(
-        { confidence_floor: 45, quiet_inside: false, source_floors: {} },
+        { ...KEPT_GAPS, confidence_floor: 45, quiet_inside: false, source_floors: {} },
         'a-security-token',
       )
       expect(find('effect-sentence').text()).toContain('2 incidents would need you instead of 5')
@@ -120,7 +131,34 @@ describe('NoiseFiltersView', () => {
       await wait()
 
       expect(ask).toHaveBeenCalledWith(
-        { confidence_floor: 35, quiet_inside: true, source_floors: { wazuh: 'high' } },
+        {
+          ...KEPT_GAPS,
+          confidence_floor: 35,
+          quiet_inside: true,
+          source_floors: { wazuh: 'high' },
+        },
+        'a-security-token',
+      )
+    })
+
+    it('asks about the gaps and the minimum as they are changed', async () => {
+      const { ask, wrapper, wait } = await open()
+
+      wrapper.findComponent(NoiseGapCard).vm.$emit('update:scanHours', 8)
+      wrapper.findComponent(NoiseGapCard).vm.$emit('update:bruteForceHours', 2)
+      wrapper.findComponent(NoiseThinCard).vm.$emit('update:modelValue', 3)
+      await settle()
+      await wait()
+
+      expect(ask).toHaveBeenCalledWith(
+        {
+          confidence_floor: 35,
+          quiet_inside: false,
+          source_floors: {},
+          scan_gap_hours: 8,
+          brute_force_gap_hours: 2,
+          thin_low_signals: 3,
+        },
         'a-security-token',
       )
     })
@@ -217,7 +255,7 @@ describe('NoiseFiltersView', () => {
       await settle()
 
       expect(save).toHaveBeenCalledWith(
-        { confidence_floor: 45, quiet_inside: false, source_floors: {} },
+        { ...KEPT_GAPS, confidence_floor: 45, quiet_inside: false, source_floors: {} },
         'a-security-token',
       )
       expect(find('effect-saved').exists()).toBe(true)
