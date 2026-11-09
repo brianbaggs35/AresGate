@@ -34,6 +34,11 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **An interface's first ntopng alerts file as one incident.** When AresGate first reads ntopng on
+  an interface, the alerts from its first half hour used to open an incident for each address they
+  were about, so one start could make dozens of incidents in minutes. They now file as one incident
+  for the interface, which says how many alerts it folded in. Alerts after that half hour file as
+  before. An interface whose alerts AresGate had read before this keeps filing as it did.
 - **The Assets page leaves out the Internet side.** The firewall's ARP table lists the devices on
   its WAN side too, such as the provider's equipment with public addresses, and they were listed
   as assets. Now a device whose addresses are public and that is not one of the firewall's own is
