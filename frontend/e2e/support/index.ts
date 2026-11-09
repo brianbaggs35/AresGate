@@ -21,6 +21,8 @@ export {
   type StandIn,
   type StandInRequest,
   type SystemInfoRecord,
+  type TrafficHostRequest,
+  type TrafficRecord,
   type VerdictRequest,
   type VerdictsRecord,
   type WorkerPulse,
@@ -28,6 +30,7 @@ export {
 export { ActivityPage } from './pages/activity-page'
 export { AiSettingsPage } from './pages/ai-settings-page'
 export { AiUsagePage } from './pages/ai-usage-page'
+export { AssetPage } from './pages/asset-page'
 export { AssetsPage } from './pages/assets-page'
 export { AssistantPage } from './pages/assistant-page'
 export { DataPage } from './pages/data-page'
