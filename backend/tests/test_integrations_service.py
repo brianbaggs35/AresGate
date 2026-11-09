@@ -642,8 +642,8 @@ def test_a_check_is_made_with_the_policy_of_its_connection(
         seen.append(target)
         return service.Verdict(True, "Checked.")
 
-    async def record(call: object) -> None:
-        del call
+    async def record(_call: object) -> None:
+        pass  # Keeps nothing: the test needs only that the call was made.
 
     monkeypatch.setitem(probes.PROBES, ("virustotal", "api"), probe)
     target = Target(

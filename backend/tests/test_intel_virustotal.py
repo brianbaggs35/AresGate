@@ -167,8 +167,8 @@ def ask(serve: Serve, handler: Callable[[Seen], Answer]) -> tuple[virustotal.Ans
     server = serve(handler)
     where = target_for(server)
 
-    async def record(call: Call) -> None:
-        del call
+    async def record(_call: Call) -> None:
+        pass  # Keeps nothing: the test needs only that the call was made.
 
     async def go() -> virustotal.Answer:
         async with ApiClient(where, record, HOME_NETWORK_AND_LOOPBACK) as client:

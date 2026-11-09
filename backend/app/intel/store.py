@@ -73,14 +73,13 @@ def finish(db: Session, lookup_id: int, answer: virustotal.Answer) -> None:
     row = db.get(IntelLookup, lookup_id)
     if row is None:
         return
-    match answer:
-        case virustotal.Reported(report=report):
-            row.outcome = REPORTED
-            save_report(db, row.provider, row.address, report)
-        case virustotal.Unknown():
-            row.outcome = UNKNOWN
-        case _:
-            row.outcome = FAILED
+    if isinstance(answer, virustotal.Reported):
+        row.outcome = REPORTED
+        save_report(db, row.provider, row.address, answer.report)
+    elif isinstance(answer, virustotal.Unknown):
+        row.outcome = UNKNOWN
+    else:
+        row.outcome = FAILED
 
 
 def report_for(db: Session, provider: str, address: Address) -> IntelReport | None:
