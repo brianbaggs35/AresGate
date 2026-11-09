@@ -12,6 +12,13 @@ Every release's notes are here, newest first. The format follows
   camera talking to its servers, can now be called normal for that network and nothing else it
   does. The incident page offers *Traffic from 192.168.1.20 to 52.1.2.0/24*, and the Verdicts page
   lists it. Attacks on the device, and what the service sends back, still count.
+- **Each asset has a page of its own.** Its name on the Assets page opens what AresGate knows of it:
+  when it was last listed and whether it is there now, the addresses it has had and which it has
+  now, the programs that list it and how each one did, the interfaces it is on, the traffic ntopng
+  measured for it over the last day or the last week, the events its addresses were in, what it
+  talked to and what talked to it in the last week, the incidents its addresses are in, and the
+  verdicts given about it. The page asks again every 30 seconds and keeps what is on screen when that
+  fails. It is served by `GET /api/assets/{key}`.
 
 ### Fixed
 
