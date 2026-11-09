@@ -469,8 +469,9 @@ def test_the_loop_keeps_going_after_a_failure_and_says_what_happened(
             timeout=0.2,
         )
 
+    looping = go()
     with caplog.at_level(logging.ERROR), pytest.raises(TimeoutError):
-        asyncio.run(go())
+        asyncio.run(looping)
     assert len(calls) > 1
     assert "Couldn't ask VirusTotal about an address" in caplog.text
 
@@ -499,8 +500,9 @@ def test_the_loop_asks_nothing_when_collecting_is_off(
             timeout=0.1,
         )
 
+    looping = go()
     with pytest.raises(TimeoutError):
-        asyncio.run(go())
+        asyncio.run(looping)
     assert calls == []
 
 
