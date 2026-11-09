@@ -186,3 +186,91 @@ def test_a_background_lookup_that_comes_too_soon_is_refused_and_keeps_nothing(
 def test_the_free_key_spreads_its_background_lookups_over_the_day() -> None:
     # Four minutes apart is 360 a day, which leaves 140 of the 500 for searches by hand.
     assert timedelta(days=1) // budget.FREE.background_spacing == 360
+
+
+# -- the limit VirusTotal sets itself
+
+
+def outcome_at(session: Session, when: datetime, outcome: str) -> None:
+    session.add(IntelLookup(provider=PROVIDER, address=ADDRESS, requested_at=when, outcome=outcome))
+    session.flush()
+
+
+def test_no_limit_holds_lookups_without_a_limit_answer(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(minutes=5))
+
+    assert budget.paused(session, PROVIDER, NOW) is None
+
+
+def test_a_used_up_daily_quota_holds_lookups_until_the_midnight_reset(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(hours=3), store.LIMITED)
+
+    assert budget.paused(session, PROVIDER, NOW) == budget.Pause(
+        until=datetime(2026, 11, 10, tzinfo=UTC), daily=True
+    )
+
+
+def test_a_used_up_daily_quota_no_longer_holds_once_the_reset_has_passed(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(hours=3), store.LIMITED)
+
+    assert budget.paused(session, PROVIDER, datetime(2026, 11, 10, 0, 0, 1, tzinfo=UTC)) is None
+
+
+def test_too_many_requests_holds_lookups_for_a_minute(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(seconds=20), store.THROTTLED)
+
+    assert budget.paused(session, PROVIDER, NOW) == budget.Pause(
+        until=NOW + timedelta(seconds=40), daily=False
+    )
+    assert budget.paused(session, PROVIDER, NOW + timedelta(seconds=40)) is None
+
+
+def test_the_last_limit_answered_is_the_one_that_holds(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(days=1), store.LIMITED)
+    outcome_at(session, NOW - timedelta(seconds=10), store.THROTTLED)
+
+    assert budget.paused(session, PROVIDER, NOW) == budget.Pause(
+        until=NOW + timedelta(seconds=50), daily=False
+    )
+
+
+def test_the_limits_of_another_provider_hold_nothing(session: Session) -> None:
+    session.add(
+        IntelLookup(
+            provider="another",
+            address=ADDRESS,
+            requested_at=NOW - timedelta(hours=1),
+            outcome=store.LIMITED,
+        )
+    )
+    session.flush()
+
+    assert budget.paused(session, PROVIDER, NOW) is None
+
+
+def test_a_reservation_is_refused_while_the_daily_quota_holds(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(hours=1), store.LIMITED)
+
+    with pytest.raises(budget.Paused) as refused:
+        budget.reserve(session, PROVIDER, budget.FREE, NOW)
+
+    assert refused.value.pause.daily is True
+    assert refused.value.wait == timedelta(hours=12)
+    pending = session.scalars(select(IntelLookup).where(IntelLookup.outcome == store.PENDING))
+    assert pending.all() == []
+
+
+def test_a_reservation_is_refused_for_a_minute_after_too_many_requests(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(seconds=10), store.THROTTLED)
+
+    with pytest.raises(budget.Paused) as refused:
+        budget.reserve(session, PROVIDER, budget.FREE, NOW)
+
+    assert refused.value.pause.daily is False
+    assert refused.value.wait == timedelta(seconds=50)
+
+
+def test_no_lookup_may_go_while_a_limit_holds(session: Session) -> None:
+    outcome_at(session, NOW - timedelta(seconds=10), store.THROTTLED)
+
+    assert not budget.may_look_up(session, PROVIDER, budget.PREMIUM, NOW)

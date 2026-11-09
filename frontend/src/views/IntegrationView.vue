@@ -27,6 +27,7 @@ import {
   connectionLabels,
   fieldId,
   integrationIcon,
+  limitNotice,
   settingsFrom,
   sortProblems,
   type ConnectionDraft,
@@ -291,6 +292,10 @@ onMounted(load)
 
       <v-alert v-if="notice" type="success" variant="tonal" data-test="notice">
         {{ notice }}
+      </v-alert>
+
+      <v-alert v-if="integration.pause" type="info" variant="tonal" data-test="integration-limit">
+        {{ limitNotice(integration.pause, 'Tests and searches') }} The connection is still set up.
       </v-alert>
 
       <SetupGuideDialog v-model="guideOpen" :name="integration.name" :guide="integration.guide" />

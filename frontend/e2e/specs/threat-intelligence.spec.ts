@@ -105,9 +105,10 @@ test.describe('threat intelligence page', () => {
       .fill('203.0.113.9')
     await panel.getByRole('button', { name: 'Search' }).click()
 
-    await expect(panel.locator('[data-test="threat-problem"]')).toContainText(
+    await expect(panel.locator('[data-test="threat-notice"]')).toContainText(
       'Try again in 15 seconds.',
     )
+    await expect(panel.locator('[data-test="threat-problem"]')).toHaveCount(0)
     await expect(report).toBeHidden()
     expect(searched).toEqual(['example.com', '203.0.113.9'])
   })
@@ -165,5 +166,37 @@ test.describe('threat intelligence page', () => {
       'sent nothing to VirusTotal',
     )
     expect(answered).toBe(2)
+  })
+
+  test("says when VirusTotal's daily limit holds searches, and that this is not a failure", async ({
+    page,
+    shell,
+  }) => {
+    // The list as it is while VirusTotal's daily quota is used up: the key is still connected.
+    await page.route('**/api/integrations', async (route) => {
+      const response = await route.fetch()
+      const body = (await response.json()) as {
+        key: string
+        status: string
+        pause: { until: string; daily: boolean } | null
+      }[]
+      for (const item of body) {
+        if (item.key === 'virustotal') {
+          item.status = 'connected'
+          item.pause = { until: '2099-01-01T00:00:00Z', daily: true }
+        }
+      }
+      await route.fulfill({ status: response.status(), json: body })
+    })
+
+    await page.goto('/')
+    await shell.dashboardLink.waitFor()
+    await shell.goTo('threat-intelligence')
+
+    const panel = page.locator('[data-test="threat-lookup"]')
+    await expect(panel.locator('[data-test="threat-notice"]')).toContainText(
+      "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
+    )
+    await expect(panel.locator('[data-test="threat-problem"]')).toHaveCount(0)
   })
 })

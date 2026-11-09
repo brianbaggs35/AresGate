@@ -1,4 +1,5 @@
 import { ApiError } from '@/api/client'
+import type { Pause } from '@/api/integrations'
 import * as threatIntel from '@/api/threatIntel'
 import type { Lookup } from '@/api/threatIntel'
 import ThreatLookup from '@/components/ThreatLookup.vue'
@@ -22,8 +23,8 @@ const CLEAN: Lookup = {
   link: 'https://www.virustotal.com/gui/domain/example.com',
 }
 
-async function mountLookup() {
-  const mounted = await mountWithPlugins(ThreatLookup, { signedIn: 'brian' })
+async function mountLookup(pause: Pause | null = null) {
+  const mounted = await mountWithPlugins(ThreatLookup, { signedIn: 'brian', props: { pause } })
   const { wrapper } = mounted
   const type = async (text: string) => {
     await wrapper.find<HTMLInputElement>('[data-test="threat-subject"] input').setValue(text)
@@ -87,7 +88,7 @@ describe('ThreatLookup', () => {
     expect(reportWindow()).toBeNull()
   })
 
-  it('says why a search was refused, and how long to wait, without opening a report', async () => {
+  it('says why a search was refused, and how long to wait, without a failure or a report, and asks for the limits again', async () => {
     vi.spyOn(threatIntel, 'searchThreatIntel').mockRejectedValue(
       new ApiError(
         429,
@@ -100,9 +101,11 @@ describe('ThreatLookup', () => {
 
     await submit()
 
-    expect(wrapper.find('[data-test="threat-problem"]').text()).toContain('Try again in 5 seconds.')
+    expect(wrapper.find('[data-test="threat-notice"]').text()).toContain('Try again in 5 seconds.')
+    expect(wrapper.find('[data-test="threat-problem"]').exists()).toBe(false)
     expect(reportWindow()).toBeNull()
     expect(wrapper.find('[data-test="threat-last"]').exists()).toBe(false)
+    expect(wrapper.emitted('refused')).toHaveLength(1)
   })
 
   it('says something useful when a search fails in a way that was not expected', async () => {
@@ -113,6 +116,40 @@ describe('ThreatLookup', () => {
     await submit()
 
     expect(wrapper.find('[data-test="threat-problem"]').text()).toMatch(/\S/)
+    expect(wrapper.find('[data-test="threat-notice"]').exists()).toBe(false)
+  })
+
+  it("says when VirusTotal's daily limit holds searches, and that this is not a failure", async () => {
+    const { wrapper } = await mountLookup({ until: '2099-01-01T00:00:00Z', daily: true })
+
+    expect(wrapper.find('[data-test="threat-notice"]').text()).toBe(
+      "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
+    )
+    expect(wrapper.find('[data-test="threat-problem"]').exists()).toBe(false)
+  })
+
+  it('says when a minute of waiting holds searches, in UTC', async () => {
+    const { wrapper } = await mountLookup({ until: '2099-01-01T12:01:00Z', daily: false })
+
+    expect(wrapper.find('[data-test="threat-notice"]').text()).toBe(
+      'VirusTotal asked for fewer requests. Searches resume at 12:01 UTC.',
+    )
+  })
+
+  it('stops saying so once the limit has lifted', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      const until = new Date(Date.now() + 60_000).toISOString()
+      const { wrapper } = await mountLookup({ until, daily: false })
+      expect(wrapper.find('[data-test="threat-notice"]').exists()).toBe(true)
+
+      vi.advanceTimersByTime(90_000)
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="threat-notice"]').exists()).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the last search one click away once its report is closed', async () => {

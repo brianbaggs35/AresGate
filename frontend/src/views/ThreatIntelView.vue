@@ -55,7 +55,11 @@ onMounted(load)
       @retry="load"
     />
 
-    <ThreatLookup v-else-if="virustotal?.status === 'connected'" />
+    <ThreatLookup
+      v-else-if="virustotal?.status === 'connected'"
+      :pause="virustotal?.pause ?? null"
+      @refused="load"
+    />
 
     <v-skeleton-loader
       v-else-if="!integrations"

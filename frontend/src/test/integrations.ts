@@ -97,6 +97,7 @@ export function summary(overrides: Partial<IntegrationSummary> = {}): Integratio
     status: 'not_connected',
     last_success_at: null,
     services: [],
+    pause: null,
     ...overrides,
   }
 }

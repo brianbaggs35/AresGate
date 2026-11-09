@@ -2,6 +2,7 @@
 connection and reading the log of the requests made to it. Secrets only go in: no route here
 returns one, and a failed request doesn't quote what was sent."""
 
+import math
 from datetime import datetime
 from typing import Annotated, cast
 
@@ -15,7 +16,7 @@ from app.audit import Action, Outcome
 from app.db import get_sessionmaker
 from app.integrations import apilog, certdiag, netguard, probes, registry, review, service
 from app.integrations.apilog import DEFAULT_PAGE, MAX_PAGE, ApiLogRecorder
-from app.integrations.client import Recorder
+from app.integrations.client import Recorder, Target
 from app.integrations.guides import Guide
 from app.integrations.netguard import AddressPolicy
 from app.integrations.registry import (
@@ -26,6 +27,8 @@ from app.integrations.registry import (
     SettingsError,
 )
 from app.integrations.service import Status, Submission
+from app.intel import budget, virustotal
+from app.intel import connection as intel_connection
 from app.models import IntegrationConnection, utcnow
 from app.security.credential_store import NAME_PATTERN
 
@@ -89,6 +92,14 @@ class ConnectionOut(BaseModel):
     certificate_problem: bool
 
 
+class PauseOut(BaseModel):
+    """A limit that holds an integration's lookups for now."""
+
+    # Whether it is the daily quota, which resets at ``until``; otherwise a short wait.
+    daily: bool
+    until: AwareDatetime
+
+
 class IntegrationSummary(BaseModel):
     key: str
     name: str
@@ -99,6 +110,8 @@ class IntegrationSummary(BaseModel):
     status: Status
     last_success_at: datetime | None
     services: list[ServiceOut]
+    # A limit holding the integration's lookups for now, such as VirusTotal's daily quota.
+    pause: PauseOut | None = None
 
 
 class IntegrationOut(IntegrationSummary):
@@ -269,6 +282,14 @@ def _connection_out(
     )
 
 
+def _pause(db: Session, key: str) -> PauseOut | None:
+    """The limit holding an integration's lookups now, if one does. Only VirusTotal has one."""
+    if key != virustotal.PROVIDER:
+        return None
+    held = budget.paused(db, virustotal.PROVIDER, utcnow())
+    return None if held is None else PauseOut(daily=held.daily, until=held.until)
+
+
 def _integration_out(db: Session, definition: IntegrationDef) -> IntegrationOut:
     rows = service.rows_for(db, definition.key)
     problems = [row.last_error for row in rows.values() if row.last_error]
@@ -281,6 +302,7 @@ def _integration_out(db: Session, definition: IntegrationDef) -> IntegrationOut:
         status=service.integration_status(rows),
         last_success_at=service.last_success(rows),
         services=_services(definition, rows),
+        pause=_pause(db, definition.key),
         docs_url=definition.docs_url,
         guide=definition.guide,
         last_error=problems[0] if problems else None,
@@ -307,6 +329,7 @@ def list_integrations(db: Db) -> list[IntegrationSummary]:
                 status=service.integration_status(rows),
                 last_success_at=service.last_success(rows),
                 services=_services(definition, rows),
+                pause=_pause(db, definition.key),
             )
         )
     return summaries
@@ -385,6 +408,16 @@ def disconnect_integration(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _check(
+    db: Session, target: Target, recorder: Recorder, policy: AddressPolicy
+) -> service.Verdict:
+    """What testing a connection found. One whose test spends one of its key's lookups is tested
+    through the budget of threat intelligence, and the others are probed."""
+    if (target.integration, target.connection) in probes.METERED:
+        return intel_connection.test_key(db, target, recorder, utcnow())
+    return anyio.from_thread.run(service.check, target, recorder, policy)
+
+
 @router.post("/{key}/test")
 def test_integration(
     key: Key,
@@ -409,9 +442,17 @@ def test_integration(
             if row is None:
                 raise service.Incomplete(f"The {connection.label} isn't set up.")
             target = service.load_target(db, settings, definition, connection, row)
-            verdict = anyio.from_thread.run(service.check, target, recorder, policy)
+            verdict = _check(db, target, recorder, policy)
         except service.Incomplete as incomplete:
             verdict = service.Verdict(False, str(incomplete))
+        except budget.Wait as wait:
+            db.rollback()
+            seconds = math.ceil(wait.wait.total_seconds())
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"The limits on this connection hold the test. Try again in {seconds} seconds.",
+                headers={"Retry-After": str(seconds)},
+            ) from wait
         if row:
             service.record_attempt(row, verdict, utcnow())
         checks.append(

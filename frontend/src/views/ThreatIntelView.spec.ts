@@ -1,15 +1,19 @@
 import { ApiError } from '@/api/client'
 import * as integrationsApi from '@/api/integrations'
 import type { IntegrationSummary } from '@/api/integrations'
+import ThreatLookup from '@/components/ThreatLookup.vue'
 import { summary } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import ThreatIntelView from '@/views/ThreatIntelView.vue'
 
 /** The integrations, with VirusTotal in the given state. */
-function listWith(status: IntegrationSummary['status']): IntegrationSummary[] {
+function listWith(
+  status: IntegrationSummary['status'],
+  virustotal: Partial<IntegrationSummary> = {},
+): IntegrationSummary[] {
   return [
     summary({ key: 'opnsense', name: 'OPNsense', status: 'connected' }),
-    summary({ key: 'virustotal', name: 'VirusTotal', status }),
+    summary({ key: 'virustotal', name: 'VirusTotal', status, ...virustotal }),
   ]
 }
 
@@ -76,5 +80,22 @@ describe('ThreatIntelView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="threat-intelligence-loading"]').exists()).toBe(true)
+  })
+
+  it("tells the lookup of VirusTotal's limit, so that it says when searches resume", async () => {
+    const { find } = await open(
+      listWith('connected', { pause: { until: '2099-01-01T00:00:00Z', daily: true } }),
+    )
+
+    expect(find('threat-notice').text()).toContain("VirusTotal's daily limit is reached.")
+  })
+
+  it('asks for the list again when a search is refused, so that a limit VirusTotal set shows', async () => {
+    const { fetch, wrapper } = await open(listWith('connected'))
+
+    wrapper.findComponent(ThreatLookup).vm.$emit('refused')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })

@@ -28,7 +28,7 @@ def test_every_connection_has_a_probe_and_every_probe_a_connection() -> None:
         for connection in integration.connections
     }
 
-    assert defined == set(probes.PROBES)
+    assert defined == set(probes.PROBES) | probes.METERED
 
 
 def test_the_integrations_are_listed_in_order() -> None:

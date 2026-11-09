@@ -888,3 +888,27 @@ describe('IntegrationView', () => {
     })
   })
 })
+
+describe('the VirusTotal limit', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('says the daily limit holds tests and searches until it lifts, and that the connection is still set up', async () => {
+    const { find } = await open(
+      virustotal({ status: 'connected', pause: { until: '2099-01-01T00:00:00Z', daily: true } }),
+      { key: 'virustotal' },
+    )
+
+    expect(find('integration-limit').text()).toContain(
+      "VirusTotal's daily limit is reached. Tests and searches resume at 00:00 UTC.",
+    )
+    expect(find('integration-limit').text()).toContain('The connection is still set up.')
+  })
+
+  it('shows no limit while none holds', async () => {
+    const { find } = await open(virustotal({ status: 'connected' }), { key: 'virustotal' })
+
+    expect(find('integration-limit').exists()).toBe(false)
+  })
+})

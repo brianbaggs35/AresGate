@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 import pytest
@@ -9,8 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.audit import Action, Outcome
 from app.config import Settings, get_settings
-from app.integrations import netguard
-from app.models import ApiCall, AuditEvent, IntegrationConnection, User
+from app.integrations import netguard, service
+from app.integrations.client import Target
+from app.intel import store, subjects, virustotal
+from app.models import ApiCall, AuditEvent, IntegrationConnection, IntelLookup, IntelSubject, User
+from app.models.base import utcnow
 from app.security import credential_store
 from app.security.credential_store import Kind
 from tests.helpers import OTHER_ORIGIN
@@ -927,3 +931,236 @@ def test_an_ollama_may_be_on_the_computer_unless_that_is_the_container() -> None
     assert boxed.state.local_ai_policy is netguard.OLLAMA_IN_CONTAINER
     # Integrations never are allowed to be on the machine itself.
     assert bare.state.address_policy is boxed.state.address_policy is netguard.HOME_NETWORK
+
+
+VT_URL = f"{BASE}/virustotal"
+
+
+@pytest.fixture
+def virustotal_key(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A VirusTotal connection that was tested before, whose key opens."""
+    origin = netguard.parse_origin("https://www.virustotal.com", allow_http=False)
+
+    def load(*args: object, **kwargs: object) -> Target:
+        del args, kwargs
+        return Target(
+            integration="virustotal",
+            connection="api",
+            origin=origin,
+            tls_mode="system",
+            tls_ca_pem=None,
+            tls_fingerprint=None,
+            options={"tier": "free"},
+            secrets={"api_key": "vt-key"},
+        )
+
+    monkeypatch.setattr(service, "load_target", load)
+    session.add(
+        IntegrationConnection(
+            integration="virustotal",
+            connection="api",
+            base_url="https://www.virustotal.com",
+            tls_mode="system",
+            options={"tier": "free"},
+            last_success_at=utcnow() - timedelta(days=1),
+        )
+    )
+    session.commit()
+
+
+def answer_by_virustotal(monkeypatch: pytest.MonkeyPatch, answer: object) -> list[object]:
+    """Makes VirusTotal answer with the answer given, or raise it. Returns the requests made."""
+    asked: list[object] = []
+
+    async def look_up(*args: object) -> object:
+        asked.append(args)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(virustotal, "look_up", look_up)
+    return asked
+
+
+def test_testing_virustotal_while_the_daily_quota_holds_sends_nothing(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.add(
+        IntelLookup(provider="virustotal", kind="ip", requested_at=utcnow(), outcome=store.LIMITED)
+    )
+    session.commit()
+    asked = answer_by_virustotal(monkeypatch, virustotal.Unknown())
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["checks"][0]["message"].startswith("VirusTotal's daily limit is reached")
+    assert body["integration"]["status"] == "connected"
+    assert body["integration"]["last_error"] is None
+    assert body["integration"]["pause"]["daily"] is True
+    assert asked == []
+
+
+def test_testing_virustotal_with_a_key_it_accepts_keeps_the_test_as_a_lookup(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answer_by_virustotal(monkeypatch, virustotal.Unknown())
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["checks"][0]["message"] == (
+        "VirusTotal accepted the key. It is set to the free access level."
+    )
+    assert body["integration"]["status"] == "connected"
+    assert len(asked) == 1
+    [lookup] = session.scalars(select(IntelLookup)).all()
+    assert (lookup.kind, lookup.outcome, lookup.address, lookup.subject) == (
+        "test",
+        store.UNKNOWN,
+        None,
+        "8.8.8.8",
+    )
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert (kept.kind, kept.subject, kept.outcome) == ("ip", "8.8.8.8", store.UNKNOWN)
+
+
+def test_testing_virustotal_asks_even_when_its_address_was_answered_lately(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A search would be answered from what was kept. A test checks the key, so it is sent.
+    answered = subjects.of_address(ip_address("8.8.8.8"))
+    store.keep(session, "virustotal", answered, virustotal.Unknown(), utcnow())
+    session.commit()
+    asked = answer_by_virustotal(monkeypatch, virustotal.Unknown())
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert len(asked) == 1
+    assert len(session.scalars(select(IntelSubject)).all()) == 1
+
+
+def test_testing_virustotal_with_a_key_it_refuses_fails_and_says_why(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer_by_virustotal(
+        monkeypatch,
+        virustotal.Failed(
+            "VirusTotal didn't accept the key. Copy it again from your VirusTotal account."
+        ),
+    )
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    body = response.json()
+    assert body["ok"] is False
+    assert body["integration"]["status"] == "problem"
+    assert body["integration"]["last_error"].startswith("VirusTotal didn't accept the key.")
+
+
+def test_testing_virustotal_when_it_asks_to_slow_down_waits_and_says_how_long(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer_by_virustotal(monkeypatch, virustotal.Throttled(until=utcnow() + timedelta(minutes=1)))
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith(
+        "The limits on this connection hold the test. Try again in "
+    )
+    assert int(response.headers["Retry-After"]) > 0
+    [lookup] = session.scalars(select(IntelLookup)).all()
+    assert lookup.outcome == store.THROTTLED
+
+
+def test_testing_virustotal_soon_after_a_lookup_waits_and_sends_nothing(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.add(
+        IntelLookup(
+            provider="virustotal",
+            kind="ip",
+            address=ip_address("93.184.216.34"),
+            requested_at=utcnow() - timedelta(seconds=5),
+            outcome=store.REPORTED,
+        )
+    )
+    session.commit()
+    asked = answer_by_virustotal(monkeypatch, virustotal.Unknown())
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 429
+    assert asked == []
+
+
+def test_the_list_shows_the_daily_quota_that_holds_virustotal_and_nothing_else(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    session.add(
+        IntelLookup(provider="virustotal", kind="ip", requested_at=utcnow(), outcome=store.LIMITED)
+    )
+    session.commit()
+
+    items = client.get(BASE).json()
+
+    [pause] = [item["pause"] for item in items if item["key"] == "virustotal"]
+    assert pause["daily"] is True
+    assert datetime.fromisoformat(pause["until"]) == virustotal.next_reset(utcnow())
+    assert all(item["pause"] is None for item in items if item["key"] != "virustotal")
+
+
+def test_testing_virustotal_within_a_minute_of_too_many_requests_waits_and_sends_nothing(
+    client: TestClient,
+    csrf_token: str,
+    virustotal_key: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.add(
+        IntelLookup(
+            provider="virustotal",
+            kind="ip",
+            requested_at=utcnow() - timedelta(seconds=5),
+            outcome=store.THROTTLED,
+        )
+    )
+    session.commit()
+    asked = answer_by_virustotal(monkeypatch, virustotal.Unknown())
+
+    response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith(
+        "The limits on this connection hold the test. Try again in "
+    )
+    assert asked == []

@@ -174,6 +174,27 @@ def test_an_answer_without_a_report_is_kept_as_unknown_and_a_failure_is_not_kept
     assert (store.cached(session, PROVIDER, subject, NOW) is not None) == kept
 
 
+@pytest.mark.parametrize(
+    ("answer", "outcome"),
+    [
+        (virustotal.Limited(until=NOW + timedelta(hours=12)), store.LIMITED),
+        (virustotal.Throttled(until=NOW + timedelta(minutes=1)), store.THROTTLED),
+    ],
+)
+def test_a_limit_is_kept_on_its_lookup_and_keeps_no_answer_about_the_subject(
+    session: Session, answer: virustotal.Answer, outcome: str
+) -> None:
+    subject = subjects.of_address(ADDRESS)
+    lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
+
+    store.finish(session, lookup_id, subject, answer, NOW)
+
+    row = session.get(IntelLookup, lookup_id)
+    assert row is not None
+    assert row.outcome == outcome
+    assert store.cached(session, PROVIDER, subject, NOW) is None
+
+
 def test_a_report_is_kept_with_the_lookup_that_brought_it(session: Session) -> None:
     lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
 
@@ -397,14 +418,18 @@ def connected(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     connect(session)
 
 
-def answering(monkeypatch: pytest.MonkeyPatch, answer: object) -> None:
+def answering(monkeypatch: pytest.MonkeyPatch, answer: object) -> list[object]:
+    """Makes VirusTotal answer with the answer given, or raise it. Returns the requests made."""
+    asked: list[object] = []
+
     async def look_up(*args: object) -> object:
-        del args
+        asked.append(args)
         if isinstance(answer, BaseException):
             raise answer
         return answer
 
     monkeypatch.setattr(virustotal, "look_up", look_up)
+    return asked
 
 
 def test_nothing_is_asked_until_the_connection_has_been_tested(
@@ -591,3 +616,83 @@ def test_the_loop_asks_nothing_when_collecting_is_off(
 
 async def _record(_call: Call) -> None:
     pass  # Keeps nothing: the test needs only that the call was made.
+
+
+def test_nothing_is_asked_while_a_used_up_daily_quota_holds(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    lookup_at(session, utcnow(), outcome=store.LIMITED)
+    session.commit()
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+    assert asked == []
+
+
+def test_a_limit_answer_is_kept_and_leaves_the_connection_connected(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, virustotal.Limited(until=virustotal.next_reset(utcnow())))
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is True
+
+    session.expire_all()
+    [lookup] = session.scalars(select(IntelLookup)).all()
+    assert lookup.outcome == store.LIMITED
+    [row] = session.scalars(select(IntegrationConnection)).all()
+    assert row.last_error is None
+    assert row.last_attempt_at is not None
+
+
+def test_a_throttled_answer_leaves_the_last_success_as_it_was(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, virustotal.Throttled(until=utcnow() + timedelta(minutes=1)))
+    [before] = session.scalars(select(IntegrationConnection)).all()
+    tested_at = before.last_success_at
+
+    asyncio.run(run.lookup_once(new_session_for(session), settings, _record))
+
+    session.expire_all()
+    [row] = session.scalars(select(IntegrationConnection)).all()
+    assert row.last_success_at == tested_at
+    assert row.last_error is None
+
+
+def test_a_failed_lookup_leaves_the_connection_as_it_was(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, virustotal.Failed("VirusTotal answered HTTP 500."))
+
+    asyncio.run(run.lookup_once(new_session_for(session), settings, _record))
+
+    session.expire_all()
+    [row] = session.scalars(select(IntegrationConnection)).all()
+    assert row.last_error is None
+    assert row.last_attempt_at is None
+
+
+def test_a_lookup_is_kept_even_if_its_connection_is_removed_while_it_is_asked(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+
+    async def look_up(*args: object) -> object:
+        # The connection is removed while VirusTotal is being asked about the address.
+        for row in session.scalars(select(IntegrationConnection)).all():
+            session.delete(row)
+        session.commit()
+        return virustotal.Unknown()
+
+    monkeypatch.setattr(virustotal, "look_up", look_up)
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is True
+
+    session.expire_all()
+    [lookup] = session.scalars(select(IntelLookup)).all()
+    assert lookup.outcome == store.UNKNOWN
+    assert session.scalars(select(IntegrationConnection)).all() == []

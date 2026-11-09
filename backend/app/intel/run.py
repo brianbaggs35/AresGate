@@ -1,6 +1,7 @@
 """The loop that asks VirusTotal about the internet addresses of recent incidents, one lookup at a
 time and within the access level's limits. It runs in the worker, beside the collectors. It asks
-nothing until the connection has been tested and has worked.
+nothing until the connection has been tested and has worked, and nothing while VirusTotal's own
+limit holds.
 """
 
 import asyncio
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.integrations import netguard, registry, service
 from app.integrations.client import Recorder, Target
-from app.intel import budget, candidates, store, subjects, virustotal
+from app.intel import budget, candidates, connection, store, subjects, virustotal
 from app.intel.subjects import Subject
 from app.models import utcnow
 
@@ -36,6 +37,9 @@ def _start(
         store.prune(db, virustotal.PROVIDER, now)
         row = service.rows_for(db, DEFINITION.key).get(CONNECTION.key)
         if row is None or row.last_success_at is None:
+            db.commit()
+            return None
+        if budget.paused(db, virustotal.PROVIDER, now) is not None:
             db.commit()
             return None
         address = candidates.next_address(db, virustotal.PROVIDER, now)
@@ -68,6 +72,9 @@ def _finish(
 ) -> None:
     with new_session() as db:
         store.finish(db, lookup_id, subject, answer, asked_at)
+        row = service.rows_for(db, DEFINITION.key).get(CONNECTION.key)
+        if row is not None:
+            connection.remember(row, answer, utcnow())
         db.commit()
 
 

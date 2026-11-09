@@ -15,6 +15,7 @@ from app.collectors.scheduler import Scheduler, Timing
 from app.config import Settings
 from app.integrations import netguard, registry, service
 from app.integrations.apilog import ApiLogRecorder
+from app.integrations.client import Target
 from app.integrations.probes import Verdict
 from app.integrations.service import Submission
 from app.models import (
@@ -802,3 +803,57 @@ def test_turned_off_it_says_it_is_alive_and_collects_nothing(
     assert session.get(WorkerBeat, WORKER) is not None
     assert counting.runs == 0
     assert health_rows(session) == []
+
+
+# ---- A connection whose lookups cost money ---------------------------------------------------
+
+
+def test_a_metered_connection_is_not_tested_on_the_timer(
+    session: Session, settings: Settings, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A test of VirusTotal spends one of the lookups its key allows, so it is made by hand."""
+    saved_row(
+        session,
+        "virustotal",
+        "api",
+        base_url="https://www.virustotal.com",
+        options={"tier": "free"},
+        last_success_at=utcnow(),
+    )
+    origin = netguard.parse_origin("https://www.virustotal.com", allow_http=False)
+
+    def load(*args: object, **kwargs: object) -> Target:
+        del args, kwargs
+        return Target(
+            integration="virustotal",
+            connection="api",
+            origin=origin,
+            tls_mode="system",
+            tls_ca_pem=None,
+            tls_fingerprint=None,
+            options={"tier": "free"},
+            secrets={"api_key": "vt-key"},
+        )
+
+    monkeypatch.setattr(service, "load_target", load)
+    probed: list[object] = []
+
+    async def probe(*args: object) -> Verdict:
+        probed.append(args)
+        return Verdict(True, "Fine.")
+
+    monkeypatch.setattr(connection_check.probes, "run", probe)
+
+    asyncio.run(make(settings, engine).run_once())
+
+    record = the_health(session)
+    assert (record.collector, record.last_error, record.consecutive_failures) == (
+        "connection-check",
+        None,
+        0,
+    )
+    assert probed == []
+    assert session.scalars(select(ApiCall)).all() == []
+    row = service.rows_for(session, "virustotal")["api"]
+    session.refresh(row)
+    assert row.last_attempt_at is None

@@ -96,6 +96,15 @@ export interface Connection {
   certificate_problem: boolean
 }
 
+/** A limit VirusTotal set on lookups, which holds them until it lifts: its daily quota, which lifts
+ * at 00:00 UTC, or a minute's wait after it asked for fewer requests. */
+export interface Pause {
+  /** When the limit lifts, as a time. */
+  until: string
+  /** Whether it is the daily quota. */
+  daily: boolean
+}
+
 export interface IntegrationSummary {
   key: string
   name: string
@@ -107,6 +116,8 @@ export interface IntegrationSummary {
   status: Status
   last_success_at: string | null
   services: Service[]
+  /** VirusTotal's own limit on lookups, while one holds. Null when none does. */
+  pause: Pause | null
 }
 
 /** A page of the product's documentation (or source) that a guide was written from. */

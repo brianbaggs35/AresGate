@@ -21,6 +21,9 @@ Every release's notes are here, newest first. The format follows
   minutes apart, so they use at most 360 of its 500 a day, spread over the day, and the other 140
   stay for searches by hand. Before, the free key's 15-second spacing let a backlog of addresses use
   the whole day's 500 in about two hours.
+- **VirusTotal is tested by hand only.** The connection was tested every five minutes, and each
+  test spent one of the free key's 500 daily lookups. Now a test runs only when you press Test.
+  One made while VirusTotal's limit holds is not sent, and the connection stays as it was.
 - **An internet integration is narrower.** It reaches only its own address and port, over HTTPS,
   and AresGate sends it nothing but GET requests.
 
@@ -31,6 +34,10 @@ Every release's notes are here, newest first. The format follows
   that week is shown from what was kept, with no request and nothing counted, so repeated searches
   no longer use up the free key's day. This adds migration `0036`, which moves the reports of
   addresses into the new table.
+- **A used-up daily limit is not a failure.** When VirusTotal's 500 daily lookups ran out, the
+  connection showed as failing and AresGate kept asking. Now it stays connected, nothing is sent
+  until the count resets at 00:00 UTC, and the integration page and the threat search say so. A
+  search that AresGate kept the answer to is still shown while the limit holds.
 - **VirusTotal connects again.** Its address is on the internet, and AresGate looked for it on your
   own network, which refused it. Its certificate is now checked by the certificates this computer
   trusts, as any public site's is, so there is no certificate step to look up for it. Its address
