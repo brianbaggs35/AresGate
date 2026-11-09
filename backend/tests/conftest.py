@@ -49,6 +49,12 @@ def cheap_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _is_virustotal(host: str) -> bool:
+    """Whether a name is VirusTotal's or a subdomain of it, in any case and with or without the
+    trailing dot of a fully qualified name. The labels are compared, not the text."""
+    return host.lower().rstrip(".").split(".")[-2:] == ["virustotal", "com"]
+
+
 @pytest.fixture(autouse=True)
 def virustotal_is_not_reached(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test reaches VirusTotal. Its name doesn't resolve, so a lookup a test forgot to stand in
@@ -56,7 +62,7 @@ def virustotal_is_not_reached(monkeypatch: pytest.MonkeyPatch) -> None:
     resolve = socket.getaddrinfo
 
     def guarded(host: Any, *args: Any, **kwargs: Any) -> Any:
-        if isinstance(host, str) and host.endswith("virustotal.com"):
+        if isinstance(host, str) and _is_virustotal(host):
             raise socket.gaierror(f"Tests don't reach {host}.")
         return resolve(host, *args, **kwargs)
 
