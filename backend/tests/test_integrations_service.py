@@ -693,3 +693,19 @@ def test_a_check_is_made_with_the_policy_of_its_connection(
 
     assert verdict.ok
     assert seen == [target]
+
+
+def test_a_held_connection_is_not_counted_as_a_success() -> None:
+    row = IntegrationConnection(
+        integration="virustotal",
+        connection="api",
+        base_url="https://www.virustotal.com",
+        tls_mode="system",
+        options={},
+        last_success_at=None,
+        last_error="An earlier failure.",
+    )
+
+    service.record_attempt(row, Verdict(True, "Held.", held=True), NOW)
+
+    assert (row.last_attempt_at, row.last_success_at, row.last_error) == (NOW, None, None)

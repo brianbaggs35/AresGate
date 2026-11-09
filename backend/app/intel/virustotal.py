@@ -3,15 +3,16 @@ version 3.
 
 The key goes in the ``x-apikey`` header. Something VirusTotal has never analysed answers 404, which
 is an answer rather than a failure; a key that VirusTotal refuses answers 401 or 403, which a lookup
-reports as a failure.
+reports as a failure. A limit answers 429: a used-up quota holds lookups until the daily reset at
+midnight UTC, and any other limit holds them for a minute.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from typing import Literal, cast
 
 from app import audit
-from app.integrations.client import ApiClient, CallFailed, Recorder, Target
+from app.integrations.client import ApiClient, CallFailed, Recorder, Reply, Target
 from app.integrations.netguard import AddressPolicy
 from app.intel import subjects
 from app.intel.subjects import Subject
@@ -28,6 +29,8 @@ MAX_COUNTRY = 8
 MAX_TITLE = 200
 MAX_URL = 2048
 MAX_CATEGORIES = 12
+# How long lookups wait after VirusTotal asks for fewer requests. Its page gives no time for that.
+THROTTLE = timedelta(minutes=1)
 
 type Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
 
@@ -75,7 +78,21 @@ class Failed:
     message: str
 
 
-Answer = Reported | Unknown | Failed
+@dataclass(frozen=True)
+class Limited:
+    """VirusTotal's daily quota is used up. Nothing is asked until it resets, at ``until``."""
+
+    until: datetime
+
+
+@dataclass(frozen=True)
+class Throttled:
+    """VirusTotal asked for fewer requests for a minute. Nothing is asked until ``until``."""
+
+    until: datetime
+
+
+Answer = Reported | Unknown | Failed | Limited | Throttled
 
 
 def judge(report: Report | None) -> Judgement:
@@ -190,6 +207,35 @@ def link_for(subject: Subject) -> str:
     return f"{SITE}/gui/url/{url_id(subject.text)}"
 
 
+def next_reset(at: datetime) -> datetime:
+    """When the daily quota that ``at`` falls in resets: midnight UTC, the first one after it."""
+    return datetime.combine(at.astimezone(UTC).date() + timedelta(days=1), time(), tzinfo=UTC)
+
+
+# What VirusTotal says when it refuses a key, in words for the person who has to act on it.
+_REFUSED = {
+    401: "VirusTotal didn't accept the key. Copy it again from your VirusTotal account.",
+    403: "VirusTotal refused this request with the key. Check the key's access level.",
+}
+
+
+def _error_code(reply: Reply) -> str | None:
+    """The name VirusTotal gives the error in its answer, such as ``QuotaExceededError``."""
+    root = _object(reply.json())
+    error = _object(root.get("error")) if root is not None else None
+    code = error.get("code") if error is not None else None
+    return code if isinstance(code, str) else None
+
+
+def _limit(reply: Reply, now: datetime) -> Limited | Throttled:
+    """What a 429 says. ``QuotaExceededError`` is a quota used up, and the daily quotas reset at
+    00:00 UTC. The page doesn't say which quota it is, so it is taken as the daily one, and nothing
+    is sent until that reset. Any other 429, ``TooManyRequestsError`` included, is a short wait."""
+    if _error_code(reply) == "QuotaExceededError":
+        return Limited(until=next_reset(now))
+    return Throttled(until=now + THROTTLE)
+
+
 async def look_up(client: ApiClient, target: Target, subject: Subject, now: datetime) -> Answer:
     """Asks for the report on one subject. Raises ``CallFailed`` if no answer came at all."""
     reply = await client.request(
@@ -197,8 +243,10 @@ async def look_up(client: ApiClient, target: Target, subject: Subject, now: date
     )
     if reply.status == 404:
         return Unknown()
+    if reply.status == 429:
+        return _limit(reply, now)
     if not reply.ok:
-        return Failed(f"VirusTotal answered HTTP {reply.status}.")
+        return Failed(_REFUSED.get(reply.status, f"VirusTotal answered HTTP {reply.status}."))
     report = parse(reply.json(), now, subject.kind)
     if report is None:
         return Failed("VirusTotal's answer didn't hold the counts of a report.")

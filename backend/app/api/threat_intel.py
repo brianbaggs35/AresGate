@@ -1,7 +1,8 @@
 """Searches threat intelligence by hand: an internet address, a domain or a web address, and what
 VirusTotal reported of it. A search shares its limits with the background lookups, so the two
 together never ask VirusTotal more often than its free API allows. A subject that was answered
-within the last week is shown from what was kept, and VirusTotal isn't asked about it again."""
+within the last week is shown from what was kept, and VirusTotal isn't asked about it again. While
+a limit VirusTotal set itself holds, nothing is sent, and a search says when it may go."""
 
 import math
 from datetime import datetime
@@ -15,7 +16,7 @@ from app.api.deps import Db, SettingsDep, signed_in
 from app.api.integrations import api_log_recorder
 from app.integrations import netguard, service
 from app.integrations.client import Recorder
-from app.intel import budget, candidates, store, subjects, virustotal
+from app.intel import budget, candidates, connection, store, subjects, virustotal
 from app.intel.run import CONNECTION, DEFINITION
 from app.models import utcnow
 
@@ -65,7 +66,7 @@ def look_up(
     recorder: RecorderDep,
 ) -> LookupOut:
     """Looks one subject up: from the answer kept for it while that is fresh, or else by asking
-    VirusTotal, if the access level's limits allow a lookup now."""
+    VirusTotal, if the access level's limits and VirusTotal's own allow a lookup now."""
     row = service.rows_for(db, DEFINITION.key).get(CONNECTION.key)
     if row is None or row.last_success_at is None:
         raise HTTPException(
@@ -102,6 +103,9 @@ def look_up(
             address=address,
             subject=name,
         )
+    except budget.Paused as held:
+        db.rollback()
+        raise _held(held.pause, now) from held
     except budget.Wait as wait:
         db.rollback()
         seconds = math.ceil(wait.wait.total_seconds())
@@ -114,10 +118,26 @@ def look_up(
     policy = service.policy_for(CONNECTION, netguard.HOME_NETWORK)
     answer = anyio.from_thread.run(virustotal.ask, target, recorder, policy, subject, now)
     store.finish(db, lookup_id, subject, answer, now)
+    connection.remember(row, answer, now)
     db.commit()
     if isinstance(answer, virustotal.Failed):
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, answer.message)
+    if isinstance(answer, virustotal.Limited | virustotal.Throttled):
+        pause = budget.Pause(until=answer.until, daily=isinstance(answer, virustotal.Limited))
+        raise _held(pause, now)
     return _out(subject, answer, now, cached=False)
+
+
+def _held(pause: budget.Pause, now: datetime) -> HTTPException:
+    """The refusal of a search that a limit holds: which limit it is, and when it lifts."""
+    seconds = math.ceil((pause.until - now).total_seconds())
+    if pause.daily:
+        message = "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC."
+    else:
+        message = f"VirusTotal asked for fewer requests. Try again in {seconds} seconds."
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS, message, headers={"Retry-After": str(seconds)}
+    )
 
 
 def _out(

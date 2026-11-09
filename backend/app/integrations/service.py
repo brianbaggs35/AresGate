@@ -422,12 +422,14 @@ async def look_up(
 
 
 def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> None:
-    """Keeps how an attempt went. A success clears the last failure's reason."""
+    """Keeps how an attempt went. A success clears the last failure's reason. A held connection
+    isn't tested now, so its last success stays as it was, but its failure is cleared."""
     row.last_attempt_at = now
     if verdict.modules is not None:
         row.module_states = {key: state.value for key, state in verdict.modules.items()}
     if verdict.ok:
-        row.last_success_at = now
+        if not verdict.held:
+            row.last_success_at = now
         row.last_error = None
     else:
         row.last_error = audit.clean(verdict.message, 500)

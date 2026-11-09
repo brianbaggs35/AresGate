@@ -22,6 +22,7 @@ import type {
   Integration,
   LookupEntry,
   ModuleState,
+  Pause,
   Status,
   TlsMode,
 } from '@/api/integrations'
@@ -122,6 +123,20 @@ export function activeFields(
 }
 
 /** Whether the address is a plain http one, which anyone on the network can read. */
+/** When a limit VirusTotal set lifts, in UTC, as the notices say it: such as `00:00 UTC`. */
+function liftsAt(until: string): string {
+  return `${new Date(until).toISOString().slice(11, 16)} UTC`
+}
+
+/** What is said while VirusTotal's own limit holds its lookups, and when they resume. `resume`
+ * names what waits, such as `Searches`. */
+export function limitNotice(pause: Pause, resume: string): string {
+  const when = liftsAt(pause.until)
+  return pause.daily
+    ? `VirusTotal's daily limit is reached. ${resume} resume at ${when}.`
+    : `VirusTotal asked for fewer requests. ${resume} resume at ${when}.`
+}
+
 export const isPlainHttp = (url: string) => /^\s*http:\/\//i.test(url)
 
 /** Whether there is a certificate to decide about. */

@@ -1,5 +1,7 @@
 import logging
+import socket
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from argon2 import PasswordHasher
@@ -45,6 +47,20 @@ def cheap_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         passwords, "hasher", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
     )
+
+
+@pytest.fixture(autouse=True)
+def virustotal_is_not_reached(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reaches VirusTotal. Its name doesn't resolve, so a lookup a test forgot to stand in
+    fails, rather than spending the key's lookups on the live service."""
+    resolve = socket.getaddrinfo
+
+    def guarded(host: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(host, str) and host.endswith("virustotal.com"):
+            raise socket.gaierror(f"Tests don't reach {host}.")
+        return resolve(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", guarded)
 
 
 @pytest.fixture(scope="session")

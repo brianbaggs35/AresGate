@@ -13,6 +13,10 @@ allowances.
 Every lookup, whether the background loop makes it or a person searches, is kept through
 ``reserve``. It takes a lock first, so two lookups that are asked for at the same time can't both
 see room for one more.
+
+When VirusTotal itself refuses lookups, because its quota is used up or it asked for fewer requests,
+nothing is sent until the limit lifts. That refusal is kept as a lookup too, so a restart keeps the
+pause.
 """
 
 from collections.abc import Mapping
@@ -23,7 +27,7 @@ from ipaddress import IPv4Address, IPv6Address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.intel import store
+from app.intel import store, virustotal
 from app.models import IntelLookup
 
 # The lock every lookup takes while it checks the limits and keeps its place: a number that stands
@@ -50,6 +54,24 @@ class Wait(Exception):
     def __init__(self, wait: timedelta) -> None:
         super().__init__(f"A lookup may go in {wait}.")
         self.wait = wait
+
+
+@dataclass(frozen=True)
+class Pause:
+    """A limit that holds lookups until ``until``. ``daily`` is VirusTotal's daily quota, which
+    resets then; otherwise it asked for fewer requests for a minute."""
+
+    until: datetime
+    daily: bool
+
+
+class Paused(Wait):
+    """A lookup may not go because VirusTotal's own limit holds it. ``pause`` says which limit, and
+    until when."""
+
+    def __init__(self, pause: Pause, now: datetime) -> None:
+        super().__init__(pause.until - now)
+        self.pause = pause
 
 
 FREE = Level(
@@ -98,6 +120,28 @@ def _until_room(
     return leaving + window - now
 
 
+def paused(db: Session, provider: str, now: datetime) -> Pause | None:
+    """The limit VirusTotal has set, if one still holds. It is read from the lookups kept, so a
+    restart keeps it: the last limit answered holds until its end."""
+    latest = db.execute(
+        select(IntelLookup.outcome, IntelLookup.requested_at)
+        .where(
+            IntelLookup.provider == provider,
+            IntelLookup.outcome.in_((store.LIMITED, store.THROTTLED)),
+        )
+        .order_by(IntelLookup.requested_at.desc())
+        .limit(1)
+    ).first()
+    if latest is None:
+        return None
+    outcome, requested_at = latest
+    if outcome == store.LIMITED:
+        held = Pause(until=virustotal.next_reset(requested_at), daily=True)
+    else:
+        held = Pause(until=requested_at + virustotal.THROTTLE, daily=False)
+    return held if held.until > now else None
+
+
 def wait_for(
     db: Session, provider: str, level: Level, now: datetime, *, background: bool = False
 ) -> timedelta:
@@ -118,9 +162,9 @@ def wait_for(
 
 
 def may_look_up(db: Session, provider: str, level: Level, now: datetime) -> bool:
-    """Whether a lookup may go now: the spacing since the last one has passed, and neither the
-    day's nor the month's allowance is used up."""
-    return wait_for(db, provider, level, now) == NONE
+    """Whether a lookup may go now: VirusTotal's own limit doesn't hold it, the spacing since the
+    last one has passed, and neither the day's nor the month's allowance is used up."""
+    return paused(db, provider, now) is None and wait_for(db, provider, level, now) == NONE
 
 
 def reserve(
@@ -135,8 +179,12 @@ def reserve(
     subject: str | None = None,
 ) -> int:
     """Keeps that a lookup is about to be made, if the limits allow one now, and returns its id.
-    Raises ``Wait`` if they don't. The caller commits, which also lets go of the lock."""
+    Raises ``Paused`` while VirusTotal's own limit holds, and ``Wait`` if the allowance doesn't
+    allow one yet. The caller commits, which also lets go of the lock."""
     db.execute(select(func.pg_advisory_xact_lock(_LOCK)))
+    held = paused(db, provider, now)
+    if held is not None:
+        raise Paused(held, now)
     wait = wait_for(db, provider, level, now, background=background)
     if wait > NONE:
         raise Wait(wait)

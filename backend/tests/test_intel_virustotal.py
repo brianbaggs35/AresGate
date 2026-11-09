@@ -4,7 +4,7 @@ that asks for it."""
 import asyncio
 import json
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from hashlib import sha256
 from ipaddress import ip_address
 
@@ -14,7 +14,7 @@ from app.integrations import netguard
 from app.integrations.client import ApiClient, Call, Target
 from app.integrations.netguard import HOME_NETWORK, HOME_NETWORK_AND_LOOPBACK
 from app.intel import subjects, virustotal
-from app.intel.virustotal import Failed, Report, Reported, Unknown
+from app.intel.virustotal import Failed, Limited, Report, Reported, Throttled, Unknown
 from tests.stubs import Answer, Seen, Serve, StubServer
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
@@ -324,11 +324,59 @@ def test_an_address_with_no_report_is_unknown(serve: Serve) -> None:
     assert answer == Unknown()
 
 
-@pytest.mark.parametrize("status", [401, 403, 429])
-def test_an_answer_that_is_not_ok_is_a_failure(serve: Serve, status: int) -> None:
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (401, "VirusTotal didn't accept the key. Copy it again from your VirusTotal account."),
+        (403, "VirusTotal refused this request with the key. Check the key's access level."),
+        (500, "VirusTotal answered HTTP 500."),
+    ],
+)
+def test_an_answer_that_is_not_ok_is_a_failure(serve: Serve, status: int, message: str) -> None:
     answer, _ = ask(serve, lambda seen: Answer(status=status))
 
-    assert answer == Failed(f"VirusTotal answered HTTP {status}.")
+    assert answer == Failed(message)
+
+
+def quota_error(code: str) -> str:
+    """An error answer of VirusTotal's, with the name it gives the error."""
+    return json.dumps({"error": {"code": code, "message": "The quota is used up."}})
+
+
+def test_a_quota_used_up_is_a_limit_until_the_daily_reset(serve: Serve) -> None:
+    answer, _ = ask(
+        serve,
+        lambda seen: Answer(status=429, body=quota_error("QuotaExceededError"), headers=AS_JSON),
+    )
+
+    assert answer == Limited(until=datetime(2026, 11, 10, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        quota_error("TooManyRequestsError"),
+        "not json",
+        "[]",
+        json.dumps({"error": "QuotaExceededError"}),
+        json.dumps({"error": {"code": 7}}),
+    ],
+)
+def test_any_other_429_is_a_short_wait_of_a_minute(serve: Serve, body: str) -> None:
+    answer, _ = ask(serve, lambda seen: Answer(status=429, body=body, headers=AS_JSON))
+
+    assert answer == Throttled(until=NOW + virustotal.THROTTLE)
+
+
+def test_the_daily_quota_resets_at_the_next_midnight_utc() -> None:
+    after_midnight = datetime(2026, 11, 10, tzinfo=UTC)
+    assert virustotal.next_reset(datetime(2026, 11, 9, 23, 59, 59, tzinfo=UTC)) == after_midnight
+    assert virustotal.next_reset(after_midnight) == datetime(2026, 11, 11, tzinfo=UTC)
+    # 20:00 at UTC-5 is 01:00 the next day in UTC, so the reset that follows is two days on.
+    local = timezone(timedelta(hours=-5))
+    assert virustotal.next_reset(datetime(2026, 11, 9, 20, 0, tzinfo=local)) == datetime(
+        2026, 11, 11, tzinfo=UTC
+    )
 
 
 def test_an_answer_without_the_counts_of_a_report_is_a_failure(serve: Serve) -> None:

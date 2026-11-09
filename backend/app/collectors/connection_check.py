@@ -26,6 +26,10 @@ class ConnectionCheck(Collector):
 
     async def collect(self, context: Context) -> Outcome:
         target = context.target
+        if (target.integration, target.connection) in probes.METERED:
+            # A test of this connection spends one of the lookups its key allows, so it is made by
+            # hand (app/intel/connection.py), never on this timer.
+            return Outcome()
         verdict = await probes.run(
             probes.PROBES[(target.integration, target.connection)], context.client, target
         )

@@ -29,6 +29,9 @@ PENDING = "pending"
 REPORTED = "reported"
 UNKNOWN = "unknown"
 FAILED = "failed"
+# A lookup VirusTotal held off: its daily quota is used up, or it asked for fewer requests.
+LIMITED = "limited"
+THROTTLED = "throttled"
 # The kind of subject an internet address is.
 IP = "ip"
 
@@ -79,15 +82,20 @@ def finish(
 ) -> None:
     """Keeps what came of a lookup. An answer, whether a report or none, is kept for its subject as
     well, so the subject isn't asked about again while the answer is fresh. A failure is kept on the
-    lookup only, so it is tried again."""
+    lookup only, so it is tried again. A limit is kept on the lookup only too: it says nothing about
+    the subject, and the lookup is what the pause is read from."""
     row = db.get(IntelLookup, lookup_id)
     if row is None:
         return
-    if isinstance(answer, virustotal.Failed):
+    if isinstance(answer, virustotal.Limited):
+        row.outcome = LIMITED
+    elif isinstance(answer, virustotal.Throttled):
+        row.outcome = THROTTLED
+    elif isinstance(answer, virustotal.Failed):
         row.outcome = FAILED
-        return
-    row.outcome = REPORTED if isinstance(answer, virustotal.Reported) else UNKNOWN
-    keep(db, row.provider, subject, answer, now)
+    else:
+        row.outcome = REPORTED if isinstance(answer, virustotal.Reported) else UNKNOWN
+        keep(db, row.provider, subject, answer, now)
 
 
 def keep(db: Session, provider: str, subject: Subject, answer: Answered, now: datetime) -> None:

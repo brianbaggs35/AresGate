@@ -33,6 +33,9 @@ class Verdict:
     message: str
     # What was found of the connection's modules, if it has any and they were looked at.
     modules: Mapping[str, ModuleState] | None = None
+    # Whether a limit held the connection, so it wasn't tested now. What it was last found to be
+    # stands, and this is not counted as a success.
+    held: bool = False
 
 
 Probe = Callable[[ApiClient, Target], Awaitable[Verdict]]
@@ -681,39 +684,6 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "CrowdSec's local API accepted the key.")
 
 
-# A public address that always has a report, so that a key is tested on one that is known.
-VIRUSTOTAL_ADDRESS = "8.8.8.8"
-
-
-async def virustotal(client: ApiClient, target: Target) -> Verdict:
-    """Asks for one address's report with the key. A key VirusTotal accepts answers with the
-    report; one it refuses answers 401 or 403. The test is one request, made by hand, so it is not
-    kept as a lookup and doesn't count toward the access level's allowance."""
-    reply = await client.request(
-        "GET",
-        f"/api/v3/ip_addresses/{VIRUSTOTAL_ADDRESS}",
-        headers={"x-apikey": target.secrets["api_key"]},
-    )
-    if reply.status == 429:
-        return Verdict(
-            False,
-            "VirusTotal's limit on requests has been reached. Wait a while, and keep to the "
-            "limits of the access level chosen.",
-        )
-    if bad := problem(
-        reply,
-        "VirusTotal",
-        refused="VirusTotal didn't accept the key. Copy it again from your VirusTotal account.",
-        forbidden="VirusTotal refused this request with the key. Check the key's access level.",
-    ):
-        return bad
-    data = as_object(reply.json())
-    if data is None or "data" not in data:
-        return unexpected("VirusTotal")
-    level = "premium" if target.options.get("tier") == "premium" else "free"
-    return Verdict(True, f"VirusTotal accepted the key. It is set to the {level} access level.")
-
-
 LOOKUPS: Mapping[tuple[str, str, str], Lookuper] = {
     ("ntopng", "api", "interface_id"): ntopng_interface_lookup,
 }
@@ -725,8 +695,11 @@ PROBES: Mapping[tuple[str, str], Probe] = {
     ("wazuh", "manager"): wazuh_manager,
     ("wazuh", "indexer"): wazuh_indexer,
     ("crowdsec", "lapi"): crowdsec,
-    ("virustotal", "api"): virustotal,
 }
+
+# The connections whose test spends one of the lookups their key allows. They are tested by hand,
+# through the budget of the threat intelligence code (app/intel/connection.py), never on a timer.
+METERED: frozenset[tuple[str, str]] = frozenset({("virustotal", "api")})
 
 
 async def run(probe: Probe, client: ApiClient, target: Target) -> Verdict:

@@ -554,6 +554,16 @@ premium key's limits depend on its plan, so the card asks which kind of key you 
 a free key to 4 lookups a minute, 500 a day and 15,000 in any 30 days. The monthly figure is a
 margin of its own, because VirusTotal's pages give none. A premium key is asked about once a second.
 
+VirusTotal keeps a count of its own. When a free key's 500 a day are used up, it refuses every
+request until the count resets at 00:00 UTC, and AresGate sends nothing until then. The connection
+stays connected. The integration page and the Threat intelligence page say when searches and tests
+resume, and the pause is read back from the lookups kept, so a restart doesn't send requests early.
+VirusTotal's other refusal, too many requests in a minute, holds requests for a minute.
+
+Every request counts, so AresGate doesn't test the connection on a timer. A test is one lookup of a
+public address that always has a report, and it runs only when you press Test. A test that comes
+while a limit holds is not sent, and the connection is left as it was.
+
 ### What is asked about
 
 Each lookup is about one internet address that an incident from the last seven days names. A
@@ -578,7 +588,9 @@ search for a subject answered within that week is answered from what was kept: n
 nothing is counted, and the report says so. A subject is asked about again only once its answer is a
 week old. A request that got no answer keeps no answer, so its subject is asked about again.
 
-A connection test is one request made by hand, and it is not counted toward the allowance.
+A connection test is one lookup too, and it counts toward the allowance. It is sent whenever you
+press Test, even if the address it asks about was answered within the week, because it is the key
+that is being checked.
 
 ### Searching by hand
 
@@ -601,9 +613,10 @@ sent, since it is part of what VirusTotal scans. A domain or web address that Vi
 analysed is shown as having no report yet, and AresGate doesn't ask VirusTotal to scan it.
 
 A search that isn't answered from what was kept counts toward the same limits as the lookups above.
-When it would go over one, it is refused with the seconds to wait (HTTP 429, with a `Retry-After`
-header), and nothing is sent. A search that is answered from what was kept says so in its report,
-with the time VirusTotal was asked.
+When it would go over one, or VirusTotal's daily count is used up, it is refused with the seconds to
+wait (HTTP 429, with a `Retry-After` header), and nothing is sent. A search that is answered from
+what was kept says so in its report, with the time VirusTotal was asked. It is answered while a
+limit holds too, since it sends nothing.
 
 ### What is kept, and what the AI does with it
 
@@ -615,9 +628,10 @@ categories and what else VirusTotal says of it. An answer with no report keeps o
 answer replaces the one kept, once the subject is asked about after a week.
 
 The AI reads the reports of addresses as part of an incident's brief, and can look one up with its
-reputation tool. Domains and web addresses are not read by the AI. Each request is logged with its
-address, or for a domain or web address its domain or host, and its outcome, and is forgotten after
-40 days, which is longer than the month the allowance counts over.
+reputation tool. Domains and web addresses are not read by the AI. The AI never asks VirusTotal
+itself: its tools only read what is kept, so a question put to the AI spends no lookup. Each request
+is logged with its address, or for a domain or web address its domain or host, and its outcome, and
+is forgotten after 40 days, which is longer than the month the allowance counts over.
 
 ### Where this comes from, and what isn't tried
 

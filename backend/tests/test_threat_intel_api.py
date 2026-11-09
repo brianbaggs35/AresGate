@@ -383,6 +383,93 @@ def age_every_lookup(session: Session, age: timedelta) -> None:
     session.commit()
 
 
+def limit_at(session: Session, outcome: str, when: datetime) -> None:
+    """A lookup that VirusTotal's limit held, kept as it is when a limit answers."""
+    session.add(IntelLookup(provider="virustotal", kind="ip", requested_at=when, outcome=outcome))
+    session.commit()
+
+
+def test_a_search_while_the_daily_quota_holds_says_so_and_sends_nothing(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limit_at(session, store.LIMITED, utcnow())
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 429
+    assert response.json() == {
+        "detail": "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC."
+    }
+    assert int(response.headers["Retry-After"]) > 0
+    assert asked == []
+
+
+def test_a_search_within_a_minute_of_too_many_requests_says_when_to_try_again(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limit_at(session, store.THROTTLED, utcnow() - timedelta(seconds=5))
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith(
+        "VirusTotal asked for fewer requests. Try again in "
+    )
+    assert asked == []
+
+
+def test_a_search_that_finds_the_daily_quota_used_up_keeps_the_key_connected(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answering(monkeypatch, virustotal.Limited(until=virustotal.next_reset(utcnow())))
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 429
+    assert response.json() == {
+        "detail": "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC."
+    }
+    session.expire_all()
+    [lookup] = session.scalars(select(IntelLookup)).all()
+    assert lookup.outcome == store.LIMITED
+    assert session.scalars(select(IntelSubject)).all() == []
+    [row] = session.scalars(select(IntegrationConnection)).all()
+    assert row.last_error is None
+    assert row.last_success_at is not None
+    assert len(asked) == 1
+
+
+def test_a_search_asked_to_slow_down_says_when_to_try_again(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, virustotal.Throttled(until=utcnow() + timedelta(minutes=1)))
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith(
+        "VirusTotal asked for fewer requests. Try again in "
+    )
+    assert int(response.headers["Retry-After"]) > 0
+
+
 def test_a_search_answered_lately_is_answered_from_what_was_kept_and_not_asked_again(
     client: TestClient,
     csrf_token: str,
@@ -458,3 +545,23 @@ def test_a_search_that_failed_is_not_kept_and_the_next_search_asks_again(
     assert response.status_code == 200
     assert response.json()["cached"] is False
     assert len(asked) == 1
+
+
+def test_a_search_answered_lately_is_answered_from_what_was_kept_while_the_daily_quota_holds(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, virustotal.Reported(report=REPORT))
+    first = search(client, csrf_token, ADDRESS)
+    limit_at(session, store.LIMITED, utcnow())
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    second = search(client, csrf_token, ADDRESS)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert (second.json()["cached"], second.json()["judgement"]) == (True, "malicious")
+    assert second.json()["checked_at"] == first.json()["checked_at"]
+    assert asked == []
