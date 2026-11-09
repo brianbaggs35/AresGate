@@ -47,45 +47,48 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     # The reports kept so far are of addresses. Each is taken as checked when its lookup was asked,
-    # so it stays fresh for as long as a lookup is, and is asked about again after that.
-    op.execute(
-        sa.text(
-            """
-            INSERT INTO threat_intel_subjects (
-                provider, kind, subject, checked_at, outcome, analysed_at, malicious, suspicious,
-                harmless, undetected, reputation, country, owner, asn, categories, details
-            )
-            SELECT
-                r.provider,
-                'ip',
-                host(r.address),
-                COALESCE(
-                    (
-                        SELECT max(l.requested_at)
-                        FROM threat_intel_lookups l
-                        WHERE l.provider = r.provider
-                            AND l.address = r.address
-                            AND l.outcome = 'reported'
+    # so it stays fresh for as long as a lookup is, and is asked about again after that. Once they
+    # have been moved, the reports are gone and there is nothing left to move.
+    if sa.inspect(op.get_bind()).has_table("threat_intel_reports"):
+        op.execute(
+            sa.text(
+                """
+                INSERT INTO threat_intel_subjects (
+                    provider, kind, subject, checked_at, outcome, analysed_at, malicious,
+                    suspicious, harmless, undetected, reputation, country, owner, asn,
+                    categories, details
+                )
+                SELECT
+                    r.provider,
+                    'ip',
+                    host(r.address),
+                    COALESCE(
+                        (
+                            SELECT max(l.requested_at)
+                            FROM threat_intel_lookups l
+                            WHERE l.provider = r.provider
+                                AND l.address = r.address
+                                AND l.outcome = 'reported'
+                        ),
+                        r.analysed_at
                     ),
-                    r.analysed_at
-                ),
-                'reported',
-                r.analysed_at,
-                r.malicious,
-                r.suspicious,
-                r.harmless,
-                r.undetected,
-                r.reputation,
-                r.country,
-                r.owner,
-                r.asn,
-                '[]'::jsonb,
-                '[]'::jsonb
-            FROM threat_intel_reports r
-            ON CONFLICT (provider, kind, subject) DO NOTHING
-            """
+                    'reported',
+                    r.analysed_at,
+                    r.malicious,
+                    r.suspicious,
+                    r.harmless,
+                    r.undetected,
+                    r.reputation,
+                    r.country,
+                    r.owner,
+                    r.asn,
+                    '[]'::jsonb,
+                    '[]'::jsonb
+                FROM threat_intel_reports r
+                ON CONFLICT (provider, kind, subject) DO NOTHING
+                """
+            )
         )
-    )
     op.drop_table("threat_intel_reports", if_exists=True)
 
 
