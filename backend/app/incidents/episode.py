@@ -11,12 +11,13 @@ which applied (``explain``):
 - **The kind of activity.** What a signal says it is (``activity_of``). A scan comes in bursts, so
   it is over sooner than a brute force, which is steadier.
 - **The time.** A signal belongs while the quiet between signals is shorter than the gap for
-  its activity (``gap_of``), and an episode doesn't go on for longer than ``MAX_SPAN``: a new
+  its activity (``Gaps.of``), and an episode doesn't go on for longer than ``MAX_SPAN``: a new
   day is a new incident, however steady the activity.
 """
 
 import re
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from itertools import pairwise
@@ -70,9 +71,24 @@ def activity_of(signal: Signal) -> str | None:
     return None
 
 
-def gap_of(activity: str | None) -> timedelta:
-    """How long the quiet may be before a signal of this activity is a new incident."""
-    return GAPS.get(activity or "", DEFAULT_GAP)
+@dataclass(frozen=True)
+class Gaps:
+    """How long a scan or a brute force may go quiet before its next signal is a new incident,
+    as the owner set it. The defaults are the gaps AresGate uses until the owner sets others."""
+
+    scan: timedelta = GAPS[SCAN]
+    brute_force: timedelta = GAPS[BRUTE_FORCE]
+
+    def of(self, activity: str | None) -> timedelta:
+        """The owner's gap for a scan or a brute force, and the same gap for the rest."""
+        if activity == SCAN:
+            return self.scan
+        if activity == BRUTE_FORCE:
+            return self.brute_force
+        return DEFAULT_GAP
+
+
+DEFAULT_GAPS: Final = Gaps()
 
 
 def block_of(address: Address) -> str | None:
@@ -139,6 +155,7 @@ def explain(
     waves: int,
     signals: int,
     port_count: int,
+    gaps: Gaps = DEFAULT_GAPS,
 ) -> list[str]:
     """Why the signals of an incident are one incident, in plain words, one fact to a line."""
     lines: list[str] = []
@@ -152,7 +169,7 @@ def explain(
     else:
         lines.append(f"Everything in it is about {subject}, whichever program saw it.")
     activity = next((item for item in GROUPED if item in activities), None)
-    gap = gap_of(activity)
+    gap = gaps.of(activity)
     named = f" {ACTIVITY_NAMES[activity]}" if activity else ""
     lines.append(
         f"Each{named} signal came less than {_hours(gap)} after the one before it. "

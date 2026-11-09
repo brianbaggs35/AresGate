@@ -95,10 +95,10 @@ def _move_cursor(db: Session, event_id: int) -> None:
         row.value = str(event_id)
 
 
-def _going(when: datetime, activity: str | None) -> ColumnElement[bool]:
+def _going(when: datetime, activity: str | None, gaps: episode.Gaps) -> ColumnElement[bool]:
     """Incidents a signal at that time can still join: not resolved, not quiet for longer than the
     gap for its activity, and not already a day long."""
-    gap = episode.gap_of(activity)
+    gap = gaps.of(activity)
     return and_(
         Incident.status != "resolved",
         Incident.last_seen_at >= when - gap,
@@ -108,12 +108,17 @@ def _going(when: datetime, activity: str | None) -> ColumnElement[bool]:
 
 
 def _current(
-    db: Session, subject: str, block: str | None, activity: str | None, when: datetime
+    db: Session,
+    subject: str,
+    block: str | None,
+    activity: str | None,
+    when: datetime,
+    gaps: episode.Gaps,
 ) -> Incident | None:
     """The incident that a signal at that time belongs to: the one about the same subject that is
     still going, or failing that, one that an address of the same block began, for a scan or a
     brute force: botnets rent addresses next to each other."""
-    going = _going(when, activity)
+    going = _going(when, activity, gaps)
     same = db.scalars(
         select(Incident)
         .where(Incident.subject == subject, going)
@@ -353,7 +358,7 @@ def _backfill(db: Session) -> list[Incident]:
     return [incident for incident in old if incident.status != "resolved"]
 
 
-def _fits(one: Incident, other: Incident) -> bool:
+def _fits(one: Incident, other: Incident, gaps: episode.Gaps) -> bool:
     """Whether two incidents are one episode: a scan or a brute force that both did, no further
     apart than the gap for it, and no longer together than an incident goes."""
     shared = next(
@@ -364,7 +369,7 @@ def _fits(one: Incident, other: Incident) -> bool:
         return False
     apart = max(one.first_seen_at, other.first_seen_at) - min(one.last_seen_at, other.last_seen_at)
     span = max(one.last_seen_at, other.last_seen_at) - min(one.first_seen_at, other.first_seen_at)
-    return apart <= episode.gap_of(shared) and span < episode.MAX_SPAN
+    return apart <= gaps.of(shared) and span < episode.MAX_SPAN
 
 
 def _merge(
@@ -404,6 +409,7 @@ def _consolidate(
     one episode with it, the oldest keeping the rest. Incidents of another status are left as
     they are: someone changed that, and it is theirs to say. Returns how many were merged away."""
     merged = 0
+    gaps = noise.gaps()
     for incident in sorted(touched.values(), key=lambda item: (item.first_seen_at, item.id)):
         current = incident
         while current.id in touched and current.block is not None:
@@ -414,7 +420,7 @@ def _consolidate(
                     Incident.status == current.status,
                 )
             ).all()
-            other = next((item for item in others if _fits(current, item)), None)
+            other = next((item for item in others if _fits(current, item, gaps)), None)
             if other is None:
                 break
             keep, drop = sorted((current, other), key=lambda item: (item.first_seen_at, item.id))
@@ -450,6 +456,7 @@ def correlate(db: Session, now: datetime) -> Result:
         return Result()
     touched: dict[int, Incident] = {}
     created = 0
+    gaps = noise.gaps()
     # In the order they happened, so a signal that was stored late still lands in place.
     for event in sorted(events, key=lambda item: (item.occurred_at, item.id)):
         subject = subject_of(event)
@@ -459,6 +466,7 @@ def correlate(db: Session, now: datetime) -> Result:
             episode.block_of_subject(subject),
             episode.activity_of(event),
             event.occurred_at,
+            gaps,
         )
         if incident is None:
             incident = _start(db, event, subject)
@@ -467,7 +475,11 @@ def correlate(db: Session, now: datetime) -> Result:
         touched[incident.id] = incident
     filed = len(touched)
     for incident in touched.values():
-        _score(incident)
+        if noise.thin_low_signals > 1 and incident.signal_count <= MAX_SIGNALS:
+            # Judged as a whole, as a thin incident is one its signals make so (see filters).
+            _rebuild(db, incident, verdict_rules, noise)
+        else:
+            _score(incident)
     merged = _consolidate(db, {**{item.id: item for item in old}, **touched}, verdict_rules, noise)
     if events:
         _move_cursor(db, events[-1].id)
@@ -500,6 +512,12 @@ def _rebuild(
         rule, signal.filtered_by = _decide(signal, verdict_rules, noise)
         signal.verdict = rule.verdict if rule else None
         signal.verdict_rule_id = rule.id if rule else None
+    # Whether an incident is thin is a matter of all its signals, so it is decided after each one
+    # has its verdict or its filter, and the signals it sets aside are the ones nothing else did.
+    if filters.too_thin(signals, noise.thin_low_signals):
+        for signal in signals:
+            signal.filtered_by = signal.filtered_by or filters.THIN
+    for signal in signals:
         _absorb(incident, signal, signal.verdict, signal.filtered_by is not None, signal.duplicate)
     # What an incident that outgrew its timeline saw after it is not there to be read again, but
     # it was seen, and the incident still ends when it did.

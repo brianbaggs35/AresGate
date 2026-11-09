@@ -171,9 +171,9 @@ export interface Reason {
   text: string
 }
 
-/** Why a noise filter set a signal aside: it was between two addresses on your network, or under
- * the severity that its program has to reach to count. */
-export type FilteredBy = 'inside' | 'severity'
+/** Why a noise filter set a signal aside: it was between two addresses on your network, under the
+ * severity that its program has to reach to count, or one of too few low alerts to ask about. */
+export type FilteredBy = 'inside' | 'severity' | 'thin'
 
 export interface Signal {
   occurred_at: string

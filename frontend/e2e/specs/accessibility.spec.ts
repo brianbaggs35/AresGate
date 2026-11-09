@@ -324,6 +324,8 @@ for (const theme of ['light', 'dark'] as const) {
       await page.keyboard.press('ArrowRight')
       await noiseFilters.chooseFloor('Wazuh', 'High and up')
       await noiseFilters.insideSwitch.check()
+      await noiseFilters.chooseGap('scan', '8 hours')
+      await noiseFilters.chooseMinimum('2 low alerts')
       await expect(noiseFilters.effectTable).toBeVisible()
       await expect(noiseFilters.figure('set-aside').after).toHaveText('4')
       await expectAccessible(page)

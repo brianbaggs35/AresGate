@@ -535,7 +535,7 @@ please [report it](../SECURITY.md).
 ### Noise filters
 
 Verdicts are how you tell AresGate things one at a time. **Settings > Noise filters** narrows
-what it asks about without a verdict from you, in three ways, and says what each would do before
+what it asks about without a verdict from you, in five ways, and says what each would do before
 you keep it.
 
 - **How sure before it asks you.** The confidence an incident has to reach to *need you*, from 1
@@ -552,6 +552,16 @@ you keep it.
   can only be on a network of yours: private (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), shared
   (100.64.0.0/10), link-local and unique local (fc00::/7, fe80::/10). It is off by default,
   because a device attacking another one is sometimes the very thing to hear about.
+- **How long a scan or a brute force may pause.** Scans and brute force are grouped by the address
+  they come from and the block around it (see the incidents section). A quiet of less than this
+  is still one incident, up to a day: 4 hours for a scan and 6 hours for a brute force, from 1 to
+  24 hours each, until you change them. It applies to the signals that arrive after you save it,
+  so the incidents already made keep their grouping.
+- **How few low alerts are too few to ask about.** An incident made of one program's low-severity
+  alerts is set aside until it has as many as you choose, from 1 to 10. One, the default, is no
+  minimum. So a lone low alert is never asked about, while three of them are. A verdict of yours,
+  or another program that reports the same thing, always counts at once. A signal set aside this
+  way is marked *too few to ask about* in its incident's timeline.
 
 A signal that a filter sets aside is a **signal set aside**, which works like one a verdict
 leaves out: it is kept in the incident's timeline (with a chip saying which filter did it),

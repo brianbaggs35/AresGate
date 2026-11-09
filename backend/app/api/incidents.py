@@ -201,7 +201,7 @@ class SignalOut(BaseModel):
     verdict: Verdict | None
     verdict_rule_id: int | None
     # Which noise filter set it aside, if one did and no verdict was about it.
-    filtered_by: Literal["inside", "severity"] | None
+    filtered_by: Literal["inside", "severity", "thin"] | None
     # Whether another program had already reported the same thing a moment before (it counts once).
     duplicate: bool
 
@@ -555,7 +555,7 @@ def _signal(signal: IncidentSignal) -> SignalOut:
         protocol=signal.protocol,
         verdict=cast(Verdict | None, signal.verdict),
         verdict_rule_id=signal.verdict_rule_id,
-        filtered_by=cast(Literal["inside", "severity"] | None, signal.filtered_by),
+        filtered_by=cast(Literal["inside", "severity", "thin"] | None, signal.filtered_by),
         duplicate=signal.duplicate,
     )
 
@@ -613,6 +613,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             waves=max(incident.waves, 1),
             signals=incident.signal_count,
             port_count=len(incident.ports),
+            gaps=filters.load(db).gaps(),
         ),
         ports=incident.ports,
         signals=[_signal(signal) for signal in seen],

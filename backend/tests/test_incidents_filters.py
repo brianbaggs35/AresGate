@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timedelta
 from ipaddress import ip_address
 from typing import Any
@@ -32,16 +33,8 @@ OTHER_DEVICE = "192.168.1.30"
 
 
 def keep(session: Session, **changes: Any) -> None:
-    """The owner saves their filters."""
-    current = filters.load(session)
-    filters.save(
-        session,
-        Filters(
-            confidence_floor=changes.get("confidence_floor", current.confidence_floor),
-            quiet_inside=changes.get("quiet_inside", current.quiet_inside),
-            source_floors=changes.get("source_floors", dict(current.source_floors)),
-        ),
-    )
+    """The owner saves their filters, with these settings changed and the rest as they are."""
+    filters.save(session, replace(filters.load(session), **changes))
     session.commit()
 
 

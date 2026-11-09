@@ -261,13 +261,17 @@ class ThreatSettings(Base):
 
 class NoiseSettings(Base):
     """How AresGate narrows what it asks about without anyone's verdict: how sure it has to be of
-    an incident to ask, and which signals it sets aside. There is only ever one row, and none until
-    the owner first saves (the defaults are in app/incidents/filters.py)."""
+    an incident to ask, which signals it sets aside, how long a scan may pause before it is another
+    incident, and how many low signals a thin incident needs. There is only ever one row, and none
+    until the owner first saves (the defaults are in app/incidents/filters.py)."""
 
     __tablename__ = "noise_settings"
     __table_args__ = (
         CheckConstraint("id = 1", name="single_row"),
         CheckConstraint("confidence_floor BETWEEN 1 AND 100", name="confidence_floor"),
+        CheckConstraint("scan_gap_hours BETWEEN 1 AND 24", name="scan_gap_hours"),
+        CheckConstraint("brute_force_gap_hours BETWEEN 1 AND 24", name="brute_force_gap_hours"),
+        CheckConstraint("thin_low_signals BETWEEN 1 AND 10", name="thin_low_signals"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
@@ -279,4 +283,11 @@ class NoiseSettings(Base):
     # For a program, the lowest severity (on the scale in app/events/event.py) that counts as a
     # signal. A program that is not here has the engine's own minimum.
     source_floors: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    # How long a scan or a brute force may go quiet before its next signal is a new incident, in
+    # hours. It applies to the signals that arrive after it is saved, not to the incidents made.
+    scan_gap_hours: Mapped[int] = mapped_column(SmallInteger, default=4)
+    brute_force_gap_hours: Mapped[int] = mapped_column(SmallInteger, default=6)
+    # The fewest signals an incident of one program's low-severity signals needs before it is asked
+    # about. One is none.
+    thin_low_signals: Mapped[int] = mapped_column(SmallInteger, default=1)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
