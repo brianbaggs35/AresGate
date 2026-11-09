@@ -31,10 +31,12 @@ def upgrade() -> None:
     op.add_column(
         "threat_intel_lookups",
         sa.Column("kind", sa.String(length=8), server_default=sa.text("'ip'"), nullable=False),
+        if_not_exists=True,
     )
     op.add_column(
         "threat_intel_lookups",
         sa.Column("subject", sa.String(length=253), nullable=True),
+        if_not_exists=True,
     )
     op.alter_column("threat_intel_lookups", "kind", server_default=None)
 
@@ -42,8 +44,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Only the lookups of addresses can be kept once the address is required again.
     op.execute(sa.text("DELETE FROM threat_intel_lookups WHERE address IS NULL"))
-    op.drop_column("threat_intel_lookups", "subject")
-    op.drop_column("threat_intel_lookups", "kind")
+    op.drop_column("threat_intel_lookups", "subject", if_exists=True)
+    op.drop_column("threat_intel_lookups", "kind", if_exists=True)
     op.alter_column(
         "threat_intel_lookups",
         "address",
