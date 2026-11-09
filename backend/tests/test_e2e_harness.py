@@ -1240,6 +1240,26 @@ def test_assets_can_be_made_listed_by_the_ways_and_at_the_times_given(e2e: TestC
     assert quiet["status"] == "away"
 
 
+def test_traffic_can_be_made_for_a_host_and_is_only_stored_once(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    request: dict[str, Any] = {
+        "hosts": [{"host": "192.168.1.20", "sent": [1000, 3000, 6000], "received": [500, 600]}]
+    }
+
+    made = e2e.post("/api/__test__/factories/traffic", json=request)
+    again = e2e.post("/api/__test__/factories/traffic", json=request)
+
+    assert made.status_code == 201
+    assert made.json() == {"readings": 5}
+    assert again.json() == {"readings": 0}
+
+
+def test_traffic_needs_the_host_it_is_of(e2e: TestClient) -> None:
+    made = e2e.post("/api/__test__/factories/traffic", json={"hosts": [{"host": ""}]})
+
+    assert made.status_code == 422
+
+
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
     made = e2e.post("/api/__test__/factories/incidents", json={"incidents": []})
 
