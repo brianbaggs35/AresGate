@@ -75,4 +75,14 @@ describe('IntegrationCard', () => {
     const { wrapper } = await show()
     expect(wrapper.find('[data-test="integration-services"]').exists()).toBe(false)
   })
+
+  it('says what kind of integration it is, when it has a kind', async () => {
+    const { text } = await show({ category: 'Threat intelligence' })
+    expect(text('integration-category')).toBe('Threat intelligence')
+  })
+
+  it('says nothing about a kind it does not have', async () => {
+    const { wrapper } = await show()
+    expect(wrapper.find('[data-test="integration-category"]').exists()).toBe(false)
+  })
 })

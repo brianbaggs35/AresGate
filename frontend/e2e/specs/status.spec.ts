@@ -32,8 +32,14 @@ test.describe('status page', () => {
   test('lists the integrations as parts, and opens one', async ({ page, status }) => {
     await status.goto()
 
-    await expect(status.partNames).toHaveText(['OPNsense', 'ntopng', 'Wazuh', 'CrowdSec'])
-    await expect(status.partStates).toHaveText(['Off', 'Off', 'Off', 'Off'])
+    await expect(status.partNames).toHaveText([
+      'OPNsense',
+      'ntopng',
+      'Wazuh',
+      'CrowdSec',
+      'VirusTotal',
+    ])
+    await expect(status.partStates).toHaveText(new Array<string>(5).fill('Off'))
     await expect(status.part('Wazuh')).toContainText('Not connected.')
 
     await status.part('Wazuh').getByRole('link', { name: 'Open Wazuh' }).click()

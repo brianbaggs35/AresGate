@@ -99,7 +99,8 @@ export function draftFrom(connection: Connection): ConnectionDraft {
   }
   return {
     enabled: !connection.definition.optional || connection.url !== null,
-    url: connection.url ?? '',
+    // A service with a fixed address is only ever given that one.
+    url: connection.definition.address || (connection.url ?? ''),
     tlsMode: connection.tls_mode,
     tlsCaPem: connection.tls_ca_pem ?? '',
     tlsFingerprint: connection.tls_fingerprint ?? '',

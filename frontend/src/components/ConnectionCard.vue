@@ -150,6 +150,17 @@ defineExpose({ reviewCertificate })
       </p>
 
       <v-text-field
+        v-if="definition.address"
+        :id="id('url')"
+        :model-value="definition.address"
+        label="Address"
+        readonly
+        hint="This service has one address, so AresGate only ever sends its key there."
+        persistent-hint
+        data-test="connection-url"
+      />
+      <v-text-field
+        v-else
         :id="id('url')"
         v-model="draft.url"
         label="Address"
@@ -234,6 +245,17 @@ defineExpose({ reviewCertificate })
             :error-messages="problems[field.key]"
             :data-test="`field-${field.key}`"
           />
+          <v-alert
+            v-if="field.caution"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            :icon="TriangleAlert"
+            class="mt-2"
+            :data-test="`caution-${field.key}`"
+          >
+            {{ field.caution }}
+          </v-alert>
         </template>
       </div>
 

@@ -751,20 +751,28 @@ for (const theme of ['light', 'dark'] as const) {
       shell,
     }) => {
       await data.goto()
-      await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(4)
+      await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(5)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
+      // Once the theme menu has closed, bring the last row up: on a phone it starts under the
+      // fixed bottom bar.
+      await expect(page.getByTestId(`theme-${theme}`)).toBeHidden()
+      await data.source(data.eventsCard, 'VirusTotal').evaluate((row) => {
+        row.scrollIntoView({ block: 'center' })
+      })
       await expectAccessible(page)
 
       await data.source(data.eventsCard, 'OPNsense').getByTestId('retention-change').click()
       await expect(data.dialogTitle).toBeVisible()
-      await expectAccessible(page)
+      // The page behind the dialog is covered while it is open, so these two checks look at the
+      // dialog alone.
+      await expectAccessible(page, { include: '[data-test="retention-dialog"]' })
 
       await data.useDays.check()
       await data.days.fill('0')
       await data.save.click()
       await expect(data.dialog).toContainText('Enter a whole number of days')
-      await expectAccessible(page)
+      await expectAccessible(page, { include: '[data-test="retention-dialog"]' })
 
       await data.days.fill('90')
       await data.save.click()
@@ -1133,7 +1141,7 @@ for (const theme of ['light', 'dark'] as const) {
       shell,
     }) => {
       await integrations.goto()
-      await expect(integrations.names).toHaveCount(4)
+      await expect(integrations.names).toHaveCount(5)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 

@@ -24,9 +24,15 @@ test.describe('integrations', () => {
     await expect(page).toHaveURL('/integrations')
     await expect(page).toHaveTitle('Integrations · AresGate')
     await expect(integrations.heading).toBeVisible()
-    await expect(integrations.names).toHaveText(['OPNsense', 'ntopng', 'Wazuh', 'CrowdSec'])
-    await expect(integrations.count).toHaveText('0 of 4 set up')
-    for (const key of ['opnsense', 'ntopng', 'wazuh', 'crowdsec']) {
+    await expect(integrations.names).toHaveText([
+      'OPNsense',
+      'ntopng',
+      'Wazuh',
+      'CrowdSec',
+      'VirusTotal',
+    ])
+    await expect(integrations.count).toHaveText('0 of 5 set up')
+    for (const key of ['opnsense', 'ntopng', 'wazuh', 'crowdsec', 'virustotal']) {
       await expect(integrations.status(key)).toHaveText('Not connected')
       await expect(integrations.lastCall(key)).toHaveText('Not set up yet')
     }
@@ -43,7 +49,7 @@ test.describe('integrations', () => {
     await integration.back.click()
 
     await expect(page).toHaveURL('/integrations')
-    await expect(integrations.names).toHaveCount(4)
+    await expect(integrations.names).toHaveCount(5)
   })
 
   test('explains how to get what is needed in a window, and links to the official documentation', async ({
@@ -91,6 +97,7 @@ test.describe('integrations', () => {
       ntopng: ['api'],
       wazuh: ['manager', 'indexer'],
       crowdsec: ['lapi'],
+      virustotal: ['api'],
     }
     for (const [key, parts] of Object.entries(connections)) {
       await integration.goto(key)
@@ -141,7 +148,7 @@ test.describe('integrations', () => {
     await integrations.retry.click()
 
     await expect(integrations.loadError).toHaveCount(0)
-    await expect(integrations.names).toHaveCount(4)
+    await expect(integrations.names).toHaveCount(5)
   })
 
   test('says so for an integration that does not exist', async ({ page, integration }) => {
@@ -212,7 +219,7 @@ test.describe('integrations', () => {
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
-      await expect(integrations.count).toHaveText('1 of 4 set up')
+      await expect(integrations.count).toHaveText('1 of 5 set up')
     })
 
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
@@ -1363,6 +1370,64 @@ test.describe('integrations', () => {
       await expect(integration.checks).toHaveCount(1)
       await expect(integration.useConnection('zenarmor')).not.toBeChecked()
       await expect(integration.address('zenarmor')).toHaveCount(0)
+    })
+  })
+
+  test.describe('VirusTotal', () => {
+    test('is for the internet, with its one address fixed and its terms said beside the access level', async ({
+      page,
+      integration,
+      integrations,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.card('virustotal')).toContainText('Threat intelligence')
+      await integrations.card('virustotal').click()
+
+      await expect(page).toHaveURL('/integrations/virustotal')
+      await expect(integration.title).toHaveText('VirusTotal')
+      // Its address is the one VirusTotal has, and cannot be typed over.
+      await expect(integration.address('api')).toHaveValue('https://www.virustotal.com')
+      await expect(integration.address('api')).not.toBeEditable()
+      await expect(integration.connection('api')).toContainText(
+        'This service has one address, so AresGate only ever sends its key there.',
+      )
+      // The key is typed in, as a secret.
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+      // The free public API is chosen, and its terms are said beside the choice. Choosing the
+      // premium one does not take them away.
+      await expect(integration.connection('api').getByLabel('Free public API')).toBeChecked()
+      await expect(integration.connection('api').getByTestId('caution-tier')).toContainText(
+        'must not be used in business workflows',
+      )
+      await integration.connection('api').getByLabel('Premium API').check()
+      await expect(integration.connection('api').getByTestId('caution-tier')).toContainText(
+        "Premium's limits depend on your plan",
+      )
+    })
+
+    test('shows that a key is saved, and never shows the key', async ({ page, integration }) => {
+      // What a saved connection looks like to the page: its address is kept, and its key is
+      // only known to be set. The key itself is never sent back, so none is shown.
+      await page.route('**/api/integrations/virustotal', async (route) => {
+        const response = await route.fetch()
+        const body = (await response.json()) as {
+          status: string
+          connections: { url: string | null; status: string; secrets_set: string[] }[]
+        }
+        body.status = 'connected'
+        for (const connection of body.connections) {
+          connection.url = 'https://www.virustotal.com'
+          connection.status = 'connected'
+          connection.secrets_set = ['api_key']
+        }
+        await route.fulfill({ status: response.status(), json: body })
+      })
+
+      await integration.goto('virustotal')
+
+      await expect(integration.status).toHaveText('Connected')
+      await expect(integration.field('api', 'api_key')).toHaveValue('')
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('placeholder', 'Saved')
     })
   })
 
