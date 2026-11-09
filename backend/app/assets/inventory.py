@@ -63,6 +63,7 @@ class Listing:
 
     source: str
     via: str
+    first_seen_at: datetime
     last_seen_at: datetime
     # Whether being listed this way means it is on the network now.
     presence: bool
@@ -234,7 +235,9 @@ def _on_internet(
 
 def _listing(row: DeviceSource) -> Listing:
     known = ways.WAYS.get(row.via)
-    return Listing(row.source, row.via, row.last_seen_at, known.presence if known else False)
+    return Listing(
+        row.source, row.via, row.first_seen_at, row.last_seen_at, known.presence if known else False
+    )
 
 
 def _status(listings: list[Listing], last_seen_at: datetime, now: datetime) -> Status:
@@ -256,7 +259,15 @@ def _match(
 
 
 def _host_listing(host: HostListing, matched_by: MatchedBy | None) -> Listing:
-    return Listing(host.source, host.via, host.last_seen_at, host.online, matched_by, host.state)
+    return Listing(
+        host.source,
+        host.via,
+        host.first_seen_at,
+        host.last_seen_at,
+        host.online,
+        matched_by,
+        host.state,
+    )
 
 
 def _new(first_seen_at: datetime, since: datetime, now: datetime) -> bool:

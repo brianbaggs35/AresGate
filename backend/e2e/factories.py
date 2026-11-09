@@ -801,3 +801,37 @@ def assets(
             )
     session.flush()
     return AssetsRecorded(len(devices), len(hosts))
+
+
+class TrafficSpec(NamedTuple):
+    """What ntopng measured of one host: the bytes it sent and received, each hour, oldest first,
+    the last of them the hour we are in."""
+
+    host: str
+    sent: Sequence[float] = ()
+    received: Sequence[float] = ()
+
+
+def traffic(
+    session: Session, settings: Settings, now: datetime, specs: Sequence[TrafficSpec]
+) -> int:
+    """Stores what ntopng read of the hosts, an hour apart, and returns how many were new. Its
+    counters only rise, so a reading that falls is one that started again."""
+    base = now.replace(minute=0, second=0, microsecond=0)
+    samples = [
+        NewSample(
+            source="ntopng",
+            connection="api",
+            name=name,
+            value=value,
+            sampled_at=base - timedelta(hours=back),
+            labels={"host": spec.host},
+        )
+        for spec in specs
+        for name, readings in (
+            ("host.bytes_sent", spec.sent),
+            ("host.bytes_received", spec.received),
+        )
+        for back, value in zip(range(len(readings) - 1, -1, -1), readings, strict=True)
+    ]
+    return record_samples(session, settings, samples, now)

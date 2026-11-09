@@ -494,6 +494,38 @@ def make_assets(body: AssetsRequest, db: Db) -> AssetsRecord:
     return AssetsRecord(devices=made.devices, hosts=made.hosts)
 
 
+class TrafficHostRequest(BaseModel):
+    """What ntopng read of one host: the bytes it sent and received, an hour apart, oldest first."""
+
+    host: str = Field(min_length=1, max_length=64)
+    sent: list[float] = Field(default_factory=list[float], max_length=24 * 7)
+    received: list[float] = Field(default_factory=list[float], max_length=24 * 7)
+
+
+class TrafficRequest(BaseModel):
+    hosts: list[TrafficHostRequest] = Field(default_factory=list[TrafficHostRequest], max_length=50)
+
+
+class TrafficRecord(BaseModel):
+    readings: int
+
+
+@router.post("/factories/traffic", status_code=status.HTTP_201_CREATED)
+def make_traffic(body: TrafficRequest, db: Db, settings: SettingsDep) -> TrafficRecord:
+    """Stores what ntopng read of hosts, for an asset's page to chart the traffic of."""
+    stored = factories.traffic(
+        db,
+        settings,
+        utcnow(),
+        [
+            factories.TrafficSpec(host=item.host, sent=item.sent, received=item.received)
+            for item in body.hosts
+        ],
+    )
+    db.commit()
+    return TrafficRecord(readings=stored)
+
+
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)
 def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""
