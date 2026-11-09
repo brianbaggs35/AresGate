@@ -182,15 +182,16 @@ test.describe('noise filters page', () => {
   }) => {
     await noiseFilters.goto()
 
+    // The menus only draw the hours near the one that is chosen, so 9 is picked from 6, not 12.
     await noiseFilters.chooseGap('scan', '8 hours')
-    await noiseFilters.chooseGap('brute force', '12 hours')
+    await noiseFilters.chooseGap('brute force', '9 hours')
 
     await expect(noiseFilters.gapSentence).toHaveText(
-      'A scan that goes quiet for less than 8 hours is still one incident, and so is a brute force that goes quiet for less than 12 hours. A longer quiet starts another incident.',
+      'A scan that goes quiet for less than 8 hours is still one incident, and so is a brute force that goes quiet for less than 9 hours. A longer quiet starts another incident.',
     )
     await expect(noiseFilters.gapReset).toHaveText('Back to the defaults')
     await expect(noiseFilters.effectSentence).toContainText(
-      'From now on a scan starts another incident after a quiet of 8 hours, and a brute force after 12 hours. Incidents already made keep their grouping.',
+      'From now on a scan starts another incident after a quiet of 8 hours, and a brute force after 9 hours. Incidents already made keep their grouping.',
     )
 
     await noiseFilters.save.click()
@@ -198,7 +199,7 @@ test.describe('noise filters page', () => {
     await noiseFilters.goto()
 
     await expect(noiseFilters.scanGap).toContainText('8 hours')
-    await expect(noiseFilters.bruteForceGap).toContainText('12 hours')
+    await expect(noiseFilters.bruteForceGap).toContainText('9 hours')
     await noiseFilters.gapReset.click()
     await expect(noiseFilters.scanGap).toContainText('4 hours')
     await expect(noiseFilters.bruteForceGap).toContainText('6 hours')
