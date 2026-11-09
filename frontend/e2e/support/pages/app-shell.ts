@@ -13,6 +13,7 @@ export type Place =
   | 'logs'
   | 'assets'
   | 'integrations'
+  | 'threat-intelligence'
   | 'ai-usage'
   | 'alerts'
   | 'status'
@@ -23,6 +24,7 @@ const BEHIND_MORE: readonly Place[] = [
   'logs',
   'assets',
   'integrations',
+  'threat-intelligence',
   'ai-usage',
   'alerts',
   'status',

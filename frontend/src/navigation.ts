@@ -7,6 +7,7 @@ import {
   MonitorSmartphone,
   Network,
   Plug,
+  ScanSearch,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -41,6 +42,12 @@ export const navItems: readonly NavItem[] = [
   { route: 'logs', title: 'Logs', icon: ScrollText },
   { route: 'assets', title: 'Assets', icon: MonitorSmartphone },
   { route: 'integrations', title: 'Integrations', icon: Plug },
+  {
+    route: 'threat-intelligence',
+    title: 'Threat intelligence',
+    icon: ScanSearch,
+    keywords: 'virustotal lookup reputation address domain url malicious search',
+  },
   { route: 'interfaces', title: 'Interfaces', icon: Network },
   {
     route: 'ai-usage',

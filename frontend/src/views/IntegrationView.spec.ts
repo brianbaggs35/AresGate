@@ -215,19 +215,9 @@ describe('IntegrationView', () => {
     })
   })
 
-  describe('the threat lookup', () => {
-    it('is offered on VirusTotal once its connection has been tested', async () => {
+  describe('threat intelligence', () => {
+    it('is kept off the integration page, which shows only the connection', async () => {
       const { find } = await open(virustotal({ status: 'connected' }), { key: 'virustotal' })
-      expect(find('threat-lookup').exists()).toBe(true)
-    })
-
-    it('is not offered until the connection has been tested', async () => {
-      const { find } = await open(virustotal({ status: 'untested' }), { key: 'virustotal' })
-      expect(find('threat-lookup').exists()).toBe(false)
-    })
-
-    it('is not offered on the other integrations', async () => {
-      const { find } = await open(working())
       expect(find('threat-lookup').exists()).toBe(false)
     })
   })

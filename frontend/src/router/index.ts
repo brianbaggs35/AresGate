@@ -127,6 +127,13 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Threat intelligence has a page of its own, apart from the integration that answers it.
+    path: '/threat-intelligence',
+    name: 'threat-intelligence',
+    component: () => import('@/views/ThreatIntelView.vue'),
+    meta: { title: 'Threat intelligence' },
+  },
+  {
     // The list, and a page for each interface. Both belong to the one place in the menu.
     path: '/interfaces',
     children: [

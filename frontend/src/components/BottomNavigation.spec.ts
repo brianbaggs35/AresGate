@@ -85,6 +85,7 @@ describe('BottomNavigation', () => {
         'Logs',
         'Assets',
         'Integrations',
+        'Threat intelligence',
         'Interfaces',
         'AI usage',
         'Alerts',

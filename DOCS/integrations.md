@@ -567,12 +567,12 @@ you connect a key.
 
 ### Searching by hand
 
-Once the connection has been tested, the VirusTotal page has a search. It takes an IP address, a
-domain such as `example.com`, or a web address that starts with `https://` or `http://`, and shows
-what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many engines
-gave a verdict and what each said, the community's score, the categories it was given, what else
-VirusTotal says (the owner and country of an address, the registrar of a domain, the title and final
-address of a web address), and a link to its page on VirusTotal's own site.
+Once the connection has been tested, the Threat intelligence page has a search. It takes an IP
+address, a domain such as `example.com`, or a web address that starts with `https://` or `http://`,
+and shows what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many
+engines gave a verdict and what each said, the community's score, the categories it was given, what
+else VirusTotal says (the owner and country of an address, the registrar of a domain, the title and
+final address of a web address), and a link to its page on VirusTotal's own site.
 
 A search is refused, and nothing is sent, for a private or other non-public address, a name that
 only exists on a network of its own (`router`, `nas.local`, `printer.lan`, `box.test` and the like),

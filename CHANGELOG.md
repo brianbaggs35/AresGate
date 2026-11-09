@@ -8,11 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
-- **Search VirusTotal by hand.** Once VirusTotal is connected and tested, its page takes an IP
-  address, a domain or a web address and shows what VirusTotal reported of it: whether engines
-  flagged it as malicious or suspicious, their counts, the community score, the categories and a
-  link to its page there. A search shares the free key's limits, so one that would go over them
-  waits, and says how long. Nothing private, and nothing on the home's own network, is sent.
+- **Search VirusTotal by hand.** Once VirusTotal is connected and tested, the Threat intelligence
+  page takes an IP address, a domain or a web address and shows what VirusTotal reported of it:
+  whether engines flagged it as malicious or suspicious, their counts, the community score, the
+  categories and a link to its page there. A search shares the free key's limits, so one that would
+  go over them waits, and says how long. Nothing private, and nothing on the home's own network, is
+  sent.
 
 ### Changed
 
