@@ -6,11 +6,15 @@ import {
   ASSET_SORTS,
   ASSET_STATUSES,
   type Asset,
+  type AssetEvent,
   type AssetQuery,
   type AssetSort,
   type AssetStatus,
+  type AssetTraffic,
+  type AssetVerdict,
   type Listing,
 } from '@/api/assets'
+import { formatCount } from '@/format'
 
 interface Look {
   label: string
@@ -177,6 +181,58 @@ export function wayOf(listing: Listing): string {
   return listing.matched_by
     ? `${listing.via_label} (matched by ${listing.matched_by})`
     : listing.via_label
+}
+
+/** Where an event went, or came from: the address and port, or that the address is not known. */
+export function eventFlow(
+  event: Pick<AssetEvent, 'outbound' | 'src_address' | 'src_port' | 'dst_address' | 'dst_port'>,
+): string {
+  const end = (address: string | null, port: number | null) => {
+    if (address === null) return 'an unknown address'
+    return port === null ? address : `${address}:${port}`
+  }
+  return event.outbound
+    ? `To ${end(event.dst_address, event.dst_port)}`
+    : `From ${end(event.src_address, event.src_port)}`
+}
+
+/** What a verdict is about, beyond its device: the destination, the alert, or else all it does. */
+export function scopeOfVerdict(verdict: Pick<AssetVerdict, 'destination' | 'signature'>): string {
+  const parts: string[] = []
+  if (verdict.destination) parts.push(`its traffic to ${verdict.destination}`)
+  if (verdict.signature) parts.push(`the alert "${verdict.signature}"`)
+  return parts.length ? parts.join(' and ') : 'everything it does'
+}
+
+/** What a page is under the name of an asset: a device or a machine, then its maker and hardware
+ * address when they are not already its name. */
+export function descriptionOf(asset: Pick<Asset, 'kind' | 'name' | 'vendor' | 'mac'>): string {
+  const parts = [asset.kind === 'host' ? 'Machine' : 'Device']
+  if (asset.vendor && asset.vendor !== asset.name) parts.push(asset.vendor)
+  if (asset.mac && asset.mac !== asset.name) parts.push(asset.mac)
+  return parts.join(' · ')
+}
+
+/** The traffic of an asset as its chart shows it: by the hour for the last day, by the day for the
+ * last week. A stretch nothing was measured in is a gap, not a zero. */
+export function chartOf(
+  traffic: Pick<AssetTraffic, 'hours' | 'days'>,
+  range: '24h' | '7d',
+): { times: number[]; series: { id: string; label: string; values: (number | null)[] }[] } {
+  const readings = range === '24h' ? traffic.hours : traffic.days
+  return {
+    times: readings.map((item) => Date.parse(item.at)),
+    series: [
+      { id: 'sent', label: 'Sent', values: readings.map((item) => item.sent) },
+      { id: 'received', label: 'Received', values: readings.map((item) => item.received) },
+    ],
+  }
+}
+
+/** What the events of an asset come to, in words, under their heading. */
+export function eventsNoteOf(weekly: number): string {
+  if (weekly === 0) return 'Nothing in the last week.'
+  return `${formatCount(weekly)} in the last week, newest first.`
 }
 
 /** The addresses of an asset to show in a list: the ones it has now, up to a few, and how many

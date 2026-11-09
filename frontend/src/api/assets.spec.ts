@@ -1,5 +1,23 @@
-import { fetchAssets } from '@/api/assets'
+import { fetchAsset, fetchAssets } from '@/api/assets'
 import * as client from '@/api/client'
+
+describe('fetchAsset', () => {
+  it('asks for the page of one asset by its key', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+
+    await fetchAsset('device-12')
+
+    expect(get).toHaveBeenCalledWith('/assets/device-12')
+  })
+
+  it('keeps the key to one path segment', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+
+    await fetchAsset('a/b?c')
+
+    expect(get).toHaveBeenCalledWith('/assets/a%2Fb%3Fc')
+  })
+})
 
 describe('fetchAssets', () => {
   it('asks for everything when nothing is asked', async () => {
