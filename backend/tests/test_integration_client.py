@@ -191,9 +191,10 @@ def test_a_service_that_is_only_read_gets_reads_and_nothing_that_changes(serve: 
     log = Log()
     reading = replace(HOME_NETWORK_AND_LOOPBACK, read_only=True)
 
-    assert request(target(server), log, "GET", "/api/things", policy=reading).status == 200
+    where = target(server)
+    assert request(where, log, "GET", "/api/things", policy=reading).status == 200
     with pytest.raises(CallFailed, match="sends it nothing that changes"):
-        request(target(server), log, "POST", "/api/things", json_body={"x": 1}, policy=reading)
+        request(where, log, "POST", "/api/things", json_body={"x": 1}, policy=reading)
     assert len(server.seen) == 1
 
 
