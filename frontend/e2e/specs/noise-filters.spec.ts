@@ -203,6 +203,14 @@ test.describe('noise filters page', () => {
     await noiseFilters.gapReset.click()
     await expect(noiseFilters.scanGap).toContainText('4 hours')
     await expect(noiseFilters.bruteForceGap).toContainText('6 hours')
+    // The defaults differ from what is kept, so they can be saved, or discarded to get back to 8 and 9.
+    await expect(noiseFilters.effectSentence).toContainText(
+      'From now on a scan starts another incident after a quiet of 4 hours, and a brute force after 6 hours.',
+    )
+    await expect(noiseFilters.save).toBeEnabled()
+    await noiseFilters.discard.click()
+    await expect(noiseFilters.scanGap).toContainText('8 hours')
+    await expect(noiseFilters.bruteForceGap).toContainText('9 hours')
     await expect(noiseFilters.save).toBeDisabled()
   })
 
