@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from ipaddress import IPv4Address, IPv6Address, ip_address
 
 import pytest
 from sqlalchemy import select
@@ -564,3 +565,99 @@ def test_a_lookup_asks_the_connection_what_it_lists_and_logs_the_calls(
     assert result.ok
     assert [entry.value for entry in result.entries] == ["0", "1"]
     assert calls[0].path == "/lua/rest/v2/get/ntopng/interfaces.lua"
+
+
+VIRUSTOTAL = registry.VIRUSTOTAL
+
+
+def virustotal_api(**changes: object) -> Submission:
+    fields: dict[str, object] = {
+        "url": "https://www.virustotal.com",
+        "tls_mode": "system",
+        "tls_ca_pem": None,
+        "tls_fingerprint": None,
+        "options": {"tier": "premium"},
+        "secrets": {"api_key": "vt-key-123456"},
+    }
+    return Submission(**{**fields, **changes})  # type: ignore[arg-type]
+
+
+def named_on_the_internet(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Names the hosts of the internet to an address on the internet, as DNS would."""
+
+    def lookup(host: str, port: int) -> list[IPv4Address | IPv6Address]:
+        del host, port
+        return [ip_address("93.184.216.34")]
+
+    monkeypatch.setattr(netguard, "lookup", lookup)
+
+
+def test_a_connection_on_the_internet_is_checked_with_the_internet_policy() -> None:
+    assert service.policy_for(VIRUSTOTAL.connections[0], HOME_NETWORK) is netguard.PUBLIC_INTERNET
+    assert service.policy_for(registry.CROWDSEC.connections[0], HOME_NETWORK) is HOME_NETWORK
+
+
+def test_virustotal_is_kept_at_its_own_address_whatever_address_was_typed(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named_on_the_internet(monkeypatch)
+
+    save(session, settings, VIRUSTOTAL, {"api": virustotal_api(url="https://evil.example")})
+
+    row = service.rows_for(session, "virustotal")["api"]
+    assert row.base_url == "https://www.virustotal.com"
+    assert row.options == {"tier": "premium"}
+
+
+def test_an_address_on_the_internet_is_refused_for_a_system_on_the_home_network(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named_on_the_internet(monkeypatch)
+
+    refused = problems(
+        session,
+        settings,
+        registry.CROWDSEC,
+        {
+            "lapi": Submission(
+                url="http://93.184.216.34:8080",
+                tls_mode="system",
+                tls_ca_pem=None,
+                tls_fingerprint=None,
+                options={},
+                secrets={"api_key": "key-123456"},
+            )
+        },
+    )
+
+    assert "lapi.url" in refused
+
+
+def test_a_check_is_made_with_the_policy_of_its_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Target] = []
+
+    async def probe(client: object, target: Target) -> service.Verdict:
+        seen.append(target)
+        return service.Verdict(True, "Checked.")
+
+    async def record(call: object) -> None:
+        del call
+
+    monkeypatch.setitem(probes.PROBES, ("virustotal", "api"), probe)
+    target = Target(
+        integration="virustotal",
+        connection="api",
+        origin=netguard.parse_origin("https://www.virustotal.com", allow_http=False),
+        tls_mode="system",
+        tls_ca_pem=None,
+        tls_fingerprint=None,
+        options={"tier": "free"},
+        secrets={"api_key": "vt-key-123456"},
+    )
+
+    verdict = asyncio.run(service.check(target, record, HOME_NETWORK))  # type: ignore[arg-type]
+
+    assert verdict.ok
+    assert seen == [target]

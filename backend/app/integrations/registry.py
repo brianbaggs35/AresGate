@@ -101,6 +101,9 @@ class FieldDef(BaseModel):
     # For a lookup: more than one can be chosen. They are kept as numbers joined by commas
     # (``0,1``), lowest first, and ``chosen_numbers`` reads them back.
     multiple: bool = False
+    # What the owner must know before choosing, shown as a warning beside the field, such as what
+    # a free access level is not allowed to be used for. Empty when there is nothing to warn of.
+    caution: str = ""
 
 
 class ModuleDef(BaseModel):
@@ -136,6 +139,13 @@ class ConnectionDef(BaseModel):
     # choosing how to trust it needs to know, shown beside that choice. Left empty when the
     # usual advice is all there is.
     certificate_note: str = ""
+    # The address the connection always uses, for a service that has one for everyone. The form
+    # doesn't ask for it, and whatever is sent in its place is replaced by this one, so that a
+    # key is only ever sent to the service it belongs to.
+    address: str = ""
+    # Whether the service is on the internet rather than the home network. Its address is then
+    # checked against the internet's addresses, and never against the home network's.
+    internet: bool = False
 
 
 class IntegrationDef(BaseModel):
@@ -147,6 +157,9 @@ class IntegrationDef(BaseModel):
     provides: str
     # The kind of thing it is, as one word ("firewall"): the web app picks the picture.
     icon: str
+    # What family of integration it belongs to, shown on its card (such as "Threat intelligence").
+    # Empty when it belongs to none.
+    category: str = ""
     docs_url: str
     # How to get what the fields ask for, step by step, in the product's own terms.
     guide: Guide
@@ -407,8 +420,57 @@ CROWDSEC = IntegrationDef(
     ),
 )
 
+THREAT_INTELLIGENCE = "Threat intelligence"
+# What the owner is told beside the access level. The free public API's terms forbid business and
+# commercial use, so the choice has to be made knowingly. Lookups are spaced to the free limits.
+TIER_CAUTION = (
+    "Free and premium differ. The free public API allows 4 lookups a minute and 500 a day, and it "
+    "must not be used in business workflows, commercial products or services. Premium's limits "
+    "depend on your plan. Pick the level your key has: on free, AresGate spaces its lookups to "
+    "the limits. VirusTotal also shares each address it is asked about with its community, so "
+    "only addresses on the internet are sent."
+)
+
+VIRUSTOTAL = IntegrationDef(
+    key="virustotal",
+    name="VirusTotal",
+    provides=(
+        "How many security vendors flag each internet address, and who owns it, so that the AI "
+        "reads an incident with that in mind."
+    ),
+    icon="threats",
+    category=THREAT_INTELLIGENCE,
+    docs_url="https://docs.virustotal.com/reference/overview",
+    guide=guides.VIRUSTOTAL,
+    connections=(
+        ConnectionDef(
+            key="api",
+            label="VirusTotal API",
+            summary="VirusTotal's API, with the API key from your account. Its address is fixed.",
+            url_example="https://www.virustotal.com",
+            address="https://www.virustotal.com",
+            allow_http=False,
+            internet=True,
+            fields=(
+                FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),
+                FieldDef(
+                    key="tier",
+                    label="Access level",
+                    kind=FieldKind.CHOICE,
+                    default="free",
+                    choices=(
+                        Choice(value="free", label="Free public API"),
+                        Choice(value="premium", label="Premium API"),
+                    ),
+                    caution=TIER_CAUTION,
+                ),
+            ),
+        ),
+    ),
+)
+
 INTEGRATIONS: Mapping[str, IntegrationDef] = {
-    item.key: item for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC)
+    item.key: item for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL)
 }
 
 

@@ -160,6 +160,20 @@ def _secrets(
     return new, sorted(kept - wanted), problems
 
 
+def policy_for(connection: ConnectionDef, home: AddressPolicy) -> AddressPolicy:
+    """The address policy a connection is checked with: the internet's for one that is on the
+    internet, so that its address is never looked for on the home network, and the home network's
+    for the rest."""
+    return netguard.PUBLIC_INTERNET if connection.internet else home
+
+
+def _reached_with(target: Target, home: AddressPolicy) -> AddressPolicy:
+    """The policy for a connection that is ready to use, found from its definition."""
+    definition = registry.INTEGRATIONS[target.integration]
+    connection = definition.connection(target.connection)
+    return home if connection is None else policy_for(connection, home)
+
+
 def _prepare(
     db: Session,
     policy: AddressPolicy,
@@ -170,8 +184,10 @@ def _prepare(
     problems: dict[str, str] = {}
     origin: Origin | None = None
     try:
-        origin = netguard.parse_origin(submission.url, allow_http=connection.allow_http)
-        netguard.check_reachable(policy, origin)
+        # A fixed address is the only one the connection may use, whatever was typed in its place.
+        address = connection.address or submission.url
+        origin = netguard.parse_origin(address, allow_http=connection.allow_http)
+        netguard.check_reachable(policy_for(connection, policy), origin)
     except Refused as refusal:
         problems["url"] = str(refusal)
     mode, ca_pem, fingerprint, tls_problems = _tls_settings(
@@ -388,7 +404,7 @@ def draft_target(
 async def check(target: Target, recorder: Recorder, policy: AddressPolicy) -> Verdict:
     """Tests a connection: what the integration's probe made of it."""
     probe = probes.PROBES[(target.integration, target.connection)]
-    async with ApiClient(target, recorder, policy) as client:
+    async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
         return await probes.run(probe, client, target)
 
 
@@ -396,7 +412,7 @@ async def look_up(
     lookup: probes.Lookuper, target: Target, recorder: Recorder, policy: AddressPolicy
 ) -> probes.Lookup:
     """Asks a connection what it lists (a lookup for one of its fields)."""
-    async with ApiClient(target, recorder, policy) as client:
+    async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
         return await probes.look_up(lookup, client, target)
 
 

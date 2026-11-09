@@ -94,6 +94,8 @@ class IntegrationSummary(BaseModel):
     name: str
     provides: str
     icon: str
+    # What family it belongs to, such as "Threat intelligence"; empty when it belongs to none.
+    category: str
     status: Status
     last_success_at: datetime | None
     services: list[ServiceOut]
@@ -268,6 +270,7 @@ def _integration_out(db: Session, definition: IntegrationDef) -> IntegrationOut:
         name=definition.name,
         provides=definition.provides,
         icon=definition.icon,
+        category=definition.category,
         status=service.integration_status(rows),
         last_success_at=service.last_success(rows),
         services=_services(definition, rows),
@@ -293,6 +296,7 @@ def list_integrations(db: Db) -> list[IntegrationSummary]:
                 name=definition.name,
                 provides=definition.provides,
                 icon=definition.icon,
+                category=definition.category,
                 status=service.integration_status(rows),
                 last_success_at=service.last_success(rows),
                 services=_services(definition, rows),

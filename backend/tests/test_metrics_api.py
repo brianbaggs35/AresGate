@@ -55,6 +55,7 @@ def test_every_integration_is_listed_with_how_long_it_keeps_samples(
         "ntopng",
         "wazuh",
         "crowdsec",
+        "virustotal",
     ]
     assert body["sources"][0] == {
         "source": "opnsense",

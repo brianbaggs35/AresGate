@@ -681,6 +681,39 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "CrowdSec's local API accepted the key.")
 
 
+# A public address that always has a report, so that a key is tested on one that is known.
+VIRUSTOTAL_ADDRESS = "8.8.8.8"
+
+
+async def virustotal(client: ApiClient, target: Target) -> Verdict:
+    """Asks for one address's report with the key. A key VirusTotal accepts answers with the
+    report; one it refuses answers 401 or 403. The test is one lookup, so it counts toward the
+    access level's allowance like any other."""
+    reply = await client.request(
+        "GET",
+        f"/api/v3/ip_addresses/{VIRUSTOTAL_ADDRESS}",
+        headers={"x-apikey": target.secrets["api_key"]},
+    )
+    if reply.status == 429:
+        return Verdict(
+            False,
+            "VirusTotal's limit on requests has been reached. Wait a while, and keep to the "
+            "limits of the access level chosen.",
+        )
+    if bad := problem(
+        reply,
+        "VirusTotal",
+        refused="VirusTotal didn't accept the key. Copy it again from your VirusTotal account.",
+        forbidden="VirusTotal refused this request with the key. Check the key's access level.",
+    ):
+        return bad
+    data = as_object(reply.json())
+    if data is None or "data" not in data:
+        return unexpected("VirusTotal")
+    level = "premium" if target.options.get("tier") == "premium" else "free"
+    return Verdict(True, f"VirusTotal accepted the key. It is set to the {level} access level.")
+
+
 LOOKUPS: Mapping[tuple[str, str, str], Lookuper] = {
     ("ntopng", "api", "interface_id"): ntopng_interface_lookup,
 }
@@ -692,6 +725,7 @@ PROBES: Mapping[tuple[str, str], Probe] = {
     ("wazuh", "manager"): wazuh_manager,
     ("wazuh", "indexer"): wazuh_indexer,
     ("crowdsec", "lapi"): crowdsec,
+    ("virustotal", "api"): virustotal,
 }
 
 

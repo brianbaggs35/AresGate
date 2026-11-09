@@ -715,3 +715,60 @@ CROWDSEC = Guide(
         ),
     ),
 )
+
+
+VIRUSTOTAL = Guide(
+    parts=(
+        Part(
+            title="Get an API key",
+            connection="api",
+            intro=(
+                "AresGate asks VirusTotal about the internet addresses in an incident, with the "
+                "API key from your account. VirusTotal says that key carries all of your "
+                "privileges."
+            ),
+            steps=(
+                Step(
+                    title="Copy the API key",
+                    detail="Sign in to VirusTotal. Your API key is in your account's user menu.",
+                    menu=("User menu",),
+                    result="Paste it into API key on the card.",
+                    watch=(
+                        "Keep the key to AresGate alone. Anyone who holds it can act as your "
+                        "account there."
+                    ),
+                ),
+                Step(
+                    title="Choose the access level",
+                    detail=(
+                        "Choose Free public API, or Premium API if your plan is premium. The two "
+                        "have different limits, which the card shows beside the choice."
+                    ),
+                    result="Set Access level on the card.",
+                    watch=(
+                        "The free public API must not be used in commercial products or services, "
+                        "or in business workflows. Choose it only where those rules allow."
+                    ),
+                    inferred=(
+                        "VirusTotal's pages don't say how to tell from a key which plan it is on, "
+                        "so AresGate doesn't detect the access level: you choose it."
+                    ),
+                ),
+            ),
+        ),
+    ),
+    sources=(
+        Source(
+            title="VirusTotal API: overview",
+            url="https://docs.virustotal.com/reference/overview",
+        ),
+        Source(
+            title="VirusTotal API: authentication",
+            url="https://docs.virustotal.com/reference/authentication",
+        ),
+        Source(
+            title="VirusTotal API: public and premium limits",
+            url="https://docs.virustotal.com/reference/public-vs-premium-api",
+        ),
+    ),
+)
