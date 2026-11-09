@@ -59,7 +59,7 @@ published release instead of building it, and updating.
 | [Operations](DOCS/operations.md) | Where the data is, backups and restores, logs, certificates |
 | [Design rules](DOCS/ui.md) | The parts every page of the web app is built from, and the rules for new ones |
 | [The look](DOCS/design.md) | What the web app should feel like, where the ideas come from, and the rules for motion |
-| [Integrations](DOCS/integrations.md) | Connecting OPNsense (with Suricata, CrowdSec, OpenVPN, Zenarmor and more), ntopng, Wazuh and CrowdSec |
+| [Integrations](DOCS/integrations.md) | Connecting OPNsense (with Suricata, CrowdSec, OpenVPN, Zenarmor and more), ntopng, Wazuh, CrowdSec and VirusTotal |
 | [Threats](DOCS/threats.md) | How reports become a few threats: counted once, grouped, told from background, and tuned to your network |
 | [Alerts](DOCS/alerts.md) | Sending alerts to a Discord channel, and how the webhook's address is kept safe |
 | [Security](DOCS/security.md) | How AresGate is hardened and how it is checked |

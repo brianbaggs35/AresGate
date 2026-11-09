@@ -19,6 +19,11 @@ Every release's notes are here, newest first. The format follows
   talked to and what talked to it in the last week, the incidents its addresses are in, and the
   verdicts given about it. The page asks again every 30 seconds and keeps what is on screen when that
   fails. It is served by `GET /api/assets/{key}`.
+- **VirusTotal tells the AI what the internet side of an incident is.** Its integration asks
+  VirusTotal how many security vendors flag each internet address an incident names, and who owns
+  it, and the AI reads those reports with the incident. Only addresses on the internet are sent,
+  never one of your own. Its address is fixed, its key is write-only, and the access level is
+  chosen on its page, with the free public API's terms said beside the choice.
 
 ### Fixed
 
