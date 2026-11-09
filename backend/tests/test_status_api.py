@@ -146,7 +146,13 @@ def test_it_lists_every_integration_even_with_none_connected(
 ) -> None:
     parts = [part for part in get(client)["parts"] if part["group"] == "integration"]
 
-    assert [part["key"] for part in parts] == ["opnsense", "ntopng", "wazuh", "crowdsec"]
+    assert [part["key"] for part in parts] == [
+        "opnsense",
+        "ntopng",
+        "wazuh",
+        "crowdsec",
+        "virustotal",
+    ]
     for part in parts:
         assert part["integration"] == part["key"]
         assert part["state"] == "off"

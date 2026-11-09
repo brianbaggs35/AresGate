@@ -1,9 +1,11 @@
 """What the assistant may look at: each lookup finds what it says, reads only, and writes what it
 finds through the redactor, so a provider that must not see an address sees a stand-in."""
 
+from dataclasses import replace
 from datetime import timedelta
 from ipaddress import ip_address
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.ai import tools
@@ -12,6 +14,9 @@ from app.ai.tools import Args
 from app.config import Settings
 from app.events.event import Severity
 from app.events.store import record as record_events
+from app.intel import store as intel_store
+from app.intel import virustotal
+from app.intel.virustotal import Report
 from app.models import (
     CollectorHealth,
     Device,
@@ -23,6 +28,19 @@ from tests.test_ai_service import NOW
 from tests.test_ai_triage import ATTACKER, DEVICE, incident, kept, signals
 
 HOUR = timedelta(hours=1)
+PUBLIC = ip_address("93.184.216.34")
+HOME = ip_address(DEVICE)
+REPORT = Report(
+    malicious=3,
+    suspicious=1,
+    harmless=60,
+    undetected=20,
+    reputation=-12,
+    analysed_at=NOW - timedelta(days=2),
+    country="NL",
+    owner="Example Hosting",
+    asn=64500,
+)
 
 
 def redactor(session: Session, level: Level = Level.LOCAL) -> Redactor:
@@ -50,6 +68,7 @@ class TestTheList:
             "blocked_sources",
             "device",
             "integrations",
+            "reputation",
         )
         assert all(tools.by_name(name) is not None for name in tools.names())
         assert tools.by_name("delete_everything") is None
@@ -436,3 +455,66 @@ def test_nothing_in_the_list_writes() -> None:
         assert not any(
             word in source for word in (".add(", ".delete(", ".commit(", ".flush(", "insert(")
         ), tool.name
+
+
+class TestReputation:
+    """What VirusTotal has said of one address on the internet, read by the assistant."""
+
+    def test_an_address_on_the_internet_is_described_by_the_engines_and_its_owner(
+        self, session: Session
+    ) -> None:
+        intel_store.save_report(session, virustotal.PROVIDER, PUBLIC, REPORT)
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"{PUBLIC}: 3 of 84 engines flag it as malicious, 1 as suspicious, 60 as harmless "
+            "and 20 found nothing.",
+            "Owner Example Hosting, country NL, community score -12, "
+            f"analysed {REPORT.analysed_at:%Y-%m-%d %H:%M} UTC.",
+        ]
+        assert found.summary == f"VirusTotal's report on {PUBLIC}"
+
+    def test_a_report_without_an_owner_or_country_says_so(self, session: Session) -> None:
+        intel_store.save_report(
+            session, virustotal.PROVIDER, PUBLIC, replace(REPORT, owner=None, country=None)
+        )
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert "Owner unknown owner, country unknown, community score -12" in found.lines[1]
+
+    def test_an_address_nobody_has_reported_on_says_so(self, session: Session) -> None:
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report."
+        ]
+        assert found.summary == f"no VirusTotal report on {PUBLIC}"
+
+    def test_an_address_on_the_home_network_is_not_looked_for(self, session: Session) -> None:
+        found = run(session, "reputation", Args(name=str(HOME)))
+
+        assert found.lines == [f"{HOME} isn't on the internet, so VirusTotal isn't asked about it."]
+        assert found.summary == f"{HOME} isn't on the internet"
+
+    @pytest.mark.parametrize("name", [None, "", "the nas", "10.0.0.999"])
+    def test_something_that_is_not_an_address_is_refused(
+        self, session: Session, name: str | None
+    ) -> None:
+        found = run(session, "reputation", Args(name=name))
+
+        assert found.lines == ["Give the address to look up, such as 203.0.113.7."]
+        assert found.summary == "no address given"
+
+    def test_at_the_strictest_level_the_address_is_a_stand_in(self, session: Session) -> None:
+        intel_store.save_report(session, virustotal.PROVIDER, PUBLIC, REPORT)
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)), level=Level.STRICT)
+
+        text = "\n".join(found.lines)
+        assert str(PUBLIC) not in text
+        assert "EXT_" in text

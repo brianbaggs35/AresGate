@@ -23,6 +23,8 @@ from app.ai.gateway import Answer, Unavailable
 from app.ai.redaction import Level, Redactor
 from app.config import Settings
 from app.incidents import queries
+from app.intel import store as intel_store
+from app.intel import virustotal
 from app.models import (
     CLASSES,
     USAGE_LEVELS,
@@ -924,3 +926,83 @@ class FakeRead:
         if self.fail_first and self.calls == 1:
             raise ConnectionError("the database isn't up yet")
         return 0
+
+
+class TestReputationInThePrompt:
+    """What VirusTotal has said of the internet addresses an incident involves reaches the AI, and
+    is redacted like the rest of what it is shown."""
+
+    def prompt(self, session: Session, found: Incident, level: Level = Level.BALANCED) -> str:
+        return triage.prompt_for(session, found, Redactor(session, level, NOW))
+
+    def test_what_is_known_of_an_address_in_the_incident_is_given_to_the_ai(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        report = virustotal.Report(
+            malicious=3,
+            suspicious=1,
+            harmless=60,
+            undetected=20,
+            reputation=-12,
+            analysed_at=NOW - timedelta(days=2),
+            country="NL",
+            owner="Example Hosting",
+            asn=64500,
+        )
+        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+
+        said = self.prompt(session, found)
+
+        assert "What VirusTotal says of the internet addresses involved:" in said
+        assert (
+            f"- {ATTACKER}: 3 of 84 engines flag it as malicious and 1 as suspicious; owner "
+            "Example Hosting, NL; community score -12; analysed "
+            f"{report.analysed_at:%Y-%m-%d}"
+        ) in said
+
+    def test_an_owner_and_country_that_are_not_known_are_said_so(self, session: Session) -> None:
+        found = incident(session)
+        report = virustotal.Report(
+            malicious=0,
+            suspicious=0,
+            harmless=70,
+            undetected=5,
+            reputation=0,
+            analysed_at=NOW,
+            country=None,
+            owner=None,
+            asn=None,
+        )
+        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+
+        said = self.prompt(session, found)
+
+        assert "owner unknown owner, unknown country; community score 0" in said
+
+    def test_an_incident_without_any_report_has_no_reputation_lines(self, session: Session) -> None:
+        found = incident(session)
+
+        said = self.prompt(session, found)
+
+        assert "What VirusTotal says" not in said
+
+    def test_at_the_strictest_level_the_address_is_a_stand_in(self, session: Session) -> None:
+        found = incident(session)
+        report = virustotal.Report(
+            malicious=1,
+            suspicious=0,
+            harmless=60,
+            undetected=0,
+            reputation=0,
+            analysed_at=NOW,
+            country="NL",
+            owner="Example Hosting",
+            asn=64500,
+        )
+        intel_store.save_report(session, virustotal.PROVIDER, ip_address(ATTACKER), report)
+
+        said = self.prompt(session, found, Level.STRICT)
+
+        assert ATTACKER not in said
+        assert "- EXT_" in said

@@ -1224,3 +1224,68 @@ def test_a_size_beyond_the_gigabytes_is_in_terabytes() -> None:
     assert probes.Traffic(2, 1, 3, 4_700_000_000_000).describe() == (
         "2 hosts (1 local), 3 flows, 4.7 TB seen"
     )
+
+
+VIRUSTOTAL_REPORT = json.dumps(
+    {
+        "data": {
+            "id": "8.8.8.8",
+            "type": "ip_address",
+            "attributes": {"last_analysis_stats": {"malicious": 0, "harmless": 80}},
+        }
+    }
+)
+AS_JSON = {"Content-Type": "application/json"}
+
+
+def test_virustotal_accepts_a_key_that_gets_a_report(serve: Serve) -> None:
+    result, server, _ = verdict(
+        serve,
+        "virustotal",
+        "api",
+        lambda seen: Answer(body=VIRUSTOTAL_REPORT, headers=AS_JSON),
+        secrets={"api_key": "vt-key"},
+        options={"tier": "premium"},
+    )
+
+    assert result == Verdict(
+        True, "VirusTotal accepted the key. It is set to the premium access level."
+    )
+    [seen] = server.seen
+    assert seen.target == "/api/v3/ip_addresses/8.8.8.8"
+    assert seen.headers["x-apikey"] == "vt-key"
+
+
+def test_virustotal_takes_an_access_level_that_is_not_set_to_be_free(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve,
+        "virustotal",
+        "api",
+        lambda seen: Answer(body=VIRUSTOTAL_REPORT, headers=AS_JSON),
+        secrets={"api_key": "vt-key"},
+    )
+
+    assert result.message.endswith("the free access level.")
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (Answer(status=401), "VirusTotal didn't accept the key."),
+        (Answer(status=403), "VirusTotal refused this request with the key."),
+        (Answer(status=429), "VirusTotal's limit on requests has been reached."),
+        (Answer(status=500), "VirusTotal answered HTTP 500."),
+        (Answer(body="[]", headers=AS_JSON), "the answer doesn't look like VirusTotal's"),
+        (Answer(body="{}", headers=AS_JSON), "the answer doesn't look like VirusTotal's"),
+        (Answer(body="not json", headers=AS_JSON), "the answer doesn't look like VirusTotal's"),
+    ],
+)
+def test_virustotal_that_does_not_accept_the_key_is_explained(
+    serve: Serve, answer: Answer, message: str
+) -> None:
+    result, _, _ = verdict(
+        serve, "virustotal", "api", lambda seen: answer, secrets={"api_key": "vt-key"}
+    )
+
+    assert not result.ok
+    assert message in result.message

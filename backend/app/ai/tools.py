@@ -28,6 +28,8 @@ from app.events.event import Severity
 from app.incidents import queries
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
+from app.intel import store as intel_store
+from app.intel import virustotal
 from app.models import (
     AiTriage,
     CollectorHealth,
@@ -269,6 +271,40 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     return Found(lines, [], _plural(len(devices), "device"))
 
 
+# -- the internet addresses
+
+
+def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What VirusTotal has said of one address on the internet, if it has been asked about it."""
+    address = read_address(args.name or "")
+    if address is None:
+        return Found(["Give the address to look up, such as 203.0.113.7."], [], "no address given")
+    shown = redactor.address(str(address))
+    if not address.is_global:
+        return Found(
+            [f"{shown} isn't on the internet, so VirusTotal isn't asked about it."],
+            [],
+            f"{shown} isn't on the internet",
+        )
+    report = intel_store.report_for(db, virustotal.PROVIDER, address)
+    if report is None:
+        return Found(
+            [f"VirusTotal hasn't reported on {shown}: it hasn't been asked, or it has no report."],
+            [],
+            f"no VirusTotal report on {shown}",
+        )
+    total = report.malicious + report.suspicious + report.harmless + report.undetected
+    owner = redactor.text(report.owner, 60) if report.owner else "unknown owner"
+    lines = [
+        f"{shown}: {report.malicious} of {total} engines flag it as malicious, "
+        f"{report.suspicious} as suspicious, {report.harmless} as harmless and "
+        f"{report.undetected} found nothing.",
+        f"Owner {owner}, country {report.country or 'unknown'}, community score "
+        f"{report.reputation}, analysed {_when(report.analysed_at)}.",
+    ]
+    return Found(lines, [], f"VirusTotal's report on {shown}")
+
+
 # -- the integrations
 
 
@@ -346,6 +382,12 @@ TOOLS: Final[Sequence[Tool]] = (
         "Whether each integration and its collectors are working, and what went wrong. Uses "
         "nothing.",
         integrations,
+    ),
+    Tool(
+        "reputation",
+        "What VirusTotal says of one address on the internet: how many security engines flag "
+        "it, and who owns it. Uses: name, for the address.",
+        reputation,
     ),
 )
 

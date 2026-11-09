@@ -72,10 +72,23 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
 
     assert response.status_code == 200
     listed = response.json()
-    assert [item["key"] for item in listed] == ["opnsense", "ntopng", "wazuh", "crowdsec"]
+    assert [item["key"] for item in listed] == [
+        "opnsense",
+        "ntopng",
+        "wazuh",
+        "crowdsec",
+        "virustotal",
+    ]
     assert listed[0]["name"] == "OPNsense"
     assert "firewall" in listed[0]["provides"]
-    assert [item["icon"] for item in listed] == ["firewall", "traffic", "alerts", "threats"]
+    assert [item["icon"] for item in listed] == [
+        "firewall",
+        "traffic",
+        "alerts",
+        "threats",
+        "threats",
+    ]
+    assert [item["category"] for item in listed] == ["", "", "", "", "Threat intelligence"]
     assert all(item["status"] == "not_connected" for item in listed)
     assert all(item["last_success_at"] is None and item["services"] == [] for item in listed)
 

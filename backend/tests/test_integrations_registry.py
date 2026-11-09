@@ -30,8 +30,30 @@ def test_every_connection_has_a_probe_and_every_probe_a_connection() -> None:
     assert defined == set(probes.PROBES)
 
 
-def test_the_four_integrations_are_listed_in_order() -> None:
-    assert list(INTEGRATIONS) == ["opnsense", "ntopng", "wazuh", "crowdsec"]
+def test_the_integrations_are_listed_in_order() -> None:
+    assert list(INTEGRATIONS) == ["opnsense", "ntopng", "wazuh", "crowdsec", "virustotal"]
+
+
+def test_virustotal_is_threat_intelligence_on_the_internet_with_a_warned_tier() -> None:
+    definition = INTEGRATIONS["virustotal"]
+    connection = definition.connection("api")
+
+    assert definition.category == "Threat intelligence"
+    assert connection is not None
+    assert connection.internet
+    assert connection.address == "https://www.virustotal.com"
+    assert urlsplit(connection.address).scheme == "https"
+    tier = next(item for item in connection.fields if item.key == "tier")
+    assert tier.kind is FieldKind.CHOICE
+    assert tier.default == "free"
+    assert tier.caution.startswith("Free and premium differ.")
+
+
+def test_a_connection_with_a_fixed_address_takes_no_other_address() -> None:
+    for integration in INTEGRATIONS.values():
+        for connection in integration.connections:
+            if connection.address:
+                assert connection.address == connection.url_example
 
 
 def test_a_guide_has_steps_for_each_connection_it_names_and_cites_its_sources() -> None:

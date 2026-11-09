@@ -1,0 +1,508 @@
+"""The lookups AresGate makes of VirusTotal: what the limits allow, what is kept of them, which
+address is asked about next, and the loop that makes them."""
+
+import asyncio
+import logging
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address, ip_network
+from typing import Any
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.config import Settings
+from app.integrations import netguard, service
+from app.integrations.client import Call, CallFailed, Target
+from app.intel import budget, candidates, run, store, virustotal
+from app.models import Incident, IntegrationConnection, IntelLookup, IntelReport, Interface
+from app.models.base import utcnow
+from tests.test_incidents_search import incident as make_incident
+
+NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+PROVIDER = virustotal.PROVIDER
+ADDRESS = ip_address("93.184.216.34")
+OTHER = ip_address("1.1.1.1")
+HOME = ip_address("192.168.1.20")
+WAN = ip_address("8.8.4.4")
+REPORT = virustotal.Report(
+    malicious=3,
+    suspicious=1,
+    harmless=60,
+    undetected=20,
+    reputation=-12,
+    analysed_at=NOW - timedelta(days=2),
+    country="NL",
+    owner="Example Hosting",
+    asn=64500,
+)
+
+
+def lookup_at(
+    session: Session,
+    when: datetime,
+    *,
+    address: str = str(ADDRESS),
+    outcome: str = store.REPORTED,
+    provider: str = PROVIDER,
+) -> IntelLookup:
+    row = IntelLookup(
+        provider=provider,
+        address=ip_address(address),
+        requested_at=when,
+        outcome=outcome,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def incident(session: Session, addresses: list[str], last_seen: datetime) -> Incident:
+    return make_incident(
+        session,
+        addresses[0],
+        addresses=[ip_address(address) for address in addresses],
+        first_seen_at=last_seen - timedelta(minutes=5),
+        last_seen_at=last_seen,
+    )
+
+
+def interface(session: Session, role: str, networks: list[Any]) -> Interface:
+    row = Interface(name=f"{role} side", role=role, networks=networks)
+    session.add(row)
+    session.flush()
+    return row
+
+
+# -- the limits
+
+
+def test_lookups_are_spaced_by_the_spacing_of_the_access_level(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(seconds=10))
+
+    assert not budget.may_look_up(session, PROVIDER, budget.FREE, NOW)
+    assert budget.may_look_up(session, PROVIDER, budget.FREE, NOW + timedelta(seconds=5))
+
+
+def test_premium_lookups_are_only_a_second_apart(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(seconds=2))
+
+    assert budget.may_look_up(session, PROVIDER, budget.PREMIUM, NOW)
+
+
+def test_the_lookups_of_another_provider_do_not_space_these(session: Session) -> None:
+    lookup_at(session, NOW - timedelta(seconds=1), provider="another")
+
+    assert budget.may_look_up(session, PROVIDER, budget.FREE, NOW)
+
+
+def test_the_day_allowance_counts_the_lookups_of_the_last_day(session: Session) -> None:
+    level = budget.Level(spacing=timedelta(0), per_day=2, per_month=None)
+    lookup_at(session, NOW - timedelta(hours=1))
+    assert budget.may_look_up(session, PROVIDER, level, NOW)
+
+    lookup_at(session, NOW - timedelta(hours=2))
+
+    assert not budget.may_look_up(session, PROVIDER, level, NOW)
+
+
+def test_lookups_older_than_a_day_do_not_use_up_the_day(session: Session) -> None:
+    level = budget.Level(spacing=timedelta(0), per_day=1, per_month=None)
+    lookup_at(session, NOW - timedelta(days=2))
+
+    assert budget.may_look_up(session, PROVIDER, level, NOW)
+
+
+def test_the_month_allowance_counts_the_lookups_of_the_last_thirty_days(session: Session) -> None:
+    level = budget.Level(spacing=timedelta(0), per_day=None, per_month=1)
+    lookup_at(session, NOW - timedelta(days=31))
+    assert budget.may_look_up(session, PROVIDER, level, NOW)
+
+    lookup_at(session, NOW - timedelta(days=3))
+
+    assert not budget.may_look_up(session, PROVIDER, level, NOW)
+
+
+def test_the_access_level_chosen_sets_the_limits() -> None:
+    assert budget.level_of({"tier": "premium"}) is budget.PREMIUM
+    assert budget.level_of({"tier": "free"}) is budget.FREE
+    assert budget.level_of({}) is budget.FREE
+    assert budget.FREE.spacing == timedelta(seconds=15)
+    assert budget.FREE.per_day == 500
+    assert budget.FREE.per_month == 15_000
+    assert budget.PREMIUM.per_day is None
+    assert budget.PREMIUM.per_month is None
+
+
+# -- what is kept
+
+
+def test_a_request_is_kept_as_pending_before_it_is_made(session: Session) -> None:
+    lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
+
+    row = session.get(IntelLookup, lookup_id)
+    assert row is not None
+    assert (row.provider, row.address, row.requested_at, row.outcome) == (
+        PROVIDER,
+        ADDRESS,
+        NOW,
+        store.PENDING,
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "outcome"),
+    [(virustotal.Unknown(), store.UNKNOWN), (virustotal.Failed("no answer"), store.FAILED)],
+)
+def test_an_answer_without_a_report_is_kept_on_the_lookup_only(
+    session: Session, answer: virustotal.Answer, outcome: str
+) -> None:
+    lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
+
+    store.finish(session, lookup_id, answer)
+
+    row = session.get(IntelLookup, lookup_id)
+    assert row is not None
+    assert row.outcome == outcome
+    assert store.report_for(session, PROVIDER, ADDRESS) is None
+
+
+def test_a_report_is_kept_with_the_lookup_that_brought_it(session: Session) -> None:
+    lookup_id = store.record(session, PROVIDER, ADDRESS, NOW)
+
+    store.finish(session, lookup_id, virustotal.Reported(report=REPORT))
+
+    row = session.get(IntelLookup, lookup_id)
+    assert row is not None
+    assert row.outcome == store.REPORTED
+    kept = store.report_for(session, PROVIDER, ADDRESS)
+    assert kept is not None
+    assert (kept.malicious, kept.owner, kept.asn) == (3, "Example Hosting", 64500)
+
+
+def test_finishing_a_lookup_that_is_not_kept_changes_nothing(session: Session) -> None:
+    store.finish(session, 999_999, virustotal.Unknown())
+
+    assert session.get(IntelLookup, 999_999) is None
+
+
+def test_a_newer_report_replaces_the_one_kept_for_the_address(session: Session) -> None:
+    store.save_report(session, PROVIDER, ADDRESS, REPORT)
+    store.save_report(session, PROVIDER, ADDRESS, replace(REPORT, malicious=9))
+
+    kept = session.scalars(select(IntelReport)).all()
+    assert [row.malicious for row in kept] == [9]
+
+
+def test_reports_are_found_for_the_addresses_asked_about(session: Session) -> None:
+    store.save_report(session, PROVIDER, ADDRESS, REPORT)
+    store.save_report(session, "another", ADDRESS, REPORT)
+
+    assert store.reports_for(session, PROVIDER, []) == []
+    found = store.reports_for(session, PROVIDER, [ADDRESS, ip_address("198.51.100.10")])
+    assert [row.address for row in found] == [ADDRESS]
+
+
+def test_lookups_older_than_the_keep_period_are_forgotten(session: Session) -> None:
+    old = lookup_at(session, NOW - store.KEEP - timedelta(days=1))
+    recent = lookup_at(session, NOW - timedelta(days=1))
+    other = lookup_at(session, NOW - store.KEEP - timedelta(days=1), provider="another")
+
+    store.prune(session, PROVIDER, NOW)
+
+    remaining = set(session.scalars(select(IntelLookup.id)).all())
+    assert recent.id in remaining
+    assert other.id in remaining
+    assert old.id not in remaining
+
+
+# -- which address is next
+
+
+def test_the_own_networks_are_the_ones_on_the_internet_side(session: Session) -> None:
+    interface(session, "internet", ["8.8.4.0/24", "not a network", 7])
+    interface(session, "home", ["192.168.1.0/24"])
+
+    assert candidates.own_networks(session) == (ip_network("8.8.4.0/24"),)
+
+
+def test_the_first_public_address_of_the_most_recent_incident_is_next(session: Session) -> None:
+    incident(session, [str(HOME), str(ADDRESS)], NOW - timedelta(hours=1))
+    incident(session, [str(OTHER)], NOW - timedelta(hours=3))
+
+    assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_an_address_on_the_home_s_own_internet_side_is_never_next(session: Session) -> None:
+    interface(session, "internet", ["8.8.4.0/24"])
+    incident(session, [str(WAN)], NOW - timedelta(hours=1))
+
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+
+def test_the_home_network_is_never_asked_about(session: Session) -> None:
+    incident(session, [str(HOME)], NOW - timedelta(hours=1))
+
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+
+@pytest.mark.parametrize("outcome", [store.REPORTED, store.UNKNOWN])
+def test_an_address_answered_lately_is_not_asked_about_again(
+    session: Session, outcome: str
+) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    lookup_at(session, NOW - timedelta(days=1), outcome=outcome)
+
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+
+def test_an_answer_older_than_a_week_is_asked_about_again(session: Session) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    lookup_at(session, NOW - timedelta(days=8))
+
+    assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_a_failed_lookup_is_tried_again_after_an_hour(session: Session) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    lookup_at(session, NOW - timedelta(minutes=30), outcome=store.FAILED)
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+    session.query(IntelLookup).delete()
+    lookup_at(session, NOW - timedelta(hours=2), outcome=store.FAILED)
+
+    assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_the_lookups_of_another_provider_do_not_stop_an_address(session: Session) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    lookup_at(session, NOW - timedelta(days=1), provider="another")
+
+    assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_incidents_not_seen_for_a_week_are_not_looked_through(session: Session) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(days=8))
+
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+
+def test_no_incidents_means_no_address_to_ask_about(session: Session) -> None:
+    assert candidates.next_address(session, PROVIDER, NOW) is None
+
+
+# -- the lookups themselves
+
+
+def connect(session: Session, *, tested: bool = True, tier: str = "free") -> None:
+    session.add(
+        IntegrationConnection(
+            integration="virustotal",
+            connection="api",
+            base_url="https://www.virustotal.com",
+            tls_mode="system",
+            options={"tier": tier},
+            last_success_at=utcnow() if tested else None,
+        )
+    )
+    session.commit()
+
+
+def fresh_incident(session: Session, *addresses: str) -> None:
+    incident(session, list(addresses), utcnow() - timedelta(minutes=5))
+    session.commit()
+
+
+def new_session_for(session: Session) -> Callable[[], Session]:
+    return sessionmaker(bind=session.get_bind(), expire_on_commit=False)
+
+
+@pytest.fixture
+def connected(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A connected, tested VirusTotal connection whose secret opens."""
+    origin = netguard.parse_origin("https://www.virustotal.com", allow_http=False)
+
+    def load(*args: object, **kwargs: object) -> Target:
+        del args, kwargs
+        return Target(
+            integration="virustotal",
+            connection="api",
+            origin=origin,
+            tls_mode="system",
+            tls_ca_pem=None,
+            tls_fingerprint=None,
+            options={"tier": "free"},
+            secrets={"api_key": "vt-key"},
+        )
+
+    monkeypatch.setattr(service, "load_target", load)
+    connect(session)
+
+
+def answering(monkeypatch: pytest.MonkeyPatch, answer: object) -> None:
+    async def look_up(*args: object) -> object:
+        del args
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(virustotal, "look_up", look_up)
+
+
+def test_nothing_is_asked_until_the_connection_has_been_tested(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connect(session, tested=False)
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, virustotal.Unknown())
+
+    asked = asyncio.run(run.lookup_once(new_session_for(session), settings, _record))
+
+    assert asked is False
+
+
+def test_nothing_is_asked_without_a_connection(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_nothing_is_asked_while_the_spacing_has_not_passed(
+    session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    lookup_at(session, utcnow() - timedelta(seconds=1))
+    session.commit()
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_nothing_is_asked_when_no_address_may_be_sent(
+    session: Session, settings: Settings, connected: None
+) -> None:
+    fresh_incident(session, str(HOME))
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_nothing_is_asked_when_the_secret_cannot_be_opened(
+    session: Session,
+    settings: Settings,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+
+    def gone(*args: object, **kwargs: object) -> Target:
+        del args, kwargs
+        raise service.Incomplete("The API key isn't kept any more.")
+
+    monkeypatch.setattr(service, "load_target", gone)
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is False
+
+
+def test_a_report_brought_back_is_kept_for_the_address(
+    session: Session,
+    settings: Settings,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, virustotal.Reported(report=REPORT))
+
+    asked = asyncio.run(run.lookup_once(new_session_for(session), settings, _record))
+
+    assert asked is True
+    session.expire_all()
+    kept = store.report_for(session, PROVIDER, ADDRESS)
+    assert kept is not None
+    assert kept.malicious == 3
+    [row] = session.scalars(select(IntelLookup)).all()
+    assert row.outcome == store.REPORTED
+
+
+def test_a_lookup_that_gets_no_answer_is_kept_as_failed(
+    session: Session,
+    settings: Settings,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fresh_incident(session, str(ADDRESS))
+    answering(monkeypatch, CallFailed("VirusTotal didn't answer in time."))
+
+    assert asyncio.run(run.lookup_once(new_session_for(session), settings, _record)) is True
+
+    session.expire_all()
+    [row] = session.scalars(select(IntelLookup)).all()
+    assert row.outcome == store.FAILED
+    assert store.report_for(session, PROVIDER, ADDRESS) is None
+
+
+def test_the_loop_keeps_going_after_a_failure_and_says_what_happened(
+    session: Session,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    calls: list[int] = []
+
+    async def failing(*args: object) -> bool:
+        del args
+        calls.append(1)
+        raise RuntimeError("The database was restarted.")
+
+    monkeypatch.setattr(run, "lookup_once", failing)
+
+    async def go() -> None:
+        await asyncio.wait_for(
+            run.run(
+                new_session_for(session),
+                settings,
+                _record,
+                interval=timedelta(seconds=0),
+            ),
+            timeout=0.2,
+        )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(TimeoutError):
+        asyncio.run(go())
+    assert len(calls) > 1
+    assert "Couldn't ask VirusTotal about an address" in caplog.text
+
+
+def test_the_loop_asks_nothing_when_collecting_is_off(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+
+    async def counting(*args: object) -> bool:
+        del args
+        calls.append(1)
+        return False
+
+    monkeypatch.setattr(run, "lookup_once", counting)
+
+    async def go() -> None:
+        await asyncio.wait_for(
+            run.run(
+                new_session_for(session),
+                settings,
+                _record,
+                enabled=False,
+                interval=timedelta(seconds=0),
+            ),
+            timeout=0.1,
+        )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(go())
+    assert calls == []
+
+
+async def _record(call: Call) -> None:
+    del call

@@ -17,6 +17,7 @@ from app.db import get_sessionmaker
 from app.incidents import run as incidents
 from app.integrations import netguard
 from app.integrations.apilog import ApiLogRecorder
+from app.intel import run as intel
 from app.secret_key import load_secret_key
 
 
@@ -48,6 +49,7 @@ async def serve(settings: Settings) -> None:
         work.create_task(build(settings).run())
         work.create_task(incidents.run(new_session, enabled=collecting(settings)))
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
+        work.create_task(intel.run(new_session, settings, recorder, enabled=collecting(settings)))
         work.create_task(
             notify.run(
                 settings,
