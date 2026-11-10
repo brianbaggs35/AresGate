@@ -72,7 +72,8 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("get", f"{BASE}/1/runs/1"),
         ("post", f"{BASE}/1/runs/1/cancel"),
     ):
-        assert client.request(method, path).status_code == 401, (method, path)
+        response = client.request(method, path)
+        assert response.status_code == 401, (method, path)
 
 
 def test_a_change_from_another_website_is_refused(client: TestClient, csrf_token: str) -> None:
@@ -422,7 +423,8 @@ class TestRemovingOne:
     def test_one_that_does_not_exist_is_not_found(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.delete(f"{BASE}/999", headers=headers(csrf_token)).status_code == 404
+        response = client.delete(f"{BASE}/999", headers=headers(csrf_token))
+        assert response.status_code == 404
 
 
 class TestRuns:
@@ -462,7 +464,8 @@ class TestRuns:
     def test_one_that_does_not_exist_is_not_found(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.post(f"{BASE}/999/runs", headers=headers(csrf_token)).status_code == 404
+        response = client.post(f"{BASE}/999/runs", headers=headers(csrf_token))
+        assert response.status_code == 404
 
     def test_a_run_is_shown_with_its_steps_and_findings(
         self, client: TestClient, csrf_token: str, session: Session
