@@ -121,6 +121,54 @@ def test_saving_again_replaces_the_settings_and_keeps_the_secrets_left_blank(
     assert secret(session, settings, "opnsense-api", "api_secret") == "secret-123456"
 
 
+def test_saving_what_is_already_saved_keeps_how_the_last_test_went(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+    service.record_attempt(row, Verdict(True, "ok", {"suricata": ModuleState.RUNNING}), NOW)
+    session.commit()
+
+    # The secrets are left blank and nothing else differs, as when Save and test is pressed again.
+    save(
+        session,
+        settings,
+        OPNSENSE,
+        {"api": opnsense_api(secrets={"api_key": "", "api_secret": ""})},
+        LATER,
+    )
+
+    [kept] = session.scalars(select(IntegrationConnection)).all()
+    assert kept.last_attempt_at == NOW
+    assert kept.module_states == {"suricata": "running"}
+    assert kept.updated_at == LATER
+    assert service.connection_status(kept) is Status.CONNECTED
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"url": "https://192.168.1.2"},
+        {"tls_mode": "pinned", "tls_fingerprint": "ab" * 32},
+        {"disabled_modules": ["kea"]},
+        {"secrets": {"api_key": "key-123456", "api_secret": "secret-123456"}},
+    ],
+)
+def test_saving_a_change_forgets_how_the_last_test_went(
+    session: Session, settings: Settings, change: dict[str, object]
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+    service.record_attempt(row, Verdict(False, "Broke"), NOW)
+    session.commit()
+
+    save(session, settings, OPNSENSE, {"api": opnsense_api(**change)}, LATER)
+
+    [changed] = session.scalars(select(IntegrationConnection)).all()
+    assert (changed.last_attempt_at, changed.last_error) == (None, None)
+    assert service.connection_status(changed) is Status.UNTESTED
+
+
 def test_a_secret_that_was_pasted_with_a_newline_is_cleaned(
     session: Session, settings: Settings
 ) -> None:

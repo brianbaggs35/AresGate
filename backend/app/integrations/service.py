@@ -277,16 +277,27 @@ def _write(
             integration=definition.key, connection=item.connection.key, created_at=now
         )
         db.add(row)
+    # What the last attempt found was about the old settings, so it only stands for as long as
+    # they are the ones being saved. A new row has no attempt to keep.
+    same = (
+        row.last_attempt_at is not None
+        and not item.new_secrets
+        and not item.stale_secrets
+        and (row.base_url, row.tls_mode, row.tls_ca_pem, row.tls_fingerprint)
+        == (item.origin.url, item.tls_mode, item.tls_ca_pem, item.tls_fingerprint)
+        and row.options == item.options
+        and row.disabled_modules == item.disabled_modules
+    )
     row.base_url = item.origin.url
     row.tls_mode = item.tls_mode
     row.tls_ca_pem = item.tls_ca_pem
     row.tls_fingerprint = item.tls_fingerprint
     row.options = item.options
     row.disabled_modules = item.disabled_modules
-    # What the last attempt found was about the old settings.
-    row.module_states = {}
-    row.last_attempt_at = None
-    row.last_error = None
+    if not same:
+        row.module_states = {}
+        row.last_attempt_at = None
+        row.last_error = None
     row.updated_at = now
     name = registry.credential_name(definition.key, item.connection.key)
     for field, value in item.new_secrets.items():

@@ -4,6 +4,16 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **Pressing Save and test again no longer takes back that a connection was tested.** Saving wiped
+  how the last test went even when nothing had changed, so when a limit held the next test (as on a
+  free VirusTotal key, a minute after it asked for fewer requests) the connection went back to
+  "Not tested yet". Now what the last test found stays until an address, certificate, option,
+  service or key is changed, which is when it stops being about what is saved.
+
 ## 0.0.10
 
 ### Added
