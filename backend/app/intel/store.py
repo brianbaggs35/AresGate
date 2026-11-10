@@ -1,15 +1,22 @@
 """What is kept of the lookups made, and of the answers they brought back.
 
 Every request AresGate makes is kept as a lookup, which is what the allowance is counted over. The
-answer about each subject is kept once as well: a search or a background lookup of a subject that
-was answered within ``FRESH`` is answered from what is kept, and VirusTotal isn't asked again.
+answer about each subject is kept once as well, and for good: a search or a background lookup of a
+subject whose answer is still fresh is answered from what is kept, and VirusTotal isn't asked again.
+An answer that is no longer fresh is asked about again, and the newer answer takes its place. If
+VirusTotal can't be asked then, the answer kept is still there to show.
+
+How long an answer is fresh depends on what it said. VirusTotal has no cheaper way to ask whether a
+report changed than to ask for the report, so the allowance goes where answers change soonest:
+something engines flagged, or that has no report yet, is asked about again after ``SOONER``, and
+something no engine flagged after ``FRESH``.
 """
 
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -22,8 +29,13 @@ type Answered = virustotal.Reported | virustotal.Unknown
 
 # How long a lookup is kept: long enough to count a month's allowance over, with some to spare.
 KEEP = timedelta(days=40)
-# How long the answer about a subject is taken as fresh, so the subject is not asked about again.
+# How long an answer that no engine flagged is taken as fresh, so the subject is not asked about
+# again. A flagged subject, or one with no report yet, is asked about again sooner: an address that
+# attacks today is often cleaned up or handed to someone else within days, and a name nobody has
+# analysed yet is likely to be analysed soon.
 FRESH = timedelta(days=7)
+SOONER = timedelta(days=2)
+CLEAN = "clean"
 
 PENDING = "pending"
 REPORTED = "reported"
@@ -38,6 +50,7 @@ IP = "ip"
 # The columns a newer answer about the same subject replaces.
 _REPLACED = (
     "checked_at",
+    "judgement",
     "outcome",
     "analysed_at",
     "malicious",
@@ -100,13 +113,23 @@ def finish(
 
 def keep(db: Session, provider: str, subject: Subject, answer: Answered, now: datetime) -> None:
     """Keeps the answer about a subject, replacing the one kept before, which was asked about before
-    ``now``. There is one row per subject, so a subject is never kept twice."""
+    ``now``. There is one row per subject, so a subject is never kept twice. What the row has
+    gathered stays: when the subject was first asked about, how often it has been, and, if this
+    answer changes the judgement, when it did and what the judgement was before."""
     values = _values(provider, subject, answer, now)
     statement = insert(IntelSubject).values(**values)
+    newer = statement.excluded
+    changed = IntelSubject.judgement != newer.judgement
+    replaced: dict[str, object] = {name: newer[name] for name in _REPLACED}
+    replaced["host"] = func.coalesce(newer.host, IntelSubject.host)
+    replaced["checks"] = IntelSubject.checks + 1
+    replaced["changed_at"] = case((changed, newer.checked_at), else_=IntelSubject.changed_at)
+    replaced["previous_judgement"] = case(
+        (changed, IntelSubject.judgement), else_=IntelSubject.previous_judgement
+    )
     db.execute(
         statement.on_conflict_do_update(
-            constraint="uq_threat_intel_subjects_subject",
-            set_={name: statement.excluded[name] for name in _REPLACED},
+            constraint="uq_threat_intel_subjects_subject", set_=replaced
         )
     )
 
@@ -117,7 +140,13 @@ def _values(provider: str, subject: Subject, answer: Answered, now: datetime) ->
         "provider": provider,
         "kind": subject.kind,
         "subject": subject.key,
+        "host": subject.host,
         "checked_at": now,
+        "first_checked_at": now,
+        "checks": 1,
+        "judgement": virustotal.judge(None),
+        "changed_at": None,
+        "previous_judgement": None,
         "outcome": UNKNOWN,
         "analysed_at": None,
         "malicious": 0,
@@ -135,6 +164,7 @@ def _values(provider: str, subject: Subject, answer: Answered, now: datetime) ->
         report = answer.report
         values.update(
             outcome=REPORTED,
+            judgement=virustotal.judge(report),
             analysed_at=report.analysed_at,
             malicious=report.malicious,
             suspicious=report.suspicious,
@@ -150,35 +180,58 @@ def _values(provider: str, subject: Subject, answer: Answered, now: datetime) ->
     return values
 
 
-def cached(db: Session, provider: str, subject: Subject, now: datetime) -> IntelSubject | None:
-    """The answer kept for a subject, if the subject was asked about within ``FRESH`` of ``now``."""
+def fresh_for(judgement: str) -> timedelta:
+    """How long an answer with this judgement is taken as fresh."""
+    return FRESH if judgement == CLEAN else SOONER
+
+
+def fresh_until(row: IntelSubject) -> datetime:
+    """When the answer kept for a subject stops being fresh, so the subject is asked about again."""
+    return row.checked_at + fresh_for(row.judgement)
+
+
+def fresh(row: IntelSubject, now: datetime) -> bool:
+    """Whether the answer kept for a subject is still taken as the answer at ``now``."""
+    return now < fresh_until(row)
+
+
+def kept(db: Session, provider: str, subject: Subject) -> IntelSubject | None:
+    """The answer kept for a subject, however long ago it was given. It is read anew each time,
+    since ``keep`` replaces an answer without going through the session."""
     return db.scalar(
-        select(IntelSubject).where(
+        select(IntelSubject)
+        .where(
             IntelSubject.provider == provider,
             IntelSubject.kind == subject.kind,
             IntelSubject.subject == subject.key,
-            IntelSubject.checked_at > now - FRESH,
         )
+        .execution_options(populate_existing=True)
     )
 
 
-def answer_of(kept: IntelSubject) -> Answered:
+def cached(db: Session, provider: str, subject: Subject, now: datetime) -> IntelSubject | None:
+    """The answer kept for a subject, if it is still fresh at ``now``."""
+    row = kept(db, provider, subject)
+    return row if row is not None and fresh(row, now) else None
+
+
+def answer_of(row: IntelSubject) -> Answered:
     """The answer kept for a subject, as it was given: its report, or that there was none."""
-    if kept.outcome != REPORTED or kept.analysed_at is None:
+    if row.outcome != REPORTED or row.analysed_at is None:
         return virustotal.Unknown()
     return virustotal.Reported(
         report=virustotal.Report(
-            malicious=kept.malicious,
-            suspicious=kept.suspicious,
-            harmless=kept.harmless,
-            undetected=kept.undetected,
-            reputation=kept.reputation,
-            analysed_at=kept.analysed_at,
-            country=kept.country,
-            owner=kept.owner,
-            asn=kept.asn,
-            categories=tuple(kept.categories),
-            details=tuple((detail["label"], detail["value"]) for detail in kept.details),
+            malicious=row.malicious,
+            suspicious=row.suspicious,
+            harmless=row.harmless,
+            undetected=row.undetected,
+            reputation=row.reputation,
+            analysed_at=row.analysed_at,
+            country=row.country,
+            owner=row.owner,
+            asn=row.asn,
+            categories=tuple(row.categories),
+            details=tuple((detail["label"], detail["value"]) for detail in row.details),
         )
     )
 

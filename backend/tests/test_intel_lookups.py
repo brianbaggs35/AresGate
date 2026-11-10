@@ -242,12 +242,83 @@ def test_an_answer_with_no_report_is_not_a_report_for_the_address(session: Sessi
     assert store.reports_for(session, PROVIDER, [ADDRESS]) == []
 
 
-def test_an_answer_is_fresh_for_a_week_after_its_subject_was_asked_about(session: Session) -> None:
+CLEAN = replace(REPORT, malicious=0, suspicious=0)
+
+
+def test_an_answer_no_engine_flagged_is_fresh_for_a_week(session: Session) -> None:
     subject = subjects.of_address(ADDRESS)
-    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), NOW)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(CLEAN), NOW)
 
     assert store.cached(session, PROVIDER, subject, NOW + store.FRESH - timedelta(hours=1))
     assert store.cached(session, PROVIDER, subject, NOW + store.FRESH) is None
+    assert store.kept(session, PROVIDER, subject) is not None
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        virustotal.Reported(REPORT),
+        virustotal.Reported(replace(REPORT, malicious=0)),
+        virustotal.Unknown(),
+    ],
+)
+def test_a_flagged_answer_or_one_with_no_report_is_asked_about_again_sooner(
+    session: Session, answer: store.Answered
+) -> None:
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, answer, NOW)
+
+    [row] = session.scalars(select(IntelSubject)).all()
+    assert store.fresh_until(row) == NOW + store.SOONER
+    assert store.cached(session, PROVIDER, subject, NOW + store.SOONER - timedelta(hours=1))
+    assert store.cached(session, PROVIDER, subject, NOW + store.SOONER) is None
+
+
+def test_a_subject_with_nothing_kept_has_no_answer(session: Session) -> None:
+    assert store.kept(session, PROVIDER, subjects.of_address(ADDRESS)) is None
+
+
+def test_a_newer_answer_keeps_when_the_subject_was_first_asked_about_and_how_often(
+    session: Session,
+) -> None:
+    subject = subjects.of_address(ADDRESS)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), NOW)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), NOW + timedelta(days=3))
+
+    [row] = session.scalars(select(IntelSubject)).all()
+    assert (row.first_checked_at, row.checked_at) == (NOW, NOW + timedelta(days=3))
+    assert (row.checks, row.judgement, row.host) == (2, "malicious", str(ADDRESS))
+    assert (row.changed_at, row.previous_judgement) == (None, None)
+
+
+def test_a_newer_answer_that_changes_the_judgement_says_when_and_from_what(
+    session: Session,
+) -> None:
+    subject = subjects.of_address(ADDRESS)
+    later = NOW + timedelta(days=3)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(CLEAN), NOW)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), later)
+    store.keep(session, PROVIDER, subject, virustotal.Reported(REPORT), later + timedelta(days=3))
+
+    [row] = session.scalars(select(IntelSubject)).all()
+    assert (row.checks, row.judgement) == (3, "malicious")
+    assert (row.changed_at, row.previous_judgement) == (later, "clean")
+
+
+def test_a_web_address_kept_before_its_host_was_gets_its_host_from_a_newer_answer(
+    session: Session,
+) -> None:
+    subject = subjects.parse("https://example.com/login")
+    store.keep(session, PROVIDER, subject, virustotal.Unknown(), NOW)
+    [row] = session.scalars(select(IntelSubject)).all()
+    assert row.host == "example.com"
+    row.host = None
+    session.flush()
+
+    store.keep(session, PROVIDER, subject, virustotal.Unknown(), NOW + timedelta(days=1))
+
+    session.refresh(row)
+    assert row.host == "example.com"
 
 
 def test_a_kept_answer_is_given_back_as_it_was_given(session: Session) -> None:
@@ -325,21 +396,77 @@ def test_the_home_network_is_never_asked_about(session: Session) -> None:
     assert candidates.next_address(session, PROVIDER, NOW) is None
 
 
-@pytest.mark.parametrize("outcome", [store.REPORTED, store.UNKNOWN])
-def test_an_address_answered_lately_is_not_asked_about_again(
-    session: Session, outcome: str
+def answer_at(
+    session: Session,
+    when: datetime,
+    *,
+    address: str = str(ADDRESS),
+    answer: store.Answered | None = None,
+    provider: str = PROVIDER,
+) -> None:
+    """Keeps an answer about an address as it was given at a time, a flagged report by default."""
+    subject = subjects.of_address(ip_address(address))
+    store.keep(session, provider, subject, answer or virustotal.Reported(REPORT), when)
+
+
+@pytest.mark.parametrize(
+    "answer", [virustotal.Reported(REPORT), virustotal.Reported(CLEAN), virustotal.Unknown()]
+)
+def test_an_address_whose_answer_is_fresh_is_not_asked_about_again(
+    session: Session, answer: store.Answered
 ) -> None:
     incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
-    lookup_at(session, NOW - timedelta(days=1), outcome=outcome)
+    answer_at(session, NOW - timedelta(days=1), answer=answer)
 
     assert candidates.next_address(session, PROVIDER, NOW) is None
 
 
-def test_an_answer_older_than_a_week_is_asked_about_again(session: Session) -> None:
+def test_an_answer_that_is_no_longer_fresh_is_asked_about_again(session: Session) -> None:
     incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
-    lookup_at(session, NOW - timedelta(days=8))
+    answer_at(session, NOW - timedelta(days=8), answer=virustotal.Reported(CLEAN))
 
     assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_a_flagged_address_is_asked_about_again_sooner_than_a_clean_one(session: Session) -> None:
+    incident(session, [str(ADDRESS), str(OTHER)], NOW - timedelta(hours=1))
+    answer_at(session, NOW - timedelta(days=3))
+    answer_at(
+        session, NOW - timedelta(days=3), address=str(OTHER), answer=virustotal.Reported(CLEAN)
+    )
+
+    assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
+
+
+def test_an_address_with_no_answer_comes_before_one_whose_answer_is_no_longer_fresh(
+    session: Session,
+) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    incident(session, [str(OTHER)], NOW - timedelta(hours=3))
+    answer_at(session, NOW - timedelta(days=8))
+
+    assert candidates.next_address(session, PROVIDER, NOW) == OTHER
+
+
+def test_the_answer_that_stopped_being_fresh_longest_ago_is_asked_about_first(
+    session: Session,
+) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    incident(session, [str(OTHER)], NOW - timedelta(hours=3))
+    answer_at(session, NOW - timedelta(days=4))
+    answer_at(session, NOW - timedelta(days=6), address=str(OTHER))
+
+    assert candidates.next_address(session, PROVIDER, NOW) == OTHER
+
+
+def test_an_address_asked_about_within_the_hour_waits_even_if_its_answer_is_old(
+    session: Session,
+) -> None:
+    incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
+    answer_at(session, NOW - timedelta(days=8))
+    lookup_at(session, NOW - timedelta(minutes=30), outcome=store.LIMITED)
+
+    assert candidates.next_address(session, PROVIDER, NOW) is None
 
 
 def test_a_failed_lookup_is_tried_again_after_an_hour(session: Session) -> None:
@@ -355,7 +482,8 @@ def test_a_failed_lookup_is_tried_again_after_an_hour(session: Session) -> None:
 
 def test_the_lookups_of_another_provider_do_not_stop_an_address(session: Session) -> None:
     incident(session, [str(ADDRESS)], NOW - timedelta(hours=1))
-    lookup_at(session, NOW - timedelta(days=1), provider="another")
+    lookup_at(session, NOW - timedelta(minutes=5), provider="another")
+    answer_at(session, NOW - timedelta(days=1), provider="another")
 
     assert candidates.next_address(session, PROVIDER, NOW) == ADDRESS
 

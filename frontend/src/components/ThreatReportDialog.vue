@@ -1,27 +1,23 @@
 <script setup lang="ts">
-import {
-  CircleHelp,
-  ExternalLink,
-  ShieldAlert,
-  ShieldCheck,
-  TriangleAlert,
-  X,
-  type LucideIcon,
-} from '@lucide/vue'
+import { ExternalLink, RefreshCw, X } from '@lucide/vue'
 import { computed, ref, useId } from 'vue'
 import { useDisplay } from 'vuetify'
 
-import type { Judgement, Lookup, SubjectKind } from '@/api/threatIntel'
+import type { Lookup } from '@/api/threatIntel'
 import { useKeyboardReturn } from '@/dialog'
-import { formatDateTime } from '@/format'
+import { formatCount, formatDateTime } from '@/format'
+import { JUDGEMENT, KIND } from '@/threatIntel'
 
 /**
  * What VirusTotal reported of one search, in a window over the page: the judgement first, then
  * the counts of its engines, the community's score, the categories it was given and what else
- * VirusTotal says. The counts are shown beside the judgement, because one engine's flag can be a
- * false positive. The whole screen on a phone.
+ * VirusTotal says, and what AresGate has kept of the subject: when it first asked, how often, and
+ * whether the judgement changed. The counts are shown beside the judgement, because one engine's
+ * flag can be a false positive. Check again asks VirusTotal for a newer answer, which the page
+ * that opened the window sends. The whole screen on a phone.
  */
-const props = defineProps<{ lookup: Lookup }>()
+const props = defineProps<{ lookup: Lookup; busy?: boolean }>()
+const emit = defineEmits<{ refresh: [] }>()
 const open = defineModel<boolean>({ required: true })
 
 const { xs: phone } = useDisplay()
@@ -33,20 +29,6 @@ const title = ref<HTMLElement | null>(null)
 function takeTheKeyboard() {
   title.value?.focus({ preventScroll: true })
 }
-
-const KIND: Record<SubjectKind, string> = {
-  ip: 'IP address',
-  domain: 'Domain',
-  url: 'Web address',
-}
-
-const JUDGEMENT: Record<Judgement, { label: string; color: string | undefined; icon: LucideIcon }> =
-  {
-    malicious: { label: 'Reported as malicious', color: 'error', icon: ShieldAlert },
-    suspicious: { label: 'Reported as suspicious', color: 'warning', icon: TriangleAlert },
-    clean: { label: 'No engine flagged it', color: 'success', icon: ShieldCheck },
-    unknown: { label: 'No report yet', color: undefined, icon: CircleHelp },
-  }
 
 const appearance = computed(() => JUDGEMENT[props.lookup.judgement])
 const engines = computed(
@@ -115,6 +97,30 @@ const reputation = computed(() => {
 const analysed = computed(() =>
   props.lookup.analysed_at ? formatDateTime(props.lookup.analysed_at) : 'Never',
 )
+
+/** How often AresGate has had an answer about the subject. */
+const checks = computed(() => {
+  const { checks: count } = props.lookup
+  return count === 1 ? 'Once' : `${formatCount(count)} times`
+})
+
+/** What the judgement was before a newer answer changed it, and when it changed. */
+const change = computed(() => {
+  const { changed_at: at, previous_judgement: before } = props.lookup
+  if (!at || !before) return null
+  return `${JUDGEMENT[before].short} until ${formatDateTime(at)}`
+})
+
+/** Where the answer came from, and when it is asked about again. */
+const source = computed(() => {
+  const { lookup } = props
+  const checked = formatDateTime(lookup.checked_at)
+  if (!lookup.cached) return `VirusTotal answered ${checked}, and AresGate kept the answer.`
+  if (lookup.stale) {
+    return `This is the answer AresGate kept from ${checked}. It is due to be checked again.`
+  }
+  return `This is the answer AresGate kept from ${checked}, so nothing was sent to VirusTotal. It is checked again after ${formatDateTime(lookup.fresh_until)}.`
+})
 </script>
 
 <template>
@@ -177,6 +183,16 @@ const analysed = computed(() =>
           </p>
         </div>
 
+        <v-alert
+          v-if="lookup.notice"
+          type="info"
+          variant="tonal"
+          density="comfortable"
+          data-test="report-notice"
+        >
+          {{ lookup.notice }} This is the answer AresGate kept.
+        </v-alert>
+
         <div
           v-if="lookup.judgement !== 'unknown'"
           class="verdict-bar"
@@ -233,12 +249,34 @@ const analysed = computed(() =>
           </div>
         </section>
 
+        <section class="report__section" aria-label="What AresGate has kept">
+          <h3 class="text-title-small">What AresGate has kept</h3>
+          <dl class="report__facts" data-test="report-kept">
+            <div>
+              <dt>First checked</dt>
+              <dd data-test="report-first-checked">
+                {{ formatDateTime(lookup.first_checked_at) }}
+              </dd>
+            </div>
+            <div>
+              <dt>Last checked</dt>
+              <dd data-test="report-checked">{{ formatDateTime(lookup.checked_at) }}</dd>
+            </div>
+            <div>
+              <dt>Checked</dt>
+              <dd data-test="report-checks">{{ checks }}</dd>
+            </div>
+            <div v-if="change">
+              <dt>Judgement before</dt>
+              <dd data-test="report-change">{{ change }}</dd>
+            </div>
+          </dl>
+        </section>
+
         <p class="text-body-small text-medium-emphasis report__note">
+          <span :data-test="lookup.cached ? 'report-cached' : 'report-asked'">{{ source }}</span>
           What you search for is added to VirusTotal's shared data, so keep private names out of
-          searches. Checked {{ formatDateTime(lookup.checked_at) }}.
-          <span v-if="lookup.cached" data-test="report-cached">
-            This answer was kept from that check, so this search sent nothing to VirusTotal.
-          </span>
+          searches.
         </p>
       </v-card-text>
 
@@ -254,6 +292,16 @@ const analysed = computed(() =>
           Open in VirusTotal
         </v-btn>
         <v-spacer />
+        <v-btn
+          v-if="lookup.repeatable"
+          variant="text"
+          :prepend-icon="RefreshCw"
+          :loading="busy"
+          data-test="report-refresh"
+          @click="emit('refresh')"
+        >
+          Check again
+        </v-btn>
         <v-btn variant="tonal" data-test="report-done" @click="open = false">Done</v-btn>
       </footer>
     </v-card>

@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
+import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -15,13 +16,16 @@ import { useSessionStore } from '@/stores/session'
  * Threat intelligence: asking a service about an address, a domain or a web address. VirusTotal is
  * the one service for now. Its search is offered once its connection has been tested. Until then
  * the page says that a threat intelligence integration is needed, with a way to the Integrations
- * page, and nothing else in AresGate waits for it.
+ * page, and nothing else in AresGate waits for it. Under the search is what AresGate knows: every
+ * answer it has kept, which stays readable whether or not a service is connected now.
  */
 const session = useSessionStore()
 
 const integrations = ref<IntegrationSummary[] | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+// Counts the answers this page has had, so the list of what is kept is read again after each.
+const answers = ref(0)
 
 const virustotal = computed(() => integrations.value?.find((item) => item.key === 'virustotal'))
 
@@ -60,6 +64,7 @@ onMounted(load)
       v-else-if="virustotal?.status === 'connected'"
       :pause="virustotal?.pause ?? null"
       @refused="load"
+      @answered="answers += 1"
     />
 
     <v-skeleton-loader
@@ -87,5 +92,7 @@ onMounted(load)
         </v-btn>
       </EmptyState>
     </SectionCard>
+
+    <ThreatKnown v-if="integrations && !error" :version="answers" @refused="load" />
   </AppPage>
 </template>
