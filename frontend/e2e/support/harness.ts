@@ -545,6 +545,16 @@ export class Harness {
       .then((response) => readJson<NotifierReport>(response, 'Sending the alerts'))
   }
 
+  /** Starts the agents that are due, runs everything that waits, once, and answers how many ran.
+   * The worker does nothing of its own in the tests, so an agent runs when a spec says. `open`
+   * lists the devices the network test finds answering, as "address:port". */
+  async runAgents(open: string[] = []): Promise<number> {
+    return this.api
+      .post('/api/__test__/agents/run', { data: { open } })
+      .then((response) => readJson<{ ran: number }>(response, 'Running the agents'))
+      .then((report) => report.ran)
+  }
+
   /** Makes the collector worker look like it is running, has stopped or has never reported in. */
   async setWorker(state: WorkerPulse): Promise<void> {
     const response = await this.api.put('/api/__test__/collectors/worker', { data: { state } })

@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.agents import run as agents
+from app.ai.gateway import Context
 from app.alerts import notify
 from app.api.deps import SettingsDep
 from app.collectors.health import WORKER
@@ -669,6 +671,40 @@ async def run_notifier(request: Request, settings: SettingsDep, db: Db) -> Notif
         pace=0,
     )
     return NotifierReport(sent=report.sent, retrying=report.retrying, failed=report.failed)
+
+
+class AgentsRun(BaseModel):
+    # Devices to say answered, as "address:port". Nothing is connected to where a test sets this,
+    # so no test of the network ever depends on what is open on the machine it runs on.
+    open: list[str] = Field(default_factory=list[str], max_length=100)
+
+
+class AgentsReport(BaseModel):
+    ran: int
+
+
+@router.post("/agents/run")
+async def run_agents(
+    body: AgentsRun, request: Request, settings: SettingsDep, db: Db
+) -> AgentsReport:
+    """Starts the agents' runs that are due, runs everything that waits, now, once, and answers how
+    many it ran. The worker does nothing of its own in the tests, so a test decides when an agent
+    runs. Providers are the stand-ins the test started, if it started any."""
+    new_session = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+    state = request.app.state
+    context = Context(
+        settings=settings,
+        recorder=ApiLogRecorder(new_session),
+        hosted=state.ai_policy,
+        local=state.local_ai_policy,
+        origins=state.ai_origins,
+    )
+    answering = set(body.open)
+    probing = agents.Probing(
+        policy=state.address_policy,
+        connect=lambda address, port, _timeout: f"{address}:{port}" in answering,
+    )
+    return AgentsReport(ran=await agents.run_once(new_session, context, probing))
 
 
 class WorkerStatus(BaseModel):

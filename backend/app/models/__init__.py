@@ -1,5 +1,17 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
+from app.models.agents import (
+    MIN_INTERVAL_MINUTES,
+    Agent,
+    AgentRun,
+    AgentStep,
+)
+from app.models.agents import (
+    STATUSES as AGENT_STATUSES,
+)
+from app.models.agents import (
+    TRIGGERS as AGENT_TRIGGERS,
+)
 from app.models.ai import (
     CLASSES,
     USAGE_LEVELS,
@@ -46,12 +58,18 @@ from app.models.system import SystemInfo
 from app.models.verdicts import VERDICTS, VerdictRule
 
 __all__ = [
+    "AGENT_STATUSES",
+    "AGENT_TRIGGERS",
     "ALERT_KINDS",
     "CLASSES",
     "INCIDENT_STATUSES",
     "INTERFACE_ROLES",
+    "MIN_INTERVAL_MINUTES",
     "USAGE_LEVELS",
     "VERDICTS",
+    "Agent",
+    "AgentRun",
+    "AgentStep",
     "AiAlias",
     "AiCall",
     "AiConversation",

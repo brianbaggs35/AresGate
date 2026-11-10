@@ -30,6 +30,7 @@ export {
 export { ActivityPage } from './pages/activity-page'
 export { AiSettingsPage } from './pages/ai-settings-page'
 export { AiUsagePage } from './pages/ai-usage-page'
+export { AgentsPage } from './pages/agents-page'
 export { AssetPage } from './pages/asset-page'
 export { AssetsPage } from './pages/assets-page'
 export { AssistantPage } from './pages/assistant-page'

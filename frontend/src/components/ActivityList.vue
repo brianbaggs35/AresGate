@@ -54,6 +54,11 @@ const TITLES: Readonly<Record<string, string>> = {
   'alerts.destination_changed': 'An alert destination was changed',
   'alerts.destination_removed': 'An alert destination was removed',
   'alerts.destination_tested': 'A test message was sent to an alert destination',
+  'agent.created': 'An agent was added',
+  'agent.changed': 'An agent was changed',
+  'agent.deleted': 'An agent was removed',
+  'agent.run_requested': 'An agent was asked to run',
+  'agent.run_cancelled': 'An agent run was stopped',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

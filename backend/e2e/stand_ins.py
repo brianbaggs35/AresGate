@@ -1276,6 +1276,33 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
     return json.dumps({"lookups": [], "answer": "All quiet on the home network.", "cites": []})
 
 
+def _answer_of_an_agent(asked: Mapping[str, Any]) -> str | None:
+    """What an agent's model would answer (a request for a JSON schema with ``findings``): a report
+    that names the first incident it was shown, or one that says there was nothing to report."""
+    if "findings" not in _schema_properties(asked):
+        return None
+    found = re.search(r"\[incident (\w+)\]", _prompt_of(asked))
+    if found is None:
+        return json.dumps(
+            {"summary": "Nothing needs your attention.", "findings": [], "lookups": []}
+        )
+    cite = f"incident {found.group(1)}"
+    return json.dumps(
+        {
+            "summary": f"Start with {cite}: it is the one that needs you most.",
+            "findings": [
+                {
+                    "severity": "high",
+                    "title": f"{cite.capitalize()} needs a look",
+                    "detail": "Two programs saw it, and it reached a device that answered.",
+                    "cites": [cite],
+                }
+            ],
+            "lookups": [],
+        }
+    )
+
+
 def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
     """Anthropic's Messages API: a key in ``x-api-key``, a version header, and an answer of one
     text block with the tokens counted in ``usage``. Asked for a reading of an incident, it gives
@@ -1292,6 +1319,7 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
         reading = (
             _reading_of_an_incident(asked)
             or _judgement_of_families(asked)
+            or _answer_of_an_agent(asked)
             or _answer_of_the_assistant(asked)
         )
         return _json(

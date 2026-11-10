@@ -850,6 +850,37 @@ class TestAiProviders:
 
         assert said == {"lookups": [], "answer": "All quiet on the home network.", "cites": []}
 
+    def agent(self, content: str) -> dict[str, Any]:
+        good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
+        schema: dict[str, object] = {
+            "format": {
+                "type": "json_schema",
+                "schema": {"properties": {"summary": {}, "findings": {}, "lookups": {}}},
+            }
+        }
+        asked: dict[str, object] = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 1500,
+            "output_config": schema,
+            "messages": [{"role": "user", "content": content}],
+        }
+        body = json.loads(self.anthropic(post("/v1/messages", asked, **good)).body)
+        return json.loads(body["content"][0]["text"])
+
+    def test_anthropic_reports_the_first_incident_an_agent_was_shown(self) -> None:
+        said = self.agent('<data label="open incidents">\n[incident 7] high\n</data>')
+
+        assert said["lookups"] == []
+        assert said["summary"] == "Start with incident 7: it is the one that needs you most."
+        assert [(each["severity"], each["cites"]) for each in said["findings"]] == [
+            ("high", ["incident 7"])
+        ]
+
+    def test_anthropic_reports_nothing_to_an_agent_that_was_shown_no_incident(self) -> None:
+        said = self.agent("There are no open incidents.")
+
+        assert said == {"summary": "Nothing needs your attention.", "findings": [], "lookups": []}
+
     def test_anthropic_gives_a_reading_naming_no_device_when_the_prompt_has_none(self) -> None:
         good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}
         schema: dict[str, object] = {"format": {"schema": {"properties": {"classification": {}}}}}
