@@ -1,4 +1,4 @@
-import { AppWindow, Bug, FileText, Flag, Globe, Link, Search, Server, User } from '@lucide/vue'
+import { Bug, FileText, Flag, Globe, Link, Search, Server, User } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type { Confirmation, Evidence, FlowVolume, Named, Occurrence } from '@/api/incidents'
@@ -24,8 +24,7 @@ export function namedLook(kind: string): { label: string; plural: string; icon: 
 }
 
 /** The icon for a machine and for an application, which are not named things. */
-export const HOST_ICON = Server
-export const APP_ICON = AppWindow
+export { Server as HOST_ICON, AppWindow as APP_ICON } from '@lucide/vue'
 
 /** The things an alert named, grouped by kind, in the order the kinds first appear. */
 export function namedByKind<T extends Named>(items: readonly T[]): [string, T[]][] {

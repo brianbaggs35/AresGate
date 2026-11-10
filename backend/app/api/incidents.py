@@ -693,7 +693,7 @@ def _insights(found: insights.Insights) -> InsightsOut | None:
     return InsightsOut(
         techniques=[
             CountedTechniqueOut(
-                id=each.id, tactic=each.tactic, technique=each.technique, count=each.count
+                id=each.id, tactic=each.tactic, technique=each.name, count=each.count
             )
             for each in found.techniques
         ],
