@@ -344,6 +344,14 @@ async function forget() {
       >
         {{ failure }}
       </v-alert>
+      <p
+        v-if="working === 'test' && provider.kind === 'local'"
+        class="text-body-medium text-medium-emphasis mt-4"
+        data-test="provider-loading-note"
+      >
+        Asking your Ollama to load the model. The first time, or after it has gone unused, loading
+        it into memory can take a minute or more.
+      </p>
       <output v-if="notice" class="provider__notice text-body-large" data-test="provider-notice">
         <v-icon :icon="CircleCheck" color="success" aria-hidden="true" />
         {{ notice }}

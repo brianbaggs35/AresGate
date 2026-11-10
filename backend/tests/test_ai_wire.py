@@ -275,6 +275,116 @@ class TestAsking:
             "format": SCHEMA,
         }
 
+    def test_an_ollama_is_asked_to_keep_the_model_in_memory_when_the_request_says_so(
+        self, serve: Serve
+    ) -> None:
+        seen: list[Seen] = []
+        stand_in = stand_ins.ollama("", {"llama3.2:3b"})
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OLLAMA,
+            handler,
+            lambda client: wire.complete(
+                client,
+                catalog.OLLAMA,
+                "llama3.2:3b",
+                None,
+                system="Be brief.",
+                prompt="Hello",
+                keep_alive="10m",
+            ),
+            key=None,
+        )
+
+        assert json.loads(seen[0].body)["keep_alive"] == "10m"
+
+    def test_keeping_the_model_is_asked_of_an_ollama_only(self, serve: Serve) -> None:
+        seen: list[Seen] = []
+        stand_in = stand_ins.openai("sk-a-key", {"gpt-6-luna"})
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OPENAI,
+            handler,
+            lambda client: wire.complete(
+                client,
+                catalog.OPENAI,
+                "gpt-6-luna",
+                "sk-a-key",
+                system="Be brief.",
+                prompt="Hello",
+                keep_alive="10m",
+            ),
+        )
+
+        assert "keep_alive" not in json.loads(seen[0].body)
+
+    def test_a_model_is_loaded_with_a_request_that_has_no_messages(self, serve: Serve) -> None:
+        seen: list[Seen] = []
+        stand_in = stand_ins.ollama("", {"llama3.2:3b"})
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OLLAMA,
+            handler,
+            lambda client: wire.load_model(client, catalog.OLLAMA, "llama3.2:3b", None, "10m"),
+            key=None,
+        )
+
+        (request,) = seen
+        assert request.path == "/api/chat"
+        assert "authorization" not in request.headers
+        assert json.loads(request.body) == {
+            "model": "llama3.2:3b",
+            "messages": [],
+            "stream": False,
+            "keep_alive": "10m",
+        }
+
+    def test_loading_a_model_sends_the_key_an_ollama_needs(self, serve: Serve) -> None:
+        seen: list[Seen] = []
+        stand_in = stand_ins.ollama("sk-a-key", {"gemma4:31b"})
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        ask(
+            serve,
+            catalog.OLLAMA_CLOUD,
+            handler,
+            lambda client: wire.load_model(
+                client, catalog.OLLAMA_CLOUD, "gemma4:31b", "sk-a-key", "5m"
+            ),
+        )
+
+        assert seen[0].headers["authorization"] == "Bearer sk-a-key"
+
+    def test_a_model_that_is_not_there_does_not_load(self, serve: Serve) -> None:
+        with pytest.raises(AiFailed) as failed:
+            ask(
+                serve,
+                catalog.OLLAMA,
+                stand_ins.ollama("", {"llama3.2:3b"}),
+                lambda client: wire.load_model(client, catalog.OLLAMA, "gone:1b", None, "10m"),
+                key=None,
+            )
+
+        assert failed.value.status == 404
+
     def test_ollamas_cloud_gets_a_bearer_key(self, serve: Serve) -> None:
         seen: list[Seen] = []
         stand_in = stand_ins.ollama("sk-a-key", {"gemma4:31b"})

@@ -332,17 +332,40 @@ async def complete(
     schema: Mapping[str, object] | None = None,
     max_tokens: int = 1024,
     cache_key: str | None = None,
+    keep_alive: str | None = None,
 ) -> Completion:
     """Asks a model for an answer. With a JSON ``schema`` the provider is asked to keep to it.
     ``system`` is the start of the prompt that is the same every time: a model that caches is told
     where it ends, and one that does by itself (``cache_key`` helps it find the last request's)
-    caches it when it is long enough. Raises ``AiFailed``, or ``CallFailed`` when nothing came
-    back."""
+    caches it when it is long enough. ``keep_alive`` asks an Ollama to keep the model in memory for
+    that long after the answer (``"10m"``), which no other provider has. Raises ``AiFailed``, or
+    ``CallFailed`` when nothing came back."""
     path, headers, body = _request(
         provider, model, key, system, prompt, schema, max_tokens, cache_key
     )
+    if keep_alive is not None and provider.wire is Wire.OLLAMA:
+        body["keep_alive"] = keep_alive
     reply = await client.request("POST", path, json_body=body, headers=headers)
     return read_completion(provider, reply)
+
+
+async def load_model(
+    client: ApiClient, provider: ProviderDef, model: str, key: str | None, keep_alive: str
+) -> None:
+    """Has an Ollama load a model into memory and keep it there for ``keep_alive`` (``"10m"``),
+    without asking it anything. Ollama's API documents that a chat request with no messages loads
+    the model and answers when it has. Raises ``AiFailed``, or ``CallFailed`` when nothing came
+    back."""
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    body: dict[str, object] = {
+        "model": model,
+        "messages": [],
+        "stream": False,
+        "keep_alive": keep_alive,
+    }
+    reply = await client.request("POST", "/api/chat", json_body=body, headers=headers)
+    if not reply.ok:
+        raise AiFailed(explain(reply.status, provider), reply.status)
 
 
 def _found(entry: object) -> FoundModel | None:

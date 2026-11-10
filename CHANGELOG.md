@@ -39,6 +39,11 @@ Every release's notes are here, newest first. The format follows
   notice, with how long to wait and that the connection is still set up, instead of in a red
   failure. The log of requests marks a request that got HTTP 429 as held back by a limit, not as
   failed.
+- **Testing a local Ollama model no longer says it "didn't answer in time" while it loads.** A model
+  that has to be read from disk takes a while to load, and the test gave up after ten seconds. The
+  test now asks Ollama to load the model first, waits up to three minutes for it, asks Ollama to keep
+  it in memory for ten minutes, and says whether the model was already loaded or how long loading
+  took. If loading runs out of time, the message says so and what to try.
 
 ## 0.0.9
 

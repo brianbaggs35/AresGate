@@ -23,7 +23,7 @@ from app.security import credential_store
 from app.security.credential_store import Kind
 from app.security.vault import VaultError
 from e2e import stand_ins
-from tests.stubs import Serve
+from tests.stubs import Answer, Seen, Serve
 
 NOW = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
 HOME_URL = "http://192.168.1.50:11434"
@@ -581,8 +581,9 @@ class TestTesting:
 
         verdict, log = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
 
-        assert verdict == Verdict(True, "Reached it (1 model), and llama3.2:3b answered.")
-        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat"]
+        assert verdict.ok
+        assert verdict.message.startswith("Reached it (1 model), and llama3.2:3b answered.")
+        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat", "/api/chat"]
 
     def test_an_ollama_that_does_not_have_the_model_says_so(
         self, session: Session, settings: Settings, serve: Serve
@@ -595,6 +596,120 @@ class TestTesting:
 
         assert not verdict.ok
         assert "Fetch the models" in verdict.message
+
+    def test_an_ollama_is_asked_to_load_the_model_before_the_token_and_to_keep_it(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        seen: list[Seen] = []
+        stand_in = stand_ins.ollama("", {"llama3.2:3b"})
+
+        def handler(request: Seen) -> Answer:
+            seen.append(request)
+            return stand_in(request)
+
+        server = serve(handler)
+        row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
+        target = service.load_target(session, settings, catalog.OLLAMA, row, {})
+
+        verdict, log = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
+
+        assert verdict == Verdict(
+            True, "Reached it (1 model), and llama3.2:3b answered. It was already in memory."
+        )
+        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat", "/api/chat"]
+        _, load, token = seen
+        assert json.loads(load.body)["messages"] == []
+        assert json.loads(load.body)["keep_alive"] == service.KEEP_LOADED
+        assert json.loads(token.body)["keep_alive"] == service.KEEP_LOADED
+        assert json.loads(token.body)["options"]["num_predict"] == 1
+
+    def test_a_model_that_takes_a_while_to_load_is_waited_for_and_the_wait_is_said(
+        self,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(service, "ALREADY_LOADED", 0.05)
+        server = serve(stand_ins.ollama("", {"llama3.2:3b"}, load_seconds=0.3))
+        row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
+        target = service.load_target(session, settings, catalog.OLLAMA, row, {})
+
+        verdict, _ = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
+
+        assert verdict.ok
+        assert verdict.message.startswith("Reached it (1 model), and llama3.2:3b answered. ")
+        assert "Loading it into memory took 0 seconds" in verdict.message
+        assert "keep it for 10 minutes" in verdict.message
+
+    def test_a_model_that_does_not_load_in_the_time_given_says_that_and_what_to_try(
+        self,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(service, "LOAD_DEADLINE", 0.2)
+        monkeypatch.setattr(service, "LOAD_READ_TIMEOUT", 0.1)
+        server = serve(stand_ins.ollama("", {"llama3.2:3b"}, load_seconds=1.0))
+        row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
+        target = service.load_target(session, settings, catalog.OLLAMA, row, {})
+
+        verdict, log = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
+
+        assert not verdict.ok
+        assert verdict.message.startswith("Reached it (1 model), but llama3.2:3b didn't load. ")
+        assert "didn't answer in time." in verdict.message
+        assert "can take a minute or more" in verdict.message
+        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat"]
+
+    def test_a_model_that_cannot_load_for_another_reason_says_what_ollama_said(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        def handler(request: Seen) -> Answer:
+            if request.path == "/api/chat":
+                return Answer(status=500, body='{"error": "model requires more memory"}')
+            return stand_ins.ollama("", {"llama3.2:3b"})(request)
+
+        server = serve(handler)
+        row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
+        target = service.load_target(session, settings, catalog.OLLAMA, row, {})
+
+        verdict, _ = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
+
+        assert not verdict.ok
+        assert verdict.message.startswith("Reached it (1 model), but llama3.2:3b didn't load. ")
+        assert "can take a minute" not in verdict.message
+
+    def test_a_model_that_loads_but_does_not_answer_still_says_how_the_load_went(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        stand_in = stand_ins.ollama("", {"llama3.2:3b"})
+
+        def handler(request: Seen) -> Answer:
+            if request.path == "/api/chat" and json.loads(request.body)["messages"]:
+                return Answer(status=500, body='{"error": "boom"}')
+            return stand_in(request)
+
+        server = serve(handler)
+        row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
+        target = service.load_target(session, settings, catalog.OLLAMA, row, {})
+
+        verdict, _ = self.run(target, catalog.OLLAMA, "llama3.2:3b", HOME)
+
+        assert not verdict.ok
+        assert "llama3.2:3b didn't answer. " in verdict.message
+        assert verdict.message.endswith("It was already in memory.")
+
+    def test_ollamas_cloud_is_not_asked_to_load_a_model_or_to_keep_it(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        target, plan = self.cloud(session, settings, serve, "gpt-oss:20b")
+
+        verdict, log = self.run(target, catalog.OLLAMA_CLOUD, "gpt-oss:20b", plan=plan)
+
+        assert verdict == Verdict(True, "Reached it (2 models), and gpt-oss:20b answered.")
+        assert [call.path for call in log.calls] == ["/api/tags", "/api/chat"]
 
     def cloud(
         self,

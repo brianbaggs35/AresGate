@@ -1398,10 +1398,17 @@ def discord(webhook: str) -> Handler:
     return handle
 
 
-def ollama(api_key: str = "", models: Collection[str] = (), paid: Collection[str] = ()) -> Handler:
+def ollama(
+    api_key: str = "",
+    models: Collection[str] = (),
+    paid: Collection[str] = (),
+    load_seconds: float = 0.0,
+) -> Handler:
     """Ollama's API: the models it has at ``/api/tags`` and an answer from ``/api/chat``. With a
     key (Ollama's cloud) a bearer key is needed, and without one (an Ollama at home) none is.
-    The ``paid`` models are listed but answer 402, as a cloud model does for a plan without it."""
+    The ``paid`` models are listed but answer 402, as a cloud model does for a plan without it. A
+    model's first load takes ``load_seconds``, as one that has to come from disk does."""
+    loaded: set[str] = set()
 
     def handle(seen: Seen) -> Answer:
         if api_key and seen.headers.get("authorization") != f"Bearer {api_key}":
@@ -1432,6 +1439,16 @@ def ollama(api_key: str = "", models: Collection[str] = (), paid: Collection[str
                 return _json({"error": f"model '{asked.get('model')}' not found"}, 404)
             if asked["model"] in paid:
                 return _json({"error": "this model requires a subscription"}, 402)
+            if asked.get("messages") == []:
+                # A request with no messages only loads the model, which takes ``load_seconds``
+                # the first time and nothing after.
+                waited = 0.0 if loaded else load_seconds
+                loaded.add(asked["model"])
+                return Answer(
+                    body=json.dumps({"model": asked["model"], "done": True, "done_reason": "load"}),
+                    headers={"Content-Type": "application/json"},
+                    delay=waited,
+                )
             return _json(
                 {
                     "model": asked["model"],
