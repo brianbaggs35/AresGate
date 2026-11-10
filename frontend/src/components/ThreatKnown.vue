@@ -182,7 +182,8 @@ onMounted(load)
         <v-btn type="submit" variant="tonal" :loading="loading" data-test="known-find">Find</v-btn>
       </form>
 
-      <div class="known__filters" role="group" aria-label="Judgement" data-test="known-filters">
+      <fieldset class="known__filters" data-test="known-filters">
+        <legend class="known__legend">Judgement</legend>
         <v-btn
           v-for="filter in filters(page)"
           :key="filter.key ?? 'all'"
@@ -196,7 +197,7 @@ onMounted(load)
         >
           {{ filter.label }} {{ formatCount(filter.count) }}
         </v-btn>
-      </div>
+      </fieldset>
 
       <v-alert
         v-if="error ?? problem"
@@ -275,7 +276,20 @@ onMounted(load)
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+/* Read out as the name of the group, and not shown. */
+.known__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .known__alert {
