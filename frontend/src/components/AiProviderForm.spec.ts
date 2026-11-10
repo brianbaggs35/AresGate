@@ -391,6 +391,7 @@ describe('AiProviderForm', () => {
       expect(find('provider-test').classes()).toContain('v-btn--loading')
       expect(find('provider-save').attributes('disabled')).toBeDefined()
       expect(find('provider-remove').attributes('disabled')).toBeDefined()
+      expect(find('provider-loading-note').exists()).toBe(false)
       finish(report())
       await flushPromises()
       expect(find('provider-save').attributes('disabled')).toBeUndefined()
@@ -398,6 +399,33 @@ describe('AiProviderForm', () => {
   })
 
   describe('an Ollama on the owner’s computer', () => {
+    it('says loading the model can take a minute while it is tested, and only then', async () => {
+      const { save, test, press, find } = await open(
+        ollama({ configured: true, model: 'llama3.2:3b', base_url: 'http://localhost:11434' }),
+      )
+      save.mockResolvedValue(
+        ollama({ configured: true, model: 'llama3.2:3b', base_url: 'http://localhost:11434' }),
+      )
+      let finish: (value: aiApi.AiCheck) => void = () => {}
+      test.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+      expect(find('provider-loading-note').exists()).toBe(false)
+
+      await press('provider-test')
+
+      expect(find('provider-loading-note').text()).toContain('can take a minute or more')
+      finish({
+        ok: true,
+        message: 'Reached it (1 model), and llama3.2:3b answered.',
+        provider: ollama({
+          configured: true,
+          model: 'llama3.2:3b',
+          base_url: 'http://localhost:11434',
+        }),
+      })
+      await flushPromises()
+      expect(find('provider-loading-note').exists()).toBe(false)
+    })
+
     it('takes an address, and says what to give', async () => {
       const { find, input } = await open(ollama())
 

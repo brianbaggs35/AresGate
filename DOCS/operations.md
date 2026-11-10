@@ -844,7 +844,7 @@ AresGate works without it. A test sends only the words "Say OK."
 - **Ollama on your computer.** Give the address it listens on and press **Fetch models**, which
   asks it which models it has (`GET /api/tags`) and turns the Model box into a list to choose
   from, with each model's family, parameters, quantization and size. **Test connection** asks it
-  for them and then for one token from the model you chose. The model that is saved is always in
+  for them, then to load the model you chose, then for one token from it (see below). The model that is saved is always in
   the list, so one can be chosen before the models are fetched or when asking failed. Where the
   address may point depends on where AresGate runs:
   - Run straight on a computer (not in a container), `http://localhost:11434` works for an Ollama
@@ -877,6 +877,21 @@ AresGate works without it. A test sends only the words "Say OK."
   account has (or the first three on the list, if it has none of them); for a paid account it
   says payment is still required and to check ollama.com/settings/usage. The test asks the model
   you chose, so one paid-only model never decides whether the connection works.
+- **Loading a model takes time.** A model that is not in memory has to be read from disk first,
+  which for a model of a few gigabytes on a computer of your own can take a minute or more, and
+  nothing comes back until it has. So the test of an Ollama on your computer does it in steps, and
+  says which happened. It sends a chat request with no messages, which Ollama's API documents as
+  loading the model and answering when it has, and waits up to three minutes for that. If that
+  doesn't finish, the message says the model didn't load in time and what to try (the test can be
+  pressed again, and `ollama ps` on that computer shows what is in memory). If it did, the test
+  asks for one token, and the message says whether the model was already in memory or how many
+  seconds it took to load. Both requests ask Ollama to keep the model for ten minutes (its own
+  default is five), so the first real request shortly after doesn't load it again. The test does not
+  set Ollama's `think` option: a model that thinks may spend its one token on thinking, but a
+  reply that arrives, empty or not, is an answer, so it proves the model works. The page says that
+  loading can take a minute while the test runs. Ollama's Cloud has no model to load, so its test
+  stays a single request. These request fields (`keep_alive`, an empty `messages`) follow
+  Ollama's API documentation and were not checked against a running Ollama when this was written.
 - **Test connection and Fetch models save first.** What you filled in is kept, then tested, so
   what is tested is what is used. A test asks for one token: the least that proves the key, the
   model and the address work.

@@ -6,6 +6,7 @@ mistake never leaves half a provider behind. Whether AresGate uses AI at all, an
 it asks, is the one row of ``ai_settings``.
 """
 
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -35,6 +36,17 @@ MAX_KEY = 512
 # What a test asks for: the least that proves the key, the model and the address work.
 TEST_SYSTEM = "Answer with one word."
 TEST_PROMPT = "Say OK."
+# A model that is not in memory has to be read from disk first, which on a computer of one's own
+# can take a minute or more, and nothing comes back until it has. So a test of an Ollama on one's
+# own computer waits for that, a little less than the 330 seconds nginx waits for an AI page.
+LOAD_DEADLINE = 180.0
+LOAD_READ_TIMEOUT = 170.0
+# How long Ollama is asked to keep the model in memory after the test, so that the first real
+# request doesn't wait for it to load again. Its own default is five minutes.
+KEEP_MINUTES = 10
+KEEP_LOADED = f"{KEEP_MINUTES}m"
+# A load that took less than this many seconds found the model in memory already.
+ALREADY_LOADED = 2.0
 
 
 @dataclass(frozen=True)
@@ -320,15 +332,35 @@ async def check(
     plan: str | None = None,
 ) -> Verdict:
     """Tests a provider with the least that proves it works: an Ollama is asked what it has and
-    then for one token, the others for one token."""
+    then for one token, the others for one token. An Ollama on the owner's own computer is first
+    asked to load the model, on its own and with time to do it, so that a model that has to come
+    from disk is told apart from one that doesn't answer, and what happened is said."""
     key = target.secrets.get(API_KEY)
+    local = definition.wire is Wire.OLLAMA and definition.kind is Kind.LOCAL
     try:
-        async with ApiClient(target, recorder, policy) as client:
+        async with ApiClient(
+            target,
+            recorder,
+            policy,
+            **({"deadline": LOAD_DEADLINE, "read_timeout": LOAD_READ_TIMEOUT} if local else {}),
+        ) as client:
             if definition.wire is Wire.OLLAMA:
                 found = await wire.list_models(client, definition, key)
                 count = f"{len(found)} model{'' if len(found) == 1 else 's'}"
                 if not model:
                     return Verdict(True, f"Reached it. It has {count}: choose one to use.")
+                loaded = ""
+                if local:
+                    started = time.monotonic()
+                    try:
+                        await wire.load_model(client, definition, model, key, KEEP_LOADED)
+                    except (CallFailed, wire.AiFailed) as failure:
+                        return Verdict(
+                            False,
+                            f"Reached it ({count}), but {model} didn't load. "
+                            f"{_load_note(definition, model, plan, failure, found)}",
+                        )
+                    loaded = _loaded(time.monotonic() - started)
                 try:
                     await wire.complete(
                         client,
@@ -338,15 +370,16 @@ async def check(
                         system=TEST_SYSTEM,
                         prompt=TEST_PROMPT,
                         max_tokens=1,
+                        keep_alive=KEEP_LOADED if local else None,
                     )
                 except (CallFailed, wire.AiFailed) as failure:
                     # Listing the models worked, so it is this model that was not answered.
                     return Verdict(
                         False,
                         f"Reached it ({count}), but {model} didn't answer. "
-                        f"{_plan_note(definition, model, plan, failure, found)}",
+                        f"{_plan_note(definition, model, plan, failure, found)}{loaded}",
                     )
-                return Verdict(True, f"Reached it ({count}), and {model} answered.")
+                return Verdict(True, f"Reached it ({count}), and {model} answered.{loaded}")
             answer = await wire.complete(
                 client,
                 definition,
@@ -363,6 +396,35 @@ async def check(
         f"{model} answered. It counted {answer.input_tokens} tokens in and "
         f"{answer.output_tokens} out.",
     )
+
+
+def _loaded(seconds: float) -> str:
+    """How loading a model went, for what is said of a test that went on to work."""
+    if seconds < ALREADY_LOADED:
+        return " It was already in memory."
+    return (
+        f" Loading it into memory took {round(seconds)} seconds, so the first request after the "
+        f"model has gone unused is slow. AresGate asked Ollama to keep it for "
+        f"{KEEP_MINUTES} minutes."
+    )
+
+
+def _load_note(
+    definition: ProviderDef,
+    model: str,
+    plan: str | None,
+    failure: CallFailed | wire.AiFailed,
+    found: list[wire.FoundModel],
+) -> str:
+    """Why a model didn't load. Running out of time is said as that, with what it usually means."""
+    note = _plan_note(definition, model, plan, failure, found)
+    if "in time" in str(failure):
+        return (
+            f"{note} Loading a model into memory can take a minute or more, and the computer "
+            "may not have the memory or a graphics card for it. Try the test again, which finds "
+            "it loaded if Ollama finished, or ask `ollama ps` on that computer."
+        )
+    return note
 
 
 async def find_models(
