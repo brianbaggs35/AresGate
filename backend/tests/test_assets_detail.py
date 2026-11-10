@@ -1,7 +1,7 @@
 """An asset's page: what the detail endpoint says of one asset, and the traffic it is worked out
 from. The keys are the ones the Assets list gives, as the page is reached from it."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from typing import Any
 
@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.assets import detail, inventory
 from app.config import Settings
 from app.events.event import Severity
+from app.intel import store as intel_store
+from app.intel import subjects, virustotal
 from app.metrics.store import record as record_samples
 from app.models import DeviceAddress, IntegrationConnection, Interface, User, utcnow
 from e2e import factories
@@ -349,6 +351,137 @@ def test_it_talks_to_and_is_contacted_by_the_addresses_it_was_seen_with(
         ("52.1.2.9", 2),
         ("192.168.1.30", 1),
     ]
+
+
+REPORT = virustotal.Report(
+    malicious=4,
+    suspicious=1,
+    harmless=60,
+    undetected=20,
+    reputation=-9,
+    analysed_at=datetime(2026, 11, 7, tzinfo=UTC),
+    country="NL",
+    owner="Example Hosting",
+)
+
+
+def test_each_peer_says_which_ports_were_used_at_the_far_end_the_most_used_first(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    stock(session)
+    factories.events(
+        session,
+        settings,
+        utcnow(),
+        [
+            EventSpec(
+                src_address=LAPTOP_IP,
+                dst_address="52.1.2.3",
+                dst_port=443,
+                protocol="tcp",
+                repeat=3,
+            ),
+            EventSpec(
+                src_address=LAPTOP_IP, dst_address="52.1.2.3", dst_port=53, protocol="udp", repeat=2
+            ),
+            # Without a port, and to other peers' ports, they add to no port of this peer.
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3"),
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.4", dst_port=22, protocol="tcp"),
+            # Contacted by: the port is the one on the asset that the peer reached.
+            EventSpec(
+                src_address="52.1.2.9",
+                dst_address=LAPTOP_IP,
+                dst_port=3389,
+                protocol="tcp",
+                repeat=2,
+            ),
+        ]
+        + [
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.5", dst_port=1000 + n, repeat=1)
+            for n in range(6)
+        ],
+    )
+    session.commit()
+
+    body = page_of(client, session, "laptop")
+
+    ports = {
+        item["address"]: [(p["port"], p["protocol"], p["events"]) for p in item["ports"]]
+        for item in body["talks_to"] + body["contacted_by"]
+    }
+    assert ports["52.1.2.3"] == [(443, "tcp", 3), (53, "udp", 2)]
+    assert ports["52.1.2.4"] == [(22, "tcp", 1)]
+    assert len(ports["52.1.2.5"]) == detail.PORTS_SHOWN
+    assert ports["52.1.2.9"] == [(3389, "tcp", 2)]
+
+
+def test_a_peer_with_no_port_has_none_listed(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    stock(session)
+    factories.events(
+        session, settings, utcnow(), [EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3")]
+    )
+    session.commit()
+
+    [peer] = page_of(client, session, "laptop")["talks_to"]
+
+    assert peer["ports"] == []
+
+
+def test_a_peer_shows_what_threat_intelligence_kept_of_it_and_asks_nothing(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    stock(session)
+    factories.events(
+        session,
+        settings,
+        utcnow(),
+        [
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3", repeat=3),
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.4", repeat=2),
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.6"),
+            EventSpec(src_address=LAPTOP_IP, dst_address="192.168.1.30"),
+        ],
+    )
+    now = utcnow()
+    intel_store.keep(
+        session,
+        virustotal.PROVIDER,
+        subjects.parse("52.1.2.3"),
+        virustotal.Reported(REPORT),
+        now,
+    )
+    intel_store.keep(
+        session, virustotal.PROVIDER, subjects.parse("52.1.2.4"), virustotal.Unknown(), now
+    )
+    # Kept for a private address, which is never asked about, so never shown.
+    intel_store.keep(
+        session,
+        virustotal.PROVIDER,
+        subjects.of_address(ip_address("192.168.1.30")),
+        virustotal.Reported(REPORT),
+        now,
+    )
+    session.commit()
+
+    peers = {item["address"]: item for item in page_of(client, session, "laptop")["talks_to"]}
+
+    flagged = peers["52.1.2.3"]["standing"]
+    assert (flagged["judgement"], flagged["malicious"], flagged["suspicious"]) == (
+        "malicious",
+        4,
+        1,
+    )
+    assert (flagged["engines"], flagged["owner"], flagged["country"]) == (
+        85,
+        "Example Hosting",
+        "NL",
+    )
+    assert peers["52.1.2.3"]["internal"] is False
+    assert peers["52.1.2.4"]["standing"]["judgement"] == "unknown"
+    assert peers["52.1.2.6"]["standing"] is None
+    assert (peers["192.168.1.30"]["internal"], peers["192.168.1.30"]["standing"]) == (True, None)
 
 
 def test_incidents_its_addresses_are_in_are_listed(

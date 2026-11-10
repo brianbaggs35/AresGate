@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The asset page says what each peer is and which port.** Under Traffic with, each address an asset
+  talked to, or that talked to it, shows the ports used at the far end (with the service a
+  well-known port stands for) and what threat intelligence has kept of the address: its
+  judgement, how many engines flagged it, and who owns it. An address on the home's own network
+  says so, and one with nothing kept yet says it hasn't been checked. Nothing is asked of a service
+  to show it.
 - **AresGate builds its own record of threat intelligence.** Every answer VirusTotal gives is kept
   for good, with when the subject was first asked about, how often, and when its judgement last
   changed and from what. The Threat intelligence page lists it all under "What AresGate knows",

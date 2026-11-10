@@ -156,12 +156,39 @@ export interface AssetEvent {
   outbound: boolean
 }
 
+/** A port at the far end of the asset's traffic with a peer. */
+export interface AssetPort {
+  port: number
+  protocol: string | null
+  /** How many events it was in with the asset, in the last week. */
+  events: number
+}
+
+/** What threat intelligence has kept of a peer. Nothing is asked of a service to show it. */
+export interface AssetStanding {
+  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  malicious: number
+  suspicious: number
+  /** How many engines gave a verdict. */
+  engines: number
+  owner: string | null
+  country: string | null
+  /** When the service was last asked about it. */
+  checked_at: string
+}
+
 /** Another address the asset's traffic went to, or came from. */
 export interface AssetPeer {
   address: string
   /** How many events it was in with the asset, in the last week. */
   events: number
   last_seen_at: string
+  /** The ports at the far end, the most often used first. */
+  ports: AssetPort[]
+  /** An address on a network of its own, which is never sent to a threat intelligence service. */
+  internal: boolean
+  /** What threat intelligence kept of it, or null if nothing is kept yet. */
+  standing: AssetStanding | null
 }
 
 /** What was sent and received in a stretch of time, in bytes; null where nothing was measured. */
