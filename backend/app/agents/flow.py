@@ -13,7 +13,7 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
-Node = Callable[[Any], Awaitable[dict[str, object]]]
+Node = Callable[[Any], dict[str, object] | Awaitable[dict[str, object]]]
 
 
 @dataclass(frozen=True)

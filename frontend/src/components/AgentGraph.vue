@@ -76,12 +76,16 @@ const rounds = computed(() => Math.min(props.run?.rounds ?? 0, MAX_ROUNDS))
     <p v-if="drawn.loops.length" class="loop text-body-small" data-test="graph-loop">
       <v-icon :icon="RefreshCw" size="16" aria-hidden="true" />
       <span>Looks again when the AI asks for more, up to {{ MAX_ROUNDS }} rounds.</span>
-      <span class="loop__rounds" role="img" :aria-label="`Round ${rounds} of ${MAX_ROUNDS}`">
+      <span class="loop__rounds">
+        <span class="sr-only" data-test="graph-rounds-text"
+          >Round {{ rounds }} of {{ MAX_ROUNDS }}</span
+        >
         <span
           v-for="round in MAX_ROUNDS"
           :key="round"
           class="loop__dot"
           :class="{ 'loop__dot--on': round <= rounds }"
+          aria-hidden="true"
           data-test="graph-round"
         />
       </span>
@@ -281,5 +285,14 @@ const rounds = computed(() => Math.min(props.run?.rounds ?? 0, MAX_ROUNDS))
   .link--live {
     animation: none;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 </style>

@@ -77,15 +77,21 @@ const when = computed(() => {
       }}
     </p>
 
-    <div class="agent__runs" role="img" :aria-label="history" data-test="agent-recent">
+    <div class="agent__runs" data-test="agent-recent">
+      <span class="sr-only" data-test="agent-recent-text">{{ history }}</span>
       <span
         v-for="(status, at) in agent.recent"
         :key="at"
         class="agent__dot"
         :class="`agent__dot--${status}`"
+        aria-hidden="true"
         data-test="agent-dot"
       />
-      <span v-if="!agent.recent.length" class="agent__none text-body-small text-medium-emphasis">
+      <span
+        v-if="!agent.recent.length"
+        class="agent__none text-body-small text-medium-emphasis"
+        aria-hidden="true"
+      >
         No runs yet
       </span>
     </div>
@@ -234,5 +240,14 @@ const when = computed(() => {
   .agent__spin :deep(.v-chip__prepend svg) {
     animation: none;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 </style>

@@ -29,16 +29,14 @@ describe('AgentCard', () => {
     const { wrapper, find } = await open()
 
     expect(wrapper.findAll('[data-test="agent-dot"]')).toHaveLength(3)
-    expect(find('agent-recent').attributes('aria-label')).toBe(
-      'Its last 3 runs: 2 finished, 1 failed.',
-    )
+    expect(find('agent-recent-text').text()).toBe('Its last 3 runs: 2 finished, 1 failed.')
   })
 
   it('says it has not run when it has not', async () => {
     const { find } = await open(agent({ recent: [], last_run: null }))
 
-    expect(find('agent-recent').attributes('aria-label')).toBe('It has not run yet.')
-    expect(find('agent-recent').text()).toBe('No runs yet')
+    expect(find('agent-recent-text').text()).toBe('It has not run yet.')
+    expect(find('agent-recent').text()).toContain('No runs yet')
     expect(find('agent-outcome').text()).toContain('Start it to see what it finds.')
   })
 
