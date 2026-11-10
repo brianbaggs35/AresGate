@@ -4,9 +4,10 @@ tell it.
 The asset is the one the Assets list shows (see ``inventory``), and it is read the same way. What is
 added here is read for that asset alone: each address with when it was first and last seen, the
 programs that list it, the events its addresses were in, the addresses it talked to and that talked
-to it, its traffic as ntopng measured it, the incidents its addresses are in and the verdicts the
-owner has given about them. Each is a recent window, so a page is a few small reads. An asset on the
-Internet side is not an asset, so it has no page."""
+to it (with the ports used, and what threat intelligence has kept of each), its traffic as ntopng
+measured it, the incidents its addresses are in and the verdicts the owner has given about them.
+Each is a recent window, so a page is a few small reads. An asset on the Internet side is not an
+asset, so it has no page."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -19,7 +20,17 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.assets import inventory
 from app.assets.inventory import Asset, Network
-from app.models import DeviceAddress, Event, Incident, MetricSample, MetricSeries, VerdictRule
+from app.intel import store as intel_store
+from app.intel import virustotal
+from app.models import (
+    DeviceAddress,
+    Event,
+    Incident,
+    IntelSubject,
+    MetricSample,
+    MetricSeries,
+    VerdictRule,
+)
 
 Address = IPv4Address | IPv6Address
 
@@ -29,6 +40,7 @@ WEEK: Final = timedelta(days=7)
 # How many of each the page shows: the most recent events, the most often seen peers.
 EVENTS_SHOWN: Final = 25
 PEERS_SHOWN: Final = 8
+PORTS_SHOWN: Final = 4
 INCIDENTS_SHOWN: Final = 10
 VERDICTS_SHOWN: Final = 20
 # The traffic of the week, hour by hour, and in the blocks of a day it is shown by.
@@ -68,12 +80,40 @@ class EventSeen:
 
 
 @dataclass(frozen=True)
+class PortSeen:
+    """A port the asset's traffic with a peer used at the far end, and how many events it was in."""
+
+    port: int
+    protocol: str | None
+    events: int
+
+
+@dataclass(frozen=True)
+class Standing:
+    """What threat intelligence has kept of a peer: the judgement, and the counts behind it."""
+
+    judgement: str
+    malicious: int
+    suspicious: int
+    engines: int
+    owner: str | None
+    country: str | None
+    checked_at: datetime
+
+
+@dataclass(frozen=True)
 class Peer:
-    """Another address the asset's traffic went to, or came from, and how many events it was in."""
+    """Another address the asset's traffic went to, or came from, and how many events it was in.
+    ``ports`` are the ports at the far end, the most often used first. ``standing`` is what threat
+    intelligence kept of it, or none if nothing is kept, or if it is an address on a network of its
+    own, which is never sent to a service."""
 
     address: Address
     events: int
     last_seen_at: datetime
+    ports: tuple[PortSeen, ...] = ()
+    standing: Standing | None = None
+    internal: bool = False
 
 
 @dataclass(frozen=True)
@@ -266,10 +306,69 @@ def _peers(
         .order_by(func.count().desc(), func.max(Event.occurred_at).desc())
         .limit(PEERS_SHOWN)
     ).all()
+    peers = [(address, count, last) for address, count, last in rows if address is not None]
+    ports = _ports(db, ours, theirs, addresses, [address for address, _, _ in peers], since)
+    standing = intel_store.answers_for(
+        db, virustotal.PROVIDER, [address for address, _, _ in peers if address.is_global]
+    )
     return tuple(
-        Peer(address=address, events=count, last_seen_at=last)
-        for address, count, last in rows
-        if address is not None
+        Peer(
+            address=address,
+            events=count,
+            last_seen_at=last,
+            ports=ports.get(address, ()),
+            standing=_standing(standing.get(address)),
+            internal=not address.is_global,
+        )
+        for address, count, last in peers
+    )
+
+
+def _ports(
+    db: Session,
+    ours: InstrumentedAttribute[Address | None],
+    theirs: InstrumentedAttribute[Address | None],
+    addresses: list[Address],
+    peers: list[Address],
+    since: datetime,
+) -> dict[Address, tuple[PortSeen, ...]]:
+    """The ports at the far end of the asset's events with each peer, the most often used first.
+    The far end is the event's destination: the service the one side reached on the other."""
+    if not peers:
+        return {}
+    rows = db.execute(
+        select(theirs, Event.dst_port, Event.protocol, func.count())
+        .where(
+            ours.in_(addresses),
+            theirs.in_(peers),
+            Event.dst_port.is_not(None),
+            Event.occurred_at >= since,
+        )
+        .group_by(theirs, Event.dst_port, Event.protocol)
+        .order_by(func.count().desc(), Event.dst_port)
+    ).all()
+    found: dict[Address, list[PortSeen]] = {}
+    for address, port, protocol, count in rows:
+        if address is None or port is None:  # pragma: no cover - the query leaves these out
+            continue
+        seen = found.setdefault(address, [])
+        if len(seen) < PORTS_SHOWN:
+            seen.append(PortSeen(port=port, protocol=protocol, events=count))
+    return {address: tuple(seen) for address, seen in found.items()}
+
+
+def _standing(kept: IntelSubject | None) -> Standing | None:
+    """What a kept answer says of a peer, as the page shows it."""
+    if kept is None:
+        return None
+    return Standing(
+        judgement=kept.judgement,
+        malicious=kept.malicious,
+        suspicious=kept.suspicious,
+        engines=kept.malicious + kept.suspicious + kept.harmless + kept.undetected,
+        owner=kept.owner,
+        country=kept.country,
+        checked_at=kept.checked_at,
     )
 
 

@@ -265,6 +265,24 @@ def reports_for(db: Session, provider: str, addresses: Iterable[Address]) -> lis
     )
 
 
+def answers_for(
+    db: Session, provider: str, addresses: Iterable[Address]
+) -> dict[Address, IntelSubject]:
+    """The answers kept for some addresses, whether the service had a report or none. Nothing is
+    asked of the service: an address with no answer kept is left out."""
+    found = {str(address): address for address in addresses}
+    if not found:
+        return {}
+    rows = db.scalars(
+        select(IntelSubject).where(
+            IntelSubject.provider == provider,
+            IntelSubject.kind == IP,
+            IntelSubject.subject.in_(list(found)),
+        )
+    )
+    return {found[row.subject]: row for row in rows}
+
+
 def prune(db: Session, provider: str, now: datetime) -> None:
     """Forgets the lookups that are too old to count toward any allowance."""
     db.execute(

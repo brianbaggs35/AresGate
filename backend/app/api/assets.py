@@ -3,7 +3,7 @@ into one list. Read-only, for someone signed in."""
 
 from collections.abc import Sequence
 from ipaddress import IPv4Address, IPv6Address
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import AwareDatetime, BaseModel
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(sign
 
 MAX_PAGE = 100
 StatusName = Literal["online", "recent", "away"]
+Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
 # The longest words a search takes in: more than any address or name.
 MAX_SEARCH = 200
 MAX_SOURCES = 8
@@ -269,12 +270,37 @@ class EventOut(BaseModel):
     outbound: bool
 
 
+class PortOut(BaseModel):
+    """A port at the far end of the asset's traffic with a peer."""
+
+    port: int
+    protocol: str | None
+    events: int
+
+
+class StandingOut(BaseModel):
+    """What threat intelligence has kept of a peer. Nothing is asked of a service to show it."""
+
+    judgement: Judgement
+    malicious: int
+    suspicious: int
+    engines: int
+    owner: str | None
+    country: str | None
+    checked_at: AwareDatetime
+
+
 class PeerOut(BaseModel):
-    """Another address the asset's traffic went to, or came from."""
+    """Another address the asset's traffic went to, or came from. ``internal`` is an address on a
+    network of its own, which is never sent to a threat intelligence service, so it has no
+    ``standing``. A public address with none has nothing kept yet."""
 
     address: str
     events: int
     last_seen_at: AwareDatetime
+    ports: list[PortOut]
+    internal: bool
+    standing: StandingOut | None
 
 
 class ReadingOut(BaseModel):
@@ -379,7 +405,28 @@ def _event(item: detail.EventSeen, mine: set[str]) -> EventOut:
 
 
 def _peer(item: detail.Peer) -> PeerOut:
-    return PeerOut(address=str(item.address), events=item.events, last_seen_at=item.last_seen_at)
+    standing = item.standing
+    return PeerOut(
+        address=str(item.address),
+        events=item.events,
+        last_seen_at=item.last_seen_at,
+        ports=[
+            PortOut(port=port.port, protocol=port.protocol, events=port.events)
+            for port in item.ports
+        ],
+        internal=item.internal,
+        standing=None
+        if standing is None
+        else StandingOut(
+            judgement=cast("Judgement", standing.judgement),
+            malicious=standing.malicious,
+            suspicious=standing.suspicious,
+            engines=standing.engines,
+            owner=standing.owner,
+            country=standing.country,
+            checked_at=standing.checked_at,
+        ),
+    )
 
 
 def _detail_out(found: detail.Detail) -> AssetDetailOut:

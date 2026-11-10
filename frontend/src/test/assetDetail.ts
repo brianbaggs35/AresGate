@@ -43,6 +43,9 @@ export const peer = (overrides: Partial<AssetPeer> = {}): AssetPeer => ({
   address: '52.1.2.3',
   events: 3,
   last_seen_at: '2026-11-01T11:50:00Z',
+  ports: [],
+  internal: false,
+  standing: null,
   ...overrides,
 })
 

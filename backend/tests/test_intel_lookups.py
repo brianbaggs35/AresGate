@@ -825,3 +825,18 @@ def test_a_lookup_is_kept_even_if_its_connection_is_removed_while_it_is_asked(
     [lookup] = session.scalars(select(IntelLookup)).all()
     assert lookup.outcome == store.UNKNOWN
     assert session.scalars(select(IntegrationConnection)).all() == []
+
+
+def test_answers_are_found_for_the_addresses_asked_about_with_or_without_a_report(
+    session: Session,
+) -> None:
+    store.keep(session, PROVIDER, subjects.of_address(ADDRESS), virustotal.Reported(REPORT), NOW)
+    store.keep(session, PROVIDER, subjects.of_address(OTHER), virustotal.Unknown(), NOW)
+    store.keep(session, "another", subjects.of_address(HOME), virustotal.Unknown(), NOW)
+
+    assert store.answers_for(session, PROVIDER, []) == {}
+    found = store.answers_for(session, PROVIDER, [ADDRESS, OTHER, HOME])
+    assert {address: row.judgement for address, row in found.items()} == {
+        ADDRESS: "malicious",
+        OTHER: "unknown",
+    }

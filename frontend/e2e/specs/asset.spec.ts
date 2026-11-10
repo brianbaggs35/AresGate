@@ -176,6 +176,12 @@ test.describe('an asset', () => {
     await expect(asset.talksTo).toContainText(SERVER)
     await expect(asset.talksTo).toContainText('1 event')
     await expect(asset.contactedBy).toContainText(VISITOR)
+    // The port at the far end: the server's HTTPS, and the laptop's own SSH that the visitor tried.
+    await expect(asset.talksTo.getByTestId('peer-ports')).toContainText('443/tcp HTTPS')
+    await expect(asset.contactedBy.getByTestId('peer-ports')).toContainText('22/tcp SSH')
+    // Nothing has been kept about either address, which the page says rather than guessing.
+    await expect(asset.talksTo.getByTestId('peer-unchecked')).toHaveText('Not checked yet')
+    await expect(asset.contactedBy.getByTestId('peer-unchecked')).toHaveText('Not checked yet')
   })
 
   test('lists the incidents its addresses are in, and each one opens its own page', async ({
