@@ -611,6 +611,15 @@ A connection test is one lookup too, and it counts toward the allowance. It is s
 press Test, even if the address it asks about has an answer kept, because it is the key
 that is being checked.
 
+A limit on a free key is never a sign that the connection is broken. When VirusTotal answers a test
+with its daily quota used up, or asks for fewer requests for a minute, it has been reached and has
+taken the key, so the test passes and the connection shows as connected, with the limit noted
+beside it. While its daily quota holds, a test sends nothing and the connection stays as it was.
+When AresGate's own pacing holds a test (it leaves 15 seconds between lookups on the free level),
+the page says so as a notice, with how long to wait, and the connection stays as it was: nothing
+was tested, and nothing was found wrong. In the log of requests, one that got HTTP 429 is marked as
+held back by a limit, not as failed.
+
 ### Searching by hand
 
 Once the connection has been tested, the Threat intelligence page has a search. It takes an IP

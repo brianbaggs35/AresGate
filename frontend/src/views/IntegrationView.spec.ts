@@ -584,6 +584,44 @@ describe('IntegrationView', () => {
       expect(opened.find('report').exists()).toBe(false)
     })
 
+    it('says a limit holds the test as a notice, not a failure, and asks for the limit again', async () => {
+      const opened = await open(working())
+      opened.test.mockRejectedValue(
+        new ApiError(
+          429,
+          'The limits on this connection hold the test. Try again in 40 seconds.',
+          'throttled',
+        ),
+      )
+      opened.fetch.mockClear()
+      await opened.click('test')
+      expect(opened.find('test-held').text()).toBe(
+        'The limits on this connection hold the test. Try again in 40 seconds. The connection is still set up.',
+      )
+      expect(opened.find('failure').exists()).toBe(false)
+      expect(opened.find('report').exists()).toBe(false)
+      expect(opened.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('clears the held notice when the test is run again', async () => {
+      const opened = await open(working())
+      opened.test.mockRejectedValueOnce(new ApiError(429, 'Held.', 'throttled'))
+      await opened.click('test')
+      expect(opened.find('test-held').exists()).toBe(true)
+      opened.test.mockResolvedValue(passed())
+      await opened.click('test')
+      expect(opened.find('test-held').exists()).toBe(false)
+    })
+
+    it('still says the test was held when the limit cannot be asked for again', async () => {
+      const opened = await open(working())
+      opened.test.mockRejectedValue(new ApiError(429, 'Held.', 'throttled'))
+      opened.fetch.mockRejectedValue(new ApiError(0, "Can't reach AresGate.", 'offline'))
+      await opened.click('test')
+      expect(opened.find('test-held').text()).toBe('Held. The connection is still set up.')
+      expect(opened.find('failure').exists()).toBe(false)
+    })
+
     it('waits for changes to be saved, and says so', async () => {
       const opened = await open(working())
       expect(opened.find('test').attributes('disabled')).toBeUndefined()

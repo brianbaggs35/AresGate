@@ -774,7 +774,7 @@ def test_a_limit_answer_is_kept_and_leaves_the_connection_connected(
     assert row.last_attempt_at is not None
 
 
-def test_a_throttled_answer_leaves_the_last_success_as_it_was(
+def test_a_throttled_answer_counts_as_the_key_being_accepted(
     session: Session, settings: Settings, connected: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fresh_incident(session, str(ADDRESS))
@@ -786,7 +786,8 @@ def test_a_throttled_answer_leaves_the_last_success_as_it_was(
 
     session.expire_all()
     [row] = session.scalars(select(IntegrationConnection)).all()
-    assert row.last_success_at == tested_at
+    assert row.last_success_at is not None
+    assert tested_at is None or row.last_success_at > tested_at
     assert row.last_error is None
 
 

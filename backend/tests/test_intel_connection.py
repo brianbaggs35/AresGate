@@ -9,7 +9,9 @@ NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 FAILURE = "VirusTotal answered HTTP 500."
 
 
-def connection_row(last_success_at: datetime | None = None) -> IntegrationConnection:
+def connection_row(
+    last_success_at: datetime | None = None, last_error: str | None = None
+) -> IntegrationConnection:
     return IntegrationConnection(
         integration="virustotal",
         connection="api",
@@ -17,6 +19,7 @@ def connection_row(last_success_at: datetime | None = None) -> IntegrationConnec
         tls_mode="system",
         options={"tier": "free"},
         last_success_at=last_success_at,
+        last_error=last_error,
     )
 
 
@@ -38,10 +41,10 @@ def test_a_limit_of_the_day_keeps_the_key_and_says_when_it_resets() -> None:
     assert verdict.message == connection.DAILY_ACCEPTED
 
 
-def test_too_many_requests_keeps_the_key_held_for_a_minute() -> None:
+def test_too_many_requests_is_a_key_that_was_accepted_and_asked_to_slow_down() -> None:
     verdict = connection.verdict_for(virustotal.Throttled(until=NOW), {"tier": "free"})
 
-    assert (verdict.ok, verdict.held) == (True, True)
+    assert (verdict.ok, verdict.held) == (True, False)
     assert verdict.message == connection.THROTTLED
 
 
@@ -60,14 +63,14 @@ def test_a_limit_of_the_day_counts_as_a_success_with_no_error() -> None:
     assert row.last_error is None
 
 
-def test_too_many_requests_is_an_attempt_that_keeps_the_last_success() -> None:
+def test_too_many_requests_counts_as_a_success_with_no_error() -> None:
     earlier = NOW - timedelta(days=1)
-    row = connection_row(last_success_at=earlier)
+    row = connection_row(last_success_at=earlier, last_error="Earlier trouble.")
 
     connection.remember(row, virustotal.Throttled(until=NOW + virustotal.THROTTLE), NOW)
 
     assert row.last_attempt_at == NOW
-    assert row.last_success_at == earlier
+    assert row.last_success_at == NOW
     assert row.last_error is None
 
 

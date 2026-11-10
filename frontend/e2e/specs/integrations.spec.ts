@@ -1433,6 +1433,46 @@ test.describe('integrations', () => {
     })
   })
 
+  test.describe('a limit on VirusTotal', () => {
+    test('holds a test as a notice that the connection is still set up, not as a failure', async ({
+      page,
+      integration,
+    }) => {
+      await page.route('**/api/integrations/virustotal', async (route) => {
+        const response = await route.fetch()
+        const body = (await response.json()) as {
+          status: string
+          connections: { url: string | null; status: string; secrets_set: string[] }[]
+        }
+        body.status = 'connected'
+        for (const connection of body.connections) {
+          connection.url = 'https://www.virustotal.com'
+          connection.status = 'connected'
+          connection.secrets_set = ['api_key']
+        }
+        await route.fulfill({ status: response.status(), json: body })
+      })
+      await page.route('**/api/integrations/virustotal/test', async (route) => {
+        await route.fulfill({
+          status: 429,
+          headers: { 'Retry-After': '40' },
+          json: {
+            detail: 'The limits on this connection hold the test. Try again in 40 seconds.',
+          },
+        })
+      })
+      await integration.goto('virustotal')
+
+      await integration.test.click()
+
+      await expect(page.getByTestId('test-held')).toContainText(
+        'Try again in 40 seconds. The connection is still set up.',
+      )
+      await expect(page.getByTestId('failure')).toHaveCount(0)
+      await expect(integration.status).toHaveText('Connected')
+    })
+  })
+
   test.describe('the log', () => {
     test('shows older requests on request and narrows by method and time', async ({
       harness,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleAlert, CircleCheck, RefreshCw } from '@lucide/vue'
+import { CircleAlert, CircleCheck, Clock, RefreshCw } from '@lucide/vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
@@ -113,6 +113,19 @@ function clearFilters() {
   Object.assign(filters, { connection: 'all', result: 'all', method: 'all', period: 'all' })
 }
 
+/** A 429 is a limit that held the request back, which says nothing of the connection being broken. */
+const limited = (call: Call) => call.status_code === 429
+
+const said = (call: Call) =>
+  limited(call) ? `${call.error}. A limit held it back, which isn't a failure.` : call.error
+
+const mark = (call: Call) =>
+  limited(call)
+    ? { icon: Clock, color: 'info', label: 'Held by a limit' }
+    : call.error
+      ? { icon: CircleAlert, color: 'warning', label: 'Failed' }
+      : { icon: CircleCheck, color: 'success', label: 'Worked' }
+
 const outcome = (call: Call) => (call.status_code === null ? 'No answer' : String(call.status_code))
 
 watch(filters, () => load())
@@ -190,9 +203,9 @@ onMounted(() => load())
       <ul class="api-log__calls" data-test="log-calls">
         <li v-for="call in calls" :key="call.id" class="api-call" data-test="log-call">
           <v-icon
-            :icon="call.error ? CircleAlert : CircleCheck"
-            :color="call.error ? 'warning' : 'success'"
-            :aria-label="call.error ? 'Failed' : 'Worked'"
+            :icon="mark(call).icon"
+            :color="mark(call).color"
+            :aria-label="mark(call).label"
             role="img"
             :aria-hidden="false"
           />
@@ -209,8 +222,13 @@ onMounted(() => load())
                 · {{ labels.get(call.connection) ?? call.connection }}</template
               >
             </div>
-            <div v-if="call.error" class="text-body-medium text-error" data-test="call-error">
-              {{ call.error }}
+            <div
+              v-if="call.error"
+              class="text-body-medium"
+              :class="limited(call) ? 'text-medium-emphasis' : 'text-error'"
+              data-test="call-error"
+            >
+              {{ said(call) }}
             </div>
           </div>
         </li>

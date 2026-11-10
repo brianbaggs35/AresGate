@@ -58,6 +58,8 @@ const otherProblems = ref<string[]>([])
 const failure = ref<string | null>(null)
 const report = ref<CheckReport | null>(null)
 const notice = ref<string | null>(null)
+/** Why a test was not run because a limit holds it: that is no failure, and the connection is as it was. */
+const held = ref<string | null>(null)
 const confirming = ref(false)
 /** Counts what made requests to the integration, so the log reloads. */
 const requests = ref(0)
@@ -95,6 +97,7 @@ function clearFeedback() {
   failure.value = null
   report.value = null
   notice.value = null
+  held.value = null
 }
 
 async function load() {
@@ -138,6 +141,15 @@ async function explain(error: unknown) {
   }
 }
 
+/** Asks for the integration again, to take in the limit that holds it, and nothing else. */
+async function refreshLimit() {
+  try {
+    integration.value = await session.call(() => fetchIntegration(key.value))
+  } catch {
+    // The notice already says what happened; the limit shows the next time the page loads.
+  }
+}
+
 /** One harmless read of each connection, to show it works. Returns why it couldn't be done. */
 async function runTest(): Promise<string | null> {
   busy.value = 'testing'
@@ -148,6 +160,13 @@ async function runTest(): Promise<string | null> {
     integration.value = result.integration
     return null
   } catch (error) {
+    if (error instanceof ApiError && error.status === 429) {
+      // A limit on a free key was reached, which says nothing of the connection: it is said as
+      // that, and the page asks again for the limit that holds, so that it shows when it lifts.
+      held.value = `${errorMessage(error)} The connection is still set up.`
+      await refreshLimit()
+      return null
+    }
     return errorMessage(error)
   } finally {
     requests.value += 1
@@ -292,6 +311,10 @@ onMounted(load)
 
       <v-alert v-if="notice" type="success" variant="tonal" data-test="notice">
         {{ notice }}
+      </v-alert>
+
+      <v-alert v-if="held" type="info" variant="tonal" data-test="test-held">
+        {{ held }}
       </v-alert>
 
       <v-alert v-if="integration.pause" type="info" variant="tonal" data-test="integration-limit">
