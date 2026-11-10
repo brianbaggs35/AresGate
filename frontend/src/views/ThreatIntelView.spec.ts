@@ -39,12 +39,16 @@ describe('ThreatIntelView', () => {
     expect(find('threat-intelligence-setup').exists()).toBe(false)
   })
 
-  it('says what to set up, and links to VirusTotal, while it is not connected', async () => {
+  it('says an integration is needed, and links to the Integrations page, while none is connected', async () => {
     const { find, wrapper } = await open(listWith('not_connected'))
 
     expect(find('threat-lookup').exists()).toBe(false)
-    expect(find('threat-intelligence-setup').text()).toContain("VirusTotal isn't set up yet")
-    expect(wrapper.find('a[href="/integrations/virustotal"]').exists()).toBe(true)
+    expect(find('threat-intelligence-setup').text()).toContain(
+      'needs at least one threat intelligence integration connected',
+    )
+    const button = wrapper.find('[data-test="threat-intelligence-set-up"]')
+    expect(button.text()).toBe('Go to Integrations')
+    expect(button.attributes('href')).toBe('/integrations')
   })
 
   it('says the same while VirusTotal is set up but its connection is not tested', async () => {

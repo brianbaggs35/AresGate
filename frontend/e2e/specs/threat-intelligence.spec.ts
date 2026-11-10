@@ -15,7 +15,7 @@ async function showVirusTotalConnected(page: Page) {
 }
 
 test.describe('threat intelligence page', () => {
-  test('is in the menu, and says VirusTotal must be set up before it can search', async ({
+  test('is in the menu, and says an integration must be connected before it can search', async ({
     page,
     shell,
   }) => {
@@ -28,15 +28,16 @@ test.describe('threat intelligence page', () => {
     await shell.expectCurrent('threat-intelligence')
     await expect(page.getByTestId('page-heading')).toHaveText('Threat intelligence')
     await expect(page.getByTestId('threat-intelligence-setup')).toContainText(
-      "VirusTotal isn't set up yet",
+      'needs at least one threat intelligence integration connected',
     )
     await expect(
       page.getByRole('textbox', { name: 'IP address, domain or web address', exact: true }),
     ).toHaveCount(0)
 
-    await page.getByTestId('threat-intelligence-set-up').click()
+    await page.getByRole('link', { name: 'Go to Integrations' }).click()
 
-    await expect(page).toHaveURL('/integrations/virustotal')
+    await expect(page).toHaveURL('/integrations')
+    await expect(page.getByTestId('page-heading')).toHaveText('Integrations')
   })
 
   test('looks a domain up and shows what VirusTotal says in a window, then says when a search must wait', async ({
