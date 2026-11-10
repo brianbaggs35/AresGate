@@ -3,6 +3,7 @@ import { test as base, type BrowserContext, type Page } from '@playwright/test'
 import { addWebCoverage, coverageEnabled } from './coverage'
 import { Harness, readJson, type BaselineData } from './harness'
 import { ActivityPage } from './pages/activity-page'
+import { AgentsPage } from './pages/agents-page'
 import { AiSettingsPage } from './pages/ai-settings-page'
 import { AiUsagePage } from './pages/ai-usage-page'
 import { AlertsPage } from './pages/alerts-page'
@@ -55,6 +56,8 @@ export interface AresGateFixtures {
   aiSettings: AiSettingsPage
   /** The settings page for what AI took and cost. */
   aiUsage: AiUsagePage
+  /** The agents, and the page of one. */
+  agents: AgentsPage
   /** The chat with the assistant. */
   assistant: AssistantPage
   /** Where alerts are sent. */
@@ -193,6 +196,9 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   aiUsage: async ({ page }, use) => {
     await use(new AiUsagePage(page))
+  },
+  agents: async ({ page }, use) => {
+    await use(new AgentsPage(page))
   },
   assistant: async ({ page }, use) => {
     await use(new AssistantPage(page))

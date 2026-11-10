@@ -87,6 +87,11 @@ describe('ActivityList', () => {
       'interface.changed',
       'interface.removed',
       'interface.feed_placed',
+      'agent.created',
+      'agent.changed',
+      'agent.deleted',
+      'agent.run_requested',
+      'agent.run_cancelled',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -134,6 +139,11 @@ describe('ActivityList', () => {
       'An interface was changed',
       'An interface was removed',
       'A source was placed on an interface, or set aside',
+      'An agent was added',
+      'An agent was changed',
+      'An agent was removed',
+      'An agent was asked to run',
+      'An agent run was stopped',
     ])
   })
 

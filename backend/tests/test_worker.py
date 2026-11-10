@@ -134,6 +134,13 @@ class TestServing:
         def collecting(_: Settings) -> Collecting:
             return Collecting()
 
+        async def run_agents(
+            new_session: Callable[[], Session], context: Context, *, enabled: bool
+        ) -> None:
+            assert callable(new_session)
+            assert context.settings.environment == "production"
+            started.append(f"agents, enabled: {enabled}")
+
         async def tell_destinations(
             settings: Settings,
             new_session: Callable[[], Session],
@@ -162,6 +169,7 @@ class TestServing:
         monkeypatch.setattr(worker, "build", collecting)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
         monkeypatch.setattr(worker.ai, "run", read_incidents)
+        monkeypatch.setattr(worker.agents, "run", run_agents)
         monkeypatch.setattr(worker.intel, "run", look_up_reports)
         monkeypatch.setattr(worker.notify, "run", tell_destinations)
         production = settings.model_copy(update={"environment": "production"})
@@ -171,6 +179,7 @@ class TestServing:
         assert sorted(started) == [
             "AI, enabled: True",
             "VirusTotal, enabled: True",
+            "agents, enabled: True",
             "alerts, enabled: True",
             "collectors",
             "incidents, enabled: True",
@@ -201,6 +210,7 @@ class TestServing:
         monkeypatch.setattr(worker, "build", failing)
         monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
         monkeypatch.setattr(worker.ai, "run", waiting("AI"))
+        monkeypatch.setattr(worker.agents, "run", waiting("agents"))
         monkeypatch.setattr(worker.intel, "run", waiting("VirusTotal"))
         monkeypatch.setattr(worker.notify, "run", waiting("alerts"))
 
@@ -210,7 +220,7 @@ class TestServing:
             asyncio.run(serving)
 
         assert raised.group_contains(RuntimeError, match="fell over")
-        assert sorted(cancelled) == ["AI", "VirusTotal", "alerts", "incidents"]
+        assert sorted(cancelled) == ["AI", "VirusTotal", "agents", "alerts", "incidents"]
 
 
 @pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")

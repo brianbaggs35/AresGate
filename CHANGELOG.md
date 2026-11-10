@@ -14,6 +14,17 @@ Every release's notes are here, newest first. The format follows
   "Not tested yet". Now what the last test found stays until an address, certificate, option,
   service or key is changed, which is when it stops being about what is saved.
 
+### Added
+
+- **Agents.** A new Agents page makes standing instructions that look at your network for you, on a
+  schedule or when you ask. Make a threat hunter, an intelligence analyst, a health watch or an
+  exposure scanner, give it your own instructions, and follow each run as a graph that lights up
+  step by step, with what it looked at, what the AI made of it and the findings it settled on,
+  each citing the incident or integration it is based on. An agent only reads. The exposure scanner
+  tests your own devices for risky open services by connecting and nothing more, and only after you
+  allow it, only when you start it. Agents are built with LangGraph, with its tracing off, and
+  work in light and dark and on a phone.
+
 ## 0.0.10
 
 ### Added

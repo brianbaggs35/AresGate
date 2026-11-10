@@ -180,6 +180,12 @@ def _unavailable(db: Session, now: datetime) -> tuple[AiProvider | None, str | N
     return row, None
 
 
+def availability(db: Session, now: datetime) -> str | None:
+    """Why nothing would be asked now, in words for whoever is waiting for an answer, or None when
+    a provider would be asked."""
+    return _unavailable(db, now)[1]
+
+
 def prepare(
     db: Session, context: Context, question: Question, now: datetime
 ) -> Prepared | Unavailable:

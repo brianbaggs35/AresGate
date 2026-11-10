@@ -59,6 +59,7 @@ describe('names', () => {
   it('names the uses it knows and writes out the others', () => {
     expect(purposeLabel('triage')).toBe('Reading incidents')
     expect(purposeLabel('chat')).toBe('Chat')
+    expect(purposeLabel('agent')).toBe('Agents')
     expect(purposeLabel('weekly_report')).toBe('Weekly report')
   })
 

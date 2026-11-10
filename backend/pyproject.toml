@@ -12,6 +12,7 @@ dependencies = [
     "fido2>=2.2.1",
     "httpcore2>=2.16.0",
     "httpx2>=2.16.0",
+    "langgraph>=1.2.20",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",

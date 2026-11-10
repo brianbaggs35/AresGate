@@ -18,6 +18,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app import config as config_module
+from app.agents import service as agents_service
 from app.alerts import destinations
 from app.collectors import health
 from app.collectors.health import WORKER, WorkerState
@@ -25,7 +26,17 @@ from app.config import Settings
 from app.db import get_session
 from app.integrations import netguard, registry, service
 from app.integrations.service import Submission
-from app.models import CollectorHealth, Event, Incident, SystemInfo, User, WorkerBeat, utcnow
+from app.models import (
+    Agent,
+    AgentRun,
+    CollectorHealth,
+    Event,
+    Incident,
+    SystemInfo,
+    User,
+    WorkerBeat,
+    utcnow,
+)
 from app.security import passwords, setup_code
 from e2e import factories
 from e2e.api import STAND_INS
@@ -146,6 +157,9 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
     e2e.post("/api/__test__/database/clean")
     expected = {
+        "agent_runs": 0,
+        "agent_steps": 0,
+        "agents": 0,
         "ai_aliases": 0,
         "ai_calls": 0,
         "ai_conversations": 0,
@@ -213,6 +227,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "alert_deliveries",
             "ai_triage",
             "incidents",
+            "agent_steps",
             "user_sessions",
             "totp_credentials",
             "recovery_codes",
@@ -225,6 +240,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "device_addresses",
             "ai_settings",
             "ai_messages",
+            "agent_runs",
             "worker_beats",
             "verdict_rules",
             "users",
@@ -252,6 +268,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "ai_conversations",
             "ai_calls",
             "ai_aliases",
+            "agents",
         ],
     }
     assert system_info(session) == BASELINE_SYSTEM_INFO
@@ -1365,3 +1382,25 @@ def test_it_tells_of_a_threat_and_then_says_it_was_stood_down(
     )
     posted, patched = e2e.get(f"/api/__test__/stand-ins/{started['id']}/requests").json()
     assert (posted["method"], patched["method"]) == ("POST", "PATCH")
+
+
+def test_it_runs_the_agents_that_wait_and_says_what_answered_without_connecting_to_anything(
+    e2e: TestClient, session: Session
+) -> None:
+    e2e.post("/api/__test__/factories/activity", json={"devices": 2})
+    agent = Agent(name="Scanner", template="exposure_scanner", allow_active=True)
+    session.add(agent)
+    session.flush()
+    waiting = agents_service.queue(session, agent, "manual", utcnow())
+    session.commit()
+
+    report = e2e.post("/api/__test__/agents/run", json={"open": ["192.168.1.10:23"]}).json()
+    nothing = e2e.post("/api/__test__/agents/run", json={}).json()
+
+    assert (report, nothing) == ({"ran": 1}, {"ran": 0})
+    session.expire_all()
+    done = session.get_one(AgentRun, waiting.id)
+    assert done.status == "succeeded"
+    assert [(item["severity"], item["title"]) for item in done.findings] == [
+        ("critical", "Telnet is open on e2e-device-1 (192.168.1.10)")
+    ]

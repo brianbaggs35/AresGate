@@ -682,6 +682,55 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the agents, the sheet that makes one and the page of one, mid-run and finished, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiSettings,
+      agents,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '93.184.216.34',
+          severity: 'high',
+          programs: ['wazuh', 'opnsense'],
+          signals: 4,
+          device_name: 'nas',
+        },
+      ])
+      await turnOnAi(harness, aiSettings)
+      await agents.goto()
+      await expect(agents.empty).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await agents.make.click()
+      await expect(agents.dialog).toBeVisible()
+      await agents.chooseKind('Exposure scanner')
+      await expect(agents.dialogActive).toBeVisible()
+      // On a phone the sheet covers the buttons of the page under it, so only the sheet is checked.
+      await expectAccessible(page, { include: '[data-test="agent-dialog"]' })
+      await agents.chooseKind('Threat hunter')
+      await agents.save.click()
+      await expect(agents.dialog).toHaveCount(0)
+      await expect(agents.cards).toHaveCount(1)
+      await expectAccessible(page)
+
+      await agents.cards.first().getByTestId('agent-run').click()
+      await expect(agents.cards.first().getByTestId('agent-state')).toContainText(
+        'Waiting to start',
+      )
+      await agents.cards.first().getByTestId('agent-open').click()
+      await expect(agents.nodes.first()).toBeVisible()
+      await expectAccessible(page)
+
+      await harness.runAgents()
+      await expect(agents.runStatus).toHaveText('Finished', { timeout: 15_000 })
+      await expect(agents.findings).toHaveCount(1)
+      await expectAccessible(page)
+    })
+
     test('the account settings page has no WCAG 2.2 AA problems', async ({
       page,
       security,

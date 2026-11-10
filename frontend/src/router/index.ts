@@ -85,6 +85,24 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // The agents, and a page for each. Both belong to the one place in the menu.
+    path: '/agents',
+    children: [
+      {
+        path: '',
+        name: 'agents',
+        component: () => import('@/views/AgentsView.vue'),
+        meta: { title: 'Agents' },
+      },
+      {
+        path: String.raw`:id(\d+)`,
+        name: 'agent',
+        component: () => import('@/views/AgentView.vue'),
+        meta: { title: 'Agents' },
+      },
+    ],
+  },
+  {
     path: '/logs',
     name: 'logs',
     component: () => import('@/views/LogsView.vue'),

@@ -54,6 +54,7 @@ export function formatTokens(count: number): string {
 const PURPOSES: Readonly<Record<string, string>> = {
   triage: 'Reading incidents',
   chat: 'Chat',
+  agent: 'Agents',
   summary: 'Summaries',
 }
 

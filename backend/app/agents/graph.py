@@ -1,0 +1,579 @@
+"""What one run of an agent does, as a LangGraph graph.
+
+    plan -> act -> think -> report
+              ^______|        (while the model asks to look at more, up to three rounds)
+
+``plan`` decides what to look at first (from the template). ``act`` looks, with the tools of
+app/ai/tools.py, which only read, and, for an agent allowed to, tests the devices on the network
+(app/agents/probe.py). ``think`` shows what was found to the AI provider through the gateway
+(app/ai/gateway.py), so a provider only sees what the redaction level allows and every request is
+recorded, and gets back a report and perhaps more to look at, which sends the run round again.
+``report`` settles the summary and the findings. Where the AI is off, not set up or not answering,
+the run is still a run: it reports what it collected and says why the AI took no part.
+
+Each node says what it did in ``steps``, which the runner (app/agents/run.py) keeps as the run
+goes, so that the web app can show an agent at work.
+"""
+
+import asyncio
+import json
+import operator
+import re
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Annotated, Final, TypedDict, cast
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app import audit
+from app.agents import catalog, flow, probe
+from app.agents.catalog import Lookup, Template
+from app.ai import gateway, tools
+from app.ai.gateway import Context, Question, Unavailable
+from app.ai.redaction import Level, Redactor
+from app.ai.tools import Args
+from app.integrations import netguard
+from app.integrations.netguard import AddressPolicy
+from app.models import Device
+from app.models.base import utcnow
+
+PURPOSE: Final = "agent"
+SCAN: Final = "scan_exposure"
+# The model is asked up to this many times: it may ask to look at more twice, and the last time
+# has to answer with what it has.
+MAX_ROUNDS: Final = 3
+MAX_LOOKUPS: Final = 4
+MAX_LINES: Final = 14
+MAX_FINDINGS: Final = 12
+MAX_SUMMARY: Final = 1500
+MAX_TITLE: Final = 160
+MAX_DETAIL: Final = 800
+MAX_GOAL: Final = 2000
+MAX_TOKENS: Final = 1800
+MAX_NAMES: Final = 500
+NO_MORE: Final = "You cannot look at anything else now: report with what you have."
+
+
+class Step(TypedDict):
+    """One thing a node did, for the owner to follow."""
+
+    title: str
+    detail: dict[str, object]
+
+
+class Entry(TypedDict):
+    """What one look found. ``lines`` are as the owner reads them; what a provider is shown is made
+    from them again, through its redactor. ``hits`` are the open ports of a test."""
+
+    tool: str
+    label: str
+    summary: str
+    lines: list[str]
+    refs: list[dict[str, str]]
+    hits: list[dict[str, object]]
+
+
+class Finding(TypedDict):
+    severity: str
+    title: str
+    detail: str
+    cites: list[dict[str, str]]
+
+
+class State(TypedDict):
+    round: int
+    pending: list[Lookup]
+    ran: Annotated[list[Entry], operator.add]
+    findings: list[Finding]
+    summary: str
+    # Why the AI took no part, or empty when it did.
+    ai: str
+    call_ids: Annotated[list[int], operator.add]
+    steps: list[Step]
+
+
+def initial() -> State:
+    return State(round=0, pending=[], ran=[], findings=[], summary="", ai="", call_ids=[], steps=[])
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """What a run needs to know of its agent, read before it starts."""
+
+    agent_id: int
+    run_id: int
+    name: str
+    goal: str
+    allow_active: bool
+    template: Template
+
+
+@dataclass(frozen=True)
+class Work:
+    """What the nodes of a run work with: where to get a session, how to ask a provider, and who
+    the agent is. ``policy``, ``ports`` and ``connect`` are how devices are tested, which only a
+    test of the agents changes."""
+
+    snapshot: Snapshot
+    new_session: Callable[[], Session]
+    context: Context
+    policy: AddressPolicy = netguard.HOME_NETWORK
+    ports: Mapping[int, probe.Service] = field(default_factory=lambda: probe.PORTS)
+    connect: Callable[[str, int, float], bool] = probe.connects
+
+
+def label(lookup: Lookup) -> str:
+    given = [
+        f"{name} {value}"
+        for name, value in (
+            ("id", lookup.args.id),
+            ("name", lookup.args.name),
+            ("hours", lookup.args.hours),
+            ("limit", lookup.args.limit),
+        )
+        if value is not None
+    ]
+    return " ".join([lookup.tool.replace("_", " "), *given])
+
+
+# -- what the model is told
+
+
+def _tool_list(template: Template) -> str:
+    described = [(name, tools.by_name(name)) for name in template.asks]
+    return "\n".join(f"- {tool.name}: {tool.description}" for _, tool in described if tool)
+
+
+def system_for(template: Template) -> str:
+    asked = (
+        'To look at more, name a tool in "lookups" (up to four) and leave "findings" for '
+        "when you have looked. You are asked again with what was found, and may look at more once. "
+        'Fill "id", "name", "hours" and "limit" only as the tool uses them and leave the '
+        f"rest null. The tools:\n{_tool_list(template)}"
+        if template.asks
+        else ""
+    )
+    return f"""\
+You are an agent of AresGate, a security monitor for one home network. {template.brief}
+
+You can only read. You cannot change anything in AresGate or on the network, and you must never \
+say that you did or that you will. Answer only from the facts you are given. If they do not say \
+it, say that you do not know. Never invent incidents, addresses, devices, numbers or products. \
+Most traffic from the internet to a home network is automated scanning that never succeeds and is \
+not worth waking anyone for; say so when that is what you see, and be honest when something is \
+worth the owner's attention.
+
+{asked}
+
+"summary" is your report in a few short sentences, the most important thing first. "findings" \
+are the things worth the owner's attention, each with a severity (info, low, medium, high or \
+critical), a short title and what to do about it; leave it empty when there is nothing. Write an \
+incident as [incident 3]. In a finding's "cites" list what it is based on, as "incident 3" or \
+"integration opnsense", only things that appeared in what you were given.
+
+Answer only with the JSON you are asked for.\
+"""
+
+
+def schema(template: Template) -> Mapping[str, object]:
+    lookup: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "tool": {"type": "string", "enum": list(template.asks) or ["none"]},
+            "id": {"type": ["integer", "null"]},
+            "name": {"type": ["string", "null"]},
+            "hours": {"type": ["integer", "null"]},
+            "limit": {"type": ["integer", "null"]},
+        },
+        "required": ["tool", "id", "name", "hours", "limit"],
+    }
+    finding: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "severity": {"type": "string", "enum": list(probe.SEVERITIES)},
+            "title": {"type": "string"},
+            "detail": {"type": "string"},
+            "cites": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["severity", "title", "detail", "cites"],
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "summary": {"type": "string"},
+            "findings": {"type": "array", "items": finding},
+            "lookups": {"type": "array", "items": lookup},
+        },
+        "required": ["summary", "findings", "lookups"],
+    }
+
+
+def _evidence(redactor: Redactor, ran: Sequence[Entry]) -> list[str]:
+    return [redactor.evidence(entry["label"], entry["lines"]) for entry in ran]
+
+
+def question_for(
+    snapshot: Snapshot, ran: Sequence[Entry], names: Sequence[str], now: datetime, *, last: bool
+) -> Question:
+    def build(redactor: Redactor) -> str:
+        parts = [f"It is {now:%Y-%m-%d %H:%M} UTC."]
+        if snapshot.goal.strip():
+            parts.append(
+                f"The owner's instructions to you: {redactor.text(snapshot.goal, MAX_GOAL)}"
+            )
+        parts += _evidence(redactor, ran)
+        if last:
+            parts.append(NO_MORE)
+        return "\n\n".join(parts)
+
+    return Question(
+        purpose=PURPOSE,
+        system=system_for(snapshot.template),
+        build=build,
+        about=f"agent {snapshot.agent_id} run {snapshot.run_id}",
+        schema=schema(snapshot.template),
+        max_tokens=MAX_TOKENS,
+        names=names,
+    )
+
+
+# -- what the model said
+
+
+@dataclass(frozen=True)
+class Reading:
+    summary: str
+    findings: list[tuple[str, str, str, list[str]]]
+    lookups: list[Lookup]
+
+
+def _loads(text: str) -> object:
+    """The JSON object in an answer, which some models put inside a code fence or a sentence."""
+    stripped = text.strip()
+    try:
+        return json.loads(stripped)
+    except ValueError:
+        match = re.search(r"\{.*\}", stripped, re.DOTALL)
+        return json.loads(match.group(0)) if match else None
+
+
+def _number(value: object) -> int | None:
+    return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _lookup(item: object, template: Template) -> Lookup | None:
+    if not isinstance(item, dict):
+        return None
+    fields = cast("dict[str, object]", item)
+    name = fields.get("tool")
+    # What the template does not allow is ignored, so a model can't ask for anything else, a test
+    # of the network least of all.
+    if not isinstance(name, str) or name not in template.asks:
+        return None
+    given = fields.get("name")
+    return Lookup(
+        name,
+        Args(
+            id=_number(fields.get("id")),
+            name=audit.clean(given, 120) if isinstance(given, str) else None,
+            hours=_number(fields.get("hours")),
+            limit=_number(fields.get("limit")),
+        ),
+    )
+
+
+def _finding(item: object) -> tuple[str, str, str, list[str]] | None:
+    if not isinstance(item, dict):
+        return None
+    fields = cast("dict[str, object]", item)
+    title = fields.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return None
+    severity = fields.get("severity")
+    detail = fields.get("detail")
+    cites = fields.get("cites")
+    return (
+        severity if isinstance(severity, str) and severity in probe.SEVERITIES else "info",
+        audit.clean(title, MAX_TITLE) or "",
+        (audit.clean(detail, MAX_DETAIL) or "") if isinstance(detail, str) else "",
+        [cite for cite in cast("list[object]", cites) if isinstance(cite, str)]
+        if isinstance(cites, list)
+        else [],
+    )
+
+
+def parse(text: str, template: Template) -> Reading | None:
+    """What a reply says, or None if it is not a report."""
+    try:
+        loaded = _loads(text)
+    except ValueError:
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    fields = cast("dict[str, object]", loaded)
+    summary = fields.get("summary")
+    found = fields.get("findings")
+    asked = fields.get("lookups")
+    findings = [
+        kept
+        for item in (cast("list[object]", found) if isinstance(found, list) else [])
+        if (kept := _finding(item)) is not None
+    ]
+    lookups = [
+        kept
+        for item in (cast("list[object]", asked) if isinstance(asked, list) else [])
+        if (kept := _lookup(item, template)) is not None
+    ]
+    return Reading(
+        summary=(audit.clean(summary, MAX_SUMMARY) or "") if isinstance(summary, str) else "",
+        findings=findings[:MAX_FINDINGS],
+        lookups=lookups[:MAX_LOOKUPS],
+    )
+
+
+def cited(names: list[str], ran: Sequence[Entry]) -> list[dict[str, str]]:
+    """What a finding cites that was really in what the agent was given."""
+    known = {f"{ref['kind']} {ref['key']}".lower(): ref for entry in ran for ref in entry["refs"]}
+    kept: dict[str, dict[str, str]] = {}
+    for name in names:
+        ref = known.get(name.strip(" []").lower())
+        if ref is not None:
+            kept.setdefault(f"{ref['kind']} {ref['key']}", ref)
+    return list(kept.values())
+
+
+# -- the nodes
+
+
+def _look(work: Work, lookups: Sequence[Lookup], now: datetime) -> list[Entry]:
+    """Looks at each thing asked for, and gives back what was found."""
+    entries: list[Entry] = []
+    with work.new_session() as db:
+        # The owner reads what is found as it is: it is only made safe for a provider later.
+        redactor = Redactor(db, Level.LOCAL, now)
+        for lookup in lookups:
+            if lookup.tool == SCAN:
+                entries.append(_test(work, db, lookup, now))
+                continue
+            tool = tools.by_name(lookup.tool)
+            if tool is None:
+                continue
+            found = tool.run(db, redactor, lookup.args, now)
+            entries.append(
+                Entry(
+                    tool=lookup.tool,
+                    label=label(lookup),
+                    summary=found.summary,
+                    lines=found.lines,
+                    refs=[
+                        {"kind": ref.kind, "key": ref.key, "label": ref.label} for ref in found.refs
+                    ],
+                    hits=[],
+                )
+            )
+    return entries
+
+
+def _test(work: Work, db: Session, lookup: Lookup, now: datetime) -> Entry:
+    """Tests the devices on the network, if the agent has been allowed to."""
+    if not work.snapshot.allow_active:
+        return Entry(
+            tool=SCAN,
+            label=label(lookup),
+            summary="not run: the agent isn't allowed to test the network",
+            lines=["The agent hasn't been allowed to test the network, so nothing was sent."],
+            refs=[],
+            hits=[],
+        )
+    found = probe.scan(db, now, policy=work.policy, ports=work.ports, connect=work.connect)
+    return Entry(
+        tool=SCAN,
+        label=label(lookup),
+        summary=probe.summary(found),
+        lines=[probe.line(hit) for hit in found.hits]
+        or [f"Nothing risky answered on {found.tested} devices."],
+        refs=[],
+        hits=[
+            {
+                "device": hit.target.label,
+                "port": hit.port,
+                "service": hit.service.name,
+                "severity": hit.service.severity,
+                "why": hit.service.why,
+            }
+            for hit in found.hits
+        ],
+    )
+
+
+def _names(db: Session) -> list[str]:
+    return [
+        name
+        for name in db.scalars(
+            select(Device.hostname).where(Device.hostname.is_not(None)).limit(MAX_NAMES)
+        )
+        if name
+    ]
+
+
+def _step_of(entry: Entry) -> Step:
+    return Step(
+        title=f"Looked at {entry['label']}",
+        detail={
+            "tool": entry["tool"],
+            "summary": entry["summary"],
+            "lines": entry["lines"][:MAX_LINES],
+        },
+    )
+
+
+def build(work: Work) -> object:
+    """The graph of one run."""
+    template = work.snapshot.template
+
+    async def plan(state: State) -> dict[str, object]:
+        del state
+        first = list(template.first)
+        return {
+            "round": 1,
+            "pending": first,
+            "steps": [
+                Step(
+                    title=f"Planned what to look at first: {', '.join(label(i) for i in first)}",
+                    detail={"template": template.key},
+                )
+            ],
+        }
+
+    async def act(state: State) -> dict[str, object]:
+        entries = await asyncio.to_thread(_look, work, state["pending"], utcnow())
+        return {"ran": entries, "pending": [], "steps": [_step_of(entry) for entry in entries]}
+
+    async def think(state: State) -> dict[str, object]:
+        last = state["round"] >= MAX_ROUNDS
+        now = utcnow()
+
+        def prepare() -> gateway.Prepared | Unavailable:
+            with work.new_session() as db:
+                prepared = gateway.prepare(
+                    db,
+                    work.context,
+                    question_for(work.snapshot, state["ran"], _names(db), now, last=last),
+                    now,
+                )
+                db.commit()
+                return prepared
+
+        prepared = await asyncio.to_thread(prepare)
+        if isinstance(prepared, Unavailable):
+            return _without_ai(prepared.reason, "Didn't ask the AI")
+        sent = await gateway.send(prepared, work.context)
+
+        def record() -> gateway.Answer:
+            with work.new_session() as db:
+                answer = gateway.record(db, prepared, sent, now)
+                db.commit()
+                return answer
+
+        answer = await asyncio.to_thread(record)
+        who = f"{prepared.definition.label}, {prepared.model}"
+        if not answer.ok:
+            return {
+                **_without_ai(f"The AI didn't answer: {answer.reason}", f"Asked {who}"),
+                "call_ids": [answer.call_id],
+            }
+        reading = parse(answer.text, template)
+        if reading is None:
+            return {
+                **_without_ai("The AI's answer couldn't be used.", f"Asked {who}"),
+                "call_ids": [answer.call_id],
+            }
+        done = {entry["tool"] + entry["label"] for entry in state["ran"]}
+        more = (
+            []
+            if last
+            else [item for item in reading.lookups if item.tool + label(item) not in done]
+        )
+        findings = [
+            Finding(severity=severity, title=title, detail=detail, cites=cited(cites, state["ran"]))
+            for severity, title, detail, cites in reading.findings
+        ]
+        return {
+            "ai": "",
+            "summary": reading.summary,
+            "findings": findings,
+            "pending": more,
+            "round": state["round"] + 1 if more else state["round"],
+            "call_ids": [answer.call_id],
+            "steps": [
+                Step(
+                    title=f"Asked {who}",
+                    detail={
+                        "call_id": answer.call_id,
+                        "summary": reading.summary,
+                        "findings": len(findings),
+                        "asked_for": [label(item) for item in more],
+                    },
+                )
+            ],
+        }
+
+    async def report(state: State) -> dict[str, object]:
+        findings = state["findings"] or _found_by_testing(state["ran"])
+        summary = state["summary"] or _collected(state)
+        return {
+            "summary": summary,
+            "findings": findings,
+            "steps": [Step(title="Wrote the report", detail={"findings": len(findings)})],
+        }
+
+    def route(state: State) -> str:
+        return "act" if state["pending"] else "report"
+
+    return flow.compile_graph(
+        State, {"plan": plan, "act": act, "think": think, "report": report}, route
+    )
+
+
+def _without_ai(reason: str, title: str) -> dict[str, object]:
+    return {
+        "ai": reason,
+        "pending": [],
+        "steps": [Step(title=title, detail={"reason": reason})],
+    }
+
+
+def _found_by_testing(ran: Sequence[Entry]) -> list[Finding]:
+    """What a test of the network found, as findings, for a run the AI took no part in."""
+    return [
+        Finding(
+            severity=str(hit["severity"]),
+            title=f"{hit['service']} is open on {hit['device']}",
+            detail=str(hit["why"]),
+            cites=[],
+        )
+        for entry in ran
+        for hit in entry["hits"]
+    ]
+
+
+def _collected(state: State) -> str:
+    """The report of a run the AI took no part in: what was collected, and why it didn't."""
+    found = "; ".join(f"{entry['label']}: {entry['summary']}" for entry in state["ran"])
+    reason = f" The AI took no part: {state['ai']}" if state["ai"] else ""
+    return f"Collected {found or 'nothing'}.{reason}"
+
+
+def structure() -> list[flow.Edge]:
+    """The graph of a run, as LangGraph describes it, for the page that draws it."""
+
+    def unused() -> Session:  # pragma: no cover - the nodes are never run
+        raise NotImplementedError
+
+    snapshot = Snapshot(0, 0, "", "", False, catalog.THREAT_HUNTER)
+    return flow.edges_of(build(Work(snapshot, unused, cast("Context", None))))
