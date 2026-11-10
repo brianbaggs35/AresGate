@@ -123,6 +123,9 @@ export interface IncidentRequest {
   /** A second program that reports every alert a couple of seconds after the first, as the same
    * thing seen twice (it counts once). */
   twin?: string
+  /** Whether each program says what it knows besides the basics (the rule's groups and its
+   * technique, the machine, the traffic), as the real ones do. */
+  detailed?: boolean
 }
 
 /** How much `createIncidents()` stored. */

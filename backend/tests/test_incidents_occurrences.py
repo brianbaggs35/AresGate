@@ -89,6 +89,86 @@ def test_how_many_another_program_also_reported_is_counted() -> None:
     assert (found[0].count, found[0].duplicates) == (3, 2)
 
 
+class TestAnotherProgramReportingTheSame:
+    """The same alert from a program that did not report the first is not an occurrence of its own:
+    it confirms the first."""
+
+    def twin(self, minutes: int = 0, of: int = 1, **changes: Any) -> IncidentSignal:
+        fields: dict[str, Any] = {
+            "source": "wazuh",
+            "duplicate": True,
+            "twin_of": of,
+            "event_id": 100 + minutes,
+            "signature": "Wazuh says ssh",
+            **changes,
+        }
+        return signal(minutes, **fields)
+
+    def test_it_is_added_to_the_alert_it_repeats_as_a_confirmation(self) -> None:
+        found = occurrences.group([signal(0, event_id=1), signal(5, event_id=2), self.twin(0)])
+
+        (only,) = found
+        assert (only.count, only.duplicates) == (2, 1)
+        assert [(one.source, one.count) for one in only.confirmations] == [("wazuh", 1)]
+
+    def test_each_program_that_agrees_is_listed_once_with_how_often_it_did(self) -> None:
+        found = occurrences.group(
+            [
+                signal(0, event_id=1),
+                self.twin(
+                    1,
+                    severity=1,
+                    evidence={"facts": [["Rule", "1"]], "tags": [], "mitre": [], "indicators": []},
+                ),
+                self.twin(2, severity=3),
+                self.twin(3, source="ntopng", signature="Scan"),
+            ]
+        )
+
+        (only,) = found
+        assert only.duplicates == 3
+        wazuh, ntopng = only.confirmations
+        assert (wazuh.source, wazuh.count, wazuh.severity) == ("wazuh", 2, 3)
+        assert (wazuh.first_at, wazuh.last_at) == (
+            NOW + timedelta(minutes=1),
+            NOW + timedelta(minutes=2),
+        )
+        # What the first of its reports that said any said.
+        assert wazuh.evidence == {
+            "facts": [["Rule", "1"]],
+            "tags": [],
+            "mitre": [],
+            "indicators": [],
+        }
+        assert (ntopng.source, ntopng.signature, ntopng.evidence) == ("ntopng", "Scan", None)
+
+    def test_a_program_that_says_it_in_other_words_is_listed_apart(self) -> None:
+        found = occurrences.group(
+            [signal(0, event_id=1), self.twin(1), self.twin(2, signature="Another rule")]
+        )
+
+        assert [one.signature for one in found[0].confirmations] == [
+            "Wazuh says ssh",
+            "Another rule",
+        ]
+
+    def test_a_twin_may_have_been_dated_before_the_alert_it_repeats(self) -> None:
+        found = occurrences.group([self.twin(0), signal(1, event_id=1)])
+
+        assert len(found) == 1
+        assert found[0].first.event_id == 1
+        assert found[0].duplicates == 1
+
+    def test_one_whose_original_is_not_listed_is_an_occurrence_of_its_own(self) -> None:
+        found = occurrences.group([signal(0, event_id=1), self.twin(1, of=999)])
+
+        assert [(each.first.source, each.duplicates) for each in found] == [
+            ("opnsense", 0),
+            ("wazuh", 1),
+        ]
+        assert all(not each.confirmations for each in found)
+
+
 def test_a_timeline_that_is_out_of_order_still_has_the_latest_time_last() -> None:
     found = occurrences.group([signal(9), signal(0)])
 

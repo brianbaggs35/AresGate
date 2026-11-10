@@ -293,6 +293,9 @@ class IncidentSpec(NamedTuple):
     # Whether the device sent the signals to the address, as a camera calls its cloud, rather than
     # the address sending them to the device.
     outbound: bool = False
+    # Whether each program gives what it knows besides the basics (the rule's groups and its
+    # MITRE technique, the host an alert was about, the traffic), as the real ones do.
+    detailed: bool = False
 
 
 class IncidentsRecorded(NamedTuple):
@@ -380,6 +383,7 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             dst_address=target,
             dst_port=port,
             protocol="tcp",
+            raw=_record(program, target, port) if spec.detailed else None,
         )
         events.append(reported)
         if spec.twin:
@@ -440,7 +444,58 @@ def _twin(event: NewEvent, program: str, identity: str) -> NewEvent:
         occurred_at=event.occurred_at + timedelta(seconds=2),
         identity=(identity,),
         summary=f"{program.capitalize()} saw {event.src_address} try ssh",
+        raw=_record(program, str(event.dst_address), event.dst_port or 22)
+        if event.raw is not None
+        else None,
     )
+
+
+def _record(program: str, device: str, port: int) -> dict[str, object]:
+    """What a program's own record of an ssh alert holds, in the shape that program gives it
+    (see app/incidents/evidence.py)."""
+    if program == "wazuh":
+        return {
+            "rule": {
+                "id": "5760",
+                "level": 5,
+                "firedtimes": 12,
+                "groups": ["syslog", "sshd", "authentication_failed"],
+                "pci_dss": ["10.2.4", "10.2.5"],
+                "mitre": {
+                    "id": ["T1110"],
+                    "tactic": ["Credential Access"],
+                    "technique": ["Brute Force"],
+                },
+            },
+            "agent": {"id": "001", "name": "web-server", "ip": device},
+            "decoder": {"name": "sshd"},
+            "location": "/var/log/auth.log",
+            "full_log": f"sshd[812]: Failed password for root from 203.0.113.9 port {port}",
+            "data": {"srcuser": "root"},
+            "GeoLocation": {"country_name": "Netherlands"},
+        }
+    if program == "opnsense":
+        return {
+            "alert_sid": "2001219",
+            "alert_gid": "1",
+            "alert_rev": "20",
+            "alert_action": "allowed",
+            "alert_category": "Attempted Information Leak",
+            "app_proto": "ssh",
+            "in_iface": "igc0",
+            "flow": {
+                "pkts_toserver": 14,
+                "pkts_toclient": 9,
+                "bytes_toserver": 2210,
+                "bytes_toclient": 1320,
+            },
+        }
+    return {
+        "alert_id": {"value": 12, "label": "Scan attacker"},
+        "score": {"value": 100},
+        "l7_proto": {"value": 92, "label": "SSH"},
+        "cli_name": {"value": "scanner.example.net"},
+    }
 
 
 def _ban(number: int, address: str, left: str, at: datetime) -> NewEvent:

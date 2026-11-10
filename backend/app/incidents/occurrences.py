@@ -8,10 +8,27 @@ the time of its first and last.
 """
 
 from collections.abc import Hashable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
+from app.incidents import evidence
 from app.models import IncidentSignal
+
+
+@dataclass(frozen=True)
+class Confirmation:
+    """Another program that reported the same alert moments after the first did: it agrees, and it
+    may have seen more. It is not another alert, so it is counted once, with the first."""
+
+    source: str
+    signature: str | None
+    severity: int
+    # How many times it reported it, and when it first and last did.
+    count: int
+    first_at: datetime
+    last_at: datetime
+    # What it said besides the basics, from the first of its reports that said any.
+    evidence: evidence.Evidence | None
 
 
 @dataclass(frozen=True)
@@ -21,8 +38,10 @@ class Occurrence:
     first: IncidentSignal
     count: int
     last_at: datetime
-    # How many of them another program also reported (see ``Event.twin_of``).
+    # How many reports of it another program also made (see ``Event.twin_of``).
     duplicates: int
+    # Which programs those were, and what each said.
+    confirmations: tuple[Confirmation, ...] = ()
 
 
 def key_of(signal: IncidentSignal) -> Hashable:
@@ -41,19 +60,67 @@ def key_of(signal: IncidentSignal) -> Hashable:
     )
 
 
+def _confirm(known: Sequence[Confirmation], signal: IncidentSignal) -> tuple[Confirmation, ...]:
+    """The confirmations with this signal's report added: to its program's, if that program had
+    already agreed in the same words, or as a new one."""
+    kept = evidence.load(signal)
+    for index, one in enumerate(known):
+        if (one.source, one.signature) == (signal.source, signal.signature):
+            more = replace(
+                one,
+                severity=max(one.severity, signal.severity),
+                count=one.count + 1,
+                first_at=min(one.first_at, signal.occurred_at),
+                last_at=max(one.last_at, signal.occurred_at),
+                evidence=one.evidence or kept,
+            )
+            return (*known[:index], more, *known[index + 1 :])
+    return (
+        *known,
+        Confirmation(
+            signal.source,
+            signal.signature,
+            signal.severity,
+            1,
+            signal.occurred_at,
+            signal.occurred_at,
+            kept,
+        ),
+    )
+
+
 def group(signals: Sequence[IncidentSignal]) -> list[Occurrence]:
-    """The signals, which are oldest first, as occurrences in the order each first happened."""
+    """The signals, which are oldest first, as occurrences in the order each first happened. A
+    signal that is a twin of another one in the list (the same alert, reported by a program that
+    didn't report the first) is no occurrence of its own: it is added to the first's, as a
+    confirmation."""
     found: dict[Hashable, Occurrence] = {}
+    by_event: dict[int, Hashable] = {}
+    twins: list[tuple[int, IncidentSignal]] = []
+    originals = {signal.event_id for signal in signals if not signal.duplicate}
     for signal in signals:
+        if signal.duplicate and signal.twin_of is not None and signal.twin_of in originals:
+            twins.append((signal.twin_of, signal))
+            continue
         key = key_of(signal)
         known = found.get(key)
         if known is None:
             found[key] = Occurrence(signal, 1, signal.occurred_at, int(signal.duplicate))
         else:
-            found[key] = Occurrence(
-                known.first,
-                known.count + 1,
-                max(known.last_at, signal.occurred_at),
-                known.duplicates + int(signal.duplicate),
+            found[key] = replace(
+                known,
+                count=known.count + 1,
+                last_at=max(known.last_at, signal.occurred_at),
+                duplicates=known.duplicates + int(signal.duplicate),
             )
+        if not signal.duplicate:
+            by_event.setdefault(signal.event_id, key)
+    for original, twin in twins:
+        key = by_event[original]
+        known = found[key]
+        found[key] = replace(
+            known,
+            duplicates=known.duplicates + 1,
+            confirmations=_confirm(known.confirmations, twin),
+        )
     return list(found.values())

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from ipaddress import ip_address
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.api import asking
+from app.api import incidents as incidents_api
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
@@ -1092,8 +1093,166 @@ class TestLanes:
         body = client.get(f"{BASE}/{only['id']}").json()
 
         assert len(body["signals"]) == 4
-        assert [(each["count"], each["signal"]["source"]) for each in body["occurrences"]] == [
-            (3, "wazuh"),
-            (1, "opnsense"),
+        # What OPNsense reported moments after Wazuh is the same alert: it is not an occurrence of
+        # its own but a confirmation of Wazuh's, which happened three times.
+        [wazuh] = body["occurrences"]
+        assert (wazuh["count"], wazuh["signal"]["source"], wazuh["duplicates"]) == (3, "wazuh", 1)
+        assert [
+            (each["source"], each["source_name"], each["count"]) for each in wazuh["confirmations"]
+        ] == [("opnsense", "OPNsense", 1)]
+        assert wazuh["last_at"] > wazuh["signal"]["occurred_at"]
+
+
+class TestWhatTheProgramsSaid:
+    """What each program reported besides the basics, and what the programs between them knew."""
+
+    WAZUH: ClassVar[dict[str, Any]] = {
+        "rule": {
+            "id": "5760",
+            "level": 5,
+            "groups": ["sshd"],
+            "mitre": {"id": ["T1110"], "tactic": ["Credential Access"], "technique": ["Brute"]},
+        },
+        "agent": {"name": "web1", "ip": "192.168.1.20"},
+        "full_log": "sshd: Failed password",
+    }
+    SURICATA: ClassVar[dict[str, Any]] = {
+        "alert_sid": 2001219,
+        "app_proto": "ssh",
+        "http": {"hostname": "example.com"},
+        "flow": {"pkts_toserver": 14, "pkts_toclient": 9, "bytes_toserver": 2210},
+    }
+
+    def detail(self, client: TestClient) -> dict[str, Any]:
+        [only] = listed(client)
+        return client.get(f"{BASE}/{only['id']}").json()  # type: ignore[no-any-return]
+
+    def test_an_occurrence_says_what_its_program_and_the_programs_that_agreed_said(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, severity=Severity.HIGH, signature="ET SCAN x", raw=self.WAZUH),
+            alert(
+                NOW + 5 * timedelta(seconds=10),
+                n=2,
+                source="opnsense",
+                connection="api",
+                signature="ET SCAN x",
+                raw=self.SURICATA,
+            ),
+        )
+        run(session)
+
+        [occurrence] = self.detail(client)["occurrences"]
+
+        assert occurrence["evidence"]["host"] == "web1 (192.168.1.20)"
+        assert occurrence["evidence"]["mitre"] == [
+            {"id": "T1110", "tactic": "Credential Access", "technique": "Brute"}
         ]
-        assert body["occurrences"][0]["last_at"] > body["occurrences"][0]["signal"]["occurred_at"]
+        assert {"label": "Rule", "value": "5760"} in occurrence["evidence"]["facts"]
+        assert occurrence["evidence"]["traffic"] is None
+        [confirmation] = occurrence["confirmations"]
+        assert confirmation["source_name"] == "OPNsense"
+        assert confirmation["evidence"]["app"] == "ssh"
+        assert confirmation["evidence"]["traffic"] == {
+            "packets_out": 14,
+            "packets_in": 9,
+            "bytes_out": 2210,
+            "bytes_in": None,
+        }
+        assert confirmation["evidence"]["named"] == [{"kind": "hostname", "value": "example.com"}]
+
+    def test_the_incident_adds_up_what_they_said_once_for_each_alert(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, severity=Severity.HIGH, signature="ET SCAN x", raw=self.WAZUH),
+            alert(
+                NOW + MINUTE * 10,
+                n=2,
+                severity=Severity.HIGH,
+                signature="ET SCAN x",
+                raw=self.WAZUH,
+            ),
+            alert(
+                NOW + MINUTE * 10 + timedelta(seconds=5),
+                n=3,
+                source="opnsense",
+                connection="api",
+                signature="ET SCAN x",
+                raw=self.SURICATA,
+            ),
+        )
+        run(session)
+
+        body = self.detail(client)
+
+        insights = body["insights"]
+        assert insights["techniques"] == [
+            {"id": "T1110", "tactic": "Credential Access", "technique": "Brute", "count": 2}
+        ]
+        assert insights["hosts"] == [{"value": "web1 (192.168.1.20)", "count": 2}]
+        assert insights["apps"] == [{"value": "ssh", "count": 2}]
+        assert insights["named"] == [{"kind": "hostname", "value": "example.com", "count": 2}]
+        programs = {each["source"]: each for each in insights["programs"]}
+        assert programs["wazuh"]["source_name"] == "Wazuh"
+        assert programs["wazuh"]["reports"] == 2
+        assert "MITRE ATT&CK techniques" in programs["wazuh"]["adds"]
+        assert "The application" in programs["opnsense"]["adds"]
+
+    def test_an_incident_whose_programs_said_nothing_more_has_no_insights(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1, severity=Severity.HIGH))
+        run(session)
+
+        body = self.detail(client)
+
+        assert body["insights"] is None
+        assert body["occurrences"][0]["evidence"] is None
+        assert body["occurrences"][0]["confirmations"] == []
+
+    def test_only_the_busiest_occurrences_carry_what_their_programs_said(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(incidents_api, "EVIDENCE_LIMIT", 2)
+        store(
+            session,
+            settings,
+            *(
+                alert(
+                    NOW + MINUTE * n,
+                    n=n,
+                    severity=Severity.HIGH if n == 3 else Severity.MEDIUM,
+                    signature=f"ET SCAN {n}",
+                    raw=self.WAZUH,
+                )
+                for n in range(1, 5)
+            ),
+        )
+        run(session)
+
+        body = self.detail(client)
+
+        # The most serious, then the earliest of the rest.
+        has = [
+            (each["signal"]["signature"], each["evidence"] is not None)
+            for each in body["occurrences"]
+        ]
+        assert has == [
+            ("ET SCAN 1", True),
+            ("ET SCAN 2", False),
+            ("ET SCAN 3", True),
+            ("ET SCAN 4", False),
+        ]
+        # What is added up is not cut.
+        assert body["insights"]["techniques"][0]["count"] == 4

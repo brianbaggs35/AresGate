@@ -29,6 +29,7 @@ import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
+import IncidentInsights from '@/components/IncidentInsights.vue'
 import IncidentOccurrences from '@/components/IncidentOccurrences.vue'
 import IncidentReasons from '@/components/IncidentReasons.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
@@ -43,6 +44,7 @@ import SeverityChip from '@/components/SeverityChip.vue'
 import StatTile from '@/components/StatTile.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import VerdictPanel from '@/components/VerdictPanel.vue'
+import { worthListing } from '@/evidence'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import {
   ACTIVITY,
@@ -162,10 +164,8 @@ async function change(status: IncidentStatus) {
 const shown = computed(() => incident.value as IncidentDetail)
 const actions = computed(() => actionsFor(shown.value.status))
 const others = computed(() => otherAddresses(shown.value).length)
-/** Whether any alert happened more than once, or was reported by two programs. */
-const hasRepeats = computed(() =>
-  shown.value.occurrences.some(({ count, duplicates }) => count > 1 || duplicates > 0),
-)
+/** Whether any alert happened more than once, was reported by two programs or has more to say. */
+const hasRepeats = computed(() => shown.value.occurrences.some(worthListing))
 const programs = computed(() => shown.value.sources.map(({ name }) => name).join(', '))
 
 /** When it began and when it last did something, as a line under the title. */
@@ -345,10 +345,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 
       <IncidentWhere :incident="shown" />
 
+      <IncidentInsights v-if="shown.insights" :insights="shown.insights" />
+
       <SectionCard
         v-if="hasRepeats"
         title="What kept happening"
-        description="Alerts that were reported again and again are one alert that happened many times, and one that two programs reported counts once."
+        description="Alerts that were reported again and again are one alert that happened many times, and one that two programs reported counts once, with what each of them said of it."
         data-test="occurrences-card"
       >
         <IncidentOccurrences :occurrences="shown.occurrences" />

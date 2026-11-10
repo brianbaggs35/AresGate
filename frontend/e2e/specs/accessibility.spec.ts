@@ -406,6 +406,33 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('what the programs said of an incident has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      incidents,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        {
+          address: '8.8.4.11',
+          severity: 'high',
+          programs: ['wazuh', 'ntopng'],
+          signals: 4,
+          twin: 'opnsense',
+          detailed: true,
+          minutes_ago: 5,
+        },
+      ])
+
+      await incidents.goto('?address=8.8.4.11')
+      await incidents.cards.first().click()
+      await expect(page.getByTestId('insights-card')).toBeVisible()
+      await expect(page.getByTestId('evidence-excerpt').first()).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+    })
+
     test('the threat detection settings have no WCAG 2.2 AA problems', async ({
       page,
       harness,
