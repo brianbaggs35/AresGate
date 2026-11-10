@@ -84,6 +84,18 @@ describe('ApiLog', () => {
     expect(rows()[2]?.find('[data-test="call-error"]').exists()).toBe(false)
   })
 
+  it('marks a request a limit held back as that, not as a failure', async () => {
+    const { rows } = await open(
+      page([call({ id: 1, status_code: 429, error: 'Too Many Requests' })]),
+    )
+    const [held] = rows()
+    expect(held?.find('[role="img"]').attributes('aria-label')).toBe('Held by a limit')
+    expect(held?.find('[data-test="call-error"]').text()).toBe(
+      "Too Many Requests. A limit held it back, which isn't a failure.",
+    )
+    expect(held?.find('[data-test="call-error"]').classes()).not.toContain('text-error')
+  })
+
   it('shows what a system said as plain text, never as markup', async () => {
     const hostile = '<img src=x onerror=alert(1)> <script>alert(2)</script>'
     const { wrapper, rows } = await open(page([call({ status_code: 500, error: hostile })]))

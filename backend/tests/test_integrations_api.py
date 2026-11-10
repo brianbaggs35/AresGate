@@ -12,7 +12,7 @@ from app.audit import Action, Outcome
 from app.config import Settings, get_settings
 from app.integrations import netguard, service
 from app.integrations.client import Target
-from app.intel import store, subjects, virustotal
+from app.intel import connection, store, subjects, virustotal
 from app.models import ApiCall, AuditEvent, IntegrationConnection, IntelLookup, IntelSubject, User
 from app.models.base import utcnow
 from app.security import credential_store
@@ -1078,7 +1078,7 @@ def test_testing_virustotal_with_a_key_it_refuses_fails_and_says_why(
     assert body["integration"]["last_error"].startswith("VirusTotal didn't accept the key.")
 
 
-def test_testing_virustotal_when_it_asks_to_slow_down_waits_and_says_how_long(
+def test_testing_virustotal_when_it_asks_to_slow_down_passes_and_keeps_the_pause(
     client: TestClient,
     csrf_token: str,
     virustotal_key: None,
@@ -1089,11 +1089,14 @@ def test_testing_virustotal_when_it_asks_to_slow_down_waits_and_says_how_long(
 
     response = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
 
-    assert response.status_code == 429
-    assert response.json()["detail"].startswith(
-        "The limits on this connection hold the test. Try again in "
-    )
-    assert int(response.headers["Retry-After"]) > 0
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["checks"][0]["message"] == connection.THROTTLED
+    assert body["integration"]["status"] == "connected"
+    assert body["integration"]["last_error"] is None
+    assert body["integration"]["last_success_at"] is not None
+    assert body["integration"]["pause"]["daily"] is False
     [lookup] = session.scalars(select(IntelLookup)).all()
     assert lookup.outcome == store.THROTTLED
 

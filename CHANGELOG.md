@@ -25,6 +25,15 @@ Every release's notes are here, newest first. The format follows
   VirusTotal doesn't answer, a search for something AresGate has an answer for shows that answer
   and says why it wasn't checked again, where before it was refused.
 
+### Fixed
+
+- **Reaching the free limit no longer reads as VirusTotal being broken.** When VirusTotal asks for
+  fewer requests during a test, the test now passes and the connection shows as connected, where
+  before it stayed "Not tested yet". When AresGate's own limits hold a test, the page says so in a
+  notice, with how long to wait and that the connection is still set up, instead of in a red
+  failure. The log of requests marks a request that got HTTP 429 as held back by a limit, not as
+  failed.
+
 ## 0.0.9
 
 ### Added

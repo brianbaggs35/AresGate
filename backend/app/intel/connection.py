@@ -4,8 +4,9 @@ A test is one lookup of a public address that always has a report, so it spends 
 the key allows. It is made by hand, through the same budget as every other lookup, and never on a
 timer. Its answer is kept like any other, but a test is always sent: it is the key that is being
 checked, so an answer kept from before doesn't stand in for it. While VirusTotal's daily quota is
-used up, nothing is sent and the connection is held as it was. A quota error is taken as VirusTotal
-accepting the key, since the quota is the key's own.
+used up, nothing is sent and the connection is held as it was. A limit on a free key is no sign of
+a broken connection: VirusTotal answered, so a quota error and a request to slow down are both
+taken as VirusTotal accepting the key, since the limits are the key's own, and the test passes.
 """
 
 from collections.abc import Mapping
@@ -34,7 +35,10 @@ DAILY_HELD = (
 DAILY_ACCEPTED = (
     "VirusTotal accepted the key, but its daily limit is reached. It resets at 00:00 UTC."
 )
-THROTTLED = "VirusTotal asked for fewer requests for a minute, so the key wasn't tested."
+THROTTLED = (
+    "VirusTotal accepted the key, but asked for fewer requests for a minute. "
+    "Lookups resume after that."
+)
 
 
 def verdict_for(answer: virustotal.Answer, options: Mapping[str, str | int]) -> Verdict:
@@ -42,7 +46,7 @@ def verdict_for(answer: virustotal.Answer, options: Mapping[str, str | int]) -> 
     if isinstance(answer, virustotal.Failed):
         return Verdict(False, answer.message)
     if isinstance(answer, virustotal.Throttled):
-        return Verdict(True, THROTTLED, held=True)
+        return Verdict(True, THROTTLED)
     if isinstance(answer, virustotal.Limited):
         return Verdict(True, DAILY_ACCEPTED)
     level = "premium" if options.get("tier") == "premium" else "free"
@@ -60,6 +64,7 @@ def test_key(db: Session, target: Target, recorder: Recorder, now: datetime) -> 
     """Tests the key with one lookup, through the budget. While VirusTotal's daily quota holds,
     nothing is sent and the connection is held as it was. Raises ``budget.Wait`` when the limits
     don't allow a test now, which they don't for a minute after VirusTotal asked for fewer requests.
+    A test that VirusTotal itself answers with a limit is a pass: it was reached and took the key.
     """
     try:
         lookup_id = budget.reserve(
@@ -80,6 +85,4 @@ def test_key(db: Session, target: Target, recorder: Recorder, now: datetime) -> 
     answer = anyio.from_thread.run(virustotal.ask, target, recorder, policy, subject, now)
     store.finish(db, lookup_id, subject, answer, now)
     db.commit()
-    if isinstance(answer, virustotal.Throttled):
-        raise budget.Paused(budget.Pause(until=answer.until, daily=False), now)
     return verdict_for(answer, target.options)
