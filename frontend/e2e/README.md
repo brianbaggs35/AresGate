@@ -103,6 +103,6 @@ Set `ARESGATE_E2E_COVERAGE=off` to skip collecting coverage while debugging a sp
 
 ## In CI
 
-`End-to-end in the container` and `End-to-end on the runner` each run the specs in two shards;
-`End-to-end coverage` merges all four shards' web coverage and reports it. Each
+`End-to-end in the container` and `End-to-end on the runner` each run the specs in three shards;
+`End-to-end coverage` merges all six shards' web coverage and reports it. Each
 shard uploads its HTML report, and traces, screenshots and videos of failures, as an artifact.

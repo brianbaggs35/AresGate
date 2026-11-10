@@ -369,7 +369,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/2", "2/2"]
+        shard: ["1/3", "2/3", "3/3"]
     env:
       # Optional: a Chainguard pull token, which raises the pull limits on cgr.dev. The base
       # image is public, so the build works without it, as on pull requests from forks.
