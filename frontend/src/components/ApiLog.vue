@@ -119,12 +119,11 @@ const limited = (call: Call) => call.status_code === 429
 const said = (call: Call) =>
   limited(call) ? `${call.error}. A limit held it back, which isn't a failure.` : call.error
 
-const mark = (call: Call) =>
-  limited(call)
-    ? { icon: Clock, color: 'info', label: 'Held by a limit' }
-    : call.error
-      ? { icon: CircleAlert, color: 'warning', label: 'Failed' }
-      : { icon: CircleCheck, color: 'success', label: 'Worked' }
+function mark(call: Call) {
+  if (limited(call)) return { icon: Clock, color: 'info', label: 'Held by a limit' }
+  if (call.error) return { icon: CircleAlert, color: 'warning', label: 'Failed' }
+  return { icon: CircleCheck, color: 'success', label: 'Worked' }
+}
 
 const outcome = (call: Call) => (call.status_code === null ? 'No answer' : String(call.status_code))
 
