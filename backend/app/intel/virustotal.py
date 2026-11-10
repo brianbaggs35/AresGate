@@ -200,11 +200,17 @@ def _path(subject: Subject) -> str:
 
 def link_for(subject: Subject) -> str:
     """The page on VirusTotal's website about the subject, for reading it in full."""
-    if subject.kind == "ip":
-        return f"{SITE}/gui/ip-address/{subject.host}"
-    if subject.kind == "domain":
-        return f"{SITE}/gui/domain/{subject.host}"
-    return f"{SITE}/gui/url/{url_id(subject.text)}"
+    return link_of(subject.kind, subject.key)
+
+
+def link_of(kind: str, key: str) -> str:
+    """The page on VirusTotal's website about what an answer is kept under: an address, a domain,
+    or the identifier of a web address."""
+    if kind == "ip":
+        return f"{SITE}/gui/ip-address/{key}"
+    if kind == "domain":
+        return f"{SITE}/gui/domain/{key}"
+    return f"{SITE}/gui/url/{key}"
 
 
 def next_reset(at: datetime) -> datetime:

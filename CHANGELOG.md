@@ -4,6 +4,27 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **AresGate builds its own record of threat intelligence.** Every answer VirusTotal gives is kept
+  for good, with when the subject was first asked about, how often, and when its judgement last
+  changed and from what. The Threat intelligence page lists it all under "What AresGate knows",
+  newest first, to search and to narrow by judgement, and reading it asks VirusTotal nothing.
+- **Check again.** A report has a Check again button, which asks VirusTotal for a newer answer
+  than the one kept.
+
+### Changed
+
+- **Answers are kept up to date where they change soonest.** Something engines flagged, or that
+  has no report yet, is asked about again after two days, and something no engine flagged after a
+  week. The background lookups ask about addresses with no answer first, then renew the answer
+  that went out of date longest ago.
+- **A search shows the answer kept when VirusTotal can't be asked.** While a limit holds, or when
+  VirusTotal doesn't answer, a search for something AresGate has an answer for shows that answer
+  and says why it wasn't checked again, where before it was refused.
+
 ## 0.0.9
 
 ### Added

@@ -1,9 +1,12 @@
 import { ApiError } from '@/api/client'
 import * as integrationsApi from '@/api/integrations'
 import type { IntegrationSummary } from '@/api/integrations'
+import * as threatIntelApi from '@/api/threatIntel'
+import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import { summary } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { knownPage } from '@/test/threatIntel'
 import ThreatIntelView from '@/views/ThreatIntelView.vue'
 
 /** The integrations, with VirusTotal in the given state. */
@@ -21,10 +24,11 @@ async function open(result: IntegrationSummary[] | Error) {
   const fetch = vi.spyOn(integrationsApi, 'fetchIntegrations')
   if (result instanceof Error) fetch.mockRejectedValue(result)
   else fetch.mockResolvedValue(result)
+  const known = vi.spyOn(threatIntelApi, 'fetchKnownThreats').mockResolvedValue(knownPage())
   const mounted = await mountWithPlugins(ThreatIntelView, { signedIn: 'brian' })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
-  return { ...mounted, fetch, find }
+  return { ...mounted, fetch, known, find }
 }
 
 describe('ThreatIntelView', () => {
@@ -98,6 +102,40 @@ describe('ThreatIntelView', () => {
     const { fetch, wrapper } = await open(listWith('connected'))
 
     wrapper.findComponent(ThreatLookup).vm.$emit('refused')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists what AresGate has kept, with or without a service connected', async () => {
+    const connected = await open(listWith('connected'))
+    expect(connected.find('threat-known').exists()).toBe(true)
+    connected.wrapper.unmount()
+
+    const without = await open(listWith('not_connected'))
+    expect(without.find('threat-known').exists()).toBe(true)
+  })
+
+  it('lists nothing kept while the page is loading or did not load', async () => {
+    const { find } = await open(new ApiError(503, 'Service unavailable', 'unavailable'))
+
+    expect(find('threat-known').exists()).toBe(false)
+  })
+
+  it('reads what is kept again after a search is answered', async () => {
+    const { wrapper, known } = await open(listWith('connected'))
+    expect(known).toHaveBeenCalledTimes(1)
+
+    wrapper.findComponent(ThreatLookup).vm.$emit('answered')
+    await flushPromises()
+
+    expect(known).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks for the list again when a check from what is kept is refused', async () => {
+    const { wrapper, fetch } = await open(listWith('connected'))
+
+    wrapper.findComponent(ThreatKnown).vm.$emit('refused')
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledTimes(2)

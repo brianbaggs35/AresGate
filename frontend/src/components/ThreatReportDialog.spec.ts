@@ -1,23 +1,9 @@
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import type { Lookup } from '@/api/threatIntel'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { MALICIOUS_LOOKUP } from '@/test/threatIntel'
 
-const MALICIOUS: Lookup = {
-  kind: 'ip',
-  subject: '93.184.216.34',
-  judgement: 'malicious',
-  checked_at: '2026-11-09T12:00:00Z',
-  cached: false,
-  analysed_at: '2026-11-07T00:00:00Z',
-  malicious: 3,
-  suspicious: 1,
-  harmless: 60,
-  undetected: 20,
-  reputation: -12,
-  categories: ['malware', 'phishing'],
-  details: [{ label: 'Owner', value: 'Example Hosting' }],
-  link: 'https://www.virustotal.com/gui/ip-address/93.184.216.34',
-}
+const MALICIOUS = MALICIOUS_LOOKUP
 
 const UNKNOWN: Lookup = {
   ...MALICIOUS,
@@ -35,13 +21,25 @@ const UNKNOWN: Lookup = {
 /** The report window, open over the page, as a search leaves it. */
 async function mountReport(
   lookup: Lookup = MALICIOUS,
-  { width, onUpdate = vi.fn() }: { width?: number; onUpdate?: (open: boolean) => void } = {},
+  {
+    width,
+    busy = false,
+    onUpdate = vi.fn(),
+    onRefresh = vi.fn(),
+  }: {
+    width?: number
+    busy?: boolean
+    onUpdate?: (open: boolean) => void
+    onRefresh?: () => void
+  } = {},
 ) {
   const mounted = await mountWithPlugins(ThreatReportDialog, {
     withApp: true,
     width,
     props: {
       lookup,
+      busy,
+      onRefresh,
       modelValue: true,
       'onUpdate:modelValue': onUpdate,
     },
@@ -181,16 +179,100 @@ describe('ThreatReportDialog', () => {
     expect(onUpdate).toHaveBeenLastCalledWith(false)
   })
 
-  it('says when the answer was kept from an earlier check, so that no search was sent', async () => {
+  it('says when the answer was kept from an earlier check, and when it is checked again', async () => {
     const { inWindow } = await mountReport({ ...MALICIOUS, cached: true })
 
-    expect(inWindow('[data-test="report-cached"]')?.textContent).toContain('sent nothing')
+    const text = inWindow('[data-test="report-cached"]')?.textContent ?? ''
+    expect(text).toContain('nothing was sent to VirusTotal')
+    expect(text).toContain('It is checked again after')
+    expect(inWindow('[data-test="report-asked"]')).toBeNull()
   })
 
-  it('says nothing about a kept answer when the search was sent', async () => {
+  it('says when a kept answer is due to be checked again', async () => {
+    const { inWindow } = await mountReport({ ...MALICIOUS, cached: true, stale: true })
+
+    expect(inWindow('[data-test="report-cached"]')?.textContent).toContain(
+      'It is due to be checked again.',
+    )
+  })
+
+  it('says that VirusTotal answered, and that the answer was kept, when the search was sent', async () => {
     const { inWindow } = await mountReport(MALICIOUS)
 
     expect(inWindow('[data-test="report-cached"]')).toBeNull()
+    expect(inWindow('[data-test="report-asked"]')?.textContent).toContain(
+      'AresGate kept the answer',
+    )
+  })
+
+  it('says why a kept answer was not checked again', async () => {
+    const { inWindow } = await mountReport({
+      ...MALICIOUS,
+      cached: true,
+      stale: true,
+      notice: "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
+    })
+
+    expect(inWindow('[data-test="report-notice"]')?.textContent.trim()).toBe(
+      "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC. This is the answer AresGate kept.",
+    )
+  })
+
+  it('has no notice for an answer that needed none', async () => {
+    const { inWindow } = await mountReport()
+
+    expect(inWindow('[data-test="report-notice"]')).toBeNull()
+  })
+
+  it('shows what is kept of the subject: when it was first checked and how often', async () => {
+    const { inWindow } = await mountReport({
+      ...MALICIOUS,
+      first_checked_at: '2026-10-01T08:00:00Z',
+      checks: 1204,
+    })
+
+    expect(inWindow('[data-test="report-first-checked"]')?.textContent).toMatch(/2026/)
+    expect(inWindow('[data-test="report-checked"]')?.textContent).toMatch(/2026/)
+    expect(inWindow('[data-test="report-checks"]')?.textContent).toBe('1,204 times')
+    expect(inWindow('[data-test="report-change"]')).toBeNull()
+  })
+
+  it('says once for a subject checked one time', async () => {
+    const { inWindow } = await mountReport()
+
+    expect(inWindow('[data-test="report-checks"]')?.textContent).toBe('Once')
+  })
+
+  it('says what the judgement was before a newer answer changed it', async () => {
+    const { inWindow } = await mountReport({
+      ...MALICIOUS,
+      changed_at: '2026-11-09T12:00:00Z',
+      previous_judgement: 'clean',
+    })
+
+    expect(inWindow('[data-test="report-change"]')?.textContent).toMatch(/^Clean until .*2026/)
+  })
+
+  it('asks for a newer answer from Check again', async () => {
+    const onRefresh = vi.fn()
+    const { inWindow } = await mountReport(MALICIOUS, { onRefresh })
+
+    inWindow('[data-test="report-refresh"]')?.click()
+
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    expect(inWindow('[data-test="report-refresh"]')?.classList).not.toContain('v-btn--loading')
+  })
+
+  it('shows that the newer answer is on its way', async () => {
+    const { inWindow } = await mountReport(MALICIOUS, { busy: true })
+
+    expect(inWindow('[data-test="report-refresh"]')?.classList).toContain('v-btn--loading')
+  })
+
+  it('offers no check for a kept web address, which is kept without its text', async () => {
+    const { inWindow } = await mountReport({ ...MALICIOUS, kind: 'url', repeatable: false })
+
+    expect(inWindow('[data-test="report-refresh"]')).toBeNull()
   })
 
   it('fills the whole screen on a phone', async () => {

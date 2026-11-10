@@ -568,8 +568,10 @@ while a limit holds is not sent, and the connection is left as it was.
 
 Each lookup is about one internet address that an incident from the last seven days names. A
 private address is never sent, nor one in the networks of the home's own internet side, since that
-would tell VirusTotal where the home is. Lookups go one at a time. An address that got an answer,
-a report or none, is not asked about again for a week, and one whose lookup failed waits an hour.
+would tell VirusTotal where the home is. Lookups go one at a time. An address with no answer kept
+is asked about first, the most recent incident's first. Once each has an answer, the lookups keep
+the answers up to date: the address whose answer went out of date longest ago is asked about again.
+An address that was asked about in the last hour waits, whatever came of it.
 
 VirusTotal's API documentation says that any indicator queried through the API is scanned and added
 to its dataset. So every address sent becomes known to VirusTotal, which is worth knowing before
@@ -583,13 +585,30 @@ most 360 of the 500 a day and spread them over the whole day, which leaves 140 f
 is held back only by the 15 seconds between any two lookups and by the day's and the month's
 allowances, not by the background's spacing.
 
-An answer is kept for a week, for each address, domain and web address that was asked about. A
-search for a subject answered within that week is answered from what was kept: no request is sent,
-nothing is counted, and the report says so. A subject is asked about again only once its answer is a
-week old. A request that got no answer keeps no answer, so its subject is asked about again.
+### What is kept
+
+Every answer is kept for good, one for each address, domain and web address that was asked about,
+and a newer answer takes the older one's place. With it AresGate keeps when the subject was first
+asked about, how many answers it has had, and when a newer answer last changed the judgement and
+what it was before. This is AresGate's own record of threat intelligence: the AI reads it, and the
+Threat intelligence page lists it under "What AresGate knows", newest first. The list can be
+searched by part of an address, a name or an owner, and narrowed to one judgement. Reading it
+sends VirusTotal nothing and counts toward no limit (`GET /api/threat-intel/subjects`).
+
+VirusTotal has no cheaper way to say whether a report changed than to give the report, so checking
+for an update costs a lookup. AresGate spends those where answers change soonest. An answer that
+engines flagged, or that had no report yet, is fresh for two days. An answer that no engine flagged
+is fresh for a week. A search for a subject whose answer is fresh is answered from what was kept: no
+request is sent, nothing is counted, and the report says so and says when the answer is checked
+again. Once an answer is no longer fresh, the next search or background lookup of its subject asks
+VirusTotal again. A request that got no answer leaves the answer kept as it was.
+
+Check again, in a report, asks VirusTotal for a newer answer at once, fresh or not. It counts toward
+the allowance as a search does. A web address is kept without its text, so one opened from the list
+has no Check again: search for the address to check it.
 
 A connection test is one lookup too, and it counts toward the allowance. It is sent whenever you
-press Test, even if the address it asks about was answered within the week, because it is the key
+press Test, even if the address it asks about has an answer kept, because it is the key
 that is being checked.
 
 ### Searching by hand
@@ -613,10 +632,11 @@ sent, since it is part of what VirusTotal scans. A domain or web address that Vi
 analysed is shown as having no report yet, and AresGate doesn't ask VirusTotal to scan it.
 
 A search that isn't answered from what was kept counts toward the same limits as the lookups above.
-When it would go over one, or VirusTotal's daily count is used up, it is refused with the seconds to
-wait (HTTP 429, with a `Retry-After` header), and nothing is sent. A search that is answered from
-what was kept says so in its report, with the time VirusTotal was asked. It is answered while a
-limit holds too, since it sends nothing.
+When it would go over one, or VirusTotal's daily count is used up, nothing is sent. If AresGate has
+an answer kept for the subject, however old, the search shows it, and the report says why it wasn't
+checked again. The same goes for a search VirusTotal didn't answer. With nothing kept, the search is
+refused with the seconds to wait (HTTP 429, with a `Retry-After` header). A search that is answered
+from what was kept says so in its report, with the time VirusTotal was asked.
 
 ### What is kept, and what the AI does with it
 
@@ -625,7 +645,7 @@ address, and when it was asked about. A report keeps the counts of VirusTotal's 
 many engines call it malicious, suspicious, harmless or undetected), its community reputation score,
 its country, and for an address the owner and number of the network it belongs to, plus the
 categories and what else VirusTotal says of it. An answer with no report keeps only that. A newer
-answer replaces the one kept, once the subject is asked about after a week.
+answer replaces the one kept, once the subject is asked about again (see What is kept, above).
 
 The AI reads the reports of addresses as part of an incident's brief, and can look one up with its
 reputation tool. Domains and web addresses are not read by the AI. The AI never asks VirusTotal

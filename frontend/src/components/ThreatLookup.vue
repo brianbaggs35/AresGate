@@ -15,14 +15,17 @@ import { useSessionStore } from '@/stores/session'
  * tested. What VirusTotal reports opens in a window over the page, and the last search stays one
  * click away after the window is closed. While VirusTotal's own daily limit or a minute's wait
  * holds, a notice says when searches resume: that is not a failure. A search refused for the
- * spacing between lookups says how long to wait.
+ * spacing between lookups says how long to wait. A search of something AresGate has an answer
+ * kept for shows that answer when VirusTotal can't be asked, and the report says why. Check again,
+ * in the report, asks VirusTotal for a newer answer than the one kept.
  */
 const props = defineProps<{ pause?: Pause | null }>()
-const emit = defineEmits<{ refused: [] }>()
+const emit = defineEmits<{ refused: []; answered: [] }>()
 
 const session = useSessionStore()
 const query = ref('')
 const busy = ref(false)
+const checking = ref(false)
 const problem = ref<string | null>(null)
 const refusal = ref<string | null>(null)
 const last = ref<Lookup | null>(null)
@@ -43,15 +46,17 @@ const notice = computed(() => {
   return refusal.value
 })
 
-async function search() {
-  const subject = query.value.trim()
-  if (!subject || busy.value) return
-  busy.value = true
+/** Asks about a subject, and opens what came back. Returns whether an answer did. */
+async function ask(subject: string, refresh: boolean): Promise<boolean> {
   problem.value = null
   refusal.value = null
   try {
-    last.value = await session.change((token) => searchThreatIntel(subject, token))
+    last.value = await session.change((token) => searchThreatIntel(subject, token, refresh))
     reportOpen.value = true
+    emit('answered')
+    // A kept answer shown because a limit holds: the page asks for the limits again.
+    if (last.value.notice) emit('refused')
+    return true
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       refusal.value = errorMessage(error)
@@ -60,16 +65,33 @@ async function search() {
     } else {
       problem.value = errorMessage(error)
     }
-  } finally {
-    busy.value = false
+    return false
   }
+}
+
+async function search() {
+  const subject = query.value.trim()
+  if (!subject || busy.value) return
+  busy.value = true
+  await ask(subject, false)
+  busy.value = false
+}
+
+/** Asks VirusTotal again about the last search, whatever is kept of it. */
+async function checkAgain() {
+  if (!last.value || checking.value) return
+  checking.value = true
+  const answered = await ask(last.value.subject, true)
+  checking.value = false
+  // What went wrong is said on the page, under the window.
+  if (!answered) reportOpen.value = false
 }
 </script>
 
 <template>
   <SectionCard
     title="Look up a threat"
-    description="Ask VirusTotal about an IP address, a domain or a web address. An answer checked within the last week comes from what AresGate kept, with no search. Any other search counts toward VirusTotal's limits, so AresGate spaces them out."
+    description="Ask VirusTotal about an IP address, a domain or a web address. Every answer is kept, and one that is still fresh comes from what AresGate kept, with no search. Any other search counts toward VirusTotal's limits, so AresGate spaces them out."
     data-test="threat-lookup"
   >
     <form novalidate class="threat-lookup" data-test="threat-form" @submit.prevent="search">
@@ -130,7 +152,13 @@ async function search() {
       is added to VirusTotal's shared data, so keep private names out of searches.
     </p>
 
-    <ThreatReportDialog v-if="last" v-model="reportOpen" :lookup="last" />
+    <ThreatReportDialog
+      v-if="last"
+      v-model="reportOpen"
+      :lookup="last"
+      :busy="checking"
+      @refresh="checkAgain"
+    />
   </SectionCard>
 </template>
 

@@ -1,23 +1,22 @@
 """Which address the next lookup is about: an internet address that a recent incident involved, and
-that no lookup has asked about lately."""
+that has no answer kept yet. Once every such address has one, the allowance goes to keeping the
+answers up to date: the address whose answer stopped being fresh longest ago is asked about again.
+"""
 
 import ipaddress
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.intel import store
-from app.models import Incident, IntelLookup, Interface
+from app.models import Incident, IntelLookup, IntelSubject, Interface
 
 type Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # Incidents seen this recently are worth asking about: an older one is no longer happening.
 RECENT = timedelta(days=7)
-# How long a report, or a lookup that found none, is taken as the answer for an address: as long as
-# the answer is kept as fresh, so an address is not asked about again while it is.
-ANSWER_FOR = store.FRESH
 # How soon an address whose lookup failed, or was cut short, is asked about again.
 RETRY = timedelta(hours=1)
 # How many incidents are looked through, most recent first.
@@ -47,8 +46,10 @@ def sendable(address: Address, own: tuple[Network, ...]) -> bool:
 
 
 def next_address(db: Session, provider: str, now: datetime) -> Address | None:
-    """The address to ask about next, the most recent incident's first, or None if there is none
-    to ask about."""
+    """The address to ask about next, or None if there is none to ask about. An address with no
+    answer kept comes first, the most recent incident's first. After those, the address whose
+    answer stopped being fresh longest ago. One asked about within ``RETRY`` waits, whatever came
+    of it, so a lookup that failed or was cut short isn't repeated at once."""
     own = own_networks(db)
     groups = db.scalars(
         select(Incident.addresses)
@@ -58,21 +59,32 @@ def next_address(db: Session, provider: str, now: datetime) -> Address | None:
     )
     # Each address once, in the order the incidents first name it.
     ordered = dict.fromkeys(address for group in groups for address in group)
-    asked = set(
+    retried = set(
         db.scalars(
             select(IntelLookup.address).where(
-                IntelLookup.provider == provider,
-                or_(
-                    and_(
-                        IntelLookup.requested_at >= now - ANSWER_FOR,
-                        IntelLookup.outcome.in_((store.REPORTED, store.UNKNOWN)),
-                    ),
-                    IntelLookup.requested_at >= now - RETRY,
-                ),
+                IntelLookup.provider == provider, IntelLookup.requested_at >= now - RETRY
             )
         )
     )
-    for address in ordered:
-        if address not in asked and sendable(address, own):
+    wanted = [address for address in ordered if address not in retried and sendable(address, own)]
+    if not wanted:
+        return None
+    answers = {
+        row.subject: row
+        for row in db.scalars(
+            select(IntelSubject).where(
+                IntelSubject.provider == provider,
+                IntelSubject.kind == store.IP,
+                IntelSubject.subject.in_([str(address) for address in wanted]),
+            )
+        )
+    }
+    stale: list[tuple[datetime, Address]] = []
+    for address in wanted:
+        answer = answers.get(str(address))
+        if answer is None:
             return address
-    return None
+        until = store.fresh_until(answer)
+        if until <= now:
+            stale.append((until, address))
+    return min(stale, key=lambda found: found[0])[1] if stale else None

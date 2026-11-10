@@ -1,24 +1,26 @@
 """Searches threat intelligence by hand: an internet address, a domain or a web address, and what
 VirusTotal reported of it. A search shares its limits with the background lookups, so the two
-together never ask VirusTotal more often than its free API allows. A subject that was answered
-within the last week is shown from what was kept, and VirusTotal isn't asked about it again. While
-a limit VirusTotal set itself holds, nothing is sent, and a search says when it may go."""
+together never ask VirusTotal more often than its free API allows. Every answer is kept. A subject
+whose answer is still fresh is shown from what was kept, and VirusTotal isn't asked about it again,
+unless the search asks for that. While a limit VirusTotal set itself holds, nothing is sent: a
+search says when it may go, or shows the answer kept if there is one. Everything kept can be looked
+through too, which asks VirusTotal nothing."""
 
 import math
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.api.deps import Db, SettingsDep, signed_in
 from app.api.integrations import api_log_recorder
 from app.integrations import netguard, service
 from app.integrations.client import Recorder
-from app.intel import budget, candidates, connection, store, subjects, virustotal
+from app.intel import budget, candidates, connection, known, store, subjects, virustotal
 from app.intel.run import CONNECTION, DEFINITION
-from app.models import utcnow
+from app.models import IntelSubject, utcnow
 
 RecorderDep = Annotated[Recorder, Depends(api_log_recorder)]
 
@@ -31,6 +33,8 @@ class LookupIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subject: str = Field(max_length=subjects.MAX_LENGTH)
+    # Ask VirusTotal again even if the answer kept is still fresh.
+    refresh: bool = False
 
 
 class DetailOut(BaseModel):
@@ -38,15 +42,34 @@ class DetailOut(BaseModel):
     value: str
 
 
-class LookupOut(BaseModel):
-    """What VirusTotal reported of the subject, with the counts its judgement is made from. A
-    ``cached`` answer was kept from an earlier check, so no search was sent for it this time."""
+type Kind = Literal["ip", "domain", "url"]
+type Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
 
-    kind: Literal["ip", "domain", "url"]
+
+class LookupOut(BaseModel):
+    """What VirusTotal reported of the subject, with the counts its judgement is made from, and what
+    AresGate has kept of it. A ``cached`` answer was kept from an earlier check, so no answer came
+    from VirusTotal this time. A ``stale`` one is past the time it is taken as fresh for, and the
+    ``notice`` says why it could not be checked again."""
+
+    kind: Kind
+    # The subject as it was searched for. For a web address in the list of what is kept, its host.
     subject: str
-    judgement: Literal["malicious", "suspicious", "clean", "unknown"]
+    judgement: Judgement
     checked_at: AwareDatetime
     cached: bool
+    stale: bool
+    notice: str | None
+    # Whether a search for ``subject`` asks about this again: not so for a kept web address, which
+    # is kept without its text.
+    repeatable: bool
+    first_checked_at: AwareDatetime
+    checks: int
+    # When the answer stops being taken as fresh, so the subject is asked about again.
+    fresh_until: AwareDatetime
+    # When a newer answer last changed the judgement, and what it was before.
+    changed_at: AwareDatetime | None
+    previous_judgement: Judgement | None
     analysed_at: AwareDatetime | None
     malicious: int
     suspicious: int
@@ -56,6 +79,53 @@ class LookupOut(BaseModel):
     categories: list[str]
     details: list[DetailOut]
     link: str
+
+
+class CountsOut(BaseModel):
+    malicious: int
+    suspicious: int
+    clean: int
+    unknown: int
+
+
+class KnownOut(BaseModel):
+    """One page of the answers kept, newest first, and how many there are of each judgement."""
+
+    total: int
+    counts: CountsOut
+    items: list[LookupOut]
+
+
+@router.get("/subjects")
+def list_known(
+    db: Db,
+    q: Annotated[
+        str, Query(max_length=known.MAX_TEXT, description="Part of an address, name or owner.")
+    ] = "",
+    kind: Annotated[
+        Kind | None, Query(description="Only addresses, domains or web addresses.")
+    ] = None,
+    judgement: Annotated[Judgement | None, Query(description="Only this judgement.")] = None,
+    limit: Annotated[int, Query(ge=1, le=known.MAX_PAGE)] = 25,
+    offset: Annotated[int, Query(ge=0, le=2**31 - 1)] = 0,
+) -> KnownOut:
+    """Everything threat intelligence has answered and AresGate kept, newest first. It reads what
+    is kept only, so it asks VirusTotal nothing and counts toward no limit."""
+    found = known.page(
+        db,
+        virustotal.PROVIDER,
+        text=q.strip(),
+        kind=kind,
+        judgement=judgement,
+        limit=limit,
+        offset=offset,
+    )
+    now = utcnow()
+    return KnownOut(
+        total=found.total,
+        counts=CountsOut(**found.counts),
+        items=[_out(row, None, now, cached=True) for row in found.rows],
+    )
 
 
 @router.post("/lookups")
@@ -84,9 +154,9 @@ def look_up(
             "That is this home's own address on the internet, so it isn't sent to VirusTotal.",
         )
     now = utcnow()
-    kept = store.cached(db, virustotal.PROVIDER, subject, now)
-    if kept is not None:
-        return _out(subject, store.answer_of(kept), kept.checked_at, cached=True)
+    kept = store.kept(db, virustotal.PROVIDER, subject)
+    if kept is not None and not body.refresh and store.fresh(kept, now):
+        return _out(kept, subject, now, cached=True)
     try:
         target = service.load_target(db, settings, DEFINITION, CONNECTION, row)
     except service.Incomplete as incomplete:
@@ -105,15 +175,16 @@ def look_up(
         )
     except budget.Paused as held:
         db.rollback()
-        raise _held(held.pause, now) from held
+        return _kept_or(db, subject, now, _held(held.pause, now))
     except budget.Wait as wait:
         db.rollback()
         seconds = math.ceil(wait.wait.total_seconds())
-        raise HTTPException(
+        refusal = HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"VirusTotal's limit on searches is reached. Try again in {seconds} seconds.",
             headers={"Retry-After": str(seconds)},
-        ) from wait
+        )
+        return _kept_or(db, subject, now, refusal)
     db.commit()
     policy = service.policy_for(CONNECTION, netguard.HOME_NETWORK)
     answer = anyio.from_thread.run(virustotal.ask, target, recorder, policy, subject, now)
@@ -121,11 +192,32 @@ def look_up(
     connection.remember(row, answer, now)
     db.commit()
     if isinstance(answer, virustotal.Failed):
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, answer.message)
+        failure = HTTPException(status.HTTP_502_BAD_GATEWAY, answer.message)
+        return _kept_or(db, subject, now, failure)
     if isinstance(answer, virustotal.Limited | virustotal.Throttled):
         pause = budget.Pause(until=answer.until, daily=isinstance(answer, virustotal.Limited))
-        raise _held(pause, now)
-    return _out(subject, answer, now, cached=False)
+        return _kept_or(db, subject, now, _held(pause, now))
+    unkept = HTTPException(status.HTTP_502_BAD_GATEWAY, "VirusTotal's answer could not be kept.")
+    return _kept_or(db, subject, now, unkept, asked=True)
+
+
+def _kept_or(
+    db: Db,
+    subject: subjects.Subject,
+    now: datetime,
+    refusal: HTTPException,
+    *,
+    asked: bool = False,
+) -> LookupOut:
+    """What a search is answered with: the answer kept for its subject, or the refusal if nothing
+    is kept. If VirusTotal wasn't ``asked``, or gave no answer, the answer is one kept from before,
+    and the refusal's words say why it wasn't checked again."""
+    kept = store.kept(db, virustotal.PROVIDER, subject)
+    if kept is None:
+        raise refusal
+    if asked:
+        return _out(kept, subject, now, cached=False)
+    return _out(kept, subject, now, cached=True, notice=str(refusal.detail))
 
 
 def _held(pause: budget.Pause, now: datetime) -> HTTPException:
@@ -141,39 +233,47 @@ def _held(pause: budget.Pause, now: datetime) -> HTTPException:
 
 
 def _out(
-    subject: subjects.Subject, answer: virustotal.Answer, checked_at: datetime, *, cached: bool
+    row: IntelSubject,
+    subject: subjects.Subject | None,
+    now: datetime,
+    *,
+    cached: bool,
+    notice: str | None = None,
 ) -> LookupOut:
+    """The answer kept for a subject. A search shows the subject as it was searched for. The list
+    of what is kept has no search, so it shows what the answer is kept as, and for a web address,
+    which is kept as a hash, the host it was on."""
+    answer = store.answer_of(row)
     report = answer.report if isinstance(answer, virustotal.Reported) else None
-    if report is None:
-        return LookupOut(
-            kind=subject.kind,
-            subject=subject.text,
-            judgement=virustotal.judge(None),
-            checked_at=checked_at,
-            cached=cached,
-            analysed_at=None,
-            malicious=0,
-            suspicious=0,
-            harmless=0,
-            undetected=0,
-            reputation=None,
-            categories=[],
-            details=[],
-            link=virustotal.link_for(subject),
-        )
+    if subject is not None:
+        text = subject.text
+    elif row.kind == "url":
+        text = row.host or "A web address"
+    else:
+        text = row.subject
     return LookupOut(
-        kind=subject.kind,
-        subject=subject.text,
+        kind=cast("Kind", row.kind),
+        subject=text,
         judgement=virustotal.judge(report),
-        checked_at=checked_at,
+        checked_at=row.checked_at,
         cached=cached,
-        analysed_at=report.analysed_at,
-        malicious=report.malicious,
-        suspicious=report.suspicious,
-        harmless=report.harmless,
-        undetected=report.undetected,
-        reputation=report.reputation,
-        categories=list(report.categories),
-        details=[DetailOut(label=label, value=value) for label, value in report.details],
-        link=virustotal.link_for(subject),
+        stale=not store.fresh(row, now),
+        notice=notice,
+        repeatable=subject is not None or row.kind != "url",
+        first_checked_at=row.first_checked_at,
+        checks=row.checks,
+        fresh_until=store.fresh_until(row),
+        changed_at=row.changed_at,
+        previous_judgement=cast("Judgement | None", row.previous_judgement),
+        analysed_at=report.analysed_at if report else None,
+        malicious=report.malicious if report else 0,
+        suspicious=report.suspicious if report else 0,
+        harmless=report.harmless if report else 0,
+        undetected=report.undetected if report else 0,
+        reputation=report.reputation if report else None,
+        categories=list(report.categories) if report else [],
+        details=[DetailOut(label=label, value=value) for label, value in report.details]
+        if report
+        else [],
+        link=virustotal.link_of(row.kind, row.subject),
     )

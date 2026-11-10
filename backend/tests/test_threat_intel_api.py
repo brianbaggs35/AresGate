@@ -1,6 +1,7 @@
 """Searching VirusTotal by hand: what is refused and never sent, what comes back, what is kept, and
 the limits a search shares with the background lookups."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 
@@ -37,8 +38,11 @@ def headers(token: str) -> dict[str, str]:
     return {"X-CSRF-Token": token}
 
 
-def search(client: TestClient, token: str, subject: str) -> Response:
-    return client.post(URL, json={"subject": subject}, headers=headers(token))
+def search(client: TestClient, token: str, subject: str, *, refresh: bool = False) -> Response:
+    body: dict[str, object] = {"subject": subject}
+    if refresh:
+        body["refresh"] = True
+    return client.post(URL, json=body, headers=headers(token))
 
 
 def connect(session: Session, *, tested: bool = True) -> None:
@@ -508,7 +512,7 @@ def test_a_domain_or_web_address_answered_lately_is_answered_from_what_was_kept(
     assert len(asked) == 1
 
 
-def test_a_search_is_asked_again_once_its_answer_is_a_week_old(
+def test_a_search_is_asked_again_once_its_answer_is_no_longer_fresh(
     client: TestClient,
     csrf_token: str,
     connected: None,
@@ -518,7 +522,7 @@ def test_a_search_is_asked_again_once_its_answer_is_a_week_old(
     asked = answering(monkeypatch, virustotal.Unknown())
     search(client, csrf_token, ADDRESS)
     [kept] = session.scalars(select(IntelSubject)).all()
-    kept.checked_at = utcnow() - store.FRESH - timedelta(minutes=1)
+    kept.checked_at = utcnow() - store.SOONER - timedelta(minutes=1)
     age_every_lookup(session, timedelta(days=8))
 
     response = search(client, csrf_token, ADDRESS)
@@ -565,3 +569,265 @@ def test_a_search_answered_lately_is_answered_from_what_was_kept_while_the_daily
     assert (second.json()["cached"], second.json()["judgement"]) == (True, "malicious")
     assert second.json()["checked_at"] == first.json()["checked_at"]
     assert asked == []
+
+
+# -- what is kept, and what a search says of it
+
+KNOWN = "/api/threat-intel/subjects"
+CLEAN = replace(REPORT, malicious=0, suspicious=0, owner="Tidy Networks")
+
+
+def age_the_answer(session: Session, age: timedelta) -> None:
+    """Moves the one answer kept back by ``age``, and its lookups with it."""
+    [kept] = session.scalars(select(IntelSubject)).all()
+    kept.checked_at = utcnow() - age
+    age_every_lookup(session, age)
+
+
+def test_a_search_says_what_is_kept_of_its_subject(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, virustotal.Reported(report=REPORT))
+
+    body = search(client, csrf_token, ADDRESS).json()
+
+    assert (body["cached"], body["stale"], body["notice"]) == (False, False, None)
+    assert (body["checks"], body["repeatable"]) == (1, True)
+    assert body["first_checked_at"] == body["checked_at"]
+    assert (body["changed_at"], body["previous_judgement"]) == (None, None)
+    checked = datetime.fromisoformat(body["checked_at"])
+    assert datetime.fromisoformat(body["fresh_until"]) == checked + store.SOONER
+
+
+def test_a_search_can_ask_again_while_the_answer_is_fresh_and_says_what_changed(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, virustotal.Reported(report=CLEAN))
+    first = search(client, csrf_token, ADDRESS).json()
+    age_every_lookup(session, timedelta(minutes=1))
+    asked = answering(monkeypatch, virustotal.Reported(report=REPORT))
+
+    body = search(client, csrf_token, ADDRESS, refresh=True).json()
+
+    assert len(asked) == 1
+    assert (body["cached"], body["judgement"], body["checks"]) == (False, "malicious", 2)
+    assert body["first_checked_at"] == first["checked_at"]
+    assert (body["changed_at"], body["previous_judgement"]) == (body["checked_at"], "clean")
+
+
+def test_an_old_answer_is_shown_while_the_daily_quota_holds_and_says_why_it_is_old(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answering(monkeypatch, virustotal.Reported(report=REPORT))
+    first = search(client, csrf_token, ADDRESS).json()
+    age_the_answer(session, timedelta(days=9))
+    limit_at(session, store.LIMITED, utcnow())
+    asked = answering(monkeypatch, virustotal.Unknown())
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["cached"], body["stale"], body["judgement"]) == (True, True, "malicious")
+    assert body["notice"] == "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC."
+    assert body["checked_at"] != first["checked_at"]
+    assert asked == []
+
+
+def test_an_answer_asked_for_again_too_soon_is_shown_as_kept_and_says_when_to_try(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = answering(monkeypatch, virustotal.Reported(report=REPORT))
+    search(client, csrf_token, ADDRESS)
+
+    response = search(client, csrf_token, ADDRESS, refresh=True)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["cached"], body["stale"]) == (True, False)
+    assert body["notice"].startswith("VirusTotal's limit on searches is reached. Try again in ")
+    assert len(asked) == 1
+
+
+@pytest.mark.parametrize(
+    ("answer", "notice"),
+    [
+        (virustotal.Failed("VirusTotal answered HTTP 500."), "VirusTotal answered HTTP 500."),
+        (
+            virustotal.Limited(until=virustotal.next_reset(utcnow())),
+            "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
+        ),
+        (
+            virustotal.Throttled(until=utcnow() + timedelta(minutes=1)),
+            "VirusTotal asked for fewer requests. Try again in ",
+        ),
+    ],
+)
+def test_an_old_answer_is_shown_when_asking_again_gets_no_answer(
+    client: TestClient,
+    csrf_token: str,
+    connected: None,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    answer: object,
+    notice: str,
+) -> None:
+    answering(monkeypatch, virustotal.Reported(report=REPORT))
+    search(client, csrf_token, ADDRESS)
+    age_the_answer(session, timedelta(days=9))
+    asked = answering(monkeypatch, answer)
+
+    response = search(client, csrf_token, ADDRESS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["cached"], body["stale"], body["judgement"]) == (True, True, "malicious")
+    assert body["notice"].startswith(notice)
+    assert len(asked) == 1
+    session.expire_all()
+    [kept] = session.scalars(select(IntelSubject)).all()
+    assert kept.checks == 1
+
+
+def test_the_answers_kept_are_for_a_signed_in_user(client: TestClient) -> None:
+    assert client.get(KNOWN).status_code == 401
+
+
+def test_nothing_kept_is_an_empty_list(client: TestClient, csrf_token: str) -> None:
+    assert client.get(KNOWN).json() == {
+        "total": 0,
+        "counts": {"malicious": 0, "suspicious": 0, "clean": 0, "unknown": 0},
+        "items": [],
+    }
+
+
+def keep(session: Session, text: str, answer: store.Answered, when: datetime) -> None:
+    store.keep(session, virustotal.PROVIDER, subjects.parse(text), answer, when)
+    session.commit()
+
+
+@pytest.fixture
+def kept(session: Session) -> datetime:
+    """Four answers kept, a minute apart, and one of another service. Returns the newest's time."""
+    now = utcnow()
+    keep(session, ADDRESS, virustotal.Reported(REPORT), now - timedelta(minutes=3))
+    keep(session, "tidy.example.org", virustotal.Reported(CLEAN), now - timedelta(minutes=2))
+    keep(session, "https://example.com/login?next=1", virustotal.Unknown(), now)
+    keep(
+        session,
+        "odd.example.net",
+        virustotal.Reported(replace(REPORT, malicious=0, owner="100%_odd Hosting")),
+        now - timedelta(days=30),
+    )
+    store.keep(session, "another", subjects.parse("1.1.1.1"), virustotal.Reported(REPORT), now)
+    session.commit()
+    return now
+
+
+def test_the_answers_kept_are_listed_newest_first_with_their_counts(
+    client: TestClient, csrf_token: str, kept: datetime
+) -> None:
+    body = client.get(KNOWN).json()
+
+    assert body["total"] == 4
+    assert body["counts"] == {"malicious": 1, "suspicious": 1, "clean": 1, "unknown": 1}
+    assert [(item["kind"], item["subject"], item["judgement"]) for item in body["items"]] == [
+        ("url", "example.com", "unknown"),
+        ("domain", "tidy.example.org", "clean"),
+        ("ip", ADDRESS, "malicious"),
+        ("domain", "odd.example.net", "suspicious"),
+    ]
+    assert all(item["cached"] and item["notice"] is None for item in body["items"])
+    assert [item["stale"] for item in body["items"]] == [False, False, False, True]
+
+
+def test_a_kept_web_address_shows_its_host_and_cannot_be_searched_again_from_the_list(
+    client: TestClient, csrf_token: str, kept: datetime, session: Session
+) -> None:
+    [item] = client.get(KNOWN, params={"kind": "url"}).json()["items"]
+
+    key = subjects.url_key("https://example.com/login?next=1")
+    assert (item["subject"], item["repeatable"]) == ("example.com", False)
+    assert item["link"] == f"https://www.virustotal.com/gui/url/{key}"
+
+    for row in session.scalars(select(IntelSubject).where(IntelSubject.kind == "url")):
+        row.host = None
+    session.commit()
+    [item] = client.get(KNOWN, params={"kind": "url"}).json()["items"]
+    assert item["subject"] == "A web address"
+
+
+def test_the_answers_kept_are_filtered_by_judgement_and_the_counts_stay_whole(
+    client: TestClient, csrf_token: str, kept: datetime
+) -> None:
+    body = client.get(KNOWN, params={"judgement": "malicious"}).json()
+
+    assert body["total"] == 1
+    assert body["counts"] == {"malicious": 1, "suspicious": 1, "clean": 1, "unknown": 1}
+    [item] = body["items"]
+    assert (item["subject"], item["repeatable"]) == (ADDRESS, True)
+    assert item["link"] == f"https://www.virustotal.com/gui/ip-address/{ADDRESS}"
+
+
+def test_the_answers_kept_are_filtered_by_kind_and_the_counts_follow(
+    client: TestClient, csrf_token: str, kept: datetime
+) -> None:
+    body = client.get(KNOWN, params={"kind": "domain"}).json()
+
+    assert body["total"] == 2
+    assert body["counts"] == {"malicious": 0, "suspicious": 1, "clean": 1, "unknown": 0}
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("TIDY.example", ["tidy.example.org"]),
+        ("tidy networks", ["tidy.example.org"]),
+        (" 184.216 ", [ADDRESS]),
+        ("100%_odd", ["odd.example.net"]),
+        ("%", ["odd.example.net"]),
+        ("_", ["odd.example.net"]),
+        ("\\", []),
+        ("nothing like it", []),
+    ],
+)
+def test_the_answers_kept_are_searched_by_name_address_or_owner_with_no_wildcards(
+    client: TestClient, csrf_token: str, kept: datetime, text: str, found: list[str]
+) -> None:
+    body = client.get(KNOWN, params={"q": text}).json()
+
+    assert [item["subject"] for item in body["items"]] == found
+    assert body["total"] == len(found)
+
+
+def test_the_answers_kept_come_a_page_at_a_time(
+    client: TestClient, csrf_token: str, kept: datetime
+) -> None:
+    body = client.get(KNOWN, params={"limit": 2, "offset": 2}).json()
+
+    assert body["total"] == 4
+    assert [item["subject"] for item in body["items"]] == [ADDRESS, "odd.example.net"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"limit": 0}, {"limit": 101}, {"offset": -1}, {"kind": "file"}, {"judgement": "bad"}],
+)
+def test_a_list_asked_for_wrongly_is_refused(
+    client: TestClient, csrf_token: str, params: dict[str, int | str]
+) -> None:
+    assert client.get(KNOWN, params=params).status_code == 422

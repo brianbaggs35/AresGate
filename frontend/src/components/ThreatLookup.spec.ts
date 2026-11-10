@@ -1,27 +1,12 @@
 import { ApiError } from '@/api/client'
 import type { Pause } from '@/api/integrations'
 import * as threatIntel from '@/api/threatIntel'
-import type { Lookup } from '@/api/threatIntel'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { CLEAN_LOOKUP } from '@/test/threatIntel'
 
-const CLEAN: Lookup = {
-  kind: 'domain',
-  subject: 'example.com',
-  judgement: 'clean',
-  checked_at: '2026-11-09T12:00:00Z',
-  cached: false,
-  analysed_at: '2026-11-08T09:30:00Z',
-  malicious: 0,
-  suspicious: 0,
-  harmless: 70,
-  undetected: 12,
-  reputation: 4,
-  categories: [],
-  details: [{ label: 'Registrar', value: 'Example Registrar' }],
-  link: 'https://www.virustotal.com/gui/domain/example.com',
-}
+const CLEAN = CLEAN_LOOKUP
 
 async function mountLookup(pause: Pause | null = null) {
   const mounted = await mountWithPlugins(ThreatLookup, { signedIn: 'brian', props: { pause } })
@@ -60,7 +45,7 @@ describe('ThreatLookup', () => {
 
     await submit()
 
-    expect(search).toHaveBeenCalledWith('example.com', 'a-security-token')
+    expect(search).toHaveBeenCalledWith('example.com', 'a-security-token', false)
     expect(wrapper.find('[data-test="threat-last-subject"]').text()).toBe('example.com')
     expect(reportWindow()).not.toBeNull()
     expect(wrapper.find('[data-test="threat-problem"]').exists()).toBe(false)
@@ -106,6 +91,96 @@ describe('ThreatLookup', () => {
     expect(reportWindow()).toBeNull()
     expect(wrapper.find('[data-test="threat-last"]').exists()).toBe(false)
     expect(wrapper.emitted('refused')).toHaveLength(1)
+  })
+
+  it('says that an answer arrived, so the page reads what is kept again', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { wrapper, type, submit } = await mountLookup()
+    await type('example.com')
+
+    await submit()
+
+    expect(wrapper.emitted('answered')).toHaveLength(1)
+    expect(wrapper.emitted('refused')).toBeUndefined()
+  })
+
+  it('shows the answer kept when a limit holds the search, and asks for the limits again', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue({
+      ...CLEAN,
+      cached: true,
+      stale: true,
+      notice: "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
+    })
+    const { wrapper, type, submit, reportWindow } = await mountLookup()
+    await type('example.com')
+
+    await submit()
+
+    expect(reportWindow()?.querySelector('[data-test="report-notice"]')?.textContent).toContain(
+      "VirusTotal's daily limit is reached.",
+    )
+    expect(wrapper.find('[data-test="threat-notice"]').exists()).toBe(false)
+    expect(wrapper.emitted('refused')).toHaveLength(1)
+  })
+
+  it('asks VirusTotal again about the last search from the report, and shows the newer answer', async () => {
+    const search = vi
+      .spyOn(threatIntel, 'searchThreatIntel')
+      .mockResolvedValueOnce({ ...CLEAN, cached: true })
+      .mockResolvedValueOnce({ ...CLEAN, checks: 2 })
+    const { wrapper, type, submit, reportWindow } = await mountLookup()
+    await type('example.com')
+    await submit()
+
+    wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
+    await flushPromises()
+
+    expect(search).toHaveBeenLastCalledWith('example.com', 'a-security-token', true)
+    expect(reportWindow()?.querySelector('[data-test="report-checks"]')?.textContent).toBe(
+      '2 times',
+    )
+    expect(wrapper.emitted('answered')).toHaveLength(2)
+  })
+
+  it('closes the report and says why when checking again is refused', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel')
+      .mockResolvedValueOnce({ ...CLEAN, cached: true })
+      .mockRejectedValueOnce(new ApiError(502, 'VirusTotal answered HTTP 500.', 'bad_gateway'))
+    const { wrapper, type, submit } = await mountLookup()
+    await type('example.com')
+    await submit()
+
+    wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="threat-problem"]').text()).toBe(
+      'VirusTotal answered HTTP 500.',
+    )
+    expect(wrapper.findComponent(ThreatReportDialog).props('modelValue')).toBe(false)
+    expect(wrapper.find('[data-test="threat-last-subject"]').text()).toBe('example.com')
+  })
+
+  it('checks again once at a time', async () => {
+    let answer: (lookup: typeof CLEAN) => void = () => undefined
+    const search = vi
+      .spyOn(threatIntel, 'searchThreatIntel')
+      .mockResolvedValueOnce(CLEAN)
+      .mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+    const { wrapper, type, submit } = await mountLookup()
+    await type('example.com')
+    await submit()
+    const report = wrapper.findComponent(ThreatReportDialog)
+
+    report.vm.$emit('refresh')
+    await flushPromises()
+    report.vm.$emit('refresh')
+    await flushPromises()
+
+    expect(report.props('busy')).toBe(true)
+    expect(search).toHaveBeenCalledTimes(2)
+    answer(CLEAN)
+    await flushPromises()
+    expect(report.props('busy')).toBe(false)
   })
 
   it('says something useful when a search fails in a way that was not expected', async () => {
