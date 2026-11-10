@@ -66,7 +66,7 @@ describe('AgentGraph', () => {
     const { wrapper } = await open({ run: run({ rounds: 2 }), steps: [step()] })
 
     expect(wrapper.find('[data-test="graph-loop"]').text()).toContain('up to 3 rounds')
-    expect(wrapper.find('[role="img"]').attributes('aria-label')).toBe('Round 2 of 3')
+    expect(wrapper.find('[data-test="graph-rounds-text"]').text()).toBe('Round 2 of 3')
     expect(wrapper.findAll('.loop__dot--on')).toHaveLength(2)
 
     await wrapper.setProps({ run: run({ rounds: 9 }) })

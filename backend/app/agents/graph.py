@@ -266,10 +266,20 @@ def _number(value: object) -> int | None:
     return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
+def _fields(item: object) -> dict[str, object] | None:
+    """The fields of a JSON object the model wrote, or None if it is not one."""
+    return cast("dict[str, object]", item) if isinstance(item, dict) else None
+
+
+def _items(item: object) -> list[object]:
+    """The items of a JSON list the model wrote, or none if it is not a list."""
+    return cast("list[object]", item) if isinstance(item, list) else []
+
+
 def _lookup(item: object, template: Template) -> Lookup | None:
-    if not isinstance(item, dict):
+    fields = _fields(item)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", item)
     name = fields.get("tool")
     # What the template does not allow is ignored, so a model can't ask for anything else, a test
     # of the network least of all.
@@ -288,9 +298,9 @@ def _lookup(item: object, template: Template) -> Lookup | None:
 
 
 def _finding(item: object) -> tuple[str, str, str, list[str]] | None:
-    if not isinstance(item, dict):
+    fields = _fields(item)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", item)
     title = fields.get("title")
     if not isinstance(title, str) or not title.strip():
         return None
@@ -301,9 +311,7 @@ def _finding(item: object) -> tuple[str, str, str, list[str]] | None:
         severity if isinstance(severity, str) and severity in probe.SEVERITIES else "info",
         audit.clean(title, MAX_TITLE) or "",
         (audit.clean(detail, MAX_DETAIL) or "") if isinstance(detail, str) else "",
-        [cite for cite in cast("list[object]", cites) if isinstance(cite, str)]
-        if isinstance(cites, list)
-        else [],
+        [cite for cite in _items(cites) if isinstance(cite, str)],
     )
 
 
@@ -313,22 +321,14 @@ def parse(text: str, template: Template) -> Reading | None:
         loaded = _loads(text)
     except ValueError:
         return None
-    if not isinstance(loaded, dict):
+    fields = _fields(loaded)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", loaded)
     summary = fields.get("summary")
     found = fields.get("findings")
     asked = fields.get("lookups")
-    findings = [
-        kept
-        for item in (cast("list[object]", found) if isinstance(found, list) else [])
-        if (kept := _finding(item)) is not None
-    ]
-    lookups = [
-        kept
-        for item in (cast("list[object]", asked) if isinstance(asked, list) else [])
-        if (kept := _lookup(item, template)) is not None
-    ]
+    findings = [kept for item in _items(found) if (kept := _finding(item)) is not None]
+    lookups = [kept for item in _items(asked) if (kept := _lookup(item, template)) is not None]
     return Reading(
         summary=(audit.clean(summary, MAX_SUMMARY) or "") if isinstance(summary, str) else "",
         findings=findings[:MAX_FINDINGS],
@@ -436,7 +436,7 @@ def build(work: Work) -> object:
     """The graph of one run."""
     template = work.snapshot.template
 
-    async def plan(state: State) -> dict[str, object]:
+    def plan(state: State) -> dict[str, object]:
         del state
         first = list(template.first)
         return {
@@ -523,7 +523,7 @@ def build(work: Work) -> object:
             ],
         }
 
-    async def report(state: State) -> dict[str, object]:
+    def report(state: State) -> dict[str, object]:
         findings = state["findings"] or _found_by_testing(state["ran"])
         summary = state["summary"] or _collected(state)
         return {

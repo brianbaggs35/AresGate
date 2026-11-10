@@ -137,7 +137,8 @@ def test_a_run_without_ai_collects_what_the_template_looks_at_and_says_why_the_a
     assert done.status == "succeeded"
     assert done.error is None
     assert done.node is None
-    assert done.started_at is not None and done.finished_at is not None
+    assert done.started_at is not None
+    assert done.finished_at is not None
     assert done.summary.startswith("Collected open incidents limit 5: ")
     assert "The AI took no part: AI is turned off." in done.summary
     assert done.ai == "AI is turned off. Turn it on under Settings > AI to use it."
@@ -558,17 +559,17 @@ def test_the_worker_ends_what_was_interrupted_forgets_the_old_and_keeps_going_af
 
     monkeypatch.setattr(run, "run_once", breaking)
 
+    working = asyncio.wait_for(
+        run.run(
+            new_session_for(session),
+            context(settings, Log()),
+            interval=timedelta(milliseconds=5),
+        ),
+        0.2,
+    )
+
     with pytest.raises(TimeoutError):
-        asyncio.run(
-            asyncio.wait_for(
-                run.run(
-                    new_session_for(session),
-                    context(settings, Log()),
-                    interval=timedelta(milliseconds=5),
-                ),
-                0.2,
-            )
-        )
+        asyncio.run(working)
 
     assert len(calls) > 1
     assert "Couldn't run the agents" in caplog.text
@@ -594,18 +595,18 @@ def test_the_worker_runs_what_waits_again_and_again_and_does_nothing_where_colle
     monkeypatch.setattr(run, "run_once", counting)
     monkeypatch.setattr(run, "PRUNE_EVERY", prune_every)
 
+    working = asyncio.wait_for(
+        run.run(
+            new_session_for(session),
+            context(settings, Log()),
+            enabled=enabled,
+            interval=timedelta(milliseconds=5),
+        ),
+        0.1,
+    )
+
     with pytest.raises(TimeoutError):
-        asyncio.run(
-            asyncio.wait_for(
-                run.run(
-                    new_session_for(session),
-                    context(settings, Log()),
-                    enabled=enabled,
-                    interval=timedelta(milliseconds=5),
-                ),
-                0.1,
-            )
-        )
+        asyncio.run(working)
 
     assert bool(ran) is enabled
 
