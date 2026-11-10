@@ -3,7 +3,16 @@ import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
 import VerdictPanel from '@/components/VerdictPanel.vue'
 import { useSessionStore } from '@/stores/session'
-import { detail, incident, reading, signal, triage } from '@/test/incidents'
+import {
+  detail,
+  evidence,
+  incident,
+  insights,
+  occurrence,
+  reading,
+  signal,
+  triage,
+} from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { verdict } from '@/test/verdicts'
 import IncidentView from '@/views/IncidentView.vue'
@@ -498,22 +507,30 @@ describe('IncidentView', () => {
       expect(none.find('occurrences-card').exists()).toBe(false)
 
       const repeated = await open({
-        found: detail({
-          occurrences: [
-            { signal: signal(), count: 40, last_at: new Date().toISOString(), duplicates: 0 },
-          ],
-        }),
+        found: detail({ occurrences: [occurrence({ count: 40 })] }),
       })
       expect(repeated.find('occurrences-card').exists()).toBe(true)
 
       const twice = await open({
-        found: detail({
-          occurrences: [
-            { signal: signal(), count: 1, last_at: new Date().toISOString(), duplicates: 1 },
-          ],
-        }),
+        found: detail({ occurrences: [occurrence({ duplicates: 1 })] }),
       })
       expect(twice.find('occurrences-card').exists()).toBe(true)
+
+      const said = await open({
+        found: detail({
+          occurrences: [occurrence({ evidence: evidence({ host: 'web1 (192.168.1.20)' }) })],
+        }),
+      })
+      expect(said.find('occurrences-card').exists()).toBe(true)
+    })
+
+    it('shows what the programs saw only when one said more than the basics', async () => {
+      const none = await open()
+      expect(none.find('insights-card').exists()).toBe(false)
+
+      const some = await open({ found: detail({ insights: insights() }) })
+      expect(some.find('insights-card').exists()).toBe(true)
+      expect(some.text('insight-program-name')).toBe('Wazuh')
     })
 
     it('says what it made of an incident it has read, beside how serious it is', async () => {

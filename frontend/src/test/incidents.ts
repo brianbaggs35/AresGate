@@ -1,12 +1,16 @@
 import type {
   Ban,
   BulkResult,
+  Confirmation,
+  Evidence,
   FamilyBrief,
   Incident,
   IncidentResponse,
   IncidentDetail,
   IncidentDevice,
   IncidentPage,
+  Insights,
+  Occurrence,
   Reading,
   Reason,
   Signal,
@@ -147,6 +151,70 @@ export function familyBrief(changes: Partial<FamilyBrief> = {}): FamilyBrief {
   }
 }
 
+/** What one program said of an alert besides the basics: nothing, unless given. */
+export function evidence(changes: Partial<Evidence> = {}): Evidence {
+  return {
+    facts: [],
+    tags: [],
+    mitre: [],
+    named: [],
+    traffic: null,
+    host: null,
+    app: null,
+    excerpt: null,
+    ...changes,
+  }
+}
+
+/** A signal that happened `count` times, that no other program reported, unless given. */
+export function occurrence(changes: Partial<Occurrence> = {}): Occurrence {
+  return {
+    signal: signal(),
+    count: 1,
+    last_at: new Date(NOW - 5 * MINUTE).toISOString(),
+    duplicates: 0,
+    evidence: null,
+    confirmations: [],
+    ...changes,
+  }
+}
+
+/** A program that reported the same alert as the first, a minute later, unless given. */
+export function confirmation(changes: Partial<Confirmation> = {}): Confirmation {
+  return {
+    source: 'opnsense',
+    source_name: 'OPNsense',
+    signature: 'ET SCAN Potential SSH Scan',
+    severity: 'medium',
+    count: 1,
+    first_at: new Date(NOW - 11 * MINUTE).toISOString(),
+    last_at: new Date(NOW - 11 * MINUTE).toISOString(),
+    evidence: null,
+    ...changes,
+  }
+}
+
+/** What the programs between them knew, which is a technique and two programs unless given. */
+export function insights(changes: Partial<Insights> = {}): Insights {
+  return {
+    techniques: [{ id: 'T1110', tactic: 'Credential Access', technique: 'Brute Force', count: 12 }],
+    tags: [{ value: 'sshd', count: 12 }],
+    hosts: [{ value: 'web1 (192.168.1.20)', count: 12 }],
+    apps: [{ value: 'ssh', count: 5 }],
+    named: [{ kind: 'hostname', value: 'scanner.example.net', count: 3 }],
+    programs: [
+      {
+        source: 'wazuh',
+        source_name: 'Wazuh',
+        reports: 12,
+        adds: ['MITRE ATT&CK techniques', 'The machine it was about'],
+      },
+      { source: 'ntopng', source_name: 'ntopng', reports: 3, adds: [] },
+    ],
+    ...changes,
+  }
+}
+
 /** One incident with all it knows: why it is as sure as it is, its signals and its devices. */
 export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
   return {
@@ -193,6 +261,7 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     why: ["AresGate's rules are 70% sure it is a real attack."],
     occurrences: [],
     family: familyBrief(),
+    insights: null,
     ...changes,
   }
 }

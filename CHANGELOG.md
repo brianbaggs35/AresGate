@@ -16,6 +16,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The incident page shows what each program knew.** A new *What the programs saw* card adds up
+  what the connected programs said beyond the basics: how many alerts each reported and what it
+  added, the MITRE ATT&CK techniques Wazuh matched, the machines and applications the alerts were
+  about, and the host names, URLs, users and countries they named, drawn as bars. Under *What kept
+  happening*, each alert can be opened to see what each program said of it: the rule's own
+  facts, its groups, the technique, how much traffic the flow carried and the log line. When
+  OPNsense, ntopng and Wazuh report the same alert it is one alert with each program named as
+  having seen it, counted once, and what each said is kept side by side. Alerts filed before this
+  fill in as the worker reads their events. Migration `0039` adds the columns.
+
 - **Agents.** A new Agents page makes standing instructions that look at your network for you, on a
   schedule or when you ask. Make a threat hunter, an intelligence analyst, a health watch or an
   exposure scanner, give it your own instructions, and follow each run as a graph that lights up

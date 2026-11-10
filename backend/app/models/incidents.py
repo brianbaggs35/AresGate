@@ -15,6 +15,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -147,6 +148,12 @@ class IncidentSignal(Base):
         ),
         Index("ix_incident_signals_incident_id_occurred_at", "incident_id", "occurred_at"),
         Index("ix_incident_signals_verdict_rule_id", "verdict_rule_id"),
+        # The few that have not had their evidence read yet, so that finding them stays cheap.
+        Index(
+            "ix_incident_signals_evidence_unread",
+            "id",
+            postgresql_where=text("evidence IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -179,6 +186,14 @@ class IncidentSignal(Base):
     # Another program reported the same alert moments before (``Event.twin_of``): it is listed, and
     # what it adds (the program that agrees, a higher severity) counts, but it is not counted again.
     duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Which event it is a twin of, while a duplicate: the one the other program reported first,
+    # which is the signal it is shown with (``Event.twin_of``).
+    twin_of: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    # What the program reported besides the facts above, boiled down to what is worth showing
+    # (app/incidents/evidence.py), kept because the event's own record is not: it goes with the
+    # event's retention. None until it has been read from the event, and ``{}`` where there is
+    # nothing to show.
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), default=None)
 
 
 class IncidentFamily(Base):

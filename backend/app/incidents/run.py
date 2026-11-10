@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from app.incidents import engine
+from app.incidents import engine, evidence
 from app.models import utcnow
 from app.threats import families
 
@@ -21,6 +21,8 @@ def correlate_once(new_session: Callable[[], Session]) -> engine.Result:
     """One run of the engine, saved."""
     with new_session() as db:
         result = engine.correlate(db, utcnow())
+        # Signals filed before their evidence was kept get it, a batch at a time.
+        evidence.read_pending(db)
         # The incidents it made or said differently join their families, and are told what those
         # have been judged.
         families.assign(db)

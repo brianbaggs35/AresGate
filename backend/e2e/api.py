@@ -219,6 +219,8 @@ class IncidentRequest(BaseModel):
     twin: str | None = Field(default=None, max_length=32)
     # Whether the device sent the signals to the address, as a camera calls its cloud.
     outbound: bool = False
+    # Whether each program gives what it knows besides the basics.
+    detailed: bool = False
 
 
 class IncidentsRequest(BaseModel):
@@ -261,6 +263,7 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 exploit=item.exploit,
                 compromise=item.compromise,
                 twin=item.twin,
+                detailed=item.detailed,
             )
             for item in body.incidents
         ],

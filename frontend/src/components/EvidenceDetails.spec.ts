@@ -1,0 +1,90 @@
+import EvidenceDetails from '@/components/EvidenceDetails.vue'
+import { evidence } from '@/test/incidents'
+import { mountWithPlugins } from '@/test/mount'
+
+async function show(changes: Parameters<typeof evidence>[0]) {
+  const { wrapper } = await mountWithPlugins(EvidenceDetails, {
+    props: { evidence: evidence(changes) },
+  })
+  return wrapper
+}
+
+describe('EvidenceDetails', () => {
+  it('shows only what the program said', async () => {
+    const wrapper = await show({ host: 'web1 (192.168.1.20)' })
+
+    expect(wrapper.find('[data-test="evidence-host"]').text()).toBe('web1 (192.168.1.20)')
+    for (const absent of [
+      'evidence-app',
+      'evidence-facts',
+      'evidence-mitre',
+      'evidence-named',
+      'evidence-traffic',
+      'evidence-tags',
+      'evidence-excerpt',
+    ]) {
+      expect(wrapper.find(`[data-test="${absent}"]`).exists()).toBe(false)
+    }
+  })
+
+  it('shows the application, the facts and the technique with its tactic', async () => {
+    const wrapper = await show({
+      app: 'ssh',
+      facts: [
+        { label: 'Rule', value: '5760' },
+        { label: 'Level', value: '5' },
+      ],
+      mitre: [
+        { id: 'T1110', tactic: 'Credential Access', technique: 'Brute Force' },
+        { id: 'T1078', tactic: '', technique: 'Valid Accounts' },
+      ],
+    })
+
+    expect(wrapper.find('[data-test="evidence-app"]').text()).toBe('ssh')
+    expect(wrapper.find('[data-test="evidence-facts"]').text()).toContain('Rule5760')
+    const techniques = wrapper.findAll('[data-test="evidence-mitre"] li').map((each) => each.text())
+    expect(techniques).toEqual(['T1110 Brute Force (Credential Access)', 'T1078 Valid Accounts'])
+  })
+
+  it('groups what it named by kind, in the singular for one and the plural for more', async () => {
+    const wrapper = await show({
+      named: [
+        { kind: 'user', value: 'root' },
+        { kind: 'hostname', value: 'a.example' },
+        { kind: 'hostname', value: 'b.example' },
+      ],
+    })
+
+    const groups = wrapper.findAll('[data-test="evidence-named"]')
+    expect(groups.map((each) => each.find('h4').text())).toEqual(['User', 'Host names'])
+    expect(groups[1]?.findAll('li').map((each) => each.text())).toEqual(['a.example', 'b.example'])
+  })
+
+  it('draws how much traffic it was, and says it for those who cannot see the bars', async () => {
+    const wrapper = await show({
+      traffic: { packets_out: 14, packets_in: 9, bytes_out: 2048, bytes_in: null },
+    })
+
+    const volumes = wrapper.findAll('[data-test="evidence-traffic"] figure')
+    expect(volumes).toHaveLength(2)
+    expect(volumes[0]?.text()).toContain('Packets')
+    expect(volumes[0]?.text()).toContain('Sent: 14')
+    expect(volumes[0]?.text()).toContain('Received: 9')
+    expect(volumes[1]?.text()).toContain('Received: not said')
+    expect(volumes[0]?.find('.evidence__out').attributes('style')).toContain('width: 61%')
+  })
+
+  it('shows its tags and the log line it came from', async () => {
+    const wrapper = await show({
+      tags: ['syslog', 'sshd'],
+      excerpt: 'sshd: Failed password for root',
+    })
+
+    expect(
+      wrapper.findAll('[data-test="evidence-tags"] .v-chip').map((each) => each.text()),
+    ).toEqual(['syslog', 'sshd'])
+    expect(wrapper.find('[data-test="evidence-excerpt"] code').text()).toBe(
+      'sshd: Failed password for root',
+    )
+  })
+})

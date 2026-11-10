@@ -27,6 +27,32 @@ different program reported it within two minutes, about the same source and the 
 (or the same port, where the firewall translated an address). The twin is marked, counted as a
 duplicate, and an incident says how many of its alerts another program had already reported.
 
+On the incident's page the twin is not an alert of its own: it is added to the first alert's
+occurrence as a *confirmation*, which names the program, counts how often it agreed and keeps what
+it said of the alert. The alert still counts once.
+
+### What each program said besides the basics
+
+Every program says more than the columns an event keeps. `app/incidents/evidence.py` boils each
+program's own record down to one shape: the rule's own facts (a Suricata signature number, a Wazuh
+rule and level), words that sort the alert (a Wazuh rule's groups, a Suricata category), the MITRE
+ATT&CK technique and tactic a Wazuh rule matched, what the alert names (a host, a URL, a DNS name, a
+user, a country), the machine and the application, how much traffic the flow carried, and the log
+line. It is kept with each signal (`incident_signals.evidence`, migration `0039`) because the
+event's own record goes with the event's retention and an incident outlives it. Signals filed
+before it was kept get it, a batch each run of the engine, while their events are stored.
+
+The fields read are those the programs' documentation names; OPNsense returns Suricata's EVE record
+flattened a little, so each member is looked for nested and with underscores or dots in its name,
+and ntopng's members are read from its source and have not been tried against a live ntopng. What a
+version leaves out is simply not shown.
+
+`app/incidents/insights.py` adds it up for the whole incident, once for every alert (an alert two
+programs both described counts what they said once): the techniques, the machines, the
+applications, what was named, and for each program how many alerts it reported and what kinds of
+detail it gave. The incident page draws it as *What the programs saw*. The more programs are
+connected, the more it has to show.
+
 ### The same alert, again and again
 
 A scanner that sweeps a port 3,000 times raises 3,000 alerts that say the same words about the same
@@ -145,10 +171,10 @@ The API, all under `/api` and signed in:
 
 The code is in `app/threats/` (`families.py`, `stages.py`, `calls.py`, `explain.py`, `overview.py`,
 `settings.py`), `app/events/twins.py` (the same alert from two programs), `app/incidents/occurrences.py`
-(repeats), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
+(repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
 a kind). The lanes exist twice, as Python (`lane_of`) and as SQL (`lane_clauses`), and a test holds
 them to agreeing. Migration `0028` adds the tables and columns.
 
 The Playwright harness can make attacks that are more than scanning (`exploit`, `compromise`) and
-alerts a second program repeats (`twin`) when it creates incidents; see
+alerts a second program repeats (`twin`) and programs that say more than the basics (`detailed`) when it creates incidents; see
 [the end-to-end tests' guide](../frontend/e2e/README.md).

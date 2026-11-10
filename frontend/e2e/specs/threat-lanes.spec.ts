@@ -94,7 +94,7 @@ test.describe('threats, suspects and background', () => {
     await expect(incident.signals.getByTestId('signal-duplicate')).toHaveCount(3)
     await expect(page.getByTestId('occurrences-card')).toBeVisible()
     await expect(page.getByTestId('occurrence-duplicates').first()).toContainText(
-      'also reported by another program, counted once',
+      'also reported by ntopng, counted once',
     )
   })
 

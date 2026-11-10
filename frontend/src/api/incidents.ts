@@ -197,14 +197,111 @@ export interface Signal {
   duplicate: boolean
 }
 
+/** One thing a program said of an alert, as a label and its value: the rule's number, what was
+ * done about it. */
+export interface Fact {
+  label: string
+  value: string
+}
+
+/** A technique of the MITRE ATT&CK framework that a program matched an alert to. */
+export interface Technique {
+  id: string
+  tactic: string
+  technique: string
+}
+
+/** Something an alert names that can be looked up. `kind` is what sort of thing it is: a
+ * `hostname`, a `url`, a `user_agent`, a `dns` name, an `sni`, a `user`, a `file` or a `country`. */
+export interface Named {
+  kind: string
+  value: string
+}
+
+/** How much the flow an alert is about carried, as its program counted it, in what it gave. */
+export interface FlowVolume {
+  packets_out: number | null
+  packets_in: number | null
+  bytes_out: number | null
+  bytes_in: number | null
+}
+
+/** What one program said of an alert besides who, where and when. A member is empty where the
+ * program said nothing for it. */
+export interface Evidence {
+  facts: Fact[]
+  /** Words that sort the alert: the groups of a Wazuh rule, an alert's category. */
+  tags: string[]
+  mitre: Technique[]
+  named: Named[]
+  traffic: FlowVolume | null
+  /** The machine it is about, and the application it was. */
+  host: string | null
+  app: string | null
+  /** The log line it came from. */
+  excerpt: string | null
+}
+
+/** A program that reported the same alert as the first did, moments later: it agrees, and it may
+ * have seen more. It is not another alert. */
+export interface Confirmation {
+  source: string
+  source_name: string
+  signature: string | null
+  severity: Severity
+  /** How many times it reported it, and when it first and last did. */
+  count: number
+  first_at: string
+  last_at: string
+  evidence: Evidence | null
+}
+
 /** Signals that say the same thing the same way: one that happened `count` times. */
 export interface Occurrence {
   /** The first of them. */
   signal: Signal
   count: number
   last_at: string
-  /** How many of them another program also reported. */
+  /** How many reports of it another program also made, counted once. */
   duplicates: number
+  /** What the program that reported it said besides the basics, where it said any. An incident
+   * with a great many occurrences says it only for the busiest. */
+  evidence: Evidence | null
+  /** The programs that agreed. */
+  confirmations: Confirmation[]
+}
+
+/** A word, and how many alerts it was said of. */
+export interface Counted {
+  value: string
+  count: number
+}
+
+export interface CountedTechnique extends Technique {
+  count: number
+}
+
+export interface CountedNamed extends Named {
+  count: number
+}
+
+/** What one program told of an incident: how many alerts it reported, and what kinds of detail it
+ * gave besides the basics (an empty list is a program that said no more than that). */
+export interface Contribution {
+  source: string
+  source_name: string
+  reports: number
+  adds: string[]
+}
+
+/** What the programs between them knew of an incident, added up an alert at a time. */
+export interface Insights {
+  techniques: CountedTechnique[]
+  tags: Counted[]
+  hosts: Counted[]
+  apps: Counted[]
+  named: CountedNamed[]
+  programs: Contribution[]
 }
 
 /** Your word on a whole kind of incident: set all of it aside, or never set any of it aside. */
@@ -258,6 +355,8 @@ export interface IncidentDetail extends Incident {
   /** Its signals grouped by what they say, in the order each first happened. */
   occurrences: Occurrence[]
   family: FamilyBrief | null
+  /** What the programs said besides the basics, added up. Null when none said anything. */
+  insights: Insights | null
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, null, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -12,7 +12,7 @@ from app.events.event import NewEvent
 from app.events.store import record as record_events
 from app.incidents import engine as correlation
 from app.incidents import run as incidents
-from app.models import Incident, utcnow
+from app.models import Incident, IncidentSignal, utcnow
 from tests.helpers import new_event
 
 
@@ -53,6 +53,20 @@ class TestOneRun:
         assert result == correlation.Result(events=1, created=1, updated=0)
         assert count(session) == 1
         assert "Filed 1 signals: 1 new incidents, 0 updated" in caplog.text
+
+    def test_it_reads_the_evidence_of_signals_filed_before_it_was_kept(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session]
+    ) -> None:
+        record_events(session, settings, [long_ago_alert()], utcnow() - timedelta(minutes=9))
+        session.commit()
+        incidents.correlate_once(new_session)
+        session.execute(update(IncidentSignal).values(evidence=null()))
+        session.commit()
+
+        incidents.correlate_once(new_session)
+
+        session.expire_all()
+        assert session.scalars(select(IncidentSignal.evidence)).all() == [{}]
 
     def test_it_says_nothing_when_there_was_nothing_to_file(
         self, new_session: Callable[[], Session], caplog: pytest.LogCaptureFixture

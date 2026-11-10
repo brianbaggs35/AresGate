@@ -1052,6 +1052,44 @@ def test_an_incident_can_go_on_to_exploit_and_compromise_and_be_seen_by_two_prog
     assert e2e.get("/api/threats/overview").json()["funnel"]["duplicates"] == 2
 
 
+def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
+    e2e: TestClient,
+) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [
+                {
+                    "address": "8.8.4.4",
+                    "programs": ["wazuh", "ntopng"],
+                    "signals": 2,
+                    "detailed": True,
+                    "twin": "opnsense",
+                },
+                {"address": "1.1.1.1", "signals": 1, "programs": ["opnsense"], "detailed": True},
+                {"address": "20.20.20.5", "signals": 1},
+            ]
+        },
+    )
+
+    assert made.json() == {"signals": 2 + 2 + 1 + 1, "incidents": 3}
+    sign_in(e2e)
+    listed = {item["subject"]: item["id"] for item in e2e.get("/api/incidents").json()["items"]}
+    both = e2e.get(f"/api/incidents/{listed['8.8.4.4']}").json()
+    by_source = {each["source"]: each for each in both["insights"]["programs"]}
+    assert set(by_source) == {"wazuh", "ntopng", "opnsense"}
+    assert both["insights"]["techniques"][0]["id"] == "T1110"
+    # What the other program said of the same alert is a confirmation, not another alert.
+    assert [each["signal"]["source"] for each in both["occurrences"]] == ["wazuh", "ntopng"]
+    assert [one["source"] for one in both["occurrences"][0]["confirmations"]] == ["opnsense"]
+    assert (
+        e2e.get(f"/api/incidents/{listed['1.1.1.1']}").json()["insights"]["apps"][0]["value"]
+        == "ssh"
+    )
+    assert e2e.get(f"/api/incidents/{listed['20.20.20.5']}").json()["insights"] is None
+
+
 def test_events_can_be_made_to_order_for_the_logs(e2e: TestClient) -> None:
     e2e.post("/api/__test__/database/clean")
     made = e2e.post(

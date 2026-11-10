@@ -35,7 +35,7 @@ from sqlalchemy import ColumnElement, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
-from app.incidents import episode, filters, rules, verdicts
+from app.incidents import episode, evidence, filters, rules, verdicts
 from app.incidents.filters import Filters
 from app.incidents.subject import Address, Signal, addresses_of, subject_of
 from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
@@ -304,6 +304,8 @@ def _join(
                 verdict_rule_id=rule.id if rule else None,
                 filtered_by=filtered_by,
                 duplicate=duplicate,
+                twin_of=event.twin_of,
+                evidence=evidence.kept(event.source, event.raw),
             )
         )
     _absorb(incident, event, verdict, filtered_by is not None, duplicate)

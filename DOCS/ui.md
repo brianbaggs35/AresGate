@@ -240,8 +240,11 @@ every look and word lives in `src/threats.ts`.
   *Take my word back* appears) and *Ask the AI*. Why they are where they are is a list in
   `FamilyView`, one fact a line, from the server so it cannot disagree with it.
 - **An incident** says where it stands (`IncidentWhere`: its lane, why, how far it got, and its
-  kind with a link) and, when an alert repeated or two programs reported it, what kept happening
-  (`IncidentOccurrences`), as one line with a count.
+  kind with a link) and, when an alert repeated or two programs reported it, what the programs saw
+  (`IncidentInsights`: who reported how much and what each added, the ATT&CK techniques, machines,
+  applications and what was named, as bars against the commonest) and what kept happening
+  (`IncidentOccurrences`), as one line with a count, the programs that reported the same alert, and
+  what each of them said of it (`EvidenceDetails`, opened and closed per line).
 - **Settings > Threat detection** (`ThreatSettingsView`) is a draft beside what is kept, the way
   the noise filters are: `ThreatLevelCard` (a slider that says its number and what it means),
   `ThreatAiCard`, `ThreatNetworkCard` (what is open to the internet, the ports and a note) and

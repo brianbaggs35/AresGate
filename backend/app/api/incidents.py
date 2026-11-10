@@ -28,7 +28,9 @@ from app.incidents import (
     bulk,
     engine,
     episode,
+    evidence,
     filters,
+    insights,
     occurrences,
     queries,
     response,
@@ -236,6 +238,63 @@ class ReadingOut(BaseModel):
     signals_read: int
 
 
+class FactOut(BaseModel):
+    label: str
+    value: str
+
+
+class TechniqueOut(BaseModel):
+    """A technique of the MITRE ATT&CK framework."""
+
+    id: str
+    tactic: str
+    technique: str
+
+
+class NamedOut(BaseModel):
+    """Something an alert names: a host name, a URL, a user. ``kind`` is what sort of thing."""
+
+    kind: str
+    value: str
+
+
+class TrafficOut(BaseModel):
+    """How much the flow an alert is about carried, as its program counted it."""
+
+    packets_out: int | None
+    packets_in: int | None
+    bytes_out: int | None
+    bytes_in: int | None
+
+
+class EvidenceOut(BaseModel):
+    """What one program said of an alert besides who, where and when (app/incidents/evidence.py).
+    A member is empty where the program said nothing for it."""
+
+    facts: list[FactOut]
+    tags: list[str]
+    mitre: list[TechniqueOut]
+    named: list[NamedOut]
+    traffic: TrafficOut | None
+    # The machine it is about, the application it was and the log line it came from.
+    host: str | None
+    app: str | None
+    excerpt: str | None
+
+
+class ConfirmationOut(BaseModel):
+    """A program that reported the same alert as the first, and what it said of it."""
+
+    source: str
+    source_name: str
+    signature: str | None
+    severity: SeverityName
+    count: int
+    first_at: AwareDatetime
+    last_at: AwareDatetime
+    evidence: EvidenceOut | None
+
+
 class OccurrenceOut(BaseModel):
     """Signals that say the same thing the same way, as one that happened ``count`` times."""
 
@@ -243,6 +302,44 @@ class OccurrenceOut(BaseModel):
     count: int
     last_at: AwareDatetime
     duplicates: int
+    # What the program that reported it said besides the basics, where it said any (and, for the
+    # busiest of an incident with a great many, only for those), and the programs that agreed.
+    evidence: EvidenceOut | None
+    confirmations: list[ConfirmationOut]
+
+
+class CountedOut(BaseModel):
+    value: str
+    count: int
+
+
+class CountedTechniqueOut(TechniqueOut):
+    count: int
+
+
+class CountedNamedOut(NamedOut):
+    count: int
+
+
+class ContributionOut(BaseModel):
+    """What one program told of an incident: how many of its alerts it reported, and what kinds of
+    detail it gave besides the basics."""
+
+    source: str
+    source_name: str
+    reports: int
+    adds: list[str]
+
+
+class InsightsOut(BaseModel):
+    """What the programs between them knew of the incident, added up alert by alert."""
+
+    techniques: list[CountedTechniqueOut]
+    tags: list[CountedOut]
+    hosts: list[CountedOut]
+    apps: list[CountedOut]
+    named: list[CountedNamedOut]
+    programs: list[ContributionOut]
 
 
 class FamilyBrief(BaseModel):
@@ -284,6 +381,8 @@ class IncidentDetail(IncidentOut):
     # The signals grouped by what they say, in the order each first happened.
     occurrences: list[OccurrenceOut]
     family: FamilyBrief | None
+    # What the programs said besides the basics, added up. None when none said anything.
+    insights: InsightsOut | None
 
 
 class TermOut(BaseModel):
@@ -560,6 +659,96 @@ def _signal(signal: IncidentSignal) -> SignalOut:
     )
 
 
+# How many of an incident's occurrences are sent with what their programs said of them: the most
+# serious and the most often repeated, since an incident can have a thousand.
+EVIDENCE_LIMIT = 30
+
+
+def _evidence(said: evidence.Evidence | None) -> EvidenceOut | None:
+    if said is None:
+        return None
+    seen = said.get("traffic")
+    return EvidenceOut(
+        facts=[FactOut(label=label, value=value) for label, value in said["facts"]],
+        tags=said["tags"],
+        mitre=[TechniqueOut(**each) for each in said["mitre"]],
+        named=[NamedOut(**each) for each in said["indicators"]],
+        traffic=TrafficOut(
+            packets_out=seen.get("packets_out"),
+            packets_in=seen.get("packets_in"),
+            bytes_out=seen.get("bytes_out"),
+            bytes_in=seen.get("bytes_in"),
+        )
+        if seen
+        else None,
+        host=said.get("host"),
+        app=said.get("app"),
+        excerpt=said.get("excerpt"),
+    )
+
+
+def _insights(found: insights.Insights) -> InsightsOut | None:
+    if found.empty:
+        return None
+    return InsightsOut(
+        techniques=[
+            CountedTechniqueOut(
+                id=each.id, tactic=each.tactic, technique=each.technique, count=each.count
+            )
+            for each in found.techniques
+        ],
+        tags=[CountedOut(value=each.value, count=each.count) for each in found.tags],
+        hosts=[CountedOut(value=each.value, count=each.count) for each in found.hosts],
+        apps=[CountedOut(value=each.value, count=each.count) for each in found.apps],
+        named=[
+            CountedNamedOut(kind=each.kind, value=each.value, count=each.count)
+            for each in found.named
+        ],
+        programs=[
+            ContributionOut(
+                source=each.source,
+                source_name=rules.name_of(each.source),
+                reports=each.reports,
+                adds=each.adds,
+            )
+            for each in found.programs
+        ],
+    )
+
+
+def _occurrences(found: list[occurrences.Occurrence]) -> list[OccurrenceOut]:
+    """The occurrences as they are told, the first of them in the order they happened. Only the
+    busiest say what their programs said."""
+    ranked = sorted(
+        range(len(found)),
+        key=lambda index: (-found[index].first.severity, -found[index].count, index),
+    )
+    detailed = set(ranked[:EVIDENCE_LIMIT])
+    return [
+        OccurrenceOut(
+            signal=_signal(each.first),
+            count=each.count,
+            last_at=each.last_at,
+            duplicates=each.duplicates,
+            evidence=_evidence(evidence.load(each.first)) if index in detailed else None,
+            confirmations=[
+                ConfirmationOut(
+                    source=one.source,
+                    source_name=rules.name_of(one.source),
+                    signature=one.signature,
+                    severity=SEVERITY_NAMES[Severity(one.severity)],
+                    count=one.count,
+                    first_at=one.first_at,
+                    last_at=one.last_at,
+                    evidence=_evidence(one.evidence) if index in detailed else None,
+                )
+                for one in each.confirmations
+            ],
+        )
+        for index, each in enumerate(found)
+    ]
+
+
 def _family(db: Db, incident: Incident) -> FamilyBrief | None:
     if incident.family_id is None:
         return None
@@ -602,6 +791,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     read = db.get(AiTriage, incident.id)
     judging = _judging(db)
     seen = queries.signals(db, incident)
+    grouped = occurrences.group(seen)
     return IncidentDetail(
         **_incident(incident, done, judging, read).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
@@ -630,16 +820,9 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         blocked=None if done.state == "no_address" else done.tally.blocked,
         reading=_reading(read),
         why=explain.why(incident, judging.floor, judging.tuning),
-        occurrences=[
-            OccurrenceOut(
-                signal=_signal(each.first),
-                count=each.count,
-                last_at=each.last_at,
-                duplicates=each.duplicates,
-            )
-            for each in occurrences.group(seen)
-        ],
+        occurrences=_occurrences(grouped),
         family=_family(db, incident),
+        insights=_insights(insights.of(grouped)),
     )
 
 
