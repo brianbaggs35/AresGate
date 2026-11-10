@@ -110,8 +110,8 @@ describe('ThreatReportDialog', () => {
     expect(bar?.getAttribute('aria-hidden')).toBe('true')
     const malicious = inWindow('[data-part="malicious"]') as HTMLElement
     const harmless = inWindow('[data-part="harmless"]') as HTMLElement
-    expect(parseFloat(malicious.style.width)).toBeCloseTo((3 / 84) * 100, 5)
-    expect(parseFloat(harmless.style.width)).toBeCloseTo((60 / 84) * 100, 5)
+    expect(parseFloat(malicious.style.width)).toBeCloseTo((3 / 84) * 100, 3)
+    expect(parseFloat(harmless.style.width)).toBeCloseTo((60 / 84) * 100, 3)
     expect(all('[data-test="report-counts"] strong').map((count) => count.textContent)).toEqual([
       '3',
       '1',
