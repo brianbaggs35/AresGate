@@ -1126,6 +1126,43 @@ def test_testing_virustotal_soon_after_a_lookup_waits_and_sends_nothing(
     assert asked == []
 
 
+def test_saving_and_testing_again_while_a_limit_holds_the_test_keeps_the_connection_tested(
+    client: TestClient,
+    csrf_token: str,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {
+        "connections": {
+            "api": {"url": "https://www.virustotal.com", "options": {"tier": "free"}},
+        }
+    }
+    first = {
+        "connections": {
+            "api": {**body["connections"]["api"], "secrets": {"api_key": "vt-key-123456"}},
+        }
+    }
+    answer_by_virustotal(monkeypatch, virustotal.Throttled(until=utcnow() + timedelta(minutes=1)))
+
+    # The sandbox may not reach the internet, and no address is looked up by this test.
+    def reachable(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    monkeypatch.setattr(netguard, "check_reachable", reachable)
+    assert put(client, csrf_token, "virustotal", first).json()["status"] == "untested"
+    tested = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+    assert tested.json()["integration"]["status"] == "connected"
+
+    # VirusTotal has just asked for fewer requests, so a second test has to wait. Saving what is
+    # already saved doesn't take back that the key was tested.
+    saved = put(client, csrf_token, "virustotal", body)
+    waiting = client.post(f"{VT_URL}/test", headers=headers(csrf_token))
+
+    assert saved.json()["status"] == "connected"
+    assert waiting.status_code == 429
+    assert client.get(VT_URL).json()["status"] == "connected"
+
+
 def test_the_list_shows_the_daily_quota_that_holds_virustotal_and_nothing_else(
     client: TestClient, csrf_token: str, session: Session
 ) -> None:
