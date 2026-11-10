@@ -323,6 +323,54 @@ def _plan_note(
     return str(failure)
 
 
+async def _check_ollama(
+    client: ApiClient,
+    definition: ProviderDef,
+    model: str,
+    key: str | None,
+    plan: str | None,
+    *,
+    local: bool,
+) -> Verdict:
+    """Tests an Ollama: asked what it has, and then, if a model is chosen, to load it (on the
+    owner's own computer) and to answer one token."""
+    found = await wire.list_models(client, definition, key)
+    count = f"{len(found)} model{'' if len(found) == 1 else 's'}"
+    if not model:
+        return Verdict(True, f"Reached it. It has {count}: choose one to use.")
+    loaded = ""
+    if local:
+        started = time.monotonic()
+        try:
+            await wire.load_model(client, definition, model, key, KEEP_LOADED)
+        except (CallFailed, wire.AiFailed) as failure:
+            return Verdict(
+                False,
+                f"Reached it ({count}), but {model} didn't load. "
+                f"{_load_note(definition, model, plan, failure, found)}",
+            )
+        loaded = _loaded(time.monotonic() - started)
+    try:
+        await wire.complete(
+            client,
+            definition,
+            model,
+            key,
+            system=TEST_SYSTEM,
+            prompt=TEST_PROMPT,
+            max_tokens=1,
+            keep_alive=KEEP_LOADED if local else None,
+        )
+    except (CallFailed, wire.AiFailed) as failure:
+        # Listing the models worked, so it is this model that was not answered.
+        return Verdict(
+            False,
+            f"Reached it ({count}), but {model} didn't answer. "
+            f"{_plan_note(definition, model, plan, failure, found)}{loaded}",
+        )
+    return Verdict(True, f"Reached it ({count}), and {model} answered.{loaded}")
+
+
 async def check(
     target: Target,
     recorder: Recorder,
@@ -345,41 +393,7 @@ async def check(
             **({"deadline": LOAD_DEADLINE, "read_timeout": LOAD_READ_TIMEOUT} if local else {}),
         ) as client:
             if definition.wire is Wire.OLLAMA:
-                found = await wire.list_models(client, definition, key)
-                count = f"{len(found)} model{'' if len(found) == 1 else 's'}"
-                if not model:
-                    return Verdict(True, f"Reached it. It has {count}: choose one to use.")
-                loaded = ""
-                if local:
-                    started = time.monotonic()
-                    try:
-                        await wire.load_model(client, definition, model, key, KEEP_LOADED)
-                    except (CallFailed, wire.AiFailed) as failure:
-                        return Verdict(
-                            False,
-                            f"Reached it ({count}), but {model} didn't load. "
-                            f"{_load_note(definition, model, plan, failure, found)}",
-                        )
-                    loaded = _loaded(time.monotonic() - started)
-                try:
-                    await wire.complete(
-                        client,
-                        definition,
-                        model,
-                        key,
-                        system=TEST_SYSTEM,
-                        prompt=TEST_PROMPT,
-                        max_tokens=1,
-                        keep_alive=KEEP_LOADED if local else None,
-                    )
-                except (CallFailed, wire.AiFailed) as failure:
-                    # Listing the models worked, so it is this model that was not answered.
-                    return Verdict(
-                        False,
-                        f"Reached it ({count}), but {model} didn't answer. "
-                        f"{_plan_note(definition, model, plan, failure, found)}{loaded}",
-                    )
-                return Verdict(True, f"Reached it ({count}), and {model} answered.{loaded}")
+                return await _check_ollama(client, definition, model, key, plan, local=local)
             answer = await wire.complete(
                 client,
                 definition,
