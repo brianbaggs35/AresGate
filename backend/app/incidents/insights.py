@@ -36,7 +36,7 @@ ADDS: Final = (
 class Technique:
     id: str
     tactic: str
-    technique: str
+    name: str
     count: int
 
 
@@ -97,57 +97,77 @@ def _each(occurrence: Occurrence) -> Iterable[tuple[str, int, evidence.Evidence 
         yield confirmation.source, confirmation.count, confirmation.evidence
 
 
+class _Seen:
+    """What the programs said of one alert, each thing once, however many of them said it."""
+
+    def __init__(self) -> None:
+        self.techniques: dict[str, tuple[str, str]] = {}
+        self.tags: set[str] = set()
+        self.named: set[tuple[str, str]] = set()
+        self.hosts: set[str] = set()
+        self.apps: set[str] = set()
+
+    def add(self, said: evidence.Evidence) -> None:
+        for each in said.get("mitre", []):
+            self.techniques.setdefault(each["id"], (each["tactic"], each["technique"]))
+        self.tags.update(said.get("tags", []))
+        self.named.update((each["kind"], each["value"]) for each in said.get("indicators", []))
+        if host := said.get("host"):
+            self.hosts.add(host)
+        if app := said.get("app"):
+            self.apps.add(app)
+
+
+def _count[T](counts: Counter[T], found: Iterable[T], weight: int) -> None:
+    for each in found:
+        counts[each] += weight
+
+
+class _Tally:
+    """What the alerts said between them: each thing and how many alerts it was said of."""
+
+    def __init__(self) -> None:
+        self.techniques: dict[str, tuple[str, str]] = {}
+        self.technique_counts: Counter[str] = Counter()
+        self.tags: Counter[str] = Counter()
+        self.named: Counter[tuple[str, str]] = Counter()
+        self.hosts: Counter[str] = Counter()
+        self.apps: Counter[str] = Counter()
+
+    def add(self, seen: _Seen, weight: int) -> None:
+        """Counts what was said of an alert that happened ``weight`` times."""
+        self.techniques.update(seen.techniques)
+        _count(self.technique_counts, seen.techniques, weight)
+        _count(self.tags, seen.tags, weight)
+        _count(self.named, seen.named, weight)
+        _count(self.hosts, seen.hosts, weight)
+        _count(self.apps, seen.apps, weight)
+
+
 def of(occurrences: Sequence[Occurrence]) -> Insights:
     """Adds up what the programs said, for the occurrences of an incident."""
-    techniques: dict[str, tuple[str, str]] = {}
-    technique_counts: Counter[str] = Counter()
-    tags: Counter[str] = Counter()
-    hosts: Counter[str] = Counter()
-    apps: Counter[str] = Counter()
-    named: Counter[tuple[str, str]] = Counter()
+    tally = _Tally()
     reports: Counter[str] = Counter()
     adds: dict[str, set[str]] = {}
     for occurrence in occurrences:
         # What two programs both said of an alert is said once.
-        seen_techniques: set[str] = set()
-        seen_tags: set[str] = set()
-        seen_hosts: set[str] = set()
-        seen_apps: set[str] = set()
-        seen_named: set[tuple[str, str]] = set()
+        seen = _Seen()
         for source, count, said in _each(occurrence):
             reports[source] += count
             gave = adds.setdefault(source, set())
-            if said is None:
-                continue
-            gave.update(key for key, _ in ADDS if said.get(key))
-            for each in said.get("mitre", []):
-                techniques.setdefault(each["id"], (each["tactic"], each["technique"]))
-                seen_techniques.add(each["id"])
-            seen_tags.update(said.get("tags", []))
-            seen_named.update((each["kind"], each["value"]) for each in said.get("indicators", []))
-            if "host" in said:
-                seen_hosts.add(said["host"])
-            if "app" in said:
-                seen_apps.add(said["app"])
-        weight = occurrence.count
-        for ident in seen_techniques:
-            technique_counts[ident] += weight
-        for word in seen_tags:
-            tags[word] += weight
-        for kind_and_value in seen_named:
-            named[kind_and_value] += weight
-        for host in seen_hosts:
-            hosts[host] += weight
-        for app in seen_apps:
-            apps[app] += weight
+            if said is not None:
+                gave.update(key for key, _ in ADDS if said.get(key))
+                seen.add(said)
+        tally.add(seen, occurrence.count)
     return Insights(
         techniques=[
-            Technique(ident, *techniques[ident], count) for ident, count in _top(technique_counts)
+            Technique(ident, *tally.techniques[ident], count)
+            for ident, count in _top(tally.technique_counts)
         ],
-        tags=[Counted(word, count) for word, count in _top(tags)],
-        hosts=[Counted(word, count) for word, count in _top(hosts)],
-        apps=[Counted(word, count) for word, count in _top(apps)],
-        named=[Named(kind, value, count) for (kind, value), count in _top(named)],
+        tags=[Counted(word, count) for word, count in _top(tally.tags)],
+        hosts=[Counted(word, count) for word, count in _top(tally.hosts)],
+        apps=[Counted(word, count) for word, count in _top(tally.apps)],
+        named=[Named(kind, value, count) for (kind, value), count in _top(tally.named)],
         programs=[
             Contribution(source, count, [label for key, label in ADDS if key in adds[source]])
             for source, count in sorted(reports.items(), key=lambda item: (-item[1], item[0]))

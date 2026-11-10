@@ -47,7 +47,7 @@ def test_what_is_said_of_an_alert_that_happened_often_counts_that_often() -> Non
         )
     )
 
-    assert [(each.id, each.tactic, each.technique, each.count) for each in found.techniques] == [
+    assert [(each.id, each.tactic, each.name, each.count) for each in found.techniques] == [
         ("T1110", "Credential Access", "Brute Force", 2)
     ]
     assert [(each.value, each.count) for each in found.tags] == [("sshd", 3), ("syslog", 1)]
