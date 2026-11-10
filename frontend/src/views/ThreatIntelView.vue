@@ -14,7 +14,8 @@ import { useSessionStore } from '@/stores/session'
 /**
  * Threat intelligence: asking a service about an address, a domain or a web address. VirusTotal is
  * the one service for now. Its search is offered once its connection has been tested. Until then
- * the page says what to set up, and nothing else in AresGate waits for it.
+ * the page says that a threat intelligence integration is needed, with a way to the Integrations
+ * page, and nothing else in AresGate waits for it.
  */
 const session = useSessionStore()
 
@@ -70,19 +71,19 @@ onMounted(load)
     <SectionCard
       v-else
       title="Look up a threat"
-      description="VirusTotal answers the searches, once it is set up."
+      description="A threat intelligence integration answers the searches, once one is connected."
       data-test="threat-intelligence-setup"
     >
       <EmptyState
-        title="VirusTotal isn't set up yet"
-        description="Connect VirusTotal on its integration page, and test the connection. Then you can search here."
+        title="No threat intelligence integration is connected"
+        description="This page needs at least one threat intelligence integration connected, such as VirusTotal. Connect one on the Integrations page and test its connection. Then you can search here."
       >
         <v-btn
-          :to="{ name: 'integration', params: { key: 'virustotal' } }"
+          :to="{ name: 'integrations' }"
           variant="tonal"
           data-test="threat-intelligence-set-up"
         >
-          Set up VirusTotal
+          Go to Integrations
         </v-btn>
       </EmptyState>
     </SectionCard>

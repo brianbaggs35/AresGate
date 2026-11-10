@@ -27,6 +27,10 @@ Every release's notes are here, newest first. The format follows
 - **An internet integration is narrower.** It reaches only its own address and port, over HTTPS,
   and AresGate sends it nothing but GET requests.
 
+- **The Threat intelligence page says what it needs.** With no threat intelligence integration
+  connected, the page says it needs at least one, and its button opens the Integrations page.
+  Before, it named VirusTotal only and opened VirusTotal's own page.
+
 ### Fixed
 
 - **A search you've already made isn't sent again.** AresGate keeps VirusTotal's answer about each
