@@ -1145,8 +1145,8 @@ def test_saving_and_testing_again_while_a_limit_holds_the_test_keeps_the_connect
     answer_by_virustotal(monkeypatch, virustotal.Throttled(until=utcnow() + timedelta(minutes=1)))
 
     # The sandbox may not reach the internet, and no address is looked up by this test.
-    def reachable(*args: object, **kwargs: object) -> None:
-        del args, kwargs
+    def reachable(*_: object, **__: object) -> None:
+        return None
 
     monkeypatch.setattr(netguard, "check_reachable", reachable)
     assert put(client, csrf_token, "virustotal", first).json()["status"] == "untested"
