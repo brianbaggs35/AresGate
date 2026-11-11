@@ -38,6 +38,12 @@ Every release's notes are here, newest first. The format follows
   which other programs reported each alert, so what is counted once everywhere shows who saw it.
   The assistant and the agents learn two lookups: *who_is* and *attack_chains*.
 
+### Fixed
+
+- **The readout of a day on the AI usage chart no longer hangs below the chart.** Pointing at a day
+  that took very little put the readout half below the chart's foot, where it was cut off or under
+  what comes next. Every chart's readout now moves up or down just enough to stay inside the chart.
+
 ## 0.1.3
 
 ### Added

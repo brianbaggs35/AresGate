@@ -117,6 +117,37 @@ test.describe('AI usage', () => {
     await expect(aiUsage.groupsChart).toContainText('Chat')
   })
 
+  test('keeps the readout of a day inside the chart, whichever day is pointed at', async ({
+    harness,
+    page,
+    aiUsage,
+  }) => {
+    // Days with a lot, a little and nothing: the readout of an almost empty day points at the foot
+    // of the chart, where it used to hang below the chart's edge.
+    await harness.createAiCalls(CALLS)
+
+    await aiUsage.goto()
+    await expect(aiUsage.dailyChart).toBeVisible()
+    const plot = aiUsage.dailyChart.locator('.bar-chart')
+    const slots = aiUsage.dailyChart.getByTestId('bar-slot')
+    const tooltip = aiUsage.dailyChart.getByTestId('chart-tooltip')
+    const count = await slots.count()
+    expect(count).toBeGreaterThan(3)
+
+    for (let index = 0; index < count; index += 1) {
+      await slots.nth(index).hover()
+      await expect(tooltip).toBeVisible()
+      const box = await plot.boundingBox()
+      const read = await tooltip.boundingBox()
+      expect(box).not.toBeNull()
+      expect(read).not.toBeNull()
+      // Half a pixel is rounding.
+      expect(read!.y).toBeGreaterThanOrEqual(box!.y - 0.5)
+      expect(read!.y + read!.height).toBeLessThanOrEqual(box!.y + box!.height + 0.5)
+    }
+    await expect(page.getByTestId('chart-tooltip')).toHaveCount(1)
+  })
+
   test('lists what took the most, with a link to the incident', async ({
     page,
     harness,
