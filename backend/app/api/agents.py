@@ -379,7 +379,7 @@ def _waiting(db: Session) -> dict[int, int]:
         .where(AgentProposal.status == "pending")
         .group_by(AgentProposal.agent_id)
     ).all()
-    return {agent_id: total for agent_id, total in rows}
+    return dict(rows)
 
 
 def _agent_out(db: Db, agent: Agent, waiting: dict[int, int] | None = None) -> AgentOut:
@@ -624,7 +624,7 @@ def dismiss_proposal(
     """Turns a suggestion down, so that the agent does not make it again."""
 
     def turn_down(found: AgentProposal, now: datetime) -> int:
-        proposals.dismiss(db, found, now)
+        proposals.dismiss(found, now)
         return 0
 
     return _decide(db, request, auth, proposal_id, Action.AGENT_PROPOSAL_DISMISSED, turn_down)

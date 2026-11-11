@@ -576,16 +576,7 @@ def build(work: Work) -> object:
             if last
             else [item for item in reading.lookups if item.tool + label(item) not in done]
         )
-        findings = [
-            Finding(
-                severity=severity,
-                title=title,
-                detail=detail,
-                cites=cited(cites, state["ran"]),
-                status=status_of(title, work.snapshot.previous),
-            )
-            for severity, title, detail, cites in reading.findings
-        ]
+        findings = _findings_of(reading, state["ran"], work.snapshot.previous)
         return {
             "ai": "",
             "summary": reading.summary,
@@ -608,12 +599,7 @@ def build(work: Work) -> object:
         }
 
     async def report(state: State) -> dict[str, object]:
-        findings = state["findings"] or _found_by_testing(state["ran"])
-        summary = state["summary"] or _collected(state)
-        steps = [Step(title="Wrote the report", detail={"findings": len(findings)})]
-        if template.proposes:
-            steps.append(await asyncio.to_thread(_suggest, work, state["rejects"]))
-        return {"summary": summary, "findings": findings, "steps": steps}
+        return await _report(work, state)
 
     def route(state: State) -> str:
         return "act" if state["pending"] else "report"
@@ -621,6 +607,33 @@ def build(work: Work) -> object:
     return flow.compile_graph(
         State, {"plan": plan, "act": act, "think": think, "report": report}, route
     )
+
+
+def _findings_of(
+    reading: Reading, ran: Sequence[Entry], previous: Previous | None
+) -> list[Finding]:
+    """What the model made of what was looked at, each finding marked new or ongoing."""
+    return [
+        Finding(
+            severity=severity,
+            title=title,
+            detail=detail,
+            cites=cited(cites, ran),
+            status=status_of(title, previous),
+        )
+        for severity, title, detail, cites in reading.findings
+    ]
+
+
+async def _report(work: Work, state: State) -> dict[str, object]:
+    """Settles the report: what the model said, or what was collected when it said nothing, and,
+    for an agent that suggests tidying, the suggestions."""
+    findings = state["findings"] or _found_by_testing(state["ran"])
+    summary = state["summary"] or _collected(state)
+    steps = [Step(title="Wrote the report", detail={"findings": len(findings)})]
+    if work.snapshot.template.proposes:
+        steps.append(await asyncio.to_thread(_suggest, work, state["rejects"]))
+    return {"summary": summary, "findings": findings, "steps": steps}
 
 
 def _suggest(work: Work, rejects: Sequence[str]) -> Step:
