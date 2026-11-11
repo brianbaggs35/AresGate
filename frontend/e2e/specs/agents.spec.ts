@@ -203,6 +203,7 @@ test.describe('agents', () => {
     await agents.save.click()
     await expect(agents.dialog).toHaveCount(0)
     await agents.cards.first().getByTestId('agent-run').click()
+    await expect(agents.cards.first().getByTestId('agent-state')).toContainText('Waiting to start')
     expect(await harness.runAgents()).toBe(1)
 
     await expect(agents.cards.first().getByTestId('agent-proposals')).toHaveText(
