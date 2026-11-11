@@ -160,38 +160,58 @@ def system_for(level: Level, system: str, start: str = "") -> str:
     return "\n\n".join([*parts, system])
 
 
+@dataclass(frozen=True)
+class _Choice:
+    """Which provider is to be asked, and for what: ``model`` is None for the one it was set up
+    with and ``where`` is the page to send the owner to. With no ``provider``, ``reason`` is why."""
+
+    provider: str | None
+    model: str | None = None
+    where: str = ""
+    reason: str | None = None
+
+
+def _choose(db: Session, now: datetime, agents: bool) -> _Choice:
+    """What the owner chose to ask: for the agents, what they chose under Settings > Agents, for
+    everything else what they chose under Settings > AI."""
+    if agents:
+        picked = agent_settings.pick(db, now)
+        if picked.reason is not None or picked.provider is None:
+            return _Choice(None, reason=picked.reason)
+        return _Choice(picked.provider, picked.model, "Settings > Agents")
+    shared = service.usage(db, now)
+    if not shared.enabled:
+        return _Choice(None, reason="AI is turned off. Turn it on under Settings > AI to use it.")
+    if shared.provider is None:
+        return _Choice(None, reason="No AI provider is chosen. Choose one under Settings > AI.")
+    return _Choice(shared.provider, None, "Settings > AI")
+
+
 def _unavailable(
     db: Session, now: datetime, purpose: str = ""
 ) -> tuple[AiProvider | None, str | None, str | None]:
     """The provider to ask and the model to ask it for (None for the one it was set up with), or
     the reason there is no provider. The agents have a choice of their own."""
     agents = purpose == agent_settings.PURPOSE
-    if agents:
-        picked = agent_settings.pick(db, now)
-        if picked.reason is not None or picked.provider is None:
-            return None, picked.reason, None
-        chosen, override = picked.provider, picked.model
-        where = "Settings > Agents"
-    else:
-        shared = service.usage(db, now)
-        if not shared.enabled:
-            return None, "AI is turned off. Turn it on under Settings > AI to use it.", None
-        if shared.provider is None:
-            return None, "No AI provider is chosen. Choose one under Settings > AI.", None
-        chosen, override = shared.provider, None
-        where = "Settings > AI"
-    row = db.get(AiProvider, chosen)
-    definition = provider_def(chosen)
+    choice = _choose(db, now, agents)
+    if choice.provider is None:
+        return None, choice.reason, None
+    row = db.get(AiProvider, choice.provider)
+    definition = provider_def(choice.provider)
     if row is None or definition is None:
-        return None, f"The AI provider that was chosen is gone. Choose one under {where}.", None
-    if not (override or row.model):
-        return None, f"The AI provider has no model yet. Choose one under {where}.", None
+        return (
+            None,
+            f"The AI provider that was chosen is gone. Choose one under {choice.where}.",
+            None,
+        )
+    if not (choice.model or row.model):
+        return None, f"The AI provider has no model yet. Choose one under {choice.where}.", None
     # A provider on the owner's own computer, or Ollama's cloud, costs nothing by the token.
     if definition.kind is Kind.HOSTED:
         stopped = limits.reached(db, now) or (agent_settings.reached(db, now) if agents else None)
         if stopped is not None:
             return None, stopped, None
-    return row, None, override
+    return row, None, choice.model
 
 
 def availability(db: Session, now: datetime, purpose: str = "") -> str | None:
