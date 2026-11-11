@@ -1,4 +1,4 @@
-import { Crosshair, Link2, MonitorSmartphone, PlugZap, Unlink } from '@lucide/vue'
+import { Crosshair, Link2, PlugZap, Unlink } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type { Chain, ChainLink, ChainRole } from '@/api/threats'
@@ -43,7 +43,7 @@ export const ROLE: Readonly<Record<ChainRole, RoleLook>> = {
 }
 
 /** The icon of the device the attack went through. */
-export const DEVICE_ICON = MonitorSmartphone
+export { MonitorSmartphone as DEVICE_ICON } from '@lucide/vue'
 
 /** What the device is called: its name and address, or the address alone. */
 export function deviceTitle(chain: Pick<Chain, 'device' | 'device_name'>): string {
