@@ -37,6 +37,10 @@ class Template:
     # Whether it sends probes to devices on the network. Such an agent is never on a schedule, and
     # the owner has to allow it, on the agent, before it sends anything.
     active: bool = False
+    # What it needs in order to be useful, by the name of a check (app/agents/readiness.py), and
+    # the steps to take to set it up, for someone making the agent for the first time.
+    needs: tuple[str, ...] = ()
+    setup: tuple[str, ...] = ()
 
 
 THREAT_HUNTER: Final = Template(
@@ -59,8 +63,26 @@ THREAT_HUNTER: Final = Template(
         Lookup("alerts", Args(hours=24, limit=10)),
         Lookup("blocked_sources", Args(hours=24, limit=5)),
     ),
-    asks=("open_incidents", "incident", "alerts", "blocked_sources", "device"),
+    asks=(
+        "open_incidents",
+        "incident",
+        "alerts",
+        "blocked_sources",
+        "device",
+        "noisy_alerts",
+        "targeted_ports",
+        "new_devices",
+        "repeated_incidents",
+    ),
     interval_minutes=60,
+    needs=("ai", "alerts"),
+    setup=(
+        "Connect at least one source of alerts under Integrations: OPNsense with Suricata, "
+        "Wazuh or CrowdSec each give it something to read.",
+        "Choose the AI the agents ask under Settings > Agents. A small, cheap model is plenty.",
+        "Start it once by hand to see what it makes of your network, then leave it on its hourly "
+        "schedule.",
+    ),
 )
 INTELLIGENCE_ANALYST: Final = Template(
     key="intelligence_analyst",
@@ -82,8 +104,15 @@ INTELLIGENCE_ANALYST: Final = Template(
         Lookup("open_incidents", Args(limit=5)),
         Lookup("blocked_sources", Args(hours=72, limit=5)),
     ),
-    asks=("open_incidents", "incident", "blocked_sources", "reputation"),
+    asks=("open_incidents", "incident", "blocked_sources", "reputation", "noisy_alerts"),
     interval_minutes=360,
+    needs=("ai", "intel", "alerts"),
+    setup=(
+        "Make a free VirusTotal account and copy its API key from your profile.",
+        "Add the key under Integrations > VirusTotal. AresGate asks about addresses itself, within "
+        "the free key's daily limit; this agent only reads what it kept.",
+        "Choose the AI the agents ask under Settings > Agents.",
+    ),
 )
 HEALTH_WATCH: Final = Template(
     key="health_watch",
@@ -102,6 +131,12 @@ HEALTH_WATCH: Final = Template(
     first=(Lookup("integrations"),),
     asks=("integrations",),
     interval_minutes=120,
+    needs=("ai", "integrations"),
+    setup=(
+        "Connect the integrations you use under Integrations: this agent watches whichever are "
+        "connected.",
+        "Choose the AI the agents ask under Settings > Agents.",
+    ),
 )
 EXPOSURE_SCANNER: Final = Template(
     key="exposure_scanner",
@@ -124,6 +159,14 @@ EXPOSURE_SCANNER: Final = Template(
     asks=("device",),
     interval_minutes=None,
     active=True,
+    needs=("ai", "devices"),
+    setup=(
+        "Connect OPNsense or ntopng under Integrations, so that AresGate knows which devices are "
+        "on the network. It tests only those.",
+        "Edit the agent and allow it to test your network: it does nothing until you do, and it "
+        "only ever connects to a short list of risky ports.",
+        "Start it by hand when you want a check. It is never on a schedule.",
+    ),
 )
 
 TEMPLATES: Final[tuple[Template, ...]] = (

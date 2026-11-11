@@ -10,7 +10,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstrai
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents import catalog, graph, service
+from app.agents import catalog, graph, readiness, service
 from app.agents import settings as agent_settings
 from app.ai import catalog as ai_catalog
 from app.ai import gateway, limits
@@ -38,6 +38,15 @@ State = Literal["running", "queued", "idle", "paused"]
 Status = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 
+class CheckOut(BaseModel):
+    key: str
+    ok: bool
+    text: str
+    # What to do when it is not there, and where in the web app to do it.
+    fix: str
+    link: str
+
+
 class TemplateOut(BaseModel):
     key: str
     name: str
@@ -49,6 +58,10 @@ class TemplateOut(BaseModel):
     # Whether it tests the network, which it only does once allowed, and only by hand.
     active: bool
     tools: list[str]
+    # What the kind needs to be useful, and whether each is there, and the steps to set it up.
+    checks: list[CheckOut]
+    ready: bool
+    setup: list[str]
 
 
 class EdgeOut(BaseModel):
@@ -119,6 +132,8 @@ class FindingOut(BaseModel):
     title: str
     detail: str
     cites: list[dict[str, str]]
+    # Whether the agent's last run said the same: new, or ongoing.
+    status: str
 
 
 class StepOut(BaseModel):
@@ -181,7 +196,8 @@ class AgentChange(BaseModel):
     allow_active: bool
 
 
-def _template_out(item: catalog.Template) -> TemplateOut:
+def _template_out(db: Session, item: catalog.Template, now: datetime) -> TemplateOut:
+    found = readiness.checks(db, now, item)
     return TemplateOut(
         key=item.key,
         name=item.name,
@@ -192,6 +208,12 @@ def _template_out(item: catalog.Template) -> TemplateOut:
         interval_minutes=item.interval_minutes,
         active=item.active,
         tools=list(item.asks),
+        checks=[
+            CheckOut(key=check.key, ok=check.ok, text=check.text, fix=check.fix, link=check.link)
+            for check in found
+        ],
+        ready=readiness.ready(found),
+        setup=list(item.setup),
     )
 
 
@@ -476,7 +498,7 @@ def list_agents(db: Db) -> Overview:
     now = utcnow()
     return Overview(
         agents=[_agent_out(db, agent) for agent in agents],
-        templates=[_template_out(item) for item in catalog.TEMPLATES],
+        templates=[_template_out(db, item, now) for item in catalog.TEMPLATES],
         ai=gateway.availability(db, now, agent_settings.PURPOSE),
         usage=_usage(db, now),
         limits=[_limit_out(item) for item in agent_settings.status(db, now)],
@@ -533,7 +555,7 @@ def get_agent(agent_id: int, db: Db) -> AgentDetail:
     ).all()
     return AgentDetail(
         **out.model_dump(),
-        template_info=_template_out(item or catalog.THREAT_HUNTER),
+        template_info=_template_out(db, item or catalog.THREAT_HUNTER, utcnow()),
         runs=[_run_out(run) for run in runs],
         graph=[
             EdgeOut(source=e.source, target=e.target, conditional=e.conditional)
@@ -651,6 +673,7 @@ def get_run(agent_id: int, run_id: int, db: Db) -> RunDetail:
                 title=str(item.get("title", "")),
                 detail=str(item.get("detail", "")),
                 cites=cast("list[dict[str, str]]", item.get("cites") or []),
+                status="ongoing" if item.get("status") == "ongoing" else "new",
             )
             for item in run.findings
         ],

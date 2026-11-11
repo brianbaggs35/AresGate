@@ -15,6 +15,9 @@ export class AgentsPage {
   /** The sheet that makes or changes an agent. */
   readonly dialog: Locator
   readonly dialogKinds: Locator
+  readonly setupTitle: Locator
+  readonly setupChecks: Locator
+  readonly setupSteps: Locator
   readonly dialogName: Locator
   readonly dialogGoal: Locator
   /** The part of the sheet for an agent that tests the network, and the switch that allows it. */
@@ -48,6 +51,9 @@ export class AgentsPage {
     this.problem = page.getByTestId('agents-problem')
     this.dialog = page.getByTestId('agent-dialog')
     this.dialogKinds = page.getByTestId('dialog-kind')
+    this.setupTitle = this.dialog.getByTestId('setup-title')
+    this.setupChecks = this.dialog.getByTestId('setup-check')
+    this.setupSteps = this.dialog.getByTestId('setup-step')
     this.dialogName = page.getByTestId('dialog-name').locator('input')
     this.dialogGoal = page.getByTestId('dialog-goal').locator('textarea').first()
     this.dialogActive = page.getByTestId('dialog-active')

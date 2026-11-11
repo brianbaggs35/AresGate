@@ -38,6 +38,18 @@ test.describe('agents', () => {
     await expect(agents.ai).toContainText('AI is turned off.')
   })
 
+  test('says what a kind needs before it is made, and how to set it up', async ({ agents }) => {
+    await agents.goto()
+
+    await agents.make.click()
+    await expect(agents.setupTitle).toHaveText('It needs a little setup first')
+    await expect(agents.setupChecks.first()).toContainText('An AI provider for the agents to ask')
+    await agents.chooseKind('Intelligence analyst')
+    await expect(agents.setupChecks).toHaveCount(3)
+    await agents.dialog.getByText('How to set it up').click()
+    await expect(agents.setupSteps.first()).toContainText('VirusTotal')
+  })
+
   test('makes an agent from a kind, with its name and instructions to change', async ({
     harness,
     aiSettings,

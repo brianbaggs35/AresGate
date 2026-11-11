@@ -4,7 +4,18 @@ import { ApiError } from '@/api/client'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
 import AgentUsage from '@/components/AgentUsage.vue'
-import { SCANNER, agent, detail, finding, run, runDetail, step, usage } from '@/test/agents'
+import {
+  SCANNER,
+  agent,
+  check,
+  detail,
+  finding,
+  run,
+  runDetail,
+  step,
+  template,
+  usage,
+} from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentView from '@/views/AgentView.vue'
 
@@ -463,6 +474,20 @@ describe('AgentView', () => {
     expect(find('setup-schedule').text()).toBe('Every hour')
     expect(find('setup-goal').text()).toBe('Watch the cameras.')
     expect(find('setup-allow').exists()).toBe(false)
+  })
+
+  it('says whether what its kind needs is there', async () => {
+    const { find } = await open({
+      agent: detail({
+        template_info: template({
+          ready: false,
+          checks: [check({ ok: false, fix: 'Add a free VirusTotal key.' })],
+        }),
+      }),
+    })
+
+    expect(find('setup-title').text()).toBe('It needs a little setup first')
+    expect(find('setup-check').text()).toContain('Add a free VirusTotal key.')
   })
 
   it('says there are no instructions when there are none', async () => {

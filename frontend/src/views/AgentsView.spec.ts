@@ -3,7 +3,7 @@ import type { Overview } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
-import { agent, limits, overview, usage } from '@/test/agents'
+import { agent, check, limits, overview, template, usage } from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentsView from '@/views/AgentsView.vue'
 
@@ -57,6 +57,32 @@ describe('AgentsView', () => {
       'First',
       'Second',
     ])
+  })
+
+  it('says which agents are of a kind that needs setting up', async () => {
+    const { wrapper } = await open(
+      overview({
+        agents: [
+          agent({ id: 1, name: 'Ready' }),
+          agent({ id: 2, name: 'Not ready', template: 'intelligence_analyst' }),
+          agent({ id: 3, name: 'Unknown', template: 'from_the_future' }),
+        ],
+        templates: [
+          template(),
+          template({
+            key: 'intelligence_analyst',
+            ready: false,
+            checks: [check({ ok: false })],
+          }),
+        ],
+      }),
+    )
+
+    expect(
+      wrapper
+        .findAllComponents(AgentCard)
+        .map((card) => card.find('[data-test="agent-needs-setup"]').exists()),
+    ).toEqual([false, true, false])
   })
 
   it('offers the kinds there are when there are no agents, and makes one from the one picked', async () => {

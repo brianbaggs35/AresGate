@@ -21,6 +21,24 @@ Your own instructions are added to what a kind already does, and the AI is told 
 you. They can narrow what an agent cares about ("ignore routine scanning"); they cannot make it do
 more than its kind can.
 
+## What each kind needs
+
+A kind is only as good as what AresGate can show it, so each one says what it needs and whether it
+is there. The sheet that makes an agent, the Agents page and the agent's own page show a check for
+each: an AI for the agents to ask (Settings > Agents), an alert source such as OPNsense or Wazuh, a
+VirusTotal key for the intelligence analyst, known devices for the exposure scanner. A missing one
+says what to do and links to where, and *How to set it up* lists the steps for the kind. An agent
+whose kind is not ready is marked *It needs a little setup first* on its card. It can still run;
+it just has less to read.
+
+## What an agent remembers
+
+Each run is told what the agent's last finished run reported, its summary and the titles of its
+findings, so that it says what has changed instead of saying it all again. A finding the last run
+already raised is marked *Still open* and a new one *New*; two findings are the same when their
+words are, whatever the capitals and punctuation. What the last run said is shown to a provider
+only through the redaction level chosen under Settings > AI, like everything else a run says.
+
 ## Which AI the agents use, and what they cost
 
 An agent may run every hour, so Settings > Agents gives the agents their own choice of AI:
@@ -99,7 +117,10 @@ the code and cannot be turned on from the environment.
 - The graph and its nodes are in `backend/app/agents/graph.py`. Every call to LangGraph is in
   `backend/app/agents/flow.py`, so the rest of the code does not depend on its API.
 - A kind is a template in `backend/app/agents/catalog.py`: what it looks at first, what more it may
-  ask the model for, and how often it runs. Adding a kind adds no other code.
+  ask the model for, how often it runs, what it needs and the steps to set it up. Adding a kind
+  adds no other code. What it needs are the checks in `backend/app/agents/readiness.py`.
+- What a run can look at are the read-only tools in `backend/app/ai/tools.py`, which the assistant
+  shares. A tool only reads: a test fails if its source adds, deletes or commits.
 - Which provider the agents ask is `backend/app/agents/settings.py`; the gateway
   (`backend/app/ai/gateway.py`) follows it for requests whose purpose is `agent`, and a run adds up
   what its requests used when it ends (`run._spent`).

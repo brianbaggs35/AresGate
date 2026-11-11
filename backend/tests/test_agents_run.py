@@ -718,3 +718,102 @@ def test_every_template_names_only_tools_that_exist_and_lookups_the_model_may_as
         assert {lookup.tool for lookup in item.first} <= {*item.asks, *tools.names(), graph.SCAN}
         assert graph.system_for(item).startswith("You are an agent of AresGate")
         assert graph.schema(item)["required"] == ["summary", "findings", "lookups"]
+
+
+def kept_run(session: Session, found: Agent, status: str = "succeeded", **changes: object) -> None:
+    fields: dict[str, object] = {
+        "agent_id": found.id,
+        "trigger": "manual",
+        "status": status,
+        "requested_at": NOW,
+        "finished_at": utcnow() - timedelta(hours=5, minutes=30),
+        "summary": "Two scans, nothing else.",
+        "findings": [
+            {"severity": "high", "title": "Port 22 is being hammered", "detail": "", "cites": []},
+            {"severity": "low", "title": "A new camera appeared", "detail": "", "cites": []},
+        ],
+        **changes,
+    }
+    session.add(AgentRun(**fields))
+    session.commit()
+
+
+def test_a_run_is_told_what_the_last_one_reported_and_says_which_findings_are_ongoing(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    provider = Scripted(
+        said(
+            summary="Port 22 is still being hammered.",
+            findings=[
+                finding(title="port 22 is being HAMMERED!"),
+                finding(title="A new printer appeared", severity="low"),
+            ],
+        )
+    )
+    server = serve(provider)
+    ready(session, settings)
+    found = made(session)
+    kept_run(session, found)
+    kept_run(session, found, status="failed", summary="Never used.", findings=[])
+    run_id = asked(session, found)
+
+    execute(session, settings, run_id, server.url)
+
+    [prompt] = provider.prompts
+    assert "Your last run was 5 hours ago and reported: Two scans, nothing else." in prompt
+    assert "- high: Port 22 is being hammered" in prompt
+    assert "- low: A new camera appeared" in prompt
+    assert "Never used." not in prompt
+    assert "Say what has changed since." in prompt
+    done = finished(session, run_id)
+    assert [(item["title"], item["status"]) for item in done.findings] == [
+        ("port 22 is being HAMMERED!", "ongoing"),
+        ("A new printer appeared", "new"),
+    ]
+
+
+def test_a_first_run_is_not_told_of_one_before_it_and_its_findings_are_new(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    provider = Scripted(said(findings=[finding()]))
+    server = serve(provider)
+    ready(session, settings)
+    found = made(session)
+    run_id = asked(session, found)
+
+    execute(session, settings, run_id, server.url)
+
+    assert "Your last run" not in provider.prompts[0]
+    assert [item["status"] for item in finished(session, run_id).findings] == ["new"]
+
+
+def test_a_last_run_that_found_nothing_is_reported_as_nothing(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    provider = Scripted(said())
+    server = serve(provider)
+    ready(session, settings)
+    found = made(session)
+    kept_run(session, found, summary="", findings=[])
+    run_id = asked(session, found)
+
+    execute(session, settings, run_id, server.url)
+
+    assert "reported: nothing" in provider.prompts[0]
+    assert "It raised:" not in provider.prompts[0]
+
+
+def test_what_the_last_run_said_is_made_safe_for_a_provider_that_may_not_see_addresses(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    provider = Scripted(said())
+    server = serve(provider)
+    ready(session, settings, level="strict")
+    found = made(session)
+    kept_run(session, found, summary=f"{ATTACKER} scanned {DEVICE}.", findings=[])
+    run_id = asked(session, found)
+
+    execute(session, settings, run_id, server.url)
+
+    assert ATTACKER not in provider.prompts[0]
+    assert DEVICE not in provider.prompts[0]

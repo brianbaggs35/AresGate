@@ -8,6 +8,16 @@ export type AgentState = 'running' | 'queued' | 'idle' | 'paused'
 /** Where a run is, or how it ended. */
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
+/** One thing a kind of agent needs, such as an integration, and whether it is there. */
+export interface Check {
+  key: string
+  ok: boolean
+  text: string
+  /** What to do when it is missing, and where in the web app to do it. */
+  fix: string
+  link: string
+}
+
 /** A kind of agent, which the owner makes one from. */
 export interface Template {
   key: string
@@ -25,6 +35,11 @@ export interface Template {
   active: boolean
   /** What it may look at, by the names of the tools the AI analyst has. */
   tools: string[]
+  /** What it needs to be useful, and whether each is there. */
+  checks: Check[]
+  ready: boolean
+  /** The steps to set it up, for someone making one for the first time. */
+  setup: string[]
 }
 
 /** What agents asked of the AI and what it cost: the money is in millionths of a US dollar, the
@@ -125,6 +140,8 @@ export interface Finding {
   detail: string
   /** What it is based on that has a page of its own, as the chat names them. */
   cites: ChatCite[]
+  /** Whether the agent's last run reported the same thing. */
+  status: 'new' | 'ongoing'
 }
 
 /** One thing a run did, for the owner to follow. */

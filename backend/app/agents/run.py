@@ -66,6 +66,7 @@ def _begin(new_session: Callable[[], Session], run_id: int) -> graph.Snapshot | 
             return None
         run.status = "running"
         run.started_at = now
+        previous = _previous(db, agent.id, run.id)
         db.commit()
         return graph.Snapshot(
             agent_id=agent.id,
@@ -74,7 +75,33 @@ def _begin(new_session: Callable[[], Session], run_id: int) -> graph.Snapshot | 
             goal=agent.goal,
             allow_active=agent.allow_active,
             template=template,
+            previous=previous,
         )
+
+
+def _previous(db: Session, agent_id: int, run_id: int) -> graph.Previous | None:
+    """What the agent's last run that finished reported, which the next builds on."""
+    last = db.scalars(
+        select(AgentRun)
+        .where(
+            AgentRun.agent_id == agent_id,
+            AgentRun.id < run_id,
+            AgentRun.status == "succeeded",
+            AgentRun.finished_at.is_not(None),
+        )
+        .order_by(AgentRun.id.desc())
+        .limit(1)
+    ).first()
+    if last is None or last.finished_at is None:
+        return None
+    return graph.Previous(
+        at=last.finished_at,
+        summary=last.summary,
+        findings=tuple(
+            (str(item.get("severity", "info")), str(item.get("title", "")))
+            for item in last.findings
+        ),
+    )
 
 
 def _enter(new_session: Callable[[], Session], run_id: int, node: str) -> bool:

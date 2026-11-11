@@ -480,6 +480,7 @@ class TestRuns:
                     "title": "Scans",
                     "detail": "Many.",
                     "cites": [{"kind": "incident", "id": "3"}],
+                    "status": "ongoing",
                 },
                 {"severity": "info"},
             ],
@@ -504,8 +505,9 @@ class TestRuns:
                 "title": "Scans",
                 "detail": "Many.",
                 "cites": [{"kind": "incident", "id": "3"}],
+                "status": "ongoing",
             },
-            {"severity": "info", "title": "", "detail": "", "cites": []},
+            {"severity": "info", "title": "", "detail": "", "cites": [], "status": "new"},
         ]
         assert body["call_ids"] == [4, 5]
         assert body["error"] == "Nothing went wrong."

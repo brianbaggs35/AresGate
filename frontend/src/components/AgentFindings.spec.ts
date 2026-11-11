@@ -56,4 +56,16 @@ describe('AgentFindings', () => {
     expect(wrapper.find('[data-test="finding-detail"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="finding-cites"]').exists()).toBe(false)
   })
+
+  it('says whether the last run already reported it', async () => {
+    const { wrapper } = await open([
+      finding({ title: 'Fresh', status: 'new' }),
+      finding({ title: 'Old news', status: 'ongoing', severity: 'low' }),
+    ])
+
+    expect(wrapper.findAll('[data-test="finding-status"]').map((chip) => chip.text())).toEqual([
+      'New',
+      'Still open',
+    ])
+  })
 })

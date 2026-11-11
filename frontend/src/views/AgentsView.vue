@@ -50,6 +50,11 @@ async function load(quiet = false) {
   }
 }
 
+/** Whether an agent's kind has what it needs. A kind this version does not know is not held
+ * against it. */
+const ready = (agent: Agent) =>
+  templates.value.find((item) => item.key === agent.template)?.ready ?? true
+
 function make(kind: string | null = null) {
   starter.value = kind
   making.value = true
@@ -139,7 +144,12 @@ onMounted(() => load())
 
       <ul v-if="agents.length" class="cards" data-test="agents-list">
         <li v-for="agent in agents" :key="agent.id">
-          <AgentCard :agent="agent" :busy="asking === agent.id" @run="run(agent)" />
+          <AgentCard
+            :agent="agent"
+            :busy="asking === agent.id"
+            :ready="ready(agent)"
+            @run="run(agent)"
+          />
         </li>
       </ul>
 

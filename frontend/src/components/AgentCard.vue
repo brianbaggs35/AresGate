@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play } from '@lucide/vue'
+import { CircleAlert, Play } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Agent, RunStatus } from '@/api/agents'
@@ -11,7 +11,9 @@ import { formatAgo, formatDue } from '@/format'
  * last one came to. The name opens the agent; the button asks for a run now. An agent that tests
  * the network says it has to be allowed first.
  */
-const props = defineProps<{ agent: Agent; busy?: boolean }>()
+const props = withDefaults(defineProps<{ agent: Agent; busy?: boolean; ready?: boolean }>(), {
+  ready: true,
+})
 defineEmits<{ run: [] }>()
 
 const state = computed(() => AGENT_STATE[props.agent.state])
@@ -102,6 +104,11 @@ const when = computed(() => {
       <span v-if="when" class="text-medium-emphasis"> · {{ when }}</span>
     </p>
 
+    <p v-if="!ready" class="text-body-small agent__setup" data-test="agent-needs-setup">
+      <v-icon :icon="CircleAlert" size="16" color="warning" aria-hidden="true" />
+      It needs a little setup first.
+    </p>
+
     <p
       v-if="agent.usage.calls"
       class="text-body-small text-medium-emphasis agent__cost"
@@ -157,6 +164,13 @@ const when = computed(() => {
   border-radius: 0.875rem;
   background: rgba(var(--v-theme-primary), 0.12);
   color: rgb(var(--v-theme-primary));
+}
+
+.agent__setup {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
 }
 
 .agent__name,
