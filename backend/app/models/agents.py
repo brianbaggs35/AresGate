@@ -25,6 +25,8 @@ TRIGGERS = ("manual", "schedule")
 STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
 # The fewest minutes between the starts of a scheduled agent's runs.
 MIN_INTERVAL_MINUTES = 5
+# Which AI the agents ask: the one chosen under Settings > AI, one of their own, or none.
+AI_SOURCES = ("shared", "own", "off")
 
 
 class Agent(Base):
@@ -52,6 +54,32 @@ class Agent(Base):
     # When the schedule starts the next run, if it has one.
     next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AgentSettings(Base):
+    """How the agents use AI, which is apart from the rest of AresGate so that they can be given a
+    cheaper model, or a provider of their own, or none. There is only ever one row. With ``shared``
+    they ask what Settings > AI chose (and only while AI is on there); with ``own`` they ask
+    ``provider``, a provider that is set up under Settings > AI, with ``model`` if one is given
+    (otherwise the model it was set up with); with ``off`` they look and keep what they saw but
+    ask nobody. The limits hold what the agents alone may spend, in millionths of a US dollar:
+    in the last 24 hours and in the calendar month. None is no limit."""
+
+    __tablename__ = "agent_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        CheckConstraint("ai_source IN ('shared', 'own', 'off')", name="ai_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
+    ai_source: Mapped[str] = mapped_column(String(6), default="shared")
+    provider: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("ai_providers.provider", ondelete="SET NULL"), default=None
+    )
+    model: Mapped[str | None] = mapped_column(String(128), default=None)
+    daily_limit_micros: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    monthly_limit_micros: Mapped[int | None] = mapped_column(BigInteger, default=None)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
@@ -88,6 +116,18 @@ class AgentRun(Base):
     call_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
     # Set by the owner to stop a run; it stops before its next step.
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What the run used of the AI, added up from its requests when it ended, so that it is still
+    # known after the record of the requests is gone: how many, their tokens, what they cost in
+    # millionths of a US dollar (the ones whose price is known, and how many were not), and who
+    # answered last.
+    calls: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    unpriced_calls: Mapped[int] = mapped_column(Integer, default=0)
+    provider: Mapped[str | None] = mapped_column(String(32), default=None)
+    model: Mapped[str | None] = mapped_column(String(128), default=None)
 
 
 class AgentStep(Base):

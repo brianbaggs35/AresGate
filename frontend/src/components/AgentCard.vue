@@ -3,7 +3,7 @@ import { Play } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Agent, RunStatus } from '@/api/agents'
-import { AGENT_STATE, RUN_STATUS, agentIcon, outcome, scheduleText } from '@/agents'
+import { AGENT_STATE, RUN_STATUS, agentIcon, costWords, outcome, scheduleText } from '@/agents'
 import { formatAgo, formatDue } from '@/format'
 
 /**
@@ -100,6 +100,14 @@ const when = computed(() => {
       <template v-if="last">{{ outcome(last) }}</template>
       <template v-else>Start it to see what it finds.</template>
       <span v-if="when" class="text-medium-emphasis"> · {{ when }}</span>
+    </p>
+
+    <p
+      v-if="agent.usage.calls"
+      class="text-body-small text-medium-emphasis agent__cost"
+      data-test="agent-cost"
+    >
+      {{ costWords(agent.usage) }} in 30 days
     </p>
 
     <div class="agent__actions">

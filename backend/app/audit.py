@@ -73,6 +73,7 @@ class Action(StrEnum):
     AGENT_DELETED = "agent.deleted"
     AGENT_RUN_REQUESTED = "agent.run_requested"
     AGENT_RUN_CANCELLED = "agent.run_cancelled"
+    AGENT_SETTINGS_CHANGED = "agent.settings_changed"
     NOISE_FILTERS_CHANGED = "noise.filters_changed"
     THREATS_SETTINGS_CHANGED = "threats.settings_changed"
     THREATS_FAMILY_CALLED = "threats.family_called"

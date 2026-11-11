@@ -231,6 +231,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AiSettingsView.vue'),
       },
       {
+        path: 'agents',
+        name: 'settings-agents',
+        component: () => import('@/views/AgentSettingsView.vue'),
+      },
+      {
         path: 'data',
         name: 'settings-data',
         component: () => import('@/views/DataView.vue'),

@@ -5,7 +5,7 @@
 | [Quick start](quick-start.md) | Installing AresGate, configuring it, certificates (including Let's Encrypt through IONOS), ports and updating |
 | [Operations](operations.md) | Where the data lives, backups and restores, logs, health checks, certificates |
 | [Threats](threats.md) | How tens of thousands of alerts come down to the few that matter: duplicates, repeats, kinds of incident, the AI's part and the settings |
-| [Agents](agents.md) | Standing instructions the AI follows on a schedule: the kinds, how a run works, the exposure scanner and what stays private |
+| [Agents](agents.md) | Standing instructions the AI follows on a schedule: the kinds, which AI they use and what they cost, how a run works, the exposure scanner and what stays private |
 | [Security](security.md) | How AresGate is hardened, how every change is checked, and what is still to come |
 | [Development](development.md) | Setting up to work on the code, the checks and tests, and how changes are made |
 | [Releasing](releasing.md) | Publishing a release, the image's tags and how to verify an image |

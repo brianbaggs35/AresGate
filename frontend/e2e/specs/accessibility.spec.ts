@@ -758,6 +758,36 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('Settings > Agents, with their own provider and a limit set, has no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      aiSettings,
+      agentSettings,
+      shell,
+    }) => {
+      await harness.standIn({
+        kind: 'anthropic',
+        api_key: 'sk-a-key-for-the-stand-in',
+        models: ['claude-haiku-5-5', 'claude-sonnet-5-5'],
+        provider: 'anthropic',
+      })
+      await agentSettings.goto()
+      await expect(agentSettings.state).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await agentSettings.source('own').check()
+      await agentSettings.provider('anthropic').click()
+      await aiSettings.apiKey('anthropic').fill('sk-a-key-for-the-stand-in')
+      await aiSettings.test('anthropic').click()
+      await expect(aiSettings.status('anthropic')).toHaveText('Connected')
+      await agentSettings.daily.fill('2')
+      await agentSettings.saveLimits.click()
+      await expect(agentSettings.limitsSaved).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the account settings page has no WCAG 2.2 AA problems', async ({
       page,
       security,

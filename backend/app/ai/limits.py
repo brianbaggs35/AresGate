@@ -59,13 +59,15 @@ def next_month(now: datetime) -> datetime:
     return (start + timedelta(days=32)).replace(day=1)
 
 
-def spent(db: Session, since: datetime) -> int:
+def spent(db: Session, since: datetime, purpose: str | None = None) -> int:
     """What the calls since ``since`` cost, in millionths of a dollar, counting those whose price
-    is known."""
-    total = db.scalar(
-        select(func.coalesce(func.sum(AiCall.cost_micros), 0)).where(AiCall.occurred_at >= since)
+    is known, and only those made for ``purpose`` if one is given."""
+    query = select(func.coalesce(func.sum(AiCall.cost_micros), 0)).where(
+        AiCall.occurred_at >= since
     )
-    return int(total or 0)
+    if purpose is not None:
+        query = query.where(AiCall.purpose == purpose)
+    return int(db.scalar(query) or 0)
 
 
 def dollars(micros: int) -> str:
@@ -84,22 +86,23 @@ def status(db: Session, now: datetime) -> tuple[Limit, Limit]:
     )
 
 
+def words_for(limit: Limit, whose: str = "AI", where: str = "on the AI usage page") -> str | None:
+    """Why requests can't be made, if ``limit`` is used up (``whose`` is what it holds and
+    ``where`` is where the owner raises it), or None."""
+    if limit.state != "reached" or limit.limit_micros is None:
+        return None
+    held = f"{whose} spending limit ({dollars(limit.limit_micros)}) is used up."
+    if limit.period == "day":
+        return (
+            f"The daily {held} Requests start again when spending in the last 24 hours falls "
+            f"below it. Raise it {where}."
+        )
+    return f"The monthly {held} Requests start again next month. Raise it {where}."
+
+
 def reached(db: Session, now: datetime) -> str | None:
     """Why a request to a provider that charges can't be made, if a limit is used up."""
-    for limit in status(db, now):
-        if limit.state != "reached" or limit.limit_micros is None:
-            continue
-        if limit.period == "day":
-            return (
-                f"The daily AI spending limit ({dollars(limit.limit_micros)}) is used up. "
-                "Requests start again when spending in the last 24 hours falls below it. "
-                "Raise it on the AI usage page."
-            )
-        return (
-            f"The monthly AI spending limit ({dollars(limit.limit_micros)}) is used up. "
-            "Requests start again next month. Raise it on the AI usage page."
-        )
-    return None
+    return next((words for limit in status(db, now) if (words := words_for(limit))), None)
 
 
 def to_micros(amount: Decimal | None) -> int | None:

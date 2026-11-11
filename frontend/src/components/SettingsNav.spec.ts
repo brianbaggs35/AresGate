@@ -26,6 +26,7 @@ describe('SettingsNav', () => {
       '/settings/noise-filters',
       '/settings/threat-detection',
       '/settings/ai',
+      '/settings/agents',
       '/settings/data',
     ])
     expect(links.map((link) => link.text())).toEqual([
@@ -36,6 +37,7 @@ describe('SettingsNav', () => {
       'Noise filters',
       'Threat detection',
       'AI',
+      'Agents',
       'Data',
     ])
   })
@@ -63,6 +65,7 @@ describe('SettingsNav', () => {
       '/settings/noise-filters',
       '/settings/threat-detection',
       '/settings/ai',
+      '/settings/agents',
       '/settings/data',
     ])
     expect(tabs.map((tab) => tab.text())).toEqual([
@@ -73,6 +76,7 @@ describe('SettingsNav', () => {
       'Noise filters',
       'Threat detection',
       'AI',
+      'Agents',
       'Data',
     ])
     expect(tabs[2]?.classes()).toContain('v-tab--selected')

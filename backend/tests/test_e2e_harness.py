@@ -158,6 +158,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     e2e.post("/api/__test__/database/clean")
     expected = {
         "agent_runs": 0,
+        "agent_settings": 0,
         "agent_steps": 0,
         "agents": 0,
         "ai_aliases": 0,
@@ -240,6 +241,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "device_addresses",
             "ai_settings",
             "ai_messages",
+            "agent_settings",
             "agent_runs",
             "worker_beats",
             "verdict_rules",

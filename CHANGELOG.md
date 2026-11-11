@@ -4,6 +4,27 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Settings > Agents: the agents get an AI of their own, with limits on what they spend.** An
+  agent may run every hour, so how it asks the AI is now its own choice: ask whatever Settings >
+  AI chose (as before), ask a provider and a model of their own (set up right there, so a
+  cheaper model than the one you ask questions of can read the hourly rounds), or ask none, so
+  the agents only look. Their spending has a daily and a monthly limit apart from the ones on the AI
+  usage page, and reaching one stops only the agents. Migration `0040` adds the settings.
+- **What an agent costs is on its page.** Every run keeps what it used of the AI: how many
+  requests, tokens (how many were already cached), what it cost and which model answered. An
+  agent's page has a *What it costs* section with the 30-day cost, requests, tokens, the share
+  that was cached and a chart of each day, a run says what it used, each agent's card shows its
+  30-day cost, and the Agents page adds up what they all cost against their limits.
+
+### Fixed
+
+- **Two pages asking for the AI's settings at once no longer fail the first time.** The settings
+  row was made by whichever request got there first, and the other stopped on a duplicate key.
+
 ## 0.1.0
 
 ### Fixed

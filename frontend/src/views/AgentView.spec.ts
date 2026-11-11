@@ -3,7 +3,8 @@ import type { AgentDetail, RunDetail } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
-import { SCANNER, agent, detail, finding, run, runDetail, step } from '@/test/agents'
+import AgentUsage from '@/components/AgentUsage.vue'
+import { SCANNER, agent, detail, finding, run, runDetail, step, usage } from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentView from '@/views/AgentView.vue'
 
@@ -110,6 +111,36 @@ describe('AgentView', () => {
     expect(wrapper.findComponent(AgentGraph).props('steps')).toHaveLength(4)
     expect(wrapper.findAll('[data-test="timeline-step"]')).toHaveLength(4)
     expect(find('run-nothing').text()).toBe('Nothing needed your attention.')
+  })
+
+  it('says what a run used of the AI and who answered, once it is over', async () => {
+    const { find } = await open()
+
+    expect(find('run-usage').text().replace(/\s+/g, ' ')).toBe(
+      '1 request · 1,200 tokens · $0.0006 · claude-haiku-5-5',
+    )
+  })
+
+  it('says it used no AI when none was asked, and not who answered', async () => {
+    const { find } = await open({
+      runs: { 7: runDetail({ usage: usage({ calls: 0 }), model: null, provider: null }) },
+    })
+
+    expect(find('run-usage').text()).toBe('Used no AI')
+  })
+
+  it('has no usage line while a run is still going', async () => {
+    const { find } = await open({ agent: GOING_AGENT, runs: { 8: GOING } })
+
+    expect(find('run-usage').exists()).toBe(false)
+  })
+
+  it('shows what the agent costs over 30 days', async () => {
+    const { wrapper, find } = await open()
+
+    expect(wrapper.findComponent(AgentUsage).props('usage')).toEqual(usage())
+    expect(wrapper.findComponent(AgentUsage).props('days')).toHaveLength(30)
+    expect(find('agent-usage').exists()).toBe(true)
   })
 
   it('shows what a run found, and the AI it did without', async () => {

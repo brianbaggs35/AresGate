@@ -1,6 +1,7 @@
 import type {
   Agent,
   AgentDetail,
+  AgentSettings,
   Edge,
   Finding,
   Overview,
@@ -8,7 +9,10 @@ import type {
   RunDetail,
   Step,
   Template,
+  Usage,
+  UsageDay,
 } from '@/api/agents'
+import type { UsageLimit } from '@/api/aiUsage'
 
 /** Agents as the API describes them, for tests of pages that show them. */
 
@@ -36,6 +40,45 @@ export const SCANNER = template({
   active: true,
 })
 
+export const usage = (overrides: Partial<Usage> = {}): Usage => ({
+  runs: 4,
+  calls: 6,
+  input_tokens: 9_000,
+  output_tokens: 1_200,
+  cached_tokens: 3_000,
+  cost_micros: 12_500,
+  unpriced_calls: 0,
+  ...overrides,
+})
+
+export const limits = (overrides: Partial<UsageLimit>[] = []): UsageLimit[] => [
+  { period: 'day', limit_micros: null, spent_micros: 0, state: 'none', ...overrides[0] },
+  { period: 'month', limit_micros: null, spent_micros: 0, state: 'none', ...overrides[1] },
+]
+
+export const days = (cost: Record<number, number> = {}): UsageDay[] =>
+  Array.from({ length: 30 }, (_, index) => ({
+    day: new Date(Date.UTC(2026, 9, 13 + index)).toISOString().slice(0, 10),
+    runs: cost[index] ? 1 : 0,
+    tokens: cost[index] ? 1_000 : 0,
+    cost_micros: cost[index] ?? 0,
+  }))
+
+export const settings = (overrides: Partial<AgentSettings> = {}): AgentSettings => ({
+  ai_source: 'shared',
+  provider: null,
+  model: null,
+  asking: {
+    provider: 'anthropic',
+    label: 'Anthropic',
+    model: 'claude-haiku-5-5',
+    charges: true,
+  },
+  reason: null,
+  limits: limits(),
+  ...overrides,
+})
+
 export const run = (overrides: Partial<Run> = {}): Run => ({
   id: 7,
   trigger: 'manual',
@@ -50,6 +93,16 @@ export const run = (overrides: Partial<Run> = {}): Run => ({
   rounds: 1,
   error: null,
   ai: '',
+  usage: usage({
+    runs: 1,
+    calls: 1,
+    input_tokens: 1_000,
+    output_tokens: 200,
+    cached_tokens: 0,
+    cost_micros: 600,
+  }),
+  provider: 'anthropic',
+  model: 'claude-haiku-5-5',
   ...overrides,
 })
 
@@ -69,6 +122,7 @@ export const agent = (overrides: Partial<Agent> = {}): Agent => ({
   state: 'idle',
   last_run: run(),
   recent: ['succeeded', 'failed', 'succeeded'],
+  usage: usage(),
   ...overrides,
 })
 
@@ -84,6 +138,7 @@ export const detail = (overrides: Partial<AgentDetail> = {}): AgentDetail => ({
   template_info: template(),
   runs: [run()],
   graph: EDGES,
+  days: days({ 29: 4_000, 28: 2_500 }),
   ...overrides,
 })
 
@@ -91,6 +146,8 @@ export const overview = (overrides: Partial<Overview> = {}): Overview => ({
   agents: [agent()],
   templates: [template(), SCANNER],
   ai: null,
+  usage: usage(),
+  limits: limits(),
   ...overrides,
 })
 

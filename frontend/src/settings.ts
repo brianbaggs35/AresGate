@@ -2,6 +2,7 @@ import {
   Database,
   Funnel,
   Gavel,
+  Workflow,
   History,
   MonitorSmartphone,
   ShieldAlert,
@@ -40,5 +41,6 @@ export const settingsSections: readonly SettingsSection[] = [
     icon: ShieldAlert,
   },
   { key: 'ai', route: 'settings-ai', title: 'AI', icon: Sparkles },
+  { key: 'agents', route: 'settings-agents', title: 'Agents', icon: Workflow },
   { key: 'data', route: 'settings-data', title: 'Data', icon: Database },
 ]
