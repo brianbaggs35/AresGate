@@ -32,6 +32,28 @@ async function open(props: Record<string, unknown> = {}) {
 }
 
 describe('LogCards', () => {
+  it('says that another program reported the same alert, and that a card is that report', async () => {
+    const { cards } = await open({
+      events: [
+        logEvent({ id: 3, also_reported_by: ['Wazuh', 'Suricata'] }),
+        logEvent({ id: 2, twin_of: 3 }),
+        logEvent({ id: 1 }),
+      ],
+    })
+
+    expect(
+      cards().map(
+        (card) =>
+          card.find('[data-test="log-card-agreement"]').exists() &&
+          card.find('[data-test="log-card-agreement"]').text(),
+      ),
+    ).toEqual([
+      'Also reported by Wazuh and Suricata',
+      'The same alert as one already reported by another program',
+      false,
+    ])
+  })
+
   it('has a card for each event: how serious, who said it, when, what, and where it went', async () => {
     const { cards } = await open()
     const first = cards()[0]

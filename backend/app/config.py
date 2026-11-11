@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ARESGATE_", env_file=".env", extra="ignore")
 
     environment: Literal["production", "development", "test"] = "production"
+    # Whether an address on the internet that no program named is looked up (its PTR record, by the
+    # resolver this machine already uses) so that an incident can say who it is.
+    reverse_dns: bool = True
     # The version a release image was built as, which the release workflow stamps in from
     # the release's tag. Builds from source report the version in app/__init__.py.
     release: str | None = None

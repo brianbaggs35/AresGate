@@ -1,10 +1,12 @@
 """Chains from the web app: the attack across two devices, its steps and the evidence."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.incidents import names
 from app.models import Incident, utcnow
 from e2e import factories
 from tests.test_threats_chains import ATTACKER, DEVICE, SERVER
@@ -102,6 +104,23 @@ class TestAConfirmedChain:
         assert callout["sources"] == [{"key": "suricata", "name": "suricata"}]
         assert body["why"][0].startswith("A chain is more than scanning")
         assert len(body["why"]) == 3
+
+    def test_a_step_says_what_its_address_is_called(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(names, "resolver", {ATTACKER: "scanner-17.example.net"}.get)
+        made(session, settings)
+        [chain] = client.get(BASE).json()["items"]
+
+        attacker, callout = client.get(f"{BASE}/{chain['id']}").json()["path"]
+
+        assert attacker["subject_name"] == "scanner-17.example.net"
+        assert callout["subject_name"] is None
 
     def test_the_incident_says_it_is_a_step_of_it(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

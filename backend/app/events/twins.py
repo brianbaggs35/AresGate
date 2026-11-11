@@ -7,7 +7,8 @@ counting them twice is how a home network ends up with twice the alerts it had.
 
 An alert is a twin of an earlier one when a different program reported it within moments, about
 the same source and the same destination (or the same port, where the address differs because the
-firewall translated it: one end the internet's address and the other the home network's). The
+firewall translated it: one end the internet's address and the other the home network's), or about
+the same two addresses the other way round, as a program that reports the reply of a flow does. The
 earlier is the original, and the twin points at it (``Event.twin_of``) so that counting an alert
 once is a filter. Two collectors that store at the very same moment can each miss the other; the
 next pair is caught.
@@ -18,7 +19,7 @@ from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Event
@@ -35,8 +36,31 @@ def _private(address: Address) -> bool:
     return not address.is_global
 
 
+def _answering(one: Event, other: Event) -> bool:
+    """Whether ``other`` is about the same traffic seen from the other end: a program that reports a
+    flow by its reply (the destination talking back) names the same two addresses the other way
+    round, and the ports with them."""
+    if one.src_address is None or one.dst_address is None:
+        return False
+    if one.src_address != other.dst_address or one.dst_address != other.src_address:
+        return False
+    if one.protocol and other.protocol and one.protocol != other.protocol:
+        return False
+    # Where both say the ports they are the same two, swapped. A program that gives none has said
+    # nothing against it.
+    ports = (
+        (one.src_port, other.dst_port),
+        (one.dst_port, other.src_port),
+    )
+    return all(ours is None or theirs is None or ours == theirs for ours, theirs in ports)
+
+
 def same_flow(one: Event, other: Event) -> bool:
-    """Whether two alerts are about the same traffic."""
+    """Whether two alerts are about the same traffic, from the same end or from the other."""
+    return _forward(one, other) or _answering(one, other)
+
+
+def _forward(one: Event, other: Event) -> bool:
     if one.src_address is None or one.src_address != other.src_address:
         return False
     if one.protocol and other.protocol and one.protocol != other.protocol:
@@ -83,12 +107,14 @@ def mark(db: Session, ids: Sequence[int], first: datetime, last: datetime) -> in
     )
     if not stored:
         return 0
-    addresses = {event.src_address for event in stored}
+    addresses = {event.src_address for event in stored} | {
+        event.dst_address for event in stored if event.dst_address is not None
+    }
     nearby = list(
         db.scalars(
             select(Event).where(
                 Event.kind == ALERT,
-                Event.src_address.in_(addresses),
+                or_(Event.src_address.in_(addresses), Event.dst_address.in_(addresses)),
                 Event.occurred_at >= first - WINDOW,
                 Event.occurred_at <= last + WINDOW,
                 Event.twin_of.is_(None),

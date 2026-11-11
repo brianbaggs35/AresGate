@@ -13,6 +13,7 @@ import {
   occurrence,
   reading,
   signal,
+  travelPath,
   triage,
 } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -581,6 +582,15 @@ describe('IncidentView', () => {
       })
       expect(some.find('conversations-card').exists()).toBe(true)
       expect(some.text('end-title')).toBe('workstation')
+    })
+
+    it('draws how it travelled only when there is a path to draw', async () => {
+      const none = await open()
+      expect(none.find('path-card').exists()).toBe(false)
+
+      const some = await open({ found: detail({ path: travelPath() }) })
+      expect(some.find('path-card').exists()).toBe(true)
+      expect(some.text('path-lead')).toContain('It came in from the internet')
     })
 
     it('reads the incident again when an address in it is ruled on', async () => {

@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.events.event import Severity
-from app.incidents import conversations, rules
+from app.incidents import conversations, names, purpose, rules
 from app.intel import overrides, virustotal
 from app.intel import store as intel_store
-from app.models import IntelOverride, IntelSubject
+from app.models import IntelOverride, IntelSubject, utcnow
 
 
 class ReputationOut(BaseModel):
@@ -45,6 +45,8 @@ class EndOut(BaseModel):
     location: Literal["local", "remote"] | None
     blacklisted: bool
     reputation: ReputationOut | None
+    # Where the name came from: a program that saw it, or the address's reverse lookup (DNS).
+    name_from: Literal["program", "dns"] | None
 
 
 class AskedForOut(BaseModel):
@@ -76,6 +78,8 @@ class ConversationOut(BaseModel):
     duration: int | None
     names: list[AskedForOut]
     programs: list[ProgramOut]
+    # What the traffic was for, in a few plain words, where that can be told.
+    purpose: str | None
 
 
 class ConversationsOut(BaseModel):
@@ -120,16 +124,20 @@ def _reputation(row: IntelSubject | None, ruling: IntelOverride | None) -> Reput
     )
 
 
-def _end(end: conversations.End, reputations: dict[str, ReputationOut]) -> EndOut:
+def _end(
+    end: conversations.End, reputations: dict[str, ReputationOut], dns: dict[str, str]
+) -> EndOut:
+    name = end.name or dns.get(end.address)
     return EndOut(
         address=end.address,
-        name=end.name,
+        name=name,
         port=end.port,
         service=end.service,
         country=end.country,
         location=end.location,  # type: ignore[arg-type]
         blacklisted=end.blacklisted,
         reputation=reputations.get(end.address),
+        name_from=("program" if end.name else "dns") if name else None,
     )
 
 
@@ -138,11 +146,21 @@ def out(db: Session, found: conversations.Conversations) -> ConversationsOut | N
     if not found.items:
         return None
     reputations = _reputations(db, found)
+    dns = names.lookup(
+        db,
+        {
+            end.address
+            for each in found.items
+            for end in (each.client, each.server)
+            if end.name is None
+        },
+        utcnow(),
+    )
     return ConversationsOut(
         items=[
             ConversationOut(
-                client=_end(each.client, reputations),
-                server=_end(each.server, reputations),
+                client=_end(each.client, reputations, dns),
+                server=_end(each.server, reputations, dns),
                 protocol=each.protocol,
                 app=each.app,
                 alerts=each.alerts,
@@ -158,6 +176,12 @@ def out(db: Session, found: conversations.Conversations) -> ConversationsOut | N
                     ProgramOut(source=source, source_name=rules.name_of(source))
                     for source in each.programs
                 ],
+                purpose=purpose.of(
+                    app=each.app,
+                    port=each.server.port,
+                    protocol=each.protocol,
+                    asked_for=each.names[0]["value"] if each.names else None,
+                ),
             )
             for each in found.items
         ],

@@ -47,6 +47,20 @@ afterEach(() => {
 })
 
 describe('LogTable', () => {
+  it('marks an alert that other programs reported too, and one that repeats another', async () => {
+    const { wrapper } = await open({
+      events: [
+        logEvent({ id: 3, also_reported_by: ['Wazuh', 'Suricata'] }),
+        logEvent({ id: 2, twin_of: 3 }),
+        logEvent({ id: 1 }),
+      ],
+    })
+
+    const chips = wrapper.findAll('[data-test="log-row-agreement"]')
+    expect(chips.map((chip) => chip.text())).toEqual(['+2', 'twin'])
+    expect(chips[0]?.attributes('aria-label')).toBe('Also reported by Wazuh and Suricata')
+  })
+
   it('has a heading for each column that is shown, in a table that is named', async () => {
     const { wrapper } = await open()
 

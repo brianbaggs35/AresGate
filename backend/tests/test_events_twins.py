@@ -79,6 +79,53 @@ class TestWhetherTwoAlertsAreTheSameTraffic:
             event(dst_address=ip_address("192.168.1.30")), event(dst_address=ip_address(DEVICE))
         )
 
+    def test_a_report_by_the_reply_is_the_same_flow_seen_from_the_other_end(self) -> None:
+        reply = event(
+            id=2,
+            source="wazuh",
+            src_address=ip_address(DEVICE),
+            dst_address=ip_address(ATTACKER),
+            src_port=22,
+            dst_port=51000,
+        )
+        sent = event(src_port=51000, dst_port=22)
+
+        assert twins.same_flow(sent, reply)
+        assert twins.same_flow(reply, sent)
+
+    def test_a_reply_with_no_ports_has_said_nothing_against_it(self) -> None:
+        reply = event(id=2, src_address=ip_address(DEVICE), dst_address=ip_address(ATTACKER))
+
+        assert twins.same_flow(event(), reply)
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"protocol": "udp"},
+            {"src_port": 4000},
+            {"dst_port": 4000},
+            {"src_address": ip_address("192.168.1.99")},
+            {"dst_address": ip_address("203.0.113.10")},
+        ],
+    )
+    def test_a_reply_that_does_not_match_is_not_the_same_flow(
+        self, changes: dict[str, Any]
+    ) -> None:
+        sent = event(src_port=51000, dst_port=22)
+        reply = {
+            "id": 2,
+            "src_address": ip_address(DEVICE),
+            "dst_address": ip_address(ATTACKER),
+            "src_port": 22,
+            "dst_port": 51000,
+            **changes,
+        }
+
+        assert not twins.same_flow(sent, event(**reply))
+
+    def test_a_reply_without_addresses_is_not_one(self) -> None:
+        assert not twins._answering(event(dst_address=None), event(id=2))  # pyright: ignore[reportPrivateUsage]
+
 
 class TestFindingTheOriginal:
     def test_it_is_the_earliest_other_program_within_the_window(self) -> None:
@@ -136,6 +183,27 @@ class TestMarkingWhatIsStored:
         )
 
         assert first.twin_of is None
+        assert second.twin_of == first.id
+
+    def test_a_program_that_reports_the_reply_is_a_twin_of_the_one_that_saw_the_request(
+        self, session: Session, settings: Settings
+    ) -> None:
+        first, second = self.store(
+            session,
+            settings,
+            self.alert(1, src_port=51000),
+            self.alert(
+                2,
+                3,
+                source="wazuh",
+                connection="indexer",
+                src_address=DEVICE,
+                dst_address=ATTACKER,
+                src_port=22,
+                dst_port=51000,
+            ),
+        )
+
         assert second.twin_of == first.id
 
     def test_a_third_program_is_a_twin_of_the_first(

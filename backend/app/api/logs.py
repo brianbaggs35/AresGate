@@ -18,7 +18,7 @@ from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.incidents import SourceCount, Status, TermOut
 from app.audit import Action, Outcome
-from app.events import queries, search
+from app.events import queries, search, twins
 from app.events.event import Severity
 from app.incidents import rules
 from app.models import Event, Incident, utcnow
@@ -55,6 +55,11 @@ class LogOut(BaseModel):
     protocol: str | None
     # Whether the program's own record was kept, which the detail has.
     has_raw: bool
+    # The same alert, reported by another program: when this is a report of an alert another
+    # program had already reported, which one (it counts once, with that one), and when it is the
+    # first, which programs reported it too.
+    twin_of: int | None
+    also_reported_by: list[str]
 
 
 class IncidentLink(BaseModel):
@@ -111,7 +116,7 @@ class LogPage(BaseModel):
     summary: SummaryOut | None
 
 
-def _log(row: queries.Row) -> LogOut:
+def _log(row: queries.Row, also: dict[int, list[str]] | None = None) -> LogOut:
     event = row.event
     return LogOut(
         cursor=str(queries.Cursor.of(event)),
@@ -131,7 +136,33 @@ def _log(row: queries.Row) -> LogOut:
         dst_port=event.dst_port,
         protocol=event.protocol,
         has_raw=row.has_raw,
+        twin_of=event.twin_of,
+        also_reported_by=[rules.name_of(key) for key in (also or {}).get(event.id, [])],
     )
+
+
+def _also(db: Db, rows: list[queries.Row]) -> dict[int, list[str]]:
+    """For each event on the page that other programs reported too, which programs (their keys, in
+    the order they reported it). The same alert reported by two programs is one alert, and each
+    of the lines says so."""
+    if not rows:
+        return {}
+    first = min(row.event.occurred_at for row in rows) - twins.WINDOW
+    last = max(row.event.occurred_at for row in rows) + twins.WINDOW
+    found = db.execute(
+        select(Event.twin_of, Event.source)
+        .where(
+            Event.twin_of.in_([row.event.id for row in rows]),
+            Event.occurred_at >= first,
+            Event.occurred_at <= last,
+        )
+        .order_by(Event.id)
+    ).all()
+    also: dict[int, list[str]] = {}
+    for original, source in found:
+        if original is not None and source not in also.setdefault(original, []):
+            also[original].append(source)
+    return also
 
 
 def _summary(found: queries.Summary) -> SummaryOut:
@@ -210,8 +241,9 @@ def list_logs(
             after=queries.Cursor.parse(after) if after else None,
         )
         spread = queries.summary(db, where=where) if summary else None
+        also = _also(db, found.rows)
     return LogPage(
-        items=[_log(row) for row in found.rows],
+        items=[_log(row, also) for row in found.rows],
         more=found.more,
         terms=_terms(asked),
         summary=_summary(spread) if spread else None,
@@ -347,7 +379,8 @@ def get_log(
         )
     incident_id = queries.incident_of(db, event)
     incident = db.get(Incident, incident_id) if incident_id else None
-    head = _log(queries.Row(event, event.raw is not None))
+    row = queries.Row(event, event.raw is not None)
+    head = _log(row, _also(db, [row]))
     return LogDetail(
         **head.model_dump(),
         raw=event.raw,

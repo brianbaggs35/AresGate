@@ -17,6 +17,17 @@ Every release's notes are here, newest first. The format follows
   draws the steps in order with the evidence behind each, an alert two programs reported counted
   once and shown with the programs that saw it. Each incident that is a step says so and leads to it.
 
+- **How it travelled, what it was, and counted once everywhere.** An incident now draws the path an
+  attack took from the internet through each program that saw it (the firewall, the intrusion
+  detection system, the traffic monitor, the agent on the device) to the device, with what each did
+  about it, without sending a probe into anyone's network. Addresses that no program named are
+  given the name their owner gave them (marked *Name from DNS*; turn it off with
+  `ARESGATE_REVERSE_DNS=false`), a conversation says in plain words what it was for, and where
+  Suricata kept the packet its first bytes are shown as a dump. An alert that two programs reported
+  is now matched even when one logged the reply instead of the request, and the Logs page says
+  which other programs reported each alert, so what is counted once everywhere shows who saw it.
+  The assistant and the agents learn two lookups: *who_is* and *attack_chains*.
+
 ## 0.1.3
 
 ### Added

@@ -28,6 +28,7 @@ words). Wazuh's vulnerability detector's ``data.vulnerability``.
 CrowdSec: the members of a decision. What a version of a program leaves out is simply not shown.
 """
 
+import base64
 import html
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -131,6 +132,9 @@ class Evidence(TypedDict):
     flow: NotRequired[Flow]
     # What was sent, where the program kept the data of the packet that set the alert off.
     payload: NotRequired[str]
+    # The first bytes of that data as a dump, a line each of [offset, hexadecimal, text]: what is
+    # in it, where the text of it is not enough to tell (a binary protocol, an encrypted blob).
+    dump: NotRequired[list[list[str]]]
 
 
 Raw = Mapping[str, object]
@@ -256,6 +260,7 @@ def _finish(
     score: int | None = None,
     flow: Flow | None = None,
     payload: str = "",
+    dump: list[list[str]] | None = None,
 ) -> Evidence | None:
     """The evidence, or nothing if there is none."""
     found = Evidence(
@@ -280,8 +285,10 @@ def _finish(
         found["flow"] = flow
     if payload:
         found["payload"] = payload
+    if dump:
+        found["dump"] = dump
     empty = not (facts or found["tags"] or mitre or found["indicators"] or traffic)
-    more = host or app or excerpt or summary or score is not None or flow or payload
+    more = host or app or excerpt or summary or score is not None or flow or payload or dump
     return None if empty and not more else found
 
 
@@ -358,7 +365,33 @@ def _suricata(raw: Raw) -> Evidence | None:
         ),
         app=_text(_pick(raw, "app_proto"), 32).lower(),
         payload=_text(_pick(raw, "payload_printable"), MAX_EXCERPT),
+        dump=_dump(raw.get("payload")),
     )
+
+
+# How much of a packet's data is dumped: eight lines of sixteen bytes.
+MAX_DUMP: Final = 128
+_ROW: Final = 16
+
+
+def _dump(value: object) -> list[list[str]]:
+    """The first bytes of a packet's data (which Suricata gives as base64) as a dump: a line of
+    sixteen bytes each, of [offset, bytes in hexadecimal, the bytes as text where they are
+    printable]. Nothing where there is no data or it is not base64."""
+    if not isinstance(value, str) or not value:
+        return []
+    try:
+        data = base64.b64decode(value, validate=True)[:MAX_DUMP]
+    except ValueError:
+        return []
+    return [
+        [
+            f"{start:04x}",
+            " ".join(f"{byte:02x}" for byte in data[start : start + _ROW]),
+            "".join(chr(byte) if 32 <= byte < 127 else "." for byte in data[start : start + _ROW]),
+        ]
+        for start in range(0, len(data), _ROW)
+    ]
 
 
 def _mitre(rule: Raw) -> list[Mitre]:

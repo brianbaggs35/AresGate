@@ -136,4 +136,32 @@ describe('EvidenceDetails', () => {
 
     expect(wrapper.find('[data-test="evidence-payload"] code').text()).toBe('GET /admin HTTP/1.1')
   })
+
+  it('lays out the first bytes of the packet as a dump', async () => {
+    const wrapper = await show({
+      dump: [
+        { offset: '0000', hex: '47 45 54 20 2f', text: 'GET /' },
+        { offset: '0010', hex: '61 64 6d', text: 'adm' },
+      ],
+    })
+
+    const rows = wrapper.findAll('[data-test="evidence-dump-row"]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.findAll('[role="cell"]').map((cell) => cell.text())).toEqual([
+      '0000',
+      '47 45 54 20 2f',
+      'GET /',
+    ])
+    expect(rows[1]?.findAll('[role="cell"]').map((cell) => cell.text())).toEqual([
+      '0010',
+      '61 64 6d',
+      'adm',
+    ])
+  })
+
+  it('shows no dump where the packet was not kept', async () => {
+    const wrapper = await show({ host: 'web1' })
+
+    expect(wrapper.find('[data-test="evidence-dump"]').exists()).toBe(false)
+  })
 })

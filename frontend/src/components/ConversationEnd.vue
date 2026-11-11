@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Gavel, Globe, Laptop, ShieldAlert } from '@lucide/vue'
+import { Gavel, Globe, Laptop, Network, ShieldAlert } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import type { ConversationEnd, Reputation } from '@/api/incidents'
@@ -85,6 +85,16 @@ const current = computed(() =>
       <div class="end__chips">
         <v-chip size="small" variant="tonal" data-test="end-location">
           {{ LOCATION[where] }}
+        </v-chip>
+        <v-chip
+          v-if="end.name_from === 'dns'"
+          size="small"
+          variant="outlined"
+          :prepend-icon="Network"
+          title="The name its owner gave the address, found by looking it up (reverse DNS)"
+          data-test="end-dns"
+        >
+          Name from DNS
         </v-chip>
         <v-chip v-if="country" size="small" variant="outlined" data-test="end-country">
           <span aria-hidden="true">{{ flagOf(country) }}&nbsp;</span>

@@ -14,6 +14,7 @@ from app.ai.tools import Args
 from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
+from app.incidents import names
 from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.intel.virustotal import Report
@@ -23,6 +24,7 @@ from app.models import (
     CollectorHealth,
     Device,
     DeviceAddress,
+    IncidentChain,
     IntegrationConnection,
 )
 from app.models.base import utcnow
@@ -85,6 +87,8 @@ class TestTheList:
             "device",
             "integrations",
             "reputation",
+            "who_is",
+            "attack_chains",
             "new_devices",
             "noisy_alerts",
             "targeted_ports",
@@ -904,3 +908,115 @@ class TestCleanupCandidates:
 
         assert "stays open" not in line
         assert "would resolve" in line
+
+
+class TestWhoIs:
+    def test_an_address_is_given_the_name_its_owner_gave_it(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(names, "resolver", {str(PUBLIC): "scanner-17.example.net"}.get)
+
+        found = run(session, "who_is", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"{PUBLIC} is called scanner-17.example.net by its reverse DNS record."
+        ]
+        assert found.summary == f"the name of {PUBLIC}"
+
+    def test_an_address_with_no_name_says_so(self, session: Session) -> None:
+        found = run(session, "who_is", Args(name=str(PUBLIC)))
+
+        assert "has no name" in found.lines[0]
+        assert found.summary == f"no name for {PUBLIC}"
+
+    def test_an_address_on_the_home_network_is_not_looked_up(self, session: Session) -> None:
+        found = run(session, "who_is", Args(name=str(HOME)))
+
+        assert found.summary == f"{HOME} isn't on the internet"
+
+    def test_without_an_address_it_asks_for_one(self, session: Session) -> None:
+        assert run(session, "who_is").summary == "no address given"
+
+
+class TestAttackChains:
+    def test_an_attack_across_two_devices_is_told_with_how_sure_each_link_is(
+        self, session: Session
+    ) -> None:
+        chain = IncidentChain(
+            device=DEVICE,
+            first_seen_at=NOW - 3 * HOUR,
+            last_seen_at=NOW - HOUR,
+            confirmed=False,
+            steps=2,
+        )
+        session.add(chain)
+        session.flush()
+        attacker = incident(
+            session,
+            title="Exploit from the internet",
+            first_seen_at=NOW - 3 * HOUR,
+            chain_id=chain.id,
+            chain_role="attacker",
+            chain_link="confirmed",
+            chain_reason="ET EXPLOIT, aimed at the device.",
+        )
+        callout = incident(
+            session,
+            subject="198.51.100.9",
+            title="The device called out",
+            first_seen_at=NOW - 2 * HOUR,
+            chain_id=chain.id,
+            chain_role="callout",
+            chain_link="inferred",
+            chain_reason="It called out, and this link is inferred.",
+        )
+        session.commit()
+
+        found = run(session, "attack_chains")
+
+        assert (
+            found.lines[0]
+            == f"[chain {chain.id}] an attack on {DEVICE}, inferred, which is a guess, 2 steps:"
+        )
+        assert (
+            f"- [incident {attacker.id}] attacker (confirmed): Exploit from the internet."
+            in found.lines[1]
+        )
+        assert f"- [incident {callout.id}] callout (inferred)" in found.lines[2]
+        assert {ref.key for ref in found.refs} == {str(attacker.id), str(callout.id)}
+        assert found.summary == "1 attack across two devices"
+
+    def test_a_confirmed_chain_says_so(self, session: Session) -> None:
+        session.add(
+            IncidentChain(
+                device=DEVICE,
+                first_seen_at=NOW - HOUR,
+                last_seen_at=NOW - HOUR,
+                confirmed=True,
+                steps=0,
+            )
+        )
+        session.commit()
+
+        [line] = run(session, "attack_chains").lines
+
+        assert ", confirmed, 0 steps:" in line
+
+    def test_without_any_it_says_so(self, session: Session) -> None:
+        found = run(session, "attack_chains", Args(limit=3))
+
+        assert found.summary == "no chains"
+
+    def test_an_old_chain_is_not_listed(self, session: Session) -> None:
+        session.add(
+            IncidentChain(
+                device=DEVICE,
+                first_seen_at=NOW - 30 * 24 * HOUR,
+                last_seen_at=NOW - 30 * 24 * HOUR,
+                confirmed=True,
+                steps=2,
+            )
+        )
+        session.commit()
+
+        assert run(session, "attack_chains").summary == "no chains"

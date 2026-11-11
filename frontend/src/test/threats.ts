@@ -145,6 +145,7 @@ export function chainStep(changes: Partial<ChainStep> = {}): ChainStep {
     incident_id: 11,
     title: 'ET EXPLOIT Apache Log4j RCE Attempt (93.184.216.34)',
     subject: '93.184.216.34',
+    subject_name: null,
     severity: 'high',
     status: 'open',
     first_seen_at: new Date(NOW - 50 * 60_000).toISOString(),

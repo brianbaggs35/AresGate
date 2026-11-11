@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock, Timer } from '@lucide/vue'
+import { Clock, Target, Timer } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Conversations } from '@/api/incidents'
@@ -112,6 +112,16 @@ const left = computed(() => props.conversations.total - props.conversations.item
             Lasted {{ formatSpan(conversation.duration) }}
           </p>
         </div>
+
+        <p
+          v-if="conversation.purpose"
+          class="text-body-large talk__purpose"
+          data-test="conversation-purpose"
+        >
+          <v-icon :icon="Target" size="18" aria-hidden="true" />
+          <span class="text-medium-emphasis">What it was for</span>
+          {{ conversation.purpose }}
+        </p>
 
         <ul v-if="conversation.names.length" class="talk__names" data-test="conversation-names">
           <li
@@ -305,5 +315,13 @@ const left = computed(() => props.conversations.total - props.conversations.item
   align-items: center;
   gap: 0.375rem;
   overflow-wrap: anywhere;
+}
+
+.talk__purpose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  margin: 0;
 }
 </style>

@@ -527,6 +527,7 @@ Set these in `.env` (see `.env.example`):
 | --- | --- | --- |
 | `ARESGATE_LOG_FORMAT` | `json` | `json`, or `text` for plain lines that are easier to read |
 | `ARESGATE_LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error` |
+| `ARESGATE_REVERSE_DNS` | `true` | Whether AresGate asks the machine's resolver what an address on the internet is called, to name it on incidents (see [Threats](threats.md#how-it-travelled-and-what-it-was)). It asks only about addresses on the internet and keeps answers for a week. Set `false` to never ask |
 
 Secrets are blanked out before anything is written (see
 [Security](security.md#how-it-is-hardened-today)). That is a safety net: if you find one in a log,

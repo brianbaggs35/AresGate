@@ -84,7 +84,10 @@ test.describe('what the programs said of an incident', () => {
     const talk = card.getByTestId('conversation').first()
     // ntopng says who the flow was between and what it was; Wazuh and OPNsense add their own.
     const client = talk.getByTestId('end-client')
-    await expect(client.getByTestId('end-title')).toHaveText(ATTACKER)
+    // No program named it, so it is called what its owner called it, and says so.
+    await expect(client.getByTestId('end-title')).toHaveText('scanner-17.example.net')
+    await expect(client.getByTestId('end-address')).toContainText(ATTACKER)
+    await expect(client.getByTestId('end-dns')).toHaveText('Name from DNS')
     await expect(client.getByTestId('end-location')).toHaveText('On the internet')
     await expect(client.getByTestId('end-country')).toContainText('Netherlands')
     await expect(client.getByTestId('end-blacklisted')).toHaveText('On a blacklist')

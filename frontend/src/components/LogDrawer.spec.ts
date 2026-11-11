@@ -79,6 +79,16 @@ describe('LogDrawer', () => {
     expect(inDrawer('raw-record')).toBeNull()
   })
 
+  it('says that another program reported the same alert', async () => {
+    vi.spyOn(api, 'fetchLog').mockReturnValue(new Promise(() => undefined))
+    const some = await mountDrawer({ event: logEvent({ id: 5, also_reported_by: ['Wazuh'] }) })
+    expect(some.inDrawer('drawer-agreement')?.textContent.trim()).toBe('Also reported by Wazuh')
+    some.wrapper.unmount()
+
+    const none = await mountDrawer()
+    expect(none.inDrawer('drawer-agreement')).toBeNull()
+  })
+
   it('names the dialog by what the event says', async () => {
     vi.spyOn(api, 'fetchLog').mockResolvedValue(logDetail())
     const { inDrawer } = await mountDrawer()

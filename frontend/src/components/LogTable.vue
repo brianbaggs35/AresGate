@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { CopyCheck } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import type { LogEvent } from '@/api/logs'
 import { formatAgo, formatClock, formatTimestamp } from '@/format'
-import { COLUMNS, endpoint, tableRows, type ColumnKey, type TimeMode } from '@/logs'
+import { agreement, COLUMNS, endpoint, tableRows, type ColumnKey, type TimeMode } from '@/logs'
 import { SEVERITY } from '@/severity'
 
 /**
@@ -124,7 +125,24 @@ onBeforeUnmount(() => {
                 <v-icon :icon="SEVERITY[row.event.severity].icon" size="16" aria-hidden="true" />
                 {{ SEVERITY[row.event.severity].label }}
               </span>
-              <template v-else-if="column.key === 'source'">{{ row.event.source_name }}</template>
+              <template v-else-if="column.key === 'source'"
+                >{{ row.event.source_name }}
+                <v-chip
+                  v-if="agreement(row.event)"
+                  size="x-small"
+                  variant="tonal"
+                  color="primary"
+                  :prepend-icon="CopyCheck"
+                  :title="agreement(row.event) ?? undefined"
+                  :aria-label="agreement(row.event) ?? undefined"
+                  data-test="log-row-agreement"
+                  >{{
+                    row.event.also_reported_by.length > 0
+                      ? `+${row.event.also_reported_by.length.toString()}`
+                      : 'twin'
+                  }}</v-chip
+                ></template
+              >
               <span v-else-if="column.key === 'kind'" class="log-table__pill">{{
                 row.event.kind
               }}</span>

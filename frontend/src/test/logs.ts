@@ -29,6 +29,8 @@ export function logEvent(changes: Partial<LogEvent> = {}): LogEvent {
     dst_port: 22,
     protocol: 'tcp',
     has_raw: true,
+    twin_of: null,
+    also_reported_by: [],
     ...changes,
   }
 }

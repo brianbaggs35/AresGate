@@ -102,6 +102,7 @@ describe('hasDetail', () => {
     { host: 'web1' },
     { app: 'ssh' },
     { excerpt: 'a line' },
+    { dump: [{ offset: '0000', hex: '47', text: 'G' }] },
   ])('is true when the program said %j', (said) => {
     expect(hasDetail(evidence(said))).toBe(true)
   })

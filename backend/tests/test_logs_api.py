@@ -243,6 +243,103 @@ class TestListing:
         assert client.get(BASE, params={"limit": 201}).status_code == 422
 
 
+class TestTheSameAlertFromTwoPrograms:
+    """An alert that two programs reported is one alert: each line says so."""
+
+    def twins(self, session: Session, settings: Settings) -> None:
+        store(
+            session,
+            settings,
+            new_event(
+                source="opnsense",
+                connection="api",
+                occurred_at=NOW - 10 * MINUTE,
+                identity=("first",),
+                src_address=ATTACKER,
+                dst_address=DEVICE,
+                dst_port=22,
+                protocol="tcp",
+                summary="ET SCAN",
+            ),
+            new_event(
+                source="wazuh",
+                occurred_at=NOW - 10 * MINUTE + timedelta(seconds=5),
+                identity=("second",),
+                src_address=ATTACKER,
+                dst_address=DEVICE,
+                dst_port=22,
+                protocol="tcp",
+                summary="ET SCAN",
+            ),
+            new_event(
+                source="ntopng",
+                connection="api",
+                occurred_at=NOW - 10 * MINUTE + timedelta(seconds=8),
+                identity=("third",),
+                src_address=ATTACKER,
+                dst_address=DEVICE,
+                dst_port=22,
+                protocol="tcp",
+                summary="ET SCAN",
+            ),
+        )
+
+    def test_the_first_says_who_else_reported_it_and_the_others_say_they_repeat_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.twins(session, settings)
+
+        newest, middle, first = listed(client)["items"]
+
+        assert first["twin_of"] is None
+        assert first["also_reported_by"] == ["Wazuh", "ntopng"]
+        assert middle["twin_of"] == first["id"]
+        assert middle["also_reported_by"] == []
+        assert newest["twin_of"] == first["id"]
+
+    def test_the_detail_of_the_first_says_it_too(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.twins(session, settings)
+        cursor = listed(client)["items"][-1]["cursor"]
+
+        body = client.get(f"{BASE}/{cursor}").json()
+
+        assert body["also_reported_by"] == ["Wazuh", "ntopng"]
+
+    def test_an_event_nobody_else_reported_says_nothing(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        make(session, settings)
+
+        assert {
+            (each["twin_of"], tuple(each["also_reported_by"])) for each in listed(client)["items"]
+        } == {(None, ())}
+
+    def test_a_program_that_said_it_twice_is_named_once(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.twins(session, settings)
+        store(
+            session,
+            settings,
+            new_event(
+                source="wazuh",
+                occurred_at=NOW - 10 * MINUTE + timedelta(seconds=12),
+                identity=("fourth",),
+                src_address=ATTACKER,
+                dst_address=DEVICE,
+                dst_port=22,
+                protocol="tcp",
+                summary="ET SCAN",
+            ),
+        )
+
+        first = listed(client)["items"][-1]
+
+        assert first["also_reported_by"] == ["Wazuh", "ntopng"]
+
+
 class TestSearching:
     def test_a_search_narrows_the_list_and_says_how_it_was_understood(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

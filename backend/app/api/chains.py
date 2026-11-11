@@ -12,8 +12,8 @@ from app.api import incidents as incident_api
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
-from app.incidents import attention, filters, occurrences, queries, rules
-from app.models import Device, DeviceAddress, Incident, IncidentChain, IncidentSignal
+from app.incidents import attention, filters, names, occurrences, queries, rules
+from app.models import Device, DeviceAddress, Incident, IncidentChain, IncidentSignal, utcnow
 from app.threats import chains
 from app.threats import settings as threat_settings
 
@@ -39,6 +39,8 @@ class StepOut(BaseModel):
     incident_id: int
     title: str
     subject: str
+    # What the address is called, where a program or its reverse lookup says.
+    subject_name: str | None
     severity: SeverityName
     status: incident_api.Status
     first_seen_at: AwareDatetime
@@ -150,6 +152,7 @@ def _step(db: Session, chain: IncidentChain, incident: Incident) -> StepOut:
         incident_id=incident.id,
         title=incident.title,
         subject=incident.subject,
+        subject_name=names.lookup(db, [incident.subject], utcnow()).get(incident.subject),
         severity=SEVERITY_NAMES[Severity(incident.severity)],
         status=cast(incident_api.Status, incident.status),
         first_seen_at=incident.first_seen_at,
@@ -213,8 +216,11 @@ def get_chain(chain_id: ChainId, db: Db) -> ChainDetail:
     """One chain: its steps in the order they happened and the evidence behind each."""
     chain = _found(db, chain_id)
     members = _members(db, chain)
-    return ChainDetail(
+    detail = ChainDetail(
         **_out(db, chain, members).model_dump(),
         path=[_step(db, chain, each) for each in members],
         why=_why(chain, members),
     )
+    # What was asked of the resolver about the addresses is kept.
+    db.commit()
+    return detail

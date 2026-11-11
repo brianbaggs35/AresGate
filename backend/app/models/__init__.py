@@ -45,6 +45,7 @@ from app.models.devices import Device, DeviceAddress, DeviceSource, HostListing
 from app.models.events import Event, EventRetention
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
 from app.models.incidents import (
+    AddressName,
     Incident,
     IncidentChain,
     IncidentFamily,
@@ -76,6 +77,7 @@ __all__ = [
     "PROPOSAL_STATUSES",
     "USAGE_LEVELS",
     "VERDICTS",
+    "AddressName",
     "Agent",
     "AgentProposal",
     "AgentRun",

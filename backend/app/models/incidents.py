@@ -173,6 +173,18 @@ class IncidentChain(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
+class AddressName(Base):
+    """What an address on the internet is called, as its reverse lookup (PTR record) answered, kept
+    so that the same address is asked about once a week and not each time a page is opened. A name
+    of None is a lookup that was answered with no name, which is kept for a day."""
+
+    __tablename__ = "address_names"
+
+    address: Mapped[str] = mapped_column(String(45), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(253), default=None)
+    looked_up_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
 class IncidentSignal(Base):
     """One event in an incident's timeline, as it was when it joined: copied, because incidents
     are kept after the events they came from have passed their retention period."""
