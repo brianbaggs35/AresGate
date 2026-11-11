@@ -124,6 +124,32 @@ What decides the lane, in this order:
 Every incident's page has a **Where it stands** card that says its lane and each fact that put it
 there, one to a line, so you can check it and disagree.
 
+### Attacks across two devices
+
+An incident is about one address, so an attack that got into a device from the internet and then
+made that device call out is two of them: the incident about the outside address that attacked, and
+the one about the outside address the device then called (a beacon, a command server, a connection
+it had no business making). Seen apart, the second looks like a device talking to the internet and
+the first like an attempt. AresGate links them into a **chain**, the way Microsoft Sentinel's Fusion
+does, by the device and the time between them and by nothing else:
+
+- the attacker is an incident with an alert that is a flaw being tried (or a sign it worked), aimed
+  at a device on your network;
+- the callout is an incident with an alert the *device itself* sent to an address on the internet,
+  at least medium serious, within six hours after that.
+
+A link is **seen** when what the device sent is itself a sign that an attack worked (a beacon,
+malware, a command server). It is **inferred** when the device only called out: the device and the
+timing agree and nothing else does, so it is labelled as a guess and kept apart from what was seen.
+Without an exploit aimed at the device there is no link at all, because scanning is what the
+internet does to every address and calling out is what devices do: nothing is invented.
+
+**A chain is a threat.** Its steps are never unsure and never set aside, whatever an AI thinks of
+them alone. Chains are listed at the top of **Threats** and each has a page that draws the steps in
+order, the device between the step that got in and the step that called out, with the evidence
+behind each. An alert that two programs reported is shown once, with the programs that saw it. An
+incident that is a step says so at the top of its page and leads to the whole attack.
+
 ## Kinds of incident
 
 Hundreds of scanners from hundreds of addresses each make an incident of their own, because they
@@ -200,13 +226,18 @@ The API, all under `/api` and signed in:
 | `POST /threats/families/{id}/judge` | Has the AI judge the kind now. |
 | `GET` and `PUT /threat-settings`, `POST /threat-settings/preview` | The settings, and what saving them would do. |
 | `GET /incidents?lane=…&family=…` | The incident list takes repeatable `lane` and a `family`. |
+| `GET /threats/chains` | The attacks across two devices, the most recent first, narrowed by `confirmed`. |
+| `GET /threats/chains/{id}` | One chain: its steps in order, each with its link (`confirmed` or `inferred`), why, and the evidence. |
 
 The code is in `app/threats/` (`families.py`, `stages.py`, `calls.py`, `explain.py`, `overview.py`,
-`settings.py`), `app/events/twins.py` (the same alert from two programs), `app/incidents/occurrences.py`
+`settings.py`, and `chains.py`, which links the incidents of an attack across two devices on
+every run of the engine), `app/events/twins.py` (the same alert from two programs), `app/incidents/occurrences.py`
 (repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
 a kind). The lanes exist twice, as Python (`lane_of`) and as SQL (`lane_clauses`), and a test holds
-them to agreeing. Migration `0028` adds the tables and columns.
+them to agreeing. Migration `0028` adds the tables and columns, and `0044` the chains.
 
-The Playwright harness can make attacks that are more than scanning (`exploit`, `compromise`) and
+The Playwright harness can make attacks that are more than scanning (`exploit`, `compromise`), a
+device that calls out instead of being called (`outbound`, which a chain needs on its second
+incident) and
 alerts a second program repeats (`twin`) and programs that say more than the basics (`detailed`) when it creates incidents; see
 [the end-to-end tests' guide](../frontend/e2e/README.md).

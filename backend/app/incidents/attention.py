@@ -17,8 +17,10 @@ An incident has exactly one *standing*, the first of these that is true:
 
 What needs the owner is then told in two: a **threat** (high confidence that it is real) and a
 **suspect** (worth a look, not yet sure). A chain, which is more than scanning (an exploit after a
-scan, a sign that it worked: ``app/threats/stages.py``), is never unsure and never set aside, and
-an AI that is sure it is an attack or a compromise makes it a threat whatever the rules think.
+scan, a sign that it worked: ``app/threats/stages.py``) or an attack across two devices (an exploit
+at one, then that device calling out: ``app/threats/chains.py``), is never unsure and never set
+aside, and an AI that is sure it is an attack or a compromise makes it a threat whatever the rules
+think.
 While the AI is watching, rules alone do not make a threat: it has to agree, except for the most
 serious, which cannot wait for it. So the standing of a scan is a thing the AI decides, and the
 standing of an attack is not left to it alone.
@@ -71,12 +73,17 @@ CLEARABLE_BELOW: Final = Severity.CRITICAL
 
 
 def _escalated(incident: Incident, tuning: Tuning) -> bool:
-    """Whether the incident is more than the rules alone say: a chain of stages, or an AI that is
-    sure it is an attack or a compromise. Such an incident is never unsure and never set aside."""
-    return stages.is_chain(incident.stages or []) or (
-        incident.ai_class in calls.LOUD
-        and incident.ai_confidence is not None
-        and incident.ai_confidence >= tuning.threat_from
+    """Whether the incident is more than the rules alone say: a chain of stages, a step of a chain
+    across two devices (``app/threats/chains.py``), or an AI that is sure it is an attack or a
+    compromise. Such an incident is never unsure and never set aside."""
+    return (
+        stages.is_chain(incident.stages or [])
+        or incident.chain_id is not None
+        or (
+            incident.ai_class in calls.LOUD
+            and incident.ai_confidence is not None
+            and incident.ai_confidence >= tuning.threat_from
+        )
     )
 
 
@@ -159,6 +166,7 @@ def _escalated_clause(tuning: Tuning) -> ColumnElement[bool]:
     return or_(
         Incident.stages.contains([stages.FOOTHOLD]),
         func.cardinality(Incident.stages) > 1,
+        Incident.chain_id.is_not(None),
         and_(_KIND.in_(calls.LOUD), tuning.threat_from <= _SURE),
     )
 

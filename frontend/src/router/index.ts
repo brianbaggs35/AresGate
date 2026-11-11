@@ -59,6 +59,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Threats' },
       },
       {
+        path: String.raw`chains/:id(\d+)`,
+        name: 'chain',
+        component: () => import('@/views/ChainView.vue'),
+        meta: { title: 'Threats' },
+      },
+      {
         path: String.raw`kinds/:id(\d+)`,
         name: 'family',
         component: () => import('@/views/FamilyView.vue'),

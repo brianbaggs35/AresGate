@@ -12,6 +12,7 @@ from app.api import (
     assets,
     audit,
     auth,
+    chains,
     collectors,
     credentials,
     dashboard,
@@ -60,6 +61,7 @@ api_router.include_router(logs.router)
 api_router.include_router(searches.router)
 api_router.include_router(verdicts.router)
 api_router.include_router(noise.router)
+api_router.include_router(chains.router)
 api_router.include_router(threats.router)
 api_router.include_router(threat_intel.router)
 api_router.include_router(threat_settings.router)

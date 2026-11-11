@@ -1,5 +1,13 @@
 import * as client from '@/api/client'
-import { callFamily, fetchFamilies, fetchFamily, fetchOverview, judgeFamily } from '@/api/threats'
+import {
+  callFamily,
+  fetchChain,
+  fetchChains,
+  fetchFamilies,
+  fetchFamily,
+  fetchOverview,
+  judgeFamily,
+} from '@/api/threats'
 
 describe('threats', () => {
   it('asks for the overview of a window', async () => {
@@ -62,5 +70,28 @@ describe('threats', () => {
 
     await expect(judgeFamily(3, 'a-token')).resolves.toEqual({ ok: true })
     expect(post).toHaveBeenCalledWith('/threats/families/3/judge', {}, 'a-token')
+  })
+
+  it('lists the chains when asked for nothing in particular', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [] })
+
+    await fetchChains()
+
+    expect(get).toHaveBeenCalledWith('/threats/chains')
+  })
+
+  it('narrows the chains by what is asked for', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0, items: [] })
+
+    await fetchChains({ confirmed: false, limit: 6, offset: 12 })
+
+    expect(get).toHaveBeenCalledWith('/threats/chains?confirmed=false&limit=6&offset=12')
+  })
+
+  it('reads one chain', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ id: 4 })
+
+    await expect(fetchChain(4)).resolves.toEqual({ id: 4 })
+    expect(get).toHaveBeenCalledWith('/threats/chains/4')
   })
 })

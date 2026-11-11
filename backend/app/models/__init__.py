@@ -46,6 +46,7 @@ from app.models.events import Event, EventRetention
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
 from app.models.incidents import (
     Incident,
+    IncidentChain,
     IncidentFamily,
     IncidentSignal,
     NoiseSettings,
@@ -100,6 +101,7 @@ __all__ = [
     "EventRetention",
     "HostListing",
     "Incident",
+    "IncidentChain",
     "IncidentFamily",
     "IncidentSignal",
     "IntegrationConnection",

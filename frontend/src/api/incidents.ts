@@ -159,6 +159,12 @@ export interface Incident {
   /** The kind of incident it is, and what is thought of it by you or an AI. */
   family_id: number | null
   call: Call | null
+  /** The chain it is a step of: an attack across two devices (an exploit at one, then that
+   * device calling out), which step it is, whether the link was seen or only inferred, and why. */
+  chain_id: number | null
+  chain_role: 'attacker' | 'callout' | null
+  chain_link: 'confirmed' | 'inferred' | null
+  chain_reason: string | null
 }
 
 /** What is made of an incident beyond the rules, and whose word it is. */

@@ -8,6 +8,7 @@ import { WINDOWS, type DashboardWindow } from '@/api/dashboard'
 import { fetchIncidents, LANES, type Incident, type Lane } from '@/api/incidents'
 import { fetchOverview, type Overview } from '@/api/threats'
 import AppPage from '@/components/AppPage.vue'
+import ChainsSection from '@/components/ChainsSection.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FamilyCard from '@/components/FamilyCard.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
@@ -193,6 +194,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       <v-alert v-if="loadError" type="warning" variant="tonal" data-test="threats-stale">
         {{ loadError }} What is shown is from earlier.
       </v-alert>
+
+      <ChainsSection />
 
       <SectionCard
         title="From reports to threats"

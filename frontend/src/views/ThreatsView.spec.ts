@@ -3,7 +3,7 @@ import * as incidentsApi from '@/api/incidents'
 import * as threatsApi from '@/api/threats'
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { family, funnel, overview } from '@/test/threats'
+import { chain, family, funnel, overview } from '@/test/threats'
 import ThreatsView from '@/views/ThreatsView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -12,22 +12,44 @@ interface Options {
   found?: threatsApi.Overview | Error
   route?: string
   incidents?: incidentsApi.IncidentPage
+  chains?: threatsApi.Chain[]
 }
 
-async function open({ found = overview(), route = '/threats', incidents }: Options = {}) {
+async function open({
+  found = overview(),
+  route = '/threats',
+  incidents,
+  chains = [],
+}: Options = {}) {
   const fetchOverview = vi.spyOn(threatsApi, 'fetchOverview')
   if (found instanceof Error) fetchOverview.mockRejectedValue(found)
   else fetchOverview.mockResolvedValue(found)
   const fetchIncidents = vi
     .spyOn(incidentsApi, 'fetchIncidents')
     .mockResolvedValue(incidents ?? page([incident({ id: 1 }), incident({ id: 2 })]))
+  const fetchChains = vi
+    .spyOn(threatsApi, 'fetchChains')
+    .mockResolvedValue({ total: chains.length, items: chains })
   const mounted = await mountWithPlugins(ThreatsView, { signedIn: 'admin', withApp: true, route })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
-  return { ...mounted, fetchOverview, fetchIncidents, find }
+  return { ...mounted, fetchOverview, fetchIncidents, fetchChains, find }
 }
 
 describe('ThreatsView', () => {
+  it('shows the attacks across two devices above the funnel, when there are any', async () => {
+    const { find, wrapper } = await open({ chains: [chain()] })
+
+    expect(find('chains').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="chain-card"]')).toHaveLength(1)
+  })
+
+  it('shows none of that when there are none', async () => {
+    const { find } = await open()
+
+    expect(find('chains').exists()).toBe(false)
+  })
+
   it('shows a skeleton until the answer arrives', async () => {
     vi.spyOn(threatsApi, 'fetchOverview').mockReturnValue(new Promise(() => {}))
     const { wrapper } = await mountWithPlugins(ThreatsView, {
