@@ -47,6 +47,10 @@ class Template:
     setup: tuple[str, ...] = ()
 
 
+# The setup step every kind that asks the AI shares.
+CHOOSE_AI: Final = "Choose the AI the agents ask under Settings > Agents."
+
+
 THREAT_HUNTER: Final = Template(
     key="threat_hunter",
     name="Threat hunter",
@@ -115,7 +119,7 @@ INTELLIGENCE_ANALYST: Final = Template(
         "Make a free VirusTotal account and copy its API key from your profile.",
         "Add the key under Integrations > VirusTotal. AresGate asks about addresses itself, within "
         "the free key's daily limit; this agent only reads what it kept.",
-        "Choose the AI the agents ask under Settings > Agents.",
+        CHOOSE_AI,
     ),
 )
 HEALTH_WATCH: Final = Template(
@@ -139,7 +143,7 @@ HEALTH_WATCH: Final = Template(
     setup=(
         "Connect the integrations you use under Integrations: this agent watches whichever are "
         "connected.",
-        "Choose the AI the agents ask under Settings > Agents.",
+        CHOOSE_AI,
     ),
 )
 EXPOSURE_SCANNER: Final = Template(
@@ -274,7 +278,7 @@ ROGUE_DEVICE_WATCH: Final = Template(
     setup=(
         "Connect OPNsense or ntopng under Integrations: they tell AresGate which devices are on "
         "the network, and when each first appeared.",
-        "Choose the AI the agents ask under Settings > Agents.",
+        CHOOSE_AI,
         "Start it once by hand. Devices already there are not new, so it reports only what joins "
         "from then on.",
     ),
@@ -308,7 +312,7 @@ FIREWALL_REVIEWER: Final = Template(
     setup=(
         "Connect OPNsense under Integrations and turn on its firewall log: this agent reads "
         "what the firewall refused.",
-        "Choose the AI the agents ask under Settings > Agents.",
+        CHOOSE_AI,
     ),
 )
 PENETRATION_TEST_PLANNER: Final = Template(
