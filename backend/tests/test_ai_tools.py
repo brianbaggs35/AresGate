@@ -562,7 +562,8 @@ class TestNewDevices:
                 device_id=fresh.id, address=HOME, first_seen_at=NOW - HOUR, last_seen_at=NOW
             )
         )
-        assert old.id and bare.id
+        assert old.id
+        assert bare.id
         session.commit()
 
         found = run(session, "new_devices")
