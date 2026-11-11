@@ -80,6 +80,8 @@ class Finding(TypedDict):
     title: str
     detail: str
     cites: list[dict[str, str]]
+    # Whether the agent's last run reported the same thing: ``new`` or ``ongoing``.
+    status: str
 
 
 class State(TypedDict):
@@ -99,6 +101,16 @@ def initial() -> State:
 
 
 @dataclass(frozen=True)
+class Previous:
+    """What an agent's last run that finished reported, so that the next one can say what has
+    changed instead of saying it all again."""
+
+    at: datetime
+    summary: str
+    findings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class Snapshot:
     """What a run needs to know of its agent, read before it starts."""
 
@@ -108,6 +120,7 @@ class Snapshot:
     goal: str
     allow_active: bool
     template: Template
+    previous: Previous | None = None
 
 
 @dataclass(frozen=True)
@@ -217,6 +230,27 @@ def _evidence(redactor: Redactor, ran: Sequence[Entry]) -> list[str]:
     return [redactor.evidence(entry["label"], entry["lines"]) for entry in ran]
 
 
+def _memory(redactor: Redactor, previous: Previous, now: datetime) -> str:
+    """What the last run said, for this one to build on. Its words are written by a model, so they
+    go through the redactor like everything else that is shown to a provider."""
+    hours = max(0, int((now - previous.at).total_seconds() // 3600))
+    lines = [
+        f"Your last run was {hours} hours ago and reported: "
+        f"{redactor.text(previous.summary, MAX_SUMMARY) or 'nothing'}"
+    ]
+    if previous.findings:
+        lines.append("It raised:")
+        lines += [
+            f"- {severity}: {redactor.text(title, MAX_TITLE)}"
+            for severity, title in previous.findings
+        ]
+    lines.append(
+        "Say what has changed since. Report something again only if it is still true and still "
+        "matters, and say that it is ongoing; do not repeat what is settled."
+    )
+    return "\n".join(lines)
+
+
 def question_for(
     snapshot: Snapshot, ran: Sequence[Entry], names: Sequence[str], now: datetime, *, last: bool
 ) -> Question:
@@ -226,6 +260,8 @@ def question_for(
             parts.append(
                 f"The owner's instructions to you: {redactor.text(snapshot.goal, MAX_GOAL)}"
             )
+        if snapshot.previous is not None:
+            parts.append(_memory(redactor, snapshot.previous, now))
         parts += _evidence(redactor, ran)
         if last:
             parts.append(NO_MORE)
@@ -334,6 +370,18 @@ def parse(text: str, template: Template) -> Reading | None:
         findings=findings[:MAX_FINDINGS],
         lookups=lookups[:MAX_LOOKUPS],
     )
+
+
+def same(title: str) -> str:
+    """What makes two findings the same: their words, not their capitals or punctuation."""
+    return " ".join(re.findall(r"[a-z0-9]+", title.lower()))
+
+
+def status_of(title: str, previous: Previous | None) -> str:
+    """Whether the agent's last run reported this already."""
+    if previous is not None and any(same(title) == same(old) for _, old in previous.findings):
+        return "ongoing"
+    return "new"
 
 
 def cited(names: list[str], ran: Sequence[Entry]) -> list[dict[str, str]]:
@@ -500,7 +548,13 @@ def build(work: Work) -> object:
             else [item for item in reading.lookups if item.tool + label(item) not in done]
         )
         findings = [
-            Finding(severity=severity, title=title, detail=detail, cites=cited(cites, state["ran"]))
+            Finding(
+                severity=severity,
+                title=title,
+                detail=detail,
+                cites=cited(cites, state["ran"]),
+                status=status_of(title, work.snapshot.previous),
+            )
             for severity, title, detail, cites in reading.findings
         ]
         return {
@@ -556,6 +610,7 @@ def _found_by_testing(ran: Sequence[Entry]) -> list[Finding]:
             title=f"{hit['service']} is open on {hit['device']}",
             detail=str(hit["why"]),
             cites=[],
+            status="new",
         )
         for entry in ran
         for hit in entry["hits"]

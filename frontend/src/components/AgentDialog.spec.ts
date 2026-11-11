@@ -6,7 +6,7 @@ import type { Agent, Template } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentDialog from '@/components/AgentDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { SCANNER, agent, template } from '@/test/agents'
+import { SCANNER, agent, check, template } from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 const TOKEN = 'a-security-token'
@@ -100,6 +100,22 @@ describe('AgentDialog', () => {
       expect(at('dialog-about')!.textContent).toContain('Reads the incidents')
       expect(at('dialog-interval')).not.toBeNull()
       expect(at('dialog-remove')).toBeNull()
+    })
+
+    it('says what the kind needs and how to set it up, and follows the kind picked', async () => {
+      await open({
+        templates: [template({ ready: false, checks: [check({ ok: false })] }), ANALYST, SCANNER],
+      })
+
+      expect(at('setup-title')!.textContent.trim()).toBe('It needs a little setup first')
+      expect(at('setup-link')).not.toBeNull()
+
+      document.body
+        .querySelectorAll<HTMLInputElement>('.v-overlay--active input[type="radio"]')[1]!
+        .click()
+      await flushPromises()
+
+      expect(at('setup-title')!.textContent.trim()).toBe('Everything it needs is set up')
     })
 
     it('starts as the kind it was asked to', async () => {

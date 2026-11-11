@@ -20,6 +20,19 @@ Every release's notes are here, newest first. The format follows
   that was cached and a chart of each day, a run says what it used, each agent's card shows its
   30-day cost, and the Agents page adds up what they all cost against their limits.
 
+- **Agents remember their last run.** Each run is told what the agent's last finished run
+  reported, so it says what has changed instead of saying it all again, and every finding is
+  marked *New* or *Still open*. What the last run said goes to the provider through the same
+  redaction as everything else.
+- **Four more things agents can look at**, which the assistant can ask for too: devices that
+  appeared recently, the alerts reported most (and how widely), the ports the firewall refused
+  most connections to, and open incidents that say the same thing about different subjects. The
+  threat hunter and the intelligence analyst use them.
+- **Each kind of agent says what it needs, and how to set it up.** The agent's page, the sheet
+  that makes one and the Agents page show whether the AI, an alert source, VirusTotal or known
+  devices are there, what to do when one is not and a link to where, and the steps to set the kind
+  up from the start.
+
 ### Fixed
 
 - **Two pages asking for the AI's settings at once no longer fail the first time.** The settings

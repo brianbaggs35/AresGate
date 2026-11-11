@@ -12,7 +12,7 @@ from app.ai import tools
 from app.ai.redaction import Level, Redactor
 from app.ai.tools import Args
 from app.config import Settings
-from app.events.event import Severity
+from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.intel import store as intel_store
 from app.intel import subjects, virustotal
@@ -82,6 +82,10 @@ class TestTheList:
             "device",
             "integrations",
             "reputation",
+            "new_devices",
+            "noisy_alerts",
+            "targeted_ports",
+            "repeated_incidents",
         )
         assert all(tools.by_name(name) is not None for name in tools.names())
         assert tools.by_name("delete_everything") is None
@@ -529,3 +533,175 @@ class TestReputation:
         text = "\n".join(found.lines)
         assert str(PUBLIC) not in text
         assert "EXT_" in text
+
+
+class TestNewDevices:
+    def seen(self, session: Session, mac: str, first: object, **changes: object) -> Device:
+        fields: dict[str, object] = {
+            "mac": mac,
+            "hostname": None,
+            "first_seen_at": first,
+            "last_seen_at": NOW,
+            **changes,
+        }
+        found = Device(**fields)
+        session.add(found)
+        session.flush()
+        return found
+
+    def test_devices_first_seen_within_the_hours_are_listed_newest_first(
+        self, session: Session
+    ) -> None:
+        old = self.seen(session, "aa:bb:cc:00:00:01", NOW - 30 * HOUR, hostname="nas")
+        fresh = self.seen(
+            session, "aa:bb:cc:00:00:02", NOW - 2 * HOUR, hostname="camera", vendor="Acme"
+        )
+        bare = self.seen(session, "aa:bb:cc:00:00:03", NOW - HOUR)
+        session.add(
+            DeviceAddress(
+                device_id=fresh.id, address=HOME, first_seen_at=NOW - HOUR, last_seen_at=NOW
+            )
+        )
+        assert old.id and bare.id
+        session.commit()
+
+        found = run(session, "new_devices")
+
+        assert found.summary == "2 new devices"
+        assert found.lines == [
+            f"unnamed (aa:bb:cc:00:00:03); addresses: none known; first seen "
+            f"{NOW - HOUR:%Y-%m-%d %H:%M} UTC",
+            f"camera (aa:bb:cc:00:00:02), made by Acme; addresses: {HOME}; first seen "
+            f"{NOW - 2 * HOUR:%Y-%m-%d %H:%M} UTC",
+        ]
+        assert run(session, "new_devices", Args(hours=48, limit=1)).summary == "1 new device"
+
+    def test_with_none_it_says_so(self, session: Session) -> None:
+        found = run(session, "new_devices", Args(hours=6))
+
+        assert found.lines == ["No new device appeared in the last 6 hours."]
+        assert found.summary == "no new devices in 6 hours"
+
+    def test_a_provider_that_may_not_see_addresses_is_shown_stand_ins(
+        self, session: Session
+    ) -> None:
+        fresh = self.seen(session, "aa:bb:cc:00:00:02", NOW - HOUR, hostname="camera")
+        session.add(
+            DeviceAddress(
+                device_id=fresh.id, address=HOME, first_seen_at=NOW - HOUR, last_seen_at=NOW
+            )
+        )
+        session.commit()
+
+        [line] = run(session, "new_devices", level=Level.STRICT).lines
+
+        assert str(HOME) not in line
+        assert "camera" not in line
+
+
+class TestNoisyAlerts:
+    def test_the_alert_reported_most_comes_first_with_how_widely_it_spread(
+        self, session: Session, settings: Settings
+    ) -> None:
+        record_events(
+            session,
+            settings,
+            [
+                new_event(
+                    severity=Severity.HIGH,
+                    occurred_at=NOW - HOUR,
+                    identity=(f"a{number}",),
+                    signature="ET SCAN ssh",
+                    src_address=f"198.51.100.{number}",
+                    dst_address=DEVICE,
+                )
+                for number in range(1, 4)
+            ]
+            + [new_event(occurred_at=NOW - HOUR, identity=("b",), signature=None)],
+            NOW,
+        )
+        session.commit()
+
+        found = run(session, "noisy_alerts")
+
+        assert found.summary == "2 repeated alerts"
+        assert found.lines[0] == "wazuh high: ET SCAN ssh, 3 times from 3 addresses to 1 address"
+        assert found.lines[1].startswith("wazuh medium: an alert with no name, 1 time from")
+
+    def test_with_none_it_says_so(self, session: Session) -> None:
+        found = run(session, "noisy_alerts", Args(hours=3))
+
+        assert found.lines == ["There were no alerts in the last 3 hours."]
+        assert found.summary == "no alerts in 3 hours"
+
+
+class TestTargetedPorts:
+    def test_the_port_refused_most_comes_first_with_how_many_addresses_tried_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        def blocked(number: int, port: int | None, protocol: str | None, who: str) -> NewEvent:
+            return new_event(
+                source="opnsense",
+                kind="firewall",
+                severity=Severity.LOW,
+                src_address=who,
+                dst_port=port,
+                protocol=protocol,
+                occurred_at=NOW - HOUR,
+                identity=(f"f{number}",),
+            )
+
+        record_events(
+            session,
+            settings,
+            [
+                blocked(1, 22, "tcp", "198.51.100.1"),
+                blocked(2, 22, "tcp", "198.51.100.2"),
+                blocked(3, 22, "tcp", "198.51.100.2"),
+                blocked(4, 3389, None, "198.51.100.3"),
+                blocked(5, None, "udp", "198.51.100.4"),
+            ],
+            NOW,
+        )
+        session.commit()
+
+        found = run(session, "targeted_ports")
+
+        assert found.lines == [
+            "port 22/tcp: 3 connections refused from 2 addresses",
+            "port 3389/any: 1 connection refused from 1 address",
+        ]
+        assert found.summary == "2 targeted ports"
+
+    def test_with_none_it_says_so(self, session: Session) -> None:
+        found = run(session, "targeted_ports", Args(hours=2))
+
+        assert found.lines == ["The firewall refused nothing aimed at a port in the last 2 hours."]
+        assert found.summary == "no ports targeted in 2 hours"
+
+
+class TestRepeatedIncidents:
+    def test_open_incidents_that_say_the_same_thing_are_grouped(self, session: Session) -> None:
+        first = incident(session, subject="198.51.100.1", title="Scanning ssh")
+        second = incident(session, subject="198.51.100.2", title="Scanning ssh", severity=3)
+        incident(session, subject="198.51.100.3", title="Something else")
+        incident(session, subject="198.51.100.4", title="Scanning ssh", status="resolved")
+        session.commit()
+
+        found = run(session, "repeated_incidents")
+
+        assert found.lines == [
+            f'2 open incidents say "Scanning ssh" (up to high): '
+            f"[incident {first.id}], [incident {second.id}]"
+        ]
+        assert [ref.key for ref in found.refs] == [str(first.id), str(second.id)]
+        assert found.summary == "1 repeated incident"
+
+    def test_with_none_it_says_so(self, session: Session) -> None:
+        incident(session, title="Only one")
+        session.commit()
+
+        found = run(session, "repeated_incidents")
+
+        assert found.lines == ["No open incidents repeat each other."]
+        assert found.summary == "no repeated incidents"

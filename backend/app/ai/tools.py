@@ -18,12 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from sqlalchemy import ColumnElement, false, or_, select
+from sqlalchemy import ColumnElement, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ai import triage
 from app.ai.redaction import Redactor, read_address, read_mac
-from app.dashboard import Window, recent_alerts, top_blocked_sources
+from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
 from app.incidents import queries
 from app.incidents.verdicts import MUTING
@@ -35,6 +35,7 @@ from app.models import (
     CollectorHealth,
     Device,
     DeviceAddress,
+    Event,
     Incident,
     IntegrationConnection,
 )
@@ -346,6 +347,133 @@ def integrations(db: Session, redactor: Redactor, args: Args, now: datetime) -> 
     )
 
 
+# -- what is new, noisy or repeated
+
+
+def new_devices(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The devices seen on the home network for the first time within some hours."""
+    hours = _between(args.hours, DEFAULT_HOURS, 1, MAX_HOURS)
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    found = db.scalars(
+        select(Device)
+        .where(Device.first_seen_at >= now - timedelta(hours=hours))
+        .order_by(Device.first_seen_at.desc(), Device.id)
+        .limit(limit)
+    ).all()
+    if not found:
+        return Found(
+            [f"No new device appeared in the last {_plural(hours, 'hour')}."],
+            [],
+            f"no new devices in {_plural(hours, 'hour')}",
+        )
+    lines: list[str] = []
+    for item in found:
+        name = redactor.name(item.hostname) if item.hostname else "unnamed"
+        maker = f", made by {redactor.text(item.vendor, 60)}" if item.vendor else ""
+        addresses = db.scalars(
+            select(DeviceAddress.address)
+            .where(DeviceAddress.device_id == item.id)
+            .order_by(DeviceAddress.last_seen_at.desc())
+            .limit(3)
+        ).all()
+        where = ", ".join(redactor.address(str(address)) for address in addresses) or "none known"
+        lines.append(
+            f"{name} ({redactor.mac(str(item.mac))}){maker}; addresses: {where}; first seen "
+            f"{_when(item.first_seen_at)}"
+        )
+    return Found(lines, [], _plural(len(found), "new device"))
+
+
+def noisy_alerts(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The alerts that were reported most, with how many different addresses sent and received
+    them: what is only noise, and what is a campaign."""
+    window, hours = _window(now, args.hours)
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    rows = noisy_signatures(db, window, limit)
+    if not rows:
+        return Found(
+            [f"There were no alerts in the last {_plural(hours, 'hour')}."],
+            [],
+            f"no alerts in {_plural(hours, 'hour')}",
+        )
+    lines = [
+        f"{row.source} {_severity(row.severity.value)}: "
+        f"{redactor.text(row.signature or 'an alert with no name', 200)}, "
+        f"{_plural(row.count, 'time')} from "
+        f"{_plural(row.from_addresses, 'address', 'addresses')} to "
+        f"{_plural(row.to_addresses, 'address', 'addresses')}"
+        for row in rows
+    ]
+    return Found(lines, [], _plural(len(rows), "repeated alert"))
+
+
+def targeted_ports(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The ports on the home network that the firewall refused connections to most, and from how
+    many addresses."""
+    window, hours = _window(now, args.hours)
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    count = func.count().label("count")
+    rows = db.execute(
+        select(Event.dst_port, Event.protocol, count, func.count(Event.src_address.distinct()))
+        .where(
+            IS_BLOCK,
+            Event.dst_port.is_not(None),
+            Event.occurred_at >= window.start,
+            Event.occurred_at < window.end,
+        )
+        .group_by(Event.dst_port, Event.protocol)
+        .order_by(count.desc(), Event.dst_port)
+        .limit(limit)
+    ).all()
+    if not rows:
+        return Found(
+            [f"The firewall refused nothing aimed at a port in the last {_plural(hours, 'hour')}."],
+            [],
+            f"no ports targeted in {_plural(hours, 'hour')}",
+        )
+    lines = [
+        f"port {port}/{protocol or 'any'}: {_plural(total, 'connection')} refused from "
+        f"{_plural(sources, 'address', 'addresses')}"
+        for port, protocol, total, sources in rows
+    ]
+    return Found(lines, [], _plural(len(rows), "targeted port"))
+
+
+def repeated_incidents(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The open incidents that say the same thing about different subjects, which are probably one
+    campaign or one noisy rule, and so are better dealt with together."""
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    count = func.count().label("count")
+    groups = db.execute(
+        select(Incident.title, count, func.min(Incident.severity), func.max(Incident.severity))
+        .where(
+            Incident.status.in_(ACTIVE),
+            or_(Incident.verdict.is_(None), Incident.verdict.not_in(MUTING)),
+        )
+        .group_by(Incident.title)
+        .having(count > 1)
+        .order_by(count.desc(), Incident.title)
+        .limit(limit)
+    ).all()
+    if not groups:
+        return Found(["No open incidents repeat each other."], [], "no repeated incidents")
+    lines: list[str] = []
+    refs: list[Ref] = []
+    for title, total, _low, high in groups:
+        ids = db.scalars(
+            select(Incident.id)
+            .where(Incident.title == title, Incident.status.in_(ACTIVE))
+            .order_by(Incident.id)
+            .limit(MAX_ITEMS)
+        ).all()
+        refs += [Ref("incident", str(item), f"Incident {item}") for item in ids]
+        lines.append(
+            f'{_plural(total, "open incident")} say "{redactor.text(title, 160)}" (up to '
+            f"{_severity(high)}): " + ", ".join(f"[incident {item}]" for item in ids)
+        )
+    return Found(lines, refs, _plural(len(groups), "repeated incident"))
+
+
 TOOLS: Final[Sequence[Tool]] = (
     Tool(
         "open_incidents",
@@ -388,6 +516,30 @@ TOOLS: Final[Sequence[Tool]] = (
         "What VirusTotal says of one address on the internet: how many security engines flag "
         "it, and who owns it. Uses: name, for the address.",
         reputation,
+    ),
+    Tool(
+        "new_devices",
+        "Devices that appeared on the home network for the first time recently. Uses: hours "
+        "(1-168, default 24), limit (1-10, default 5).",
+        new_devices,
+    ),
+    Tool(
+        "noisy_alerts",
+        "The alerts reported most, with how many addresses sent and received them. Uses: hours "
+        "(1-168, default 24), limit (1-10, default 5).",
+        noisy_alerts,
+    ),
+    Tool(
+        "targeted_ports",
+        "The ports on the home network that the firewall refused most connections to, and from "
+        "how many addresses. Uses: hours (1-168, default 24), limit (1-10, default 5).",
+        targeted_ports,
+    ),
+    Tool(
+        "repeated_incidents",
+        "Open incidents that say the same thing about different subjects, so are one campaign or "
+        "one noisy rule. Uses: limit (1-10, default 5).",
+        repeated_incidents,
     ),
 )
 

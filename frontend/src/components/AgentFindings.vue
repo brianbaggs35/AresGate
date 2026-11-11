@@ -27,6 +27,14 @@ const ordered = computed(() =>
     <li v-for="(finding, at) in ordered" :key="at" class="finding" data-test="finding">
       <div class="finding__head">
         <SeverityChip :severity="severityOf(finding.severity)" />
+        <v-chip
+          size="small"
+          variant="outlined"
+          :color="finding.status === 'ongoing' ? undefined : 'primary'"
+          data-test="finding-status"
+        >
+          {{ finding.status === 'ongoing' ? 'Still open' : 'New' }}
+        </v-chip>
         <h3 class="text-title-medium finding__title" data-test="finding-title">
           {{ finding.title }}
         </h3>

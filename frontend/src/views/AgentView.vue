@@ -26,6 +26,7 @@ import AgentDialog from '@/components/AgentDialog.vue'
 import AgentFindings from '@/components/AgentFindings.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
 import AgentTimeline from '@/components/AgentTimeline.vue'
+import AgentSetup from '@/components/AgentSetup.vue'
 import AgentUsage from '@/components/AgentUsage.vue'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -420,6 +421,8 @@ onMounted(() => load())
               </dd>
             </div>
           </dl>
+          <v-divider class="my-4" />
+          <AgentSetup :template="agent.template_info" />
         </v-card>
       </section>
 

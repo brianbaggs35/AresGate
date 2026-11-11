@@ -12,6 +12,7 @@ import {
 } from '@/api/agents'
 import { errorMessage } from '@/api/client'
 import { INTERVALS, agentIcon } from '@/agents'
+import AgentSetup from '@/components/AgentSetup.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useKeyboardReturn } from '@/dialog'
 import { useSessionStore } from '@/stores/session'
@@ -215,6 +216,8 @@ async function remove() {
         >
           {{ template.description }}
         </p>
+
+        <AgentSetup v-if="template" :template="template" />
 
         <v-text-field
           v-model="name"

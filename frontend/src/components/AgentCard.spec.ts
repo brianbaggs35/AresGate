@@ -125,4 +125,15 @@ describe('AgentCard', () => {
 
     expect(find('agent-cost').exists()).toBe(false)
   })
+
+  it('says when its kind needs setting up, and not when it does not', async () => {
+    const ready = await open()
+    expect(ready.find('agent-needs-setup').exists()).toBe(false)
+
+    const mounted = await mountWithPlugins(AgentCard, { props: { agent: agent(), ready: false } })
+
+    expect(mounted.wrapper.find('[data-test="agent-needs-setup"]').text()).toBe(
+      'It needs a little setup first.',
+    )
+  })
 })

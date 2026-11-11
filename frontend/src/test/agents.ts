@@ -1,5 +1,6 @@
 import type {
   Agent,
+  Check,
   AgentDetail,
   AgentSettings,
   Edge,
@@ -26,6 +27,18 @@ export const template = (overrides: Partial<Template> = {}): Template => ({
   interval_minutes: 60,
   active: false,
   tools: ['open_incidents'],
+  checks: [],
+  ready: true,
+  setup: ['Connect an integration.', 'Start it once by hand.'],
+  ...overrides,
+})
+
+export const check = (overrides: Partial<Check> = {}): Check => ({
+  key: 'intel',
+  ok: true,
+  text: 'VirusTotal connected, for what is known about addresses',
+  fix: 'Add a free VirusTotal key.',
+  link: '/integrations/virustotal',
   ...overrides,
 })
 
@@ -165,6 +178,7 @@ export const finding = (overrides: Partial<Finding> = {}): Finding => ({
   title: 'A scan got further than usual',
   detail: 'Check the firewall rule for port 22.',
   cites: [{ kind: 'incident', key: '4', label: 'Incident 4' }],
+  status: 'new',
   ...overrides,
 })
 
