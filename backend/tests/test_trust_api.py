@@ -146,11 +146,13 @@ class TestOneDecision:
     ) -> None:
         threat = give(client, csrf_token, verdict="threat", address=ATTACKER).json()
 
-        assert client.get(f"{BASE}/{threat['id']}").status_code == 404
-        assert client.get(f"{BASE}/99").status_code == 404
-        assert (
-            client.delete(f"{BASE}/{threat['id']}", headers=headers(csrf_token)).status_code == 404
-        )
+        read = client.get(f"{BASE}/{threat['id']}")
+        missing = client.get(f"{BASE}/99")
+        removed = client.delete(f"{BASE}/{threat['id']}", headers=headers(csrf_token))
+
+        assert read.status_code == 404
+        assert missing.status_code == 404
+        assert removed.status_code == 404
 
 
 class TestChangingIt:
