@@ -21,6 +21,15 @@ Every release's notes are here, newest first. The format follows
   firewall compare with the days before, which ports were aimed at far more than usual or for the
   first time, and how many addresses are new.
 
+- **Agents say much more about what they found and did.** Each finding now says what to do about
+  it, how sure the agent is (not very sure, fairly sure or sure) and how long it has been reported
+  (since when, and in how many runs in a row). A run says what is new, what is still open and what
+  the run before reported that this one no longer does. An agent's page draws what it found in
+  each of its last runs by how serious, and a step of a run links each incident it looked at,
+  says how long it took and how much it saw that was not kept. The new agents' reports read the
+  same way: the daily briefing is labelled as one, and mission control shows what to do next to
+  each finding.
+
 ### Fixed
 
 - **Giving a verdict on an incident is quick again.** Saying what you think of an incident, changing

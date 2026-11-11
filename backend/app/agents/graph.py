@@ -22,7 +22,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Annotated, Final, TypedDict, cast
+from typing import Annotated, Final, NamedTuple, TypedDict, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -49,11 +49,13 @@ ACTIVE: Final = (SCAN, READ)
 # has to answer with what it has.
 MAX_ROUNDS: Final = 3
 MAX_LOOKUPS: Final = 4
-MAX_LINES: Final = 14
+MAX_LINES: Final = 40
 MAX_FINDINGS: Final = 12
 MAX_SUMMARY: Final = 1500
 MAX_TITLE: Final = 160
 MAX_DETAIL: Final = 800
+MAX_ACTION: Final = 400
+CONFIDENCE: Final = ("low", "medium", "high")
 MAX_GOAL: Final = 2000
 MAX_TOKENS: Final = 1800
 MAX_NAMES: Final = 500
@@ -84,6 +86,9 @@ class Finding(TypedDict):
     title: str
     detail: str
     cites: list[dict[str, str]]
+    # What the owner should do about it, and how sure the agent is: low, medium or high.
+    action: str
+    confidence: str
     # Whether the agent's last run reported the same thing: ``new`` or ``ongoing``.
     status: str
 
@@ -207,9 +212,11 @@ worth the owner's attention.
 
 "summary" is your report in a few short sentences, the most important thing first. "findings" \
 are the things worth the owner's attention, each with a severity (info, low, medium, high or \
-critical), a short title and what to do about it; leave it empty when there is nothing. Write an \
-incident as [incident 3]. In a finding's "cites" list what it is based on, as "incident 3" or \
-"integration opnsense", only things that appeared in what you were given.
+critical), a short title, "detail" (what you saw and why it matters), "action" (the one thing to \
+do about it, or an empty string when there is nothing to do) and "confidence" (low, medium or \
+high: how sure you are, given only what you were shown); leave "findings" empty when there is \
+nothing. Write an incident as [incident 3]. In a finding's "cites" list what it is based on, as \
+"incident 3" or "integration opnsense", only things that appeared in what you were given.
 
 {tidy}Answer only with the JSON you are asked for.\
 """
@@ -236,8 +243,10 @@ def schema(template: Template) -> Mapping[str, object]:
             "title": {"type": "string"},
             "detail": {"type": "string"},
             "cites": {"type": "array", "items": {"type": "string"}},
+            "action": {"type": "string"},
+            "confidence": {"type": "string", "enum": list(CONFIDENCE)},
         },
-        "required": ["severity", "title", "detail", "cites"],
+        "required": ["severity", "title", "detail", "cites", "action", "confidence"],
     }
     properties: dict[str, object] = {
         "summary": {"type": "string"},
@@ -311,10 +320,21 @@ def question_for(
 # -- what the model said
 
 
+class Raised(NamedTuple):
+    """One finding as the model wrote it, before what it cites is checked."""
+
+    severity: str
+    title: str
+    detail: str
+    cites: list[str]
+    action: str
+    confidence: str
+
+
 @dataclass(frozen=True)
 class Reading:
     summary: str
-    findings: list[tuple[str, str, str, list[str]]]
+    findings: list[Raised]
     lookups: list[Lookup]
     rejects: list[str] = field(default_factory=list[str])
 
@@ -364,7 +384,7 @@ def _lookup(item: object, template: Template) -> Lookup | None:
     )
 
 
-def _finding(item: object) -> tuple[str, str, str, list[str]] | None:
+def _finding(item: object) -> Raised | None:
     fields = _fields(item)
     if fields is None:
         return None
@@ -374,11 +394,15 @@ def _finding(item: object) -> tuple[str, str, str, list[str]] | None:
     severity = fields.get("severity")
     detail = fields.get("detail")
     cites = fields.get("cites")
-    return (
+    action = fields.get("action")
+    confidence = fields.get("confidence")
+    return Raised(
         severity if isinstance(severity, str) and severity in probe.SEVERITIES else "info",
         audit.clean(title, MAX_TITLE) or "",
         (audit.clean(detail, MAX_DETAIL) or "") if isinstance(detail, str) else "",
         [cite for cite in _items(cites) if isinstance(cite, str)],
+        (audit.clean(action, MAX_ACTION) or "") if isinstance(action, str) else "",
+        confidence if isinstance(confidence, str) and confidence in CONFIDENCE else "medium",
     )
 
 
@@ -516,6 +540,8 @@ def _step_of(entry: Entry) -> Step:
             "tool": entry["tool"],
             "summary": entry["summary"],
             "lines": entry["lines"][:MAX_LINES],
+            "more": max(0, len(entry["lines"]) - MAX_LINES),
+            "refs": entry["refs"][:MAX_LINES],
         },
     )
 
@@ -626,13 +652,15 @@ def _findings_of(
     """What the model made of what was looked at, each finding marked new or ongoing."""
     return [
         Finding(
-            severity=severity,
-            title=title,
-            detail=detail,
-            cites=cited(cites, ran),
-            status=status_of(title, previous),
+            severity=raised.severity,
+            title=raised.title,
+            detail=raised.detail,
+            cites=cited(raised.cites, ran),
+            action=raised.action,
+            confidence=raised.confidence,
+            status=status_of(raised.title, previous),
         )
-        for severity, title, detail, cites in reading.findings
+        for raised in reading.findings
     ]
 
 
@@ -692,6 +720,9 @@ def _found_by_testing(ran: Sequence[Entry]) -> list[Finding]:
             title=str(hit["title"]),
             detail=str(hit["why"]),
             cites=[],
+            action="",
+            # A port that answered did answer, whatever the AI says of it.
+            confidence="high",
             status="new",
         )
         for entry in ran

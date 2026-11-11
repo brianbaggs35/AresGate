@@ -61,4 +61,46 @@ describe('AgentTimeline', () => {
     expect(find('timeline-working').exists()).toBe(true)
     expect(find('timeline-empty').exists()).toBe(false)
   })
+
+  it('says how long each step took, until the next began, and not for the last', async () => {
+    const { wrapper } = await open([
+      step({ at: '2026-11-10T12:00:00Z' }),
+      step({ seq: 2, at: '2026-11-10T12:00:02.500Z' }),
+    ])
+
+    const took = wrapper.findAll('[data-test="step-took"]')
+    expect(took).toHaveLength(1)
+    expect(took[0]!.text()).toBe('· took 2.5 s')
+  })
+
+  it('links each incident a step looked at, and says how many lines it did not keep', async () => {
+    const { wrapper } = await open([
+      step({
+        node: 'act',
+        detail: {
+          lines: ['Incident 4: scan'],
+          more: 3,
+          refs: [
+            { kind: 'incident', key: '4', label: 'Incident 4' },
+            { kind: 'device', key: 'x', label: 'A device' },
+            { kind: 'incident' },
+            'nonsense',
+          ],
+        },
+      }),
+    ])
+
+    const refs = wrapper.findAll('[data-test="step-ref"]')
+    expect(refs.map((ref) => ref.text())).toEqual(['Incident 4', 'A device'])
+    expect(refs[0]!.attributes('href')).toBe('/incidents/4')
+    expect(refs[1]!.attributes('href')).toBeUndefined()
+    expect(wrapper.find('[data-test="step-rest"]').text()).toBe('And 3 more it did not keep.')
+  })
+
+  it('shows neither when the step has no refs and kept every line', async () => {
+    const { wrapper } = await open([step({ detail: { lines: ['One'], refs: 'none' } })])
+
+    expect(wrapper.find('[data-test="step-refs"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="step-rest"]').exists()).toBe(false)
+  })
 })

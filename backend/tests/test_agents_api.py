@@ -499,6 +499,8 @@ class TestRuns:
 
         assert [step["title"] for step in body["steps"]] == ["Planned", "Looked"]
         assert body["steps"][1]["detail"] == {"n": 1}
+        for shown in body["findings_list"]:
+            del shown["first_seen_at"]
         assert body["findings_list"] == [
             {
                 "severity": "medium",
@@ -506,11 +508,80 @@ class TestRuns:
                 "detail": "Many.",
                 "cites": [{"kind": "incident", "id": "3"}],
                 "status": "ongoing",
+                "action": "",
+                "confidence": "medium",
+                "runs_seen": 1,
             },
-            {"severity": "info", "title": "", "detail": "", "cites": [], "status": "new"},
+            {
+                "severity": "info",
+                "title": "",
+                "detail": "",
+                "cites": [],
+                "status": "new",
+                "action": "",
+                "confidence": "medium",
+                "runs_seen": 1,
+            },
         ]
+        assert body["by_severity"] == {"medium": 1, "info": 1}
+        assert body["changes"] is None
         assert body["call_ids"] == [4, 5]
         assert body["error"] == "Nothing went wrong."
+
+    def test_how_long_a_finding_has_been_reported_and_what_has_gone_since_the_run_before(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        agent = stored(session)
+        now = utcnow()
+
+        def finding(title: str, **more: object) -> dict[str, object]:
+            return {"severity": "high", "title": title, "detail": "", "cites": [], **more}
+
+        ran(session, agent, finished_at=now - timedelta(days=3), findings=[finding("Telnet open")])
+        ran(session, agent, "failed", finished_at=now - timedelta(days=2))
+        first = ran(
+            session,
+            agent,
+            finished_at=now - timedelta(days=2),
+            findings=[finding("Telnet open."), finding("Odd logins")],
+        )
+        middle = ran(
+            session,
+            agent,
+            finished_at=now - timedelta(days=1),
+            findings=[finding("telnet open", confidence="low", action="Close it.")],
+        )
+        last = ran(
+            session,
+            agent,
+            finished_at=now,
+            findings=[finding("Telnet open", confidence="certain"), finding("A new one")],
+        )
+
+        body = client.get(f"{BASE}/{agent.id}/runs/{last.id}").json()
+
+        telnet, new = body["findings_list"]
+        assert telnet["runs_seen"] == 4
+        assert telnet["first_seen_at"].startswith((now - timedelta(days=3)).strftime("%Y-%m-%dT%H"))
+        assert telnet["confidence"] == "medium"
+        assert new["runs_seen"] == 1
+        assert body["changes"]["gone"] == []
+        assert body["changes"]["since"].startswith((now - timedelta(days=1)).strftime("%Y-%m-%dT"))
+        assert body["by_severity"] == {"high": 2}
+
+        shown = client.get(f"{BASE}/{agent.id}/runs/{middle.id}").json()
+        assert shown["changes"]["gone"] == [{"severity": "high", "title": "Odd logins"}]
+        assert shown["findings_list"][0]["confidence"] == "low"
+        assert shown["findings_list"][0]["action"] == "Close it."
+        assert client.get(f"{BASE}/{agent.id}/runs/{first.id}").json()["changes"] is not None
+
+    def test_the_first_run_has_nothing_before_it_to_differ_from(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        agent = stored(session)
+        run = ran(session, agent, finished_at=utcnow())
+
+        assert client.get(f"{BASE}/{agent.id}/runs/{run.id}").json()["changes"] is None
 
     def test_a_run_of_another_agent_is_not_found(
         self, client: TestClient, csrf_token: str, session: Session

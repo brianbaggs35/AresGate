@@ -6,6 +6,8 @@ import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  CircleDot,
+  CircleHelp,
   Clock,
   Eye,
   FileText,
@@ -29,6 +31,7 @@ import type { IconProps } from 'vuetify'
 import type {
   Agent,
   AgentState,
+  Finding,
   Edge,
   ProposalStatus,
   Run,
@@ -39,8 +42,10 @@ import type {
 } from '@/api/agents'
 import type { BarSeries } from '@/charts/BarChart.vue'
 import { dayLabel, formatMoney, formatTokens } from '@/aiUsage'
-import { formatCount } from '@/format'
-import { SEVERITIES, type Severity } from '@/severity'
+import type { ChatCite } from '@/api/aiChat'
+import { severityColor } from '@/charts/palette'
+import { formatAgo, formatCount } from '@/format'
+import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
 
 type Icon = NonNullable<IconProps['icon']>
 
@@ -267,3 +272,72 @@ export function fleetLine(
   if (agents.length) return { text: 'All quiet: nothing needs you', tone: 'good' }
   return { text: 'No agents yet', tone: 'idle' }
 }
+
+/** How sure an agent says it is, in words: never a color alone. */
+export const CONFIDENCE: Readonly<Record<Finding['confidence'], { label: string; icon: Icon }>> = {
+  low: { label: 'Not very sure', icon: CircleHelp },
+  medium: { label: 'Fairly sure', icon: CircleDot },
+  high: { label: 'Sure', icon: CircleCheck },
+}
+
+/** How long a finding has been reported, in a line. */
+export function reportedFor(finding: Pick<Finding, 'runs_seen' | 'first_seen_at'>): string {
+  return finding.runs_seen > 1
+    ? `Reported in ${formatCount(finding.runs_seen)} runs in a row, since ${formatAgo(finding.first_seen_at)}`
+    : 'First time it was reported'
+}
+
+/** The findings of an agent's recent runs, by how serious, for the chart that shows whether it is
+ * finding more or less: a bar for each finished run, oldest first, a series for each severity
+ * there were any of, least serious first so the worst sit on top. */
+export function findingsOverTime(runs: readonly Run[]): {
+  categories: string[]
+  series: BarSeries[]
+} {
+  const done = runs
+    .filter((run) => run.status === 'succeeded')
+    .slice(0, MAX_BARS)
+    .reverse()
+  return {
+    categories: done.map((run) => `Run ${run.id}`),
+    series: SEVERITIES.flatMap((severity) =>
+      done.some((run) => run.by_severity[severity])
+        ? [
+            {
+              id: severity,
+              label: SEVERITY[severity].label,
+              values: done.map((run) => run.by_severity[severity] ?? 0),
+              color: severityColor(severity),
+              icon: SEVERITY[severity].icon,
+            },
+          ]
+        : [],
+    ),
+  }
+}
+
+/** How many runs the chart of findings over time draws. */
+export const MAX_BARS = 14
+
+/** How long a step took: until the next one began, or null for the last, which has no next. */
+export function tookMs(step: Pick<Step, 'at'>, next: Pick<Step, 'at'> | undefined): number | null {
+  return next ? Math.max(0, Date.parse(next.at) - Date.parse(step.at)) : null
+}
+
+/** What a step looked at that has a page of its own, such as an incident. */
+export function refsOf(step: Pick<Step, 'detail'>): ChatCite[] {
+  const refs = step.detail.refs
+  if (!Array.isArray(refs)) return []
+  return refs.filter(
+    (ref): ref is ChatCite =>
+      typeof ref === 'object' &&
+      ref !== null &&
+      typeof (ref as ChatCite).kind === 'string' &&
+      typeof (ref as ChatCite).key === 'string' &&
+      typeof (ref as ChatCite).label === 'string',
+  )
+}
+
+/** How many lines a step saw that it did not keep. */
+export const moreOf = (step: Pick<Step, 'detail'>): number =>
+  typeof step.detail.more === 'number' ? step.detail.more : 0

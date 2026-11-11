@@ -71,6 +71,8 @@ export interface Run {
   /** How many findings it has, and how serious the worst is. */
   findings: number
   worst: string | null
+  /** How many findings there are of each severity, for those there are any of. */
+  by_severity: Record<string, number>
   rounds: number
   error: string | null
   /** Why the AI took no part, or empty if it did. */
@@ -169,6 +171,7 @@ export interface AttentionItem {
   severity: string
   title: string
   detail: string
+  action: string
   status: 'new' | 'ongoing'
 }
 
@@ -207,6 +210,25 @@ export interface Finding {
   cites: ChatCite[]
   /** Whether the agent's last run reported the same thing. */
   status: 'new' | 'ongoing'
+  /** The one thing to do about it, or empty when there is nothing to do. */
+  action: string
+  /** How sure the agent is, given what it was shown. */
+  confidence: 'low' | 'medium' | 'high'
+  /** Since when it has been reported, and in how many runs in a row. */
+  first_seen_at: string
+  runs_seen: number
+}
+
+/** A finding the run before reported and this one does not. */
+export interface Gone {
+  severity: string
+  title: string
+}
+
+/** How a run differs from the one before it that finished well. */
+export interface Changes {
+  since: string
+  gone: Gone[]
 }
 
 /** One thing a run did, for the owner to follow. */
@@ -221,6 +243,8 @@ export interface Step {
 
 export interface RunDetail extends Run {
   findings_list: Finding[]
+  /** Null for a run that did not finish well, and for the first one. */
+  changes: Changes | null
   steps: Step[]
   call_ids: number[]
 }

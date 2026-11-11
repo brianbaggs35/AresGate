@@ -109,6 +109,7 @@ export const run = (overrides: Partial<Run> = {}): Run => ({
   summary: 'All quiet.',
   findings: 0,
   worst: null,
+  by_severity: {},
   rounds: 1,
   error: null,
   ai: '',
@@ -209,6 +210,7 @@ export const attention = (overrides: Partial<AttentionItem> = {}): AttentionItem
   severity: 'high',
   title: 'A scan got further than usual',
   detail: 'Check the firewall rule for port 22.',
+  action: 'Close port 22 on the router.',
   status: 'new',
   ...overrides,
 })
@@ -237,12 +239,17 @@ export const finding = (overrides: Partial<Finding> = {}): Finding => ({
   detail: 'Check the firewall rule for port 22.',
   cites: [{ kind: 'incident', key: '4', label: 'Incident 4' }],
   status: 'new',
+  action: 'Close port 22 on the router.',
+  confidence: 'high',
+  first_seen_at: '2026-11-10T12:00:12Z',
+  runs_seen: 1,
   ...overrides,
 })
 
 export const runDetail = (overrides: Partial<RunDetail> = {}): RunDetail => ({
   ...run(),
   findings_list: [],
+  changes: null,
   steps: [
     step(),
     step({

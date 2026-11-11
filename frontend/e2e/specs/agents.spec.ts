@@ -117,6 +117,10 @@ test.describe('agents', () => {
     await expect(agents.summary).toContainText('Start with incident')
     await expect(agents.findings).toHaveCount(1)
     await expect(agents.findings.first()).toContainText('needs a look')
+    await expect(agents.findings.first()).toContainText('What to do: Check the device it reached')
+    await expect(agents.findings.first()).toContainText('Sure')
+    await expect(agents.findings.first()).toContainText('First time it was reported')
+    await expect(agents.trend).toBeVisible()
     await expect(agents.steps.first()).toBeVisible()
 
     await agents.findings.first().getByTestId('finding-cite').first().click()
