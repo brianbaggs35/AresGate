@@ -151,6 +151,24 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // What the owner trusts, and a page for each decision. Both belong to the one place in the menu.
+    path: '/trust',
+    children: [
+      {
+        path: '',
+        name: 'trust',
+        component: () => import('@/views/TrustView.vue'),
+        meta: { title: 'Trust' },
+      },
+      {
+        path: String.raw`:id(\d+)`,
+        name: 'trust-decision',
+        component: () => import('@/views/TrustDecisionView.vue'),
+        meta: { title: 'Trust' },
+      },
+    ],
+  },
+  {
     // Threat intelligence has a page of its own, apart from the integration that answers it.
     path: '/threat-intelligence',
     name: 'threat-intelligence',

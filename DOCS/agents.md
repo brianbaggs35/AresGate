@@ -164,6 +164,10 @@ exposure scanner's test of risky ports in the same run.
   *attack_chains*, which lists the attacks that crossed two devices, each link marked *confirmed* or
   *inferred* (a guess). The threat hunter, the intelligence analyst and the incident investigator use
   them to say what an address is and whether an incident is one step of a larger attack.
+- **What you trust.** The assistant and the agents have one more lookup, *trusted*, which lists what
+  you have told AresGate is safe (see [Trust](trust.md)) and what each decision has kept quiet. The
+  noise cleaner and the incident investigator use it, so that they do not suggest again what you
+  already said. They only read it: trusting is always yours.
 - **Anomaly watch** uses the new *what_changed* lookup (which the assistant can use too): how much
   more or less the firewall refused in the last day than is usual for a day of the week before,
   which ports were aimed at three times as often as usual or for the first time (ten connections

@@ -61,6 +61,7 @@ published release instead of building it, and updating.
 | [The look](DOCS/design.md) | What the web app should feel like, where the ideas come from, and the rules for motion |
 | [Integrations](DOCS/integrations.md) | Connecting OPNsense (with Suricata, CrowdSec, OpenVPN, Zenarmor and more), ntopng, Wazuh, CrowdSec and VirusTotal |
 | [Threats](DOCS/threats.md) | How reports become a few threats: counted once, grouped, told from background, and tuned to your network |
+| [Trust](DOCS/trust.md) | Telling AresGate that something is fine, from where you see it, for every program at once |
 | [Alerts](DOCS/alerts.md) | Sending alerts to a Discord channel, and how the webhook's address is kept safe |
 | [Security](DOCS/security.md) | How AresGate is hardened and how it is checked |
 | [Development](DOCS/development.md) | Working on the code, running the tests, how changes are made |

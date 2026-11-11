@@ -70,7 +70,12 @@ const left = computed(() => props.conversations.total - props.conversations.item
         </div>
 
         <div class="talk__flow">
-          <ConversationEnd :end="conversation.client" side="client" @ruled="emit('ruled')" />
+          <ConversationEnd
+            :end="conversation.client"
+            :peer="conversation.server"
+            side="client"
+            @ruled="emit('ruled')"
+          />
           <div class="talk__link">
             <div v-if="over.length" class="talk__over" data-test="conversation-over">
               <v-chip v-for="word in over" :key="word" size="small" variant="flat" color="primary">
@@ -87,7 +92,12 @@ const left = computed(() => props.conversations.total - props.conversations.item
               <path d="M104 1 L117 6 L104 11 Z" class="talk__head-mark" />
             </svg>
           </div>
-          <ConversationEnd :end="conversation.server" side="server" @ruled="emit('ruled')" />
+          <ConversationEnd
+            :end="conversation.server"
+            :peer="conversation.client"
+            side="server"
+            @ruled="emit('ruled')"
+          />
         </div>
 
         <div class="talk__facts">

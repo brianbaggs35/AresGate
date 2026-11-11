@@ -8,6 +8,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Trust: tell AresGate that something is fine.** A new **Trust** page lists what you have said
+  is safe (or only low priority), with what each decision has kept from raising an alarm, and a
+  page for each decision where everything about it can be changed or it can be taken back. A
+  decision holds for every program at once: an alert that OPNsense and Wazuh both reported is one
+  alert, so trusting its address quiets it whichever said it. A **Trust** button next to an incident's
+  address (and each outside end of its conversations) asks what to trust, narrowest first (only what
+  your camera sends to its cloud, only that alert, or everything about the address), and judges the
+  incident again at once. The AI suggests what it is sure is nothing to worry about, and the
+  assistant and the agents learn the *trusted* lookup. See [Trust](DOCS/trust.md).
+
 - **Attacks across two devices are one attack.** An exploit aimed at a device on your network and
   that device calling out soon after are two incidents, about two different outside addresses.
   AresGate now links them into a chain by the device and the time between them: a link is *seen*

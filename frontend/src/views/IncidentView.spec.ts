@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
+import * as trustApi from '@/api/trust'
 import * as verdictsApi from '@/api/verdicts'
 import IncidentConversations from '@/components/IncidentConversations.vue'
 import VerdictPanel from '@/components/VerdictPanel.vue'
@@ -17,6 +18,7 @@ import {
   triage,
 } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { trustRule } from '@/test/trust'
 import { verdict } from '@/test/verdicts'
 import IncidentView from '@/views/IncidentView.vue'
 
@@ -199,6 +201,71 @@ describe('IncidentView', () => {
       const { find } = await open()
 
       expect(find('incident-chain').exists()).toBe(false)
+    })
+  })
+
+  describe('trusting what it is about', () => {
+    const inDialog = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+
+    it('offers to trust the address it is about: the alert, or all of it', async () => {
+      const { find } = await open()
+
+      expect(find('trust-button').attributes('aria-label')).toBe('Trust 93.184.216.34')
+      await find('trust-button').trigger('click')
+      await flushPromises()
+
+      expect(inDialog('scope-alert')?.textContent).toContain('Brute force on ssh')
+      expect(inDialog('scope-address')).not.toBeNull()
+      expect(inDialog('scope-traffic')).toBeNull()
+    })
+
+    it('offers what the device that sent to it sent, where there is one', async () => {
+      const { find } = await open({
+        found: detail({
+          signals: [signal({ src_address: '192.168.1.20', dst_address: '93.184.216.34' })],
+        }),
+      })
+
+      await find('trust-button').trigger('click')
+      await flushPromises()
+
+      expect(inDialog('scope-traffic')?.textContent).toContain('Only what nas sends to')
+    })
+
+    it('offers only the address where no signal carries an alert name', async () => {
+      const { find } = await open({
+        found: detail({ signals: [signal({ signature: null })] }),
+      })
+
+      await find('trust-button').trigger('click')
+      await flushPromises()
+
+      expect(inDialog('scope-alert')).toBeNull()
+      expect(inDialog('scope-address')).not.toBeNull()
+    })
+
+    it('does not offer it for an incident that is not about an address', async () => {
+      const { find } = await open({ found: detail({ subject: 'Wazuh agent 004' }) })
+
+      expect(find('trust-button').exists()).toBe(false)
+    })
+
+    it('says what was trusted, and reads the incident again, once it is', async () => {
+      const post = vi.spyOn(trustApi, 'trust').mockResolvedValue(trustRule())
+      const { find, text, fetchIncident } = await open()
+      await find('trust-button').trigger('click')
+      await flushPromises()
+
+      inDialog('trust-save')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(post).toHaveBeenCalled()
+      expect(text('notice')).toBe(
+        'Trusted: Everything about 52.1.2.3. You can take it back under Trust.',
+      )
+      expect(fetchIncident).toHaveBeenCalledTimes(2)
     })
   })
 

@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   Siren,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
@@ -61,6 +62,12 @@ export const navItems: readonly NavItem[] = [
     title: 'AI usage',
     icon: ChartColumn,
     keywords: 'spending cost money tokens limit budget level',
+  },
+  {
+    route: 'trust',
+    title: 'Trust',
+    icon: ShieldCheck,
+    keywords: 'safe allow whitelist allowlist known good false positive camera mark trusted',
   },
   { route: 'alerts', title: 'Alerts', icon: BellRing },
   { route: 'status', title: 'Status', icon: HeartPulse },

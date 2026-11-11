@@ -102,6 +102,21 @@ describe('router', () => {
     expect(document.title).toBe('AI usage · AresGate')
   })
 
+  it('shows the Trust page and each decision under the one title', async () => {
+    const list = await visit('/trust')
+    expect(list.name).toBe('trust')
+    expect(document.title).toBe('Trust · AresGate')
+
+    const decision = await visit('/trust/4')
+    expect(decision.name).toBe('trust-decision')
+    expect(decision.params).toEqual({ id: '4' })
+    expect(document.title).toBe('Trust · AresGate')
+  })
+
+  it('does not take a decision that has no number for one', async () => {
+    expect((await visit('/trust/new')).name).not.toBe('trust-decision')
+  })
+
   it('sends the old address of the AI usage page, from before it left Settings, to the new one', async () => {
     expect((await visit('/settings/ai-usage')).name).toBe('ai-usage')
   })

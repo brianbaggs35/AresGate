@@ -26,8 +26,9 @@ from app.ai import triage
 from app.ai.redaction import Redactor, read_address, read_mac
 from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
-from app.incidents import cleanup, queries
+from app.incidents import cleanup, queries, verdicts
 from app.incidents import names as dns_names
+from app.incidents import trust as trust_words
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
 from app.intel import overrides, virustotal
@@ -43,6 +44,7 @@ from app.models import (
     Incident,
     IncidentChain,
     IntegrationConnection,
+    VerdictRule,
 )
 
 MAX_ITEMS: Final = 10
@@ -718,6 +720,37 @@ def attack_chains(db: Session, redactor: Redactor, args: Args, now: datetime) ->
     return Found(lines, refs, _plural(len(found), "attack across two devices"))
 
 
+# -- what the owner trusts
+
+
+def trusted(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What the owner has said is safe, which stands over what any program says of it: each
+    decision with how much it is trusted, why and how many signals it has kept from raising an
+    alarm. Nothing is trusted unless the owner said so, so an agent can only point at it."""
+    limit = _between(args.limit, 10, 1, MAX_ITEMS)
+    found = list(
+        db.scalars(
+            select(VerdictRule)
+            .where(VerdictRule.verdict.in_(MUTING))
+            .order_by(VerdictRule.updated_at.desc(), VerdictRule.id.desc())
+            .limit(limit)
+        )
+    )
+    if not found:
+        return Found(["The owner has not said that anything is safe."], [], "nothing is trusted")
+    kept = verdicts.hits(db, [rule.id for rule in found])
+    lines: list[str] = []
+    for rule in found:
+        applied = kept.get(rule.id, (0, None))[0]
+        level = "safe" if rule.verdict == "not_suspicious" else "low priority"
+        about = redactor.text(trust_words.about(rule), 200)
+        why = f": {redactor.text(rule.note, 200)}" if rule.note else ""
+        lines.append(
+            f"[trust {rule.id}] {about} is trusted as {level}, applied to {applied} signals{why}"
+        )
+    return Found(lines, [], _plural(len(found), "trust decision"))
+
+
 TOOLS: Final[Sequence[Tool]] = (
     Tool(
         "open_incidents",
@@ -766,6 +799,12 @@ TOOLS: Final[Sequence[Tool]] = (
         "What one address on the internet is called, by its reverse lookup, which shows what "
         "kind of server it is. Uses: name, for the address.",
         who_is,
+    ),
+    Tool(
+        "trusted",
+        "What the owner has said is safe, each with how much it is trusted, why and how many "
+        "signals it has kept from raising an alarm. Uses: limit (1-10, default 10).",
+        trusted,
     ),
     Tool(
         "attack_chains",
