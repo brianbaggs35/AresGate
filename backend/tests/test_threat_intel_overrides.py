@@ -99,14 +99,17 @@ class TestTheModule:
         session.commit()
 
         found = overrides.ruling_for(session, subject)
-        assert found is not None and found.kind == "url" and found.host == "example.com"
+        assert found is not None
+        assert (found.kind, found.host) == ("url", "example.com")
         # A web address is kept as its hash, never as its text.
-        assert found.subject == subject.key and "login" not in found.subject
+        assert found.subject == subject.key
+        assert "login" not in found.subject
 
         taken = overrides.take_back(session, subject)
         session.commit()
 
-        assert taken is not None and taken.verdict == "safe"
+        assert taken is not None
+        assert taken.verdict == "safe"
         assert overrides.ruling_for(session, subject) is None
         assert overrides.take_back(session, subject) is None
 
