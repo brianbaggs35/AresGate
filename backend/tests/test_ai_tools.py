@@ -88,6 +88,7 @@ class TestTheList:
             "new_devices",
             "noisy_alerts",
             "targeted_ports",
+            "what_changed",
             "repeated_incidents",
             "agent_findings",
             "cleanup_candidates",
@@ -711,6 +712,78 @@ class TestTargetedPorts:
 
         assert found.lines == ["The firewall refused nothing aimed at a port in the last 2 hours."]
         assert found.summary == "no ports targeted in 2 hours"
+
+
+class TestWhatChanged:
+    def refused(
+        self, session: Session, settings: Settings, port: int, when: list[tuple[int, str]]
+    ) -> None:
+        """Firewall refusals of a port, each as a number of hours ago and who tried."""
+        record_events(
+            session,
+            settings,
+            [
+                new_event(
+                    source="opnsense",
+                    kind="firewall",
+                    severity=Severity.LOW,
+                    src_address=who,
+                    dst_port=port,
+                    protocol="tcp",
+                    occurred_at=NOW - timedelta(hours=ago, minutes=at),
+                    identity=(f"c{port}-{at}-{ago}-{who}",),
+                )
+                for at, (ago, who) in enumerate(when)
+            ],
+            NOW,
+        )
+
+    def usually(self, session: Session, settings: Settings, port: int, each_day: int) -> None:
+        """A port refused this many times a day for the week before."""
+        for day in range(1, 8):
+            self.refused(session, settings, port, [(24 * day + 5, "192.0.2.7")] * each_day)
+
+    def test_a_port_that_jumped_and_one_never_seen_before_are_named_and_the_quiet_are_not(
+        self, session: Session, settings: Settings
+    ) -> None:
+        # Port 22: 2 a week ago, 12 now. Port 5555: 10 now, never before. Port 80: as always.
+        # Port 23: 3 now, never before, which is too few to be a change.
+        self.refused(session, settings, 22, [(48, "198.51.100.1"), (72, "198.51.100.1")])
+        self.refused(session, settings, 22, [(1, f"198.51.100.{n}") for n in range(2, 14)])
+        self.refused(session, settings, 5555, [(1, "198.51.100.50")] * 10)
+        self.refused(session, settings, 23, [(1, "198.51.100.60")] * 3)
+        self.usually(session, settings, 80, 10)
+        self.refused(session, settings, 80, [(1, "192.0.2.7")] * 10)
+        session.commit()
+
+        found = run(session, "what_changed")
+
+        assert found.lines[0].startswith("In the last 24 hours the firewall refused 35 connections")
+        assert (
+            found.lines[1] == "port 22/tcp: 12 connections, 42 times what is usual (fewer than 1)"
+        )
+        assert found.lines[2] == "port 5555/tcp: 10 connections, never refused before"
+        assert found.lines[-1] == (
+            "14 addresses refused in this window had never been refused in the 7 days before."
+        )
+        assert not any("port 23" in line or "port 80" in line for line in found.lines)
+        assert found.summary == "how the last 24 hours compare with usual"
+
+    def test_with_nothing_unusual_it_says_so(self, session: Session, settings: Settings) -> None:
+        self.usually(session, settings, 80, 10)
+        self.refused(session, settings, 80, [(2, "192.0.2.7")] * 10)
+        session.commit()
+
+        found = run(session, "what_changed", Args(hours=24, limit=2))
+
+        assert "No port was aimed at much more than usual." in found.lines
+        assert found.lines[-1].startswith("0 addresses refused")
+
+    def test_with_nothing_refused_at_all_it_says_so(self, session: Session) -> None:
+        found = run(session, "what_changed", Args(hours=6))
+
+        assert found.lines == ["The firewall refused nothing in the last 6 hours, or before."]
+        assert found.summary == "nothing refused, nothing usual"
 
 
 class TestRepeatedIncidents:

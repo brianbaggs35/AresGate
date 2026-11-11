@@ -360,6 +360,103 @@ PENETRATION_TEST_PLANNER: Final = Template(
     ),
 )
 
+DAILY_BRIEFING: Final = Template(
+    key="daily_briefing",
+    name="Daily briefing",
+    tagline="One short report each morning on what happened and what needs you",
+    description=(
+        "Reads what the other agents reported, the incidents that are open, what changed at "
+        "the firewall and whether your integrations are healthy, and writes it up as a short "
+        "briefing: the most important thing first, then what can wait. Make it the one thing "
+        "you read each day and leave the others to run."
+    ),
+    icon="newspaper",
+    brief=(
+        "You are the owner's chief of staff for the home network. You are given what the other "
+        "agents reported, the open incidents, what changed at the firewall and how the "
+        "integrations are doing. Write a briefing: say first whether anything needs the owner "
+        "today, then at most a few findings, each with what to do, and say plainly that the "
+        "rest is routine. Do not repeat every report; choose what matters."
+    ),
+    goal="Brief me each morning: what needs me today, and what can wait.",
+    first=(
+        Lookup("agent_findings", Args(limit=10)),
+        Lookup("open_incidents", Args(limit=5)),
+        Lookup("what_changed", Args(hours=24, limit=5)),
+        Lookup("integrations"),
+    ),
+    asks=("agent_findings", "open_incidents", "incident", "what_changed", "integrations", "alerts"),
+    interval_minutes=1440,
+    needs=("ai", "alerts"),
+    setup=(
+        "Make the agents you want briefed on, such as the Threat hunter and the Health watch, and "
+        "run each once: the briefing reads what they reported.",
+        CHOOSE_AI,
+        "Start it once by hand, then leave it on its daily schedule.",
+    ),
+)
+ANOMALY_WATCH: Final = Template(
+    key="anomaly_watch",
+    name="Anomaly watch",
+    tagline="Learns what is usual at your firewall and tells you when it isn't",
+    description=(
+        "Compares the last day at the firewall with the week before it: how much more was "
+        "refused, which ports are being aimed at far more than usual or for the first time, and "
+        "how many addresses are new. A quiet network that suddenly is not is worth a look, even "
+        "when no single alert says so."
+    ),
+    icon="activity",
+    brief=(
+        "You watch for change at the home firewall. You are given how the last day compares with "
+        "the week before. Say whether the change is worth the owner's attention. A busier "
+        "internet is normal; one port suddenly aimed at by many new addresses, or something "
+        "never seen before, is worth saying. Ground every claim in the numbers you were given."
+    ),
+    goal="Tell me when the firewall sees something that is not usual, and ignore normal noise.",
+    first=(
+        Lookup("what_changed", Args(hours=24, limit=5)),
+        Lookup("targeted_ports", Args(hours=24, limit=5)),
+    ),
+    asks=("what_changed", "targeted_ports", "blocked_sources", "noisy_alerts", "reputation"),
+    interval_minutes=360,
+    needs=("ai", "firewall"),
+    setup=(
+        "Connect OPNsense under Integrations and turn on its firewall log: the agent compares "
+        "what the firewall refused with the week before.",
+        CHOOSE_AI,
+        "Give it a week of data before you trust its sense of what is usual.",
+    ),
+)
+INCIDENT_INVESTIGATOR: Final = Template(
+    key="incident_investigator",
+    name="Incident investigator",
+    tagline="Looks into your most serious open incidents and tells you what happened",
+    description=(
+        "Takes the open incidents that matter most and looks into each as an analyst would: what "
+        "was seen, who is behind it where something is known, whether any device of yours was "
+        "involved, how sure AresGate is, and what to do about it."
+    ),
+    icon="microscope",
+    brief=(
+        "You investigate the most serious open incidents. For each, read everything known of it, "
+        "look up who is behind it where you can, and say what happened, how sure you are, and "
+        "what the owner should do. Say when an incident is probably only scanning. Do not "
+        "investigate more than the incidents you were given, and do not invent evidence."
+    ),
+    goal="Investigate my most serious open incidents and tell me what to do about each.",
+    first=(Lookup("open_incidents", Args(limit=3)),),
+    asks=("open_incidents", "incident", "reputation", "device", "alerts"),
+    interval_minutes=240,
+    needs=("ai", "alerts"),
+    setup=(
+        "Connect at least one source of alerts under Integrations, so that there are incidents to "
+        "look into.",
+        "Add a free VirusTotal key under Integrations if you want it to say who is behind an "
+        "address; it works without one.",
+        CHOOSE_AI,
+    ),
+)
+
 TEMPLATES: Final[tuple[Template, ...]] = (
     THREAT_HUNTER,
     INTELLIGENCE_ANALYST,
@@ -370,6 +467,9 @@ TEMPLATES: Final[tuple[Template, ...]] = (
     ROGUE_DEVICE_WATCH,
     FIREWALL_REVIEWER,
     PENETRATION_TEST_PLANNER,
+    DAILY_BRIEFING,
+    INCIDENT_INVESTIGATOR,
+    ANOMALY_WATCH,
 )
 
 

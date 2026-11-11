@@ -6,6 +6,21 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **Mission control for the agents.** The top of the Agents page now treats them as one team: it
+  says whether anything needs you (or that all is quiet, or how many agents are at work), shows the
+  latest daily briefing, and lists the most serious findings of all the agents, each leading to the
+  agent that raised it.
+- **Three new agents.** The *Daily briefing* reads what the other agents reported, the open
+  incidents, what changed at the firewall and how the integrations are doing, and writes one short
+  report a day. The *Incident investigator* looks into your most serious open incidents as an
+  analyst would and says what happened and what to do. The *Anomaly watch* learns what is usual at
+  your firewall from the week before and tells you when the last day is not.
+- **A new lookup, `what_changed`**, for the agents and the assistant: how the last hours at the
+  firewall compare with the days before, which ports were aimed at far more than usual or for the
+  first time, and how many addresses are new.
+
 ### Fixed
 
 - **Giving a verdict on an incident is quick again.** Saying what you think of an incident, changing

@@ -1,8 +1,21 @@
-import { Bot, Flame, Radar, ShieldAlert, Sparkles, Swords, Telescope, Wifi } from '@lucide/vue'
+import {
+  Activity,
+  Bot,
+  Flame,
+  Microscope,
+  Newspaper,
+  Radar,
+  ShieldAlert,
+  Sparkles,
+  Swords,
+  Telescope,
+  Wifi,
+} from '@lucide/vue'
 
 import {
   AGENT_STATE,
   INTERVALS,
+  fleetLine,
   MAX_ROUNDS,
   PROPOSAL_ACTION,
   PROPOSAL_STATUS,
@@ -34,6 +47,9 @@ describe('agent icons', () => {
     expect(agentIcon('telescope')).toBe(Telescope)
     expect(agentIcon('shield-alert')).toBe(ShieldAlert)
     expect(agentIcon('wifi')).toBe(Wifi)
+    expect(agentIcon('newspaper')).toBe(Newspaper)
+    expect(agentIcon('activity')).toBe(Activity)
+    expect(agentIcon('microscope')).toBe(Microscope)
     expect(agentIcon('flame')).toBe(Flame)
     expect(agentIcon('swords')).toBe(Swords)
     expect(agentIcon('something-new')).toBe(Bot)
@@ -240,5 +256,30 @@ describe('what the cleanup agent suggests', () => {
 
   it('has an icon of its own', () => {
     expect(agentIcon('sparkles')).toBe(Sparkles)
+  })
+})
+
+describe('fleetLine', () => {
+  const idle = { state: 'idle' } as const
+  const running = { state: 'running' } as const
+
+  it('puts what needs the owner first, and says who is at work', () => {
+    expect(fleetLine([idle], 1)).toEqual({ text: '1 thing needs you', tone: 'bad' })
+    expect(fleetLine([idle, running], 3)).toEqual({
+      text: '3 things need you · 1 agent at work',
+      tone: 'bad',
+    })
+  })
+
+  it('says who is at work when nothing needs the owner', () => {
+    expect(fleetLine([running, { state: 'queued' }], 0)).toEqual({
+      text: '2 agents at work',
+      tone: 'working',
+    })
+  })
+
+  it('says it is quiet, or that there are no agents', () => {
+    expect(fleetLine([idle], 0)).toEqual({ text: 'All quiet: nothing needs you', tone: 'good' })
+    expect(fleetLine([], 0)).toEqual({ text: 'No agents yet', tone: 'idle' })
   })
 })

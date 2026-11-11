@@ -28,7 +28,7 @@ test.describe('agents', () => {
     await expect(page).toHaveTitle('Agents · AresGate')
     await expect(agents.heading).toHaveText('Agents')
     await expect(agents.empty).toBeVisible()
-    await expect(agents.kinds).toHaveCount(9)
+    await expect(agents.kinds).toHaveCount(12)
     await expect(agents.cards).toHaveCount(0)
   })
 
@@ -62,7 +62,7 @@ test.describe('agents', () => {
 
     await agents.make.click()
     await expect(agents.dialog).toBeVisible()
-    await expect(agents.dialogKinds).toHaveCount(9)
+    await expect(agents.dialogKinds).toHaveCount(12)
     await agents.chooseKind('Threat hunter')
     await agents.dialogName.fill('Night watch')
     await agents.dialogGoal.fill('Only wake me for real compromises.')
@@ -100,7 +100,10 @@ test.describe('agents', () => {
       '1 finding',
       SEEN,
     )
-    await agents.card('Night watch').getByTestId('agent-open').click()
+    // Mission control says what needs the owner, and leads to the agent that said so.
+    await expect(agents.mission).toHaveText('1 thing needs you', SEEN)
+    await expect(agents.missionNeeds).toContainText('needs a look')
+    await agents.missionNeeds.first().click()
 
     await expect(page).toHaveURL(/\/agents\/\d+$/)
     await expect(agents.heading).toHaveText('Night watch')

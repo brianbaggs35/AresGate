@@ -3,7 +3,7 @@ import type { Overview } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
-import { agent, check, limits, overview, template, usage } from '@/test/agents'
+import { agent, attention, briefing, check, limits, overview, template, usage } from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentsView from '@/views/AgentsView.vue'
 
@@ -153,6 +153,21 @@ describe('AgentsView', () => {
     const { find } = await open(overview({ usage: usage({ calls: 0 }) }))
 
     expect(find('agents-spend').exists()).toBe(false)
+  })
+
+  it('shows what needs the owner and the latest briefing above the agents', async () => {
+    const { find } = await open(
+      overview({ attention: [attention()], attention_total: 1, briefing: briefing() }),
+    )
+
+    expect(find('mission-line').text()).toBe('1 thing needs you')
+    expect(find('mission-briefing').exists()).toBe(true)
+  })
+
+  it('shows no mission control before there is an agent', async () => {
+    const { find } = await open(overview({ agents: [] }))
+
+    expect(find('agents-mission').exists()).toBe(false)
   })
 
   it('says nothing about the AI when it would be asked', async () => {

@@ -11,6 +11,9 @@ export class AgentsPage {
   /** The note that AI is off or has no provider. */
   readonly ai: Locator
   readonly cards: Locator
+  /** Mission control above the cards: what needs the owner, across the agents. */
+  readonly mission: Locator
+  readonly missionNeeds: Locator
   readonly problem: Locator
   /** The sheet that makes or changes an agent. */
   readonly dialog: Locator
@@ -55,6 +58,8 @@ export class AgentsPage {
     this.kinds = page.getByTestId('agents-kind')
     this.ai = page.getByTestId('agents-ai')
     this.cards = page.getByTestId('agent-card')
+    this.mission = page.getByTestId('mission-line')
+    this.missionNeeds = page.getByTestId('mission-need')
     this.problem = page.getByTestId('agents-problem')
     this.dialog = page.getByTestId('agent-dialog')
     this.dialogKinds = page.getByTestId('dialog-kind')

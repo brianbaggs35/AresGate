@@ -11,7 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstrai
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents import catalog, graph, proposals, readiness, service
+from app.agents import attention, catalog, graph, proposals, readiness, service
 from app.agents import settings as agent_settings
 from app.ai import catalog as ai_catalog
 from app.ai import gateway, limits
@@ -207,6 +207,30 @@ class AgentDetail(AgentOut):
     suggestions: ProposalList
 
 
+class AttentionOut(BaseModel):
+    """One finding of an agent's last run that is worth the owner's time."""
+
+    agent_id: int
+    agent_name: str
+    icon: str
+    run_id: int
+    finished_at: AwareDatetime
+    severity: str
+    title: str
+    detail: str
+    status: Literal["new", "ongoing"]
+
+
+class BriefingOut(BaseModel):
+    """What the daily briefing agent said the last time it finished."""
+
+    agent_id: int
+    agent_name: str
+    run_id: int
+    finished_at: AwareDatetime
+    summary: str
+
+
 class Overview(BaseModel):
     agents: list[AgentOut]
     templates: list[TemplateOut]
@@ -217,6 +241,11 @@ class Overview(BaseModel):
     limits: list[LimitOut]
     # How many suggestions of the cleanup agents wait for the owner.
     proposals: int
+    # What the agents together say needs the owner now, the most serious first, how many there
+    # are in all, and the daily briefing if there is one.
+    attention: list[AttentionOut]
+    attention_total: int
+    briefing: BriefingOut | None
 
 
 class AgentIn(BaseModel):
@@ -706,6 +735,7 @@ def list_agents(db: Db) -> Overview:
     agents = db.scalars(select(Agent).order_by(Agent.created_at, Agent.id)).all()
     now = utcnow()
     waiting = _waiting(db)
+    needing = attention.gather(db)
     return Overview(
         agents=[_agent_out(db, agent, waiting) for agent in agents],
         templates=[_template_out(db, item, now) for item in catalog.TEMPLATES],
@@ -713,6 +743,9 @@ def list_agents(db: Db) -> Overview:
         usage=_usage(db, now),
         limits=[_limit_out(item) for item in agent_settings.status(db, now)],
         proposals=sum(waiting.values()),
+        attention=[AttentionOut(**vars(item)) for item in needing.items],
+        attention_total=needing.total,
+        briefing=BriefingOut(**vars(needing.briefing)) if needing.briefing else None,
     )
 
 

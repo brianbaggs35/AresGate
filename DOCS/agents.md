@@ -21,6 +21,9 @@ agent still looks, but it only keeps what it saw, and the page says why the AI c
 | Rogue device watch | Looks at devices that joined your network lately and tells you which to check. | Every 2 hours |
 | Firewall reviewer | Reads what the firewall turned away most and what it says about your setup. | Every 12 hours |
 | Penetration test planner | Plans, on paper, how an attacker would get in, from what the other agents found, and what to close first. | Only when you start it |
+| Daily briefing | Reads what the other agents reported, the open incidents, what changed at the firewall and how the integrations are doing, and writes one short briefing. | Every day |
+| Incident investigator | Looks into the most serious open incidents as an analyst would: what happened, who is behind it, how sure AresGate is and what to do. | Every 4 hours |
+| Anomaly watch | Compares the last day at the firewall with the week before, and says when something is not usual. | Every 6 hours |
 
 Your own instructions are added to what a kind already does, and the AI is told that they come from
 you. They can narrow what an agent cares about ("ignore routine scanning"); they cannot make it do
@@ -148,6 +151,27 @@ exposure scanner's test of risky ports in the same run.
   likely ways in, in order, and what to close first to cut each path. It plans for a defender: it
   sends nothing to your network and is told never to give instructions for attacking anything. It
   has little to say until a scanner has finished a run, and says so under *What it needs*.
+
+- **Daily briefing** is the agent to read each morning. It reads what the other agents last reported,
+  the open incidents, what changed at the firewall and the health of the integrations, and says
+  first whether anything needs you today. Its latest briefing is shown in Mission control on the
+  Agents page.
+- **Incident investigator** takes the three most serious open incidents, reads everything known of
+  each, looks up who is behind an address where VirusTotal has something, and says what happened
+  and what to do, or that it is probably only scanning.
+- **Anomaly watch** uses the new *what_changed* lookup (which the assistant can use too): how much
+  more or less the firewall refused in the last day than is usual for a day of the week before,
+  which ports were aimed at three times as often as usual or for the first time (ten connections
+  or more), and how many addresses were never refused before. Give it a week of data before you
+  trust its idea of usual.
+
+## Mission control
+
+The top of the Agents page treats the agents as one team. It says whether anything needs you (or
+that all is quiet, or how many agents are at work), shows the latest daily briefing, and lists the
+most serious findings across all agents, each leading to the agent that raised it. Only the
+findings of an agent's last finished run are listed, and only the medium, high and critical ones,
+so a finding the agent no longer reports goes away by itself.
 
 ## Privacy
 
