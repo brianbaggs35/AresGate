@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from sqlalchemy import ColumnElement, false, func, or_, select
+from sqlalchemy import ColumnElement, and_, false, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
@@ -51,6 +51,12 @@ MAX_DEVICES: Final = 5
 WHEN: Final = "%Y-%m-%d %H:%M"
 # The incidents that still need someone: not settled, and not quieted by the owner's verdicts.
 ACTIVE: Final = ("open", "investigating")
+# How many days before a window say what is usual, how many ports are looked at for a change, how
+# many connections it takes to be a change, and how many times the usual counts as a jump.
+BASELINE_DAYS: Final = 7
+CHANGE_CANDIDATES: Final = 50
+MIN_CHANGE: Final = 10
+JUMP: Final = 3
 
 
 @dataclass(frozen=True)
@@ -455,6 +461,111 @@ def targeted_ports(db: Session, redactor: Redactor, args: Args, now: datetime) -
     return Found(lines, [], _plural(len(rows), "targeted port"))
 
 
+def what_changed(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What the firewall turned away that is not usual: the window asked for, compared with what
+    the days before it were like. Says how much more, or less, was refused, which ports were
+    aimed at much more than usual or never before, and how many addresses are new."""
+    window, hours = _window(now, args.hours)
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    before = window.start - timedelta(days=BASELINE_DAYS)
+    # How many windows of this length the days before it hold, to turn their count into a usual.
+    windows = BASELINE_DAYS * 24 / hours
+
+    def refused(start: datetime, end: datetime) -> ColumnElement[bool]:
+        return and_(IS_BLOCK, Event.occurred_at >= start, Event.occurred_at < end)
+
+    now_total = db.scalar(select(func.count()).where(refused(window.start, window.end))) or 0
+    usual_total = (db.scalar(select(func.count()).where(refused(before, window.start))) or 0) / (
+        windows
+    )
+    if now_total == 0 and usual_total == 0:
+        return Found(
+            [f"The firewall refused nothing in the last {_plural(hours, 'hour')}, or before."],
+            [],
+            "nothing refused, nothing usual",
+        )
+    lines = [
+        f"In the last {_plural(hours, 'hour')} the firewall refused {now_total} connections; "
+        f"in a window this long it usually refuses {_usual(usual_total)}."
+    ]
+    lines += _changed_ports(db, redactor, window, before, windows, limit)
+    new_sources = db.scalar(
+        select(func.count(Event.src_address.distinct())).where(
+            refused(window.start, window.end),
+            Event.src_address.is_not(None),
+            Event.src_address.not_in(
+                select(Event.src_address).where(
+                    refused(before, window.start), Event.src_address.is_not(None)
+                )
+            ),
+        )
+    )
+    lines.append(
+        f"{_plural(new_sources or 0, 'address', 'addresses')} refused in this window had never "
+        f"been refused in the {_plural(BASELINE_DAYS, 'day')} before."
+    )
+    return Found(lines, [], f"how the last {_plural(hours, 'hour')} compare with usual")
+
+
+def _usual(count: float) -> str:
+    return "fewer than 1" if count < 1 else f"{count:.0f}"
+
+
+def _changed_ports(
+    db: Session,
+    redactor: Redactor,
+    window: Window,
+    before: datetime,
+    windows: float,
+    limit: int,
+) -> list[str]:
+    """The ports aimed at much more than usual, or for the first time, the biggest jumps first."""
+    count = func.count().label("count")
+    now_rows = db.execute(
+        select(Event.dst_port, Event.protocol, count)
+        .where(
+            IS_BLOCK,
+            Event.dst_port.is_not(None),
+            Event.occurred_at >= window.start,
+            Event.occurred_at < window.end,
+        )
+        .group_by(Event.dst_port, Event.protocol)
+        .order_by(count.desc())
+        .limit(CHANGE_CANDIDATES)
+    ).all()
+    usual = {
+        (port, protocol): total / windows
+        for port, protocol, total in db.execute(
+            select(Event.dst_port, Event.protocol, count)
+            .where(
+                IS_BLOCK,
+                Event.dst_port.in_([row[0] for row in now_rows]),
+                Event.occurred_at >= before,
+                Event.occurred_at < window.start,
+            )
+            .group_by(Event.dst_port, Event.protocol)
+        )
+    }
+    jumps: list[tuple[float, str]] = []
+    for port, protocol, total in now_rows:
+        typical = usual.get((port, protocol), 0.0)
+        name = f"port {port}/{protocol or 'any'}"
+        if typical == 0 and total >= MIN_CHANGE:
+            jumps.append(
+                (float(total), f"{name}: {_plural(total, 'connection')}, never refused before")
+            )
+        elif typical and total >= MIN_CHANGE and total / typical >= JUMP:
+            jumps.append(
+                (
+                    total / typical,
+                    f"{name}: {_plural(total, 'connection')}, {total / typical:.0f} times what "
+                    f"is usual ({_usual(typical)})",
+                )
+            )
+    jumps.sort(key=lambda item: -item[0])
+    return [line for _, line in jumps[:limit]] or ["No port was aimed at much more than usual."]
+
+
 def repeated_incidents(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     """The open incidents that say the same thing about different subjects, which are probably one
     campaign or one noisy rule, and so are better dealt with together."""
@@ -601,6 +712,13 @@ TOOLS: Final[Sequence[Tool]] = (
         "The ports on the home network that the firewall refused most connections to, and from "
         "how many addresses. Uses: hours (1-168, default 24), limit (1-10, default 5).",
         targeted_ports,
+    ),
+    Tool(
+        "what_changed",
+        "What the firewall turned away that is not usual: how much more or less than the days "
+        "before, which ports were aimed at much more than usual or for the first time, and how "
+        "many addresses are new. Uses: hours (1-168, default 24), limit (1-10, default 5).",
+        what_changed,
     ),
     Tool(
         "repeated_incidents",

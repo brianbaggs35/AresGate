@@ -1,5 +1,7 @@
 import type {
   Agent,
+  AttentionItem,
+  Briefing,
   Check,
   AgentDetail,
   AgentSettings,
@@ -192,6 +194,31 @@ export const overview = (overrides: Partial<Overview> = {}): Overview => ({
   usage: usage(),
   limits: limits(),
   proposals: 0,
+  attention: [],
+  attention_total: 0,
+  briefing: null,
+  ...overrides,
+})
+
+export const attention = (overrides: Partial<AttentionItem> = {}): AttentionItem => ({
+  agent_id: 3,
+  agent_name: 'Night watch',
+  icon: 'radar',
+  run_id: 7,
+  finished_at: '2026-11-10T12:00:12Z',
+  severity: 'high',
+  title: 'A scan got further than usual',
+  detail: 'Check the firewall rule for port 22.',
+  status: 'new',
+  ...overrides,
+})
+
+export const briefing = (overrides: Partial<Briefing> = {}): Briefing => ({
+  agent_id: 4,
+  agent_name: 'Morning briefing',
+  run_id: 9,
+  finished_at: '2026-11-10T12:00:12Z',
+  summary: 'Nothing needs you today. The firewall was quieter than usual.',
   ...overrides,
 })
 

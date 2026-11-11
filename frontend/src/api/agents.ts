@@ -159,6 +159,28 @@ export interface AgentDetail extends Agent {
   suggestions: ProposalList
 }
 
+/** One finding of an agent's last run that is worth the owner's time. */
+export interface AttentionItem {
+  agent_id: number
+  agent_name: string
+  icon: string
+  run_id: number
+  finished_at: string
+  severity: string
+  title: string
+  detail: string
+  status: 'new' | 'ongoing'
+}
+
+/** What the daily briefing agent said the last time it finished. */
+export interface Briefing {
+  agent_id: number
+  agent_name: string
+  run_id: number
+  finished_at: string
+  summary: string
+}
+
 export interface Overview {
   agents: Agent[]
   templates: Template[]
@@ -169,6 +191,12 @@ export interface Overview {
   limits: UsageLimit[]
   /** How many suggestions of the cleanup agent wait for the owner. */
   proposals: number
+  /** What the agents together say needs the owner, the most serious first, and how many there
+   * are in all. */
+  attention: AttentionItem[]
+  attention_total: number
+  /** The latest daily briefing, if an agent writes one. */
+  briefing: Briefing | null
 }
 
 export interface Finding {

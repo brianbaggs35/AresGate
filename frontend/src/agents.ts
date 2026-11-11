@@ -1,4 +1,5 @@
 import {
+  Activity,
   Ban,
   Bot,
   Brain,
@@ -12,6 +13,8 @@ import {
   HeartPulse,
   ListChecks,
   LoaderCircle,
+  Microscope,
+  Newspaper,
   Pause,
   Radar,
   ScanSearch,
@@ -52,6 +55,9 @@ const ICONS: Readonly<Record<string, Icon>> = {
   wifi: Wifi,
   flame: Flame,
   swords: Swords,
+  newspaper: Newspaper,
+  activity: Activity,
+  microscope: Microscope,
 }
 
 /** The icon for a kind of agent, and a robot for one that this version doesn't know. */
@@ -241,3 +247,23 @@ export const PROPOSAL_STATUS: Readonly<Record<ProposalStatus, { label: string; c
 
 export const incidentsWords = (count: number): string =>
   `${formatCount(count)} ${count === 1 ? 'incident' : 'incidents'}`
+
+const agentsWords = (count: number): string =>
+  `${formatCount(count)} ${count === 1 ? 'agent' : 'agents'}`
+
+/** How the agents are doing together, in a line for the top of the page: what needs the owner, and
+ * if nothing does, whether any is at work. */
+export function fleetLine(
+  agents: readonly Pick<Agent, 'state'>[],
+  attention: number,
+): { text: string; tone: 'bad' | 'working' | 'good' | 'idle' } {
+  const working = agents.filter((agent) => agent.state === 'running' || agent.state === 'queued')
+  const busy = working.length ? `${agentsWords(working.length)} at work` : ''
+  if (attention > 0) {
+    const needs = `${formatCount(attention)} ${attention === 1 ? 'thing needs' : 'things need'} you`
+    return { text: busy ? `${needs} · ${busy}` : needs, tone: 'bad' }
+  }
+  if (busy) return { text: busy, tone: 'working' }
+  if (agents.length) return { text: 'All quiet: nothing needs you', tone: 'good' }
+  return { text: 'No agents yet', tone: 'idle' }
+}

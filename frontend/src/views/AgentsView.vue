@@ -7,6 +7,7 @@ import { errorMessage } from '@/api/client'
 import { agentIcon } from '@/agents'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
+import AgentMission from '@/components/AgentMission.vue'
 import AgentSpend from '@/components/AgentSpend.vue'
 import AppPage from '@/components/AppPage.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -139,6 +140,14 @@ onMounted(() => load())
       >
         {{ problem }}
       </v-alert>
+
+      <AgentMission
+        v-if="agents.length"
+        :agents="agents"
+        :attention="overview.attention"
+        :total="overview.attention_total"
+        :briefing="overview.briefing"
+      />
 
       <AgentSpend :usage="overview.usage" :limits="overview.limits" />
 
