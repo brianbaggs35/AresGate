@@ -224,7 +224,7 @@ def give_verdict(
             user=auth.user,
             detail={**_facts(rule), "from": was},
         )
-    engine.reapply(db)
+    engine.reapply(db, engine.reach(db, rule))
     db.commit()
     return _given(db, rule, was)
 
@@ -254,7 +254,7 @@ def change_verdict(
             user=auth.user,
             detail={**_facts(rule), "from": was},
         )
-        engine.reapply(db)
+        engine.reapply(db, engine.reach(db, rule))
         db.commit()
     return _shown(db, rule)
 
@@ -273,8 +273,9 @@ def remove_verdict(
     record_audit(
         db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=_facts(rule)
     )
+    reached = engine.reach(db, rule)
     db.delete(rule)
     db.flush()
-    engine.reapply(db)
+    engine.reapply(db, reached)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
