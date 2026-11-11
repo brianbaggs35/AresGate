@@ -2,7 +2,7 @@
 import { Globe, Laptop, ShieldAlert } from '@lucide/vue'
 import { computed } from 'vue'
 
-import type { ConversationEnd } from '@/api/incidents'
+import type { ConversationEnd, Reputation } from '@/api/incidents'
 import { countryName, endTitle, flagOf, LOCATION, locationOf, portLine } from '@/evidence'
 import { JUDGEMENT } from '@/threatIntel'
 
@@ -15,7 +15,7 @@ import { JUDGEMENT } from '@/threatIntel'
 const props = defineProps<{
   end: ConversationEnd
   /** Which end it is, to say so: the one that sent, or the one it was sent to. */
-  role: 'client' | 'server'
+  side: 'client' | 'server'
 }>()
 
 const where = computed(() => locationOf(props.end))
@@ -26,18 +26,20 @@ const flagged = computed(
   () => props.end.blacklisted === true || ['malicious', 'suspicious'].includes(judgement.value),
 )
 const judgement = computed(() => props.end.reputation?.judgement ?? 'unknown')
+/** What the engines made of an address, in words. */
+function engineWords(found: Reputation): string {
+  const flags = found.malicious + found.suspicious
+  if (found.judgement === 'malicious' || found.judgement === 'suspicious') {
+    return `${flags.toString()} of ${found.engines.toString()} engines flag it`
+  }
+  if (found.judgement === 'clean') return `No engine of ${found.engines.toString()} flags it`
+  return JUDGEMENT[found.judgement].label
+}
+
 const reputation = computed(() => {
   const found = props.end.reputation
   if (!found) return null
-  const look = JUDGEMENT[found.judgement]
-  const flags = found.malicious + found.suspicious
-  const text =
-    found.judgement === 'malicious' || found.judgement === 'suspicious'
-      ? `${flags.toString()} of ${found.engines.toString()} engines flag it`
-      : found.judgement === 'clean'
-        ? `No engine of ${found.engines.toString()} flags it`
-        : look.label
-  return { look, text }
+  return { look: JUDGEMENT[found.judgement], text: engineWords(found) }
 })
 </script>
 
@@ -45,14 +47,14 @@ const reputation = computed(() => {
   <div
     class="end"
     :class="{ 'end--flagged': flagged, 'end--local': where === 'local' }"
-    :data-test="`end-${role}`"
+    :data-test="`end-${side}`"
   >
     <span class="end__icon" aria-hidden="true">
       <v-icon :icon="where === 'local' ? Laptop : Globe" size="26" />
     </span>
     <div class="end__body">
       <p class="text-label-large text-medium-emphasis" data-test="end-role">
-        {{ role === 'client' ? 'Sent from' : 'Sent to' }}
+        {{ side === 'client' ? 'Sent from' : 'Sent to' }}
       </p>
       <p class="text-title-medium end__title" data-test="end-title">{{ title }}</p>
       <p class="text-body-medium text-medium-emphasis end__address" data-test="end-address">

@@ -146,7 +146,7 @@ def test_a_program_that_names_no_address_adds_nothing() -> None:
     (found,) = told(signal(0, evidence=said(flow={"server": {"country": "US"}}))).items
 
     assert found.server.country is None
-    assert (found.bytes_out, found.bytes_in, found.duration, found.app) == (None,) * 4
+    assert (found.bytes_out, found.bytes_in, found.duration, found.app) == (None, None, None, None)
 
 
 def test_a_program_that_said_nothing_beyond_the_basics_is_still_listed_as_having_reported() -> None:
