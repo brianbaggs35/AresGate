@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Final
 
 from sqlalchemy import ColumnElement, false, func, or_, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.ai import triage
@@ -482,7 +483,7 @@ def agent_findings(db: Session, redactor: Redactor, args: Args, now: datetime) -
     limit = _between(args.limit, 5, 1, MAX_ITEMS)
     latest = (
         select(AgentRun)
-        .distinct(AgentRun.agent_id)
+        .ext(distinct_on(AgentRun.agent_id))
         .where(AgentRun.status == "succeeded")
         .order_by(AgentRun.agent_id, AgentRun.finished_at.desc())
         .subquery()
