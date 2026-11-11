@@ -61,6 +61,13 @@ class Incident(Base):
         Index("ix_incidents_last_seen_at", "last_seen_at"),
         Index("ix_incidents_family_id", "family_id"),
         Index("ix_incidents_family_key", "family_key"),
+        Index("ix_incidents_chain_id", "chain_id"),
+        CheckConstraint(
+            "chain_role IS NULL OR chain_role IN ('attacker', 'callout')", name="chain_role"
+        ),
+        CheckConstraint(
+            "chain_link IS NULL OR chain_link IN ('confirmed', 'inferred')", name="chain_link"
+        ),
         Index("ix_incidents_subject_last_seen_at", "subject", "last_seen_at"),
         Index("ix_incidents_block_last_seen_at", "block", "last_seen_at"),
     )
@@ -122,6 +129,16 @@ class Incident(Base):
     family_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("incident_families.id", ondelete=SET_NULL), default=None
     )
+    # The chain it is a step of (app/threats/chains.py): an outside address that got in by a flaw,
+    # and the device it got into calling out afterwards, which are one attack across two devices.
+    # ``chain_role`` says which step it is, ``chain_link`` whether the link was seen or only
+    # inferred, and ``chain_reason`` says why in words.
+    chain_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("incident_chains.id", ondelete=SET_NULL), default=None
+    )
+    chain_role: Mapped[str | None] = mapped_column(String(8), default=None)
+    chain_link: Mapped[str | None] = mapped_column(String(9), default=None)
+    chain_reason: Mapped[str | None] = mapped_column(String(300), default=None)
     # What is thought of it beyond the rules (app/threats/calls.py): what kind of thing it is, how
     # sure that is, and whose opinion it is: the owner's (of its family), the AI's reading of this
     # incident, or the AI's judgement of its family. Kept here so that counting is only columns.
@@ -132,6 +149,28 @@ class Incident(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     # When someone last changed the status, and nothing before that.
     status_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+
+
+class IncidentChain(Base):
+    """An attack that crossed from the internet to a device and then out again: the incident about
+    the outside address that got in, and the one about the device calling out afterwards, linked by
+    the device and the time between them (see app/threats/chains.py). The steps are the incidents
+    whose ``chain_id`` is this one."""
+
+    __tablename__ = "incident_chains"
+    __table_args__ = (Index("ix_incident_chains_device_last_seen_at", "device", "last_seen_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    # The inside address of the device the attack went through.
+    device: Mapped[str] = mapped_column(String(64))
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Whether a step that calls out was seen to do what a compromised device does (a beacon, a
+    # command server), and not only to be talking to the internet after being attacked.
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    steps: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 class IncidentSignal(Base):

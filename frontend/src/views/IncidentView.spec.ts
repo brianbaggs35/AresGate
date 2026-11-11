@@ -164,6 +164,43 @@ describe('IncidentView', () => {
     })
   })
 
+  describe('a step of an attack across two devices', () => {
+    it('says so, why, and leads to the whole attack', async () => {
+      const { find, text } = await open({
+        found: detail({
+          chain_id: 4,
+          chain_role: 'callout',
+          chain_link: 'confirmed',
+          chain_reason: '192.168.1.20 did what a device that was taken over does.',
+        }),
+      })
+
+      expect(text('incident-chain')).toContain('A step of an attack across two devices')
+      expect(text('incident-chain')).not.toContain('(inferred)')
+      expect(text('incident-chain-reason')).toContain('taken over')
+      expect(find('incident-chain-open').attributes('href')).toBe('/threats/chains/4')
+    })
+
+    it('says a link that is only inferred is', async () => {
+      const { text } = await open({
+        found: detail({
+          chain_id: 4,
+          chain_role: 'callout',
+          chain_link: 'inferred',
+          chain_reason: 'It called out.',
+        }),
+      })
+
+      expect(text('incident-chain')).toContain('(inferred)')
+    })
+
+    it('says nothing of it for an incident that is in no chain', async () => {
+      const { find } = await open()
+
+      expect(find('incident-chain').exists()).toBe(false)
+    })
+  })
+
   describe('the hero', () => {
     it('says what happened: that the programs agree, and who reported what', async () => {
       const { text } = await open()

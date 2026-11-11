@@ -4,6 +4,19 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Attacks across two devices are one attack.** An exploit aimed at a device on your network and
+  that device calling out soon after are two incidents, about two different outside addresses.
+  AresGate now links them into a chain by the device and the time between them: a link is *seen*
+  when what the device sent is itself a sign it was taken over (a beacon, a command server), and
+  *inferred*, and labelled as a guess, when it only called out. Nothing is linked without an exploit
+  aimed at the device. A chain is a threat, is listed at the top of Threats, and has a page that
+  draws the steps in order with the evidence behind each, an alert two programs reported counted
+  once and shown with the programs that saw it. Each incident that is a step says so and leads to it.
+
 ## 0.1.3
 
 ### Added

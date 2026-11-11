@@ -60,6 +60,10 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     stages: [],
     family_id: 7,
     call: null,
+    chain_id: null,
+    chain_role: null,
+    chain_link: null,
+    chain_reason: null,
     ...changes,
   }
 }

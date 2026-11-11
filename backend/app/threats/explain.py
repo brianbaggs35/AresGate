@@ -39,10 +39,19 @@ def _chain(incident: Incident) -> str:
     return f"It is more than scanning: it went through {len(incident.stages)} stages ({seen})."
 
 
+def _linked(incident: Incident) -> str:
+    kind = "an attack" if incident.chain_link == "confirmed" else "a possible attack"
+    where = "got in" if incident.chain_role == "attacker" else "called out afterwards"
+    said = f"It is a step of {kind} across two devices: it {where}."
+    return f"{said} {incident.chain_reason}" if incident.chain_reason else said
+
+
 def _threat(incident: Incident, tuning: Tuning) -> list[str]:
     lines: list[str] = []
     if incident.verdict == "threat":
         lines.append("You said it is a real threat.")
+    if incident.chain_id is not None:
+        lines.append(_linked(incident))
     if stages.is_chain(incident.stages or []):
         lines.append(_chain(incident))
     sure = incident.ai_confidence

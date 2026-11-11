@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.incidents import attention
 from app.incidents.attention import Lane, Standing
-from app.models import Incident
+from app.models import Incident, IncidentChain
 from app.threats.settings import Tuning
 
 NOW = datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
@@ -44,6 +44,13 @@ def incident(**changes: Any) -> Incident:
     return Incident(**fields)
 
 
+def chain() -> IncidentChain:
+    """The chain that the incidents of ``chained`` are steps of."""
+    return IncidentChain(
+        id=1, device="192.168.1.20", first_seen_at=NOW, last_seen_at=NOW, confirmed=True, steps=2
+    )
+
+
 class TestWhichLane:
     @pytest.mark.parametrize(
         ("changes", "lane"),
@@ -54,6 +61,13 @@ class TestWhichLane:
             ({"confidence": 10, "stages": ["recon", "access"]}, Lane.THREAT),
             ({"confidence": 50, "stages": ["foothold"]}, Lane.THREAT),
             ({"confidence": 50, "stages": ["recon"]}, Lane.SUSPECT),
+            ({"confidence": 10, "chain_id": 1}, Lane.THREAT),
+            (
+                {"confidence": 10, "chain_id": 1, "ai_class": "noise", "ai_confidence": 99},
+                Lane.THREAT,
+            ),
+            ({"confidence": 80, "chain_id": 1, "verdict": "low_priority"}, None),
+            ({"confidence": 80, "chain_id": 1, "status": "resolved"}, None),
             ({"confidence": 10, "verdict": "threat"}, Lane.BACKGROUND),
             ({"confidence": 50, "verdict": "threat"}, Lane.THREAT),
             ({"confidence": 80, "ai_class": "probe", "ai_confidence": 90}, Lane.BACKGROUND),
@@ -139,12 +153,28 @@ class TestTheSqlSaysTheSame:
                     ai_confidence=sure,
                 )
             )
+        found.extend(
+            incident(
+                subject=f"chained{number}",
+                status=status,
+                verdict=verdict,
+                confidence=confidence,
+                chain_id=1,
+                ai_class=kind,
+                ai_confidence=sure,
+            )
+            for number, (status, verdict, confidence, (kind, sure)) in enumerate(
+                product(("open", "resolved"), (None, "low_priority"), (10, 80), calls)
+            )
+        )
         return found
 
     @pytest.mark.parametrize("tuning", TUNINGS)
     def test_every_kind_of_incident_is_where_the_function_puts_it(
         self, session: Session, tuning: Tuning
     ) -> None:
+        session.add(chain())
+        session.flush()
         session.add_all(self.grid())
         session.commit()
         everything = list(session.scalars(select(Incident)))
@@ -179,6 +209,8 @@ class TestTheSqlSaysTheSame:
     def test_the_lanes_and_what_is_in_none_cover_every_incident_once(
         self, session: Session, tuning: Tuning
     ) -> None:
+        session.add(chain())
+        session.flush()
         session.add_all(self.grid())
         session.commit()
         total = len(list(session.scalars(select(Incident))))
@@ -198,6 +230,8 @@ class TestTheSqlSaysTheSame:
 
     @pytest.mark.parametrize("tuning", TUNINGS)
     def test_the_tally_counts_what_the_clauses_do(self, session: Session, tuning: Tuning) -> None:
+        session.add(chain())
+        session.flush()
         session.add_all(self.grid())
         session.commit()
         everything = list(session.scalars(select(Incident)))

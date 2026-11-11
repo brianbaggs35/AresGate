@@ -1,8 +1,17 @@
-import type { Coverage, Family, FamilyDetail, Funnel, Overview } from '@/api/threats'
+import type {
+  Chain,
+  ChainDetail,
+  ChainStep,
+  Coverage,
+  Family,
+  FamilyDetail,
+  Funnel,
+  Overview,
+} from '@/api/threats'
 import type { ThreatPreview, ThreatSettings } from '@/api/threatSettings'
 
 import { dashboard } from '@/test/dashboard'
-import { incident } from '@/test/incidents'
+import { confirmation, incident, occurrence, signal } from '@/test/incidents'
 
 const NOW = Date.now()
 const HOUR = 3_600_000
@@ -106,6 +115,84 @@ export function threatPreview(changes: Partial<ThreatPreview> = {}): ThreatPrevi
   return {
     now: { threats: 2, suspects: 5, background: 50, cleared: 40, muted: 4 },
     after: { threats: 3, suspects: 4, background: 50, cleared: 40, muted: 4 },
+    ...changes,
+  }
+}
+
+/** An attack across two devices that was seen: an exploit at a camera, and the camera then sending
+ * a beacon. */
+export function chain(changes: Partial<Chain> = {}): Chain {
+  return {
+    id: 4,
+    device: '192.168.1.20',
+    device_name: 'Kitchen camera',
+    first_seen_at: new Date(NOW - 50 * 60_000).toISOString(),
+    last_seen_at: new Date(NOW - 5 * 60_000).toISOString(),
+    confirmed: true,
+    steps: 2,
+    severity: 'critical',
+    lane: 'threat',
+    summary: '93.184.216.34 attacked 192.168.1.20, which then called 8.8.4.4.',
+    ...changes,
+  }
+}
+
+export function chainStep(changes: Partial<ChainStep> = {}): ChainStep {
+  return {
+    role: 'attacker',
+    link: 'confirmed',
+    reason: 'ET EXPLOIT Apache Log4j RCE Attempt (CVE-2021-44228), aimed at 192.168.1.20.',
+    incident_id: 11,
+    title: 'ET EXPLOIT Apache Log4j RCE Attempt (93.184.216.34)',
+    subject: '93.184.216.34',
+    severity: 'high',
+    status: 'open',
+    first_seen_at: new Date(NOW - 50 * 60_000).toISOString(),
+    last_seen_at: new Date(NOW - 45 * 60_000).toISOString(),
+    signal_count: 3,
+    duplicates: 1,
+    sources: [
+      { key: 'suricata', name: 'Suricata' },
+      { key: 'wazuh', name: 'Wazuh' },
+    ],
+    stages: ['access'],
+    evidence: [
+      occurrence({
+        signal: signal({
+          summary: 'ET EXPLOIT Apache Log4j RCE Attempt',
+          signature: 'ET EXPLOIT Apache Log4j RCE Attempt (CVE-2021-44228)',
+          source: 'suricata',
+          source_name: 'Suricata',
+          dst_port: 8080,
+        }),
+        duplicates: 1,
+        confirmations: [confirmation({ source: 'wazuh', source_name: 'Wazuh' })],
+      }),
+    ],
+    ...changes,
+  }
+}
+
+/** The attacker, then the callout, which is a beacon unless the link is changed to inferred. */
+export function chainDetail(changes: Partial<ChainDetail> = {}): ChainDetail {
+  return {
+    ...chain(),
+    path: [
+      chainStep(),
+      chainStep({
+        role: 'callout',
+        incident_id: 12,
+        title: 'ET MALWARE Cobalt Strike Beacon Observed (8.8.4.4)',
+        subject: '8.8.4.4',
+        severity: 'critical',
+        stages: ['foothold'],
+        duplicates: 0,
+        sources: [{ key: 'suricata', name: 'Suricata' }],
+        reason: '192.168.1.20 did what a device that was taken over does, 20 minutes after.',
+        evidence: [occurrence({ signal: signal({ summary: 'Cobalt Strike beacon' }) })],
+      }),
+    ],
+    why: ['A chain is more than scanning, so it is a threat.'],
     ...changes,
   }
 }

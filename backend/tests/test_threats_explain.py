@@ -55,6 +55,22 @@ class TestWhyItIsWhereItIs:
         assert "more than scanning" in line
         assert "recon then access" in line
 
+    def test_a_step_of_a_chain_across_devices_says_which_step_and_how_sure(self) -> None:
+        [line] = said(
+            confidence=10,
+            chain_id=1,
+            chain_role="callout",
+            chain_link="inferred",
+            chain_reason="It called out.",
+        )
+        [other] = said(confidence=10, chain_id=1, chain_role="attacker", chain_link="confirmed")
+
+        assert line == (
+            "It is a step of a possible attack across two devices: it called out afterwards. "
+            "It called out."
+        )
+        assert other == "It is a step of an attack across two devices: it got in."
+
     def test_a_foothold_says_the_attack_worked(self) -> None:
         [line] = said(confidence=50, stages=["foothold"])
 

@@ -37,7 +37,7 @@ from app.models import (
 )
 from app.security import passwords
 from app.security.accounts import normalize_username
-from app.threats import families
+from app.threats import chains, families
 
 DEFAULT_VALUE = "an e2e value"
 DEFAULT_PASSWORD = "an e2e password for testing"  # nosec B105: made up, for test accounts
@@ -337,6 +337,7 @@ def incidents(
     session.flush()
     incident_engine.correlate(session, now)
     families.assign(session)
+    chains.link(session, now)
     session.flush()
     for spec, address in zip(specs, addresses, strict=True):
         if spec.status != "open":
@@ -395,6 +396,9 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
         events.append(reported)
         if spec.twin:
             events.append(_twin(reported, spec.twin, f"e2e-incident-{number}-{signal}-twin"))
+    # Where it went on: at the device from the address, or, for a device that calls out, from the
+    # device to the address (see ``IncidentSpec.outbound``).
+    went_from, went_to = (spec.device, address) if spec.outbound else (address, spec.device)
     for step, (words, severity, port) in enumerate(_WENT_ON):
         if (spec.exploit, spec.compromise)[step]:
             events.append(
@@ -405,11 +409,11 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
                     severity=severity,
                     occurred_at=last + timedelta(seconds=step + 1),
                     identity=(f"e2e-incident-{number}-went-on-{step}",),
-                    summary=f"{words}: {address} to {spec.device}:{port}",
+                    summary=f"{words}: {went_from} to {went_to}:{port}",
                     signature=words,
-                    src_address=address,
+                    src_address=went_from,
                     src_port=41_000 + step,
-                    dst_address=spec.device,
+                    dst_address=went_to,
                     dst_port=port,
                     protocol="tcp",
                 )

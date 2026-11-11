@@ -180,6 +180,12 @@ class IncidentOut(BaseModel):
     # an AI: the word of the owner on the family, then the AI's reading of it, then its family's.
     family_id: int | None
     call: CallOut | None
+    # The chain it is a step of, an attack across two devices (``/threats/chains``), and which
+    # step, how sure the link is and why.
+    chain_id: int | None
+    chain_role: Literal["attacker", "callout"] | None
+    chain_link: Literal["confirmed", "inferred"] | None
+    chain_reason: str | None
 
 
 class ReasonOut(BaseModel):
@@ -682,6 +688,10 @@ def _incident(
         stages=cast(list[Stage], incident.stages),
         family_id=incident.family_id,
         call=_call(incident),
+        chain_id=incident.chain_id,
+        chain_role=cast(Literal["attacker", "callout"] | None, incident.chain_role),
+        chain_link=cast(Literal["confirmed", "inferred"] | None, incident.chain_link),
+        chain_reason=incident.chain_reason,
     )
 
 
@@ -792,7 +802,7 @@ def _insights(found: insights.Insights) -> InsightsOut | None:
     )
 
 
-def _occurrences(found: list[occurrences.Occurrence]) -> list[OccurrenceOut]:
+def occurrences_out(found: list[occurrences.Occurrence]) -> list[OccurrenceOut]:
     """The occurrences as they are told, the first of them in the order they happened. Only the
     busiest say what their programs said."""
     ranked = sorted(
@@ -896,7 +906,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         blocked=None if done.state == "no_address" else done.tally.blocked,
         reading=_reading(read),
         why=explain.why(incident, judging.floor, judging.tuning),
-        occurrences=_occurrences(grouped),
+        occurrences=occurrences_out(grouped),
         family=_family(db, incident),
         insights=_insights(insights.of(grouped)),
         conversations=conversation_api.out(db, conversations.of(grouped)),

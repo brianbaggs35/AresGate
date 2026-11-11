@@ -1,6 +1,15 @@
 import { apiGet, apiPost, apiPut } from '@/api/client'
 import type { DashboardWindow, WindowInfo } from '@/api/dashboard'
-import type { FamilyBrief, Incident, Lane, OwnerCall } from '@/api/incidents'
+import type {
+  FamilyBrief,
+  Incident,
+  IncidentStatus,
+  Lane,
+  Occurrence,
+  OwnerCall,
+  Program,
+  Stage,
+} from '@/api/incidents'
 import type { Severity } from '@/severity'
 
 /** Whether an AI has judged a kind of incident, you have called it, or neither yet. */
@@ -118,4 +127,80 @@ export function callFamily(
 /** Asks the AI what a kind of incident is. */
 export function judgeFamily(id: number, csrfToken: string): Promise<Judgement> {
   return apiPost<Judgement>(`/threats/families/${id}/judge`, {}, csrfToken)
+}
+
+/** Whether a link between two steps of a chain was seen, or only inferred from the device and the
+ * time between them. */
+export type ChainLink = 'confirmed' | 'inferred'
+export type ChainRole = 'attacker' | 'callout'
+
+/** An attack across two devices: an outside address that got in by a flaw, and the device it got
+ * into calling out afterwards. */
+export interface Chain {
+  id: number
+  /** The device it went through, and what it is called when that is known. */
+  device: string
+  device_name: string | null
+  first_seen_at: string
+  last_seen_at: string
+  /** Whether the device was seen doing what a taken-over device does, and not only calling out. */
+  confirmed: boolean
+  steps: number
+  severity: Severity
+  /** A threat while any step still needs attention; null once all are handled or muted. */
+  lane: Lane | null
+  /** Who got in, and where the device then called, in a sentence. */
+  summary: string
+}
+
+/** One incident of a chain, and the evidence behind it. */
+export interface ChainStep {
+  role: ChainRole
+  link: ChainLink
+  reason: string
+  incident_id: number
+  title: string
+  subject: string
+  severity: Severity
+  status: IncidentStatus
+  first_seen_at: string
+  last_seen_at: string
+  signal_count: number
+  /** How many alerts another program also reported, which count once. */
+  duplicates: number
+  sources: Program[]
+  stages: Stage[]
+  /** What the programs said of the signals that name the device. */
+  evidence: Occurrence[]
+}
+
+export interface ChainPage {
+  total: number
+  items: Chain[]
+}
+
+export interface ChainDetail extends Chain {
+  /** The steps in the order they happened. */
+  path: ChainStep[]
+  /** Why it is a threat, a fact to a line. */
+  why: string[]
+}
+
+export interface ChainQuery {
+  confirmed?: boolean
+  limit?: number
+  offset?: number
+}
+
+export function fetchChains(query: ChainQuery = {}): Promise<ChainPage> {
+  const params = new URLSearchParams()
+  if (query.confirmed !== undefined) params.set('confirmed', String(query.confirmed))
+  if (query.limit !== undefined) params.set('limit', query.limit.toString())
+  if (query.offset) params.set('offset', query.offset.toString())
+  const text = params.toString()
+  return apiGet<ChainPage>(text ? `/threats/chains?${text}` : '/threats/chains')
+}
+
+export function fetchChain(id: number): Promise<ChainDetail> {
+  return apiGet<ChainDetail>(`/threats/chains/${id}`)
 }

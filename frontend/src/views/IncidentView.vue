@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  ArrowRight,
   CircleCheck,
   Clock,
   Gauge,
@@ -282,6 +283,29 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </v-alert>
       <v-alert v-if="loadError" type="warning" variant="tonal" data-test="incident-stale">
         {{ loadError }} What is shown is from {{ updated }}.
+      </v-alert>
+
+      <v-alert
+        v-if="shown.chain_id !== null && shown.chain_link !== null"
+        :type="shown.chain_link === 'confirmed' ? 'error' : 'warning'"
+        variant="tonal"
+        :icon="false"
+        data-test="incident-chain"
+      >
+        <p class="text-title-medium">
+          A step of an attack across two devices{{
+            shown.chain_link === 'inferred' ? ' (inferred)' : ''
+          }}
+        </p>
+        <p class="text-body-large" data-test="incident-chain-reason">{{ shown.chain_reason }}</p>
+        <v-btn
+          variant="text"
+          :append-icon="ArrowRight"
+          :to="{ name: 'chain', params: { id: shown.chain_id } }"
+          data-test="incident-chain-open"
+        >
+          See the whole attack
+        </v-btn>
       </v-alert>
 
       <HeroSurface
