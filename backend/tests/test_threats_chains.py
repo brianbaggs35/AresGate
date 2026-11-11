@@ -79,7 +79,8 @@ class TestAnAttackAcrossTwoDevices:
         found = by_subject(file(session, settings, exploit(), call_out()))
 
         attacker, callout = found[ATTACKER], found[SERVER]
-        assert attacker.chain_id == callout.chain_id is not None
+        assert attacker.chain_id is not None
+        assert attacker.chain_id == callout.chain_id
         assert (attacker.chain_role, attacker.chain_link) == ("attacker", "confirmed")
         assert (callout.chain_role, callout.chain_link) == ("callout", "confirmed")
         assert attacker.chain_reason is not None
