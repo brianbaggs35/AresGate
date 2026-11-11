@@ -11,7 +11,8 @@ from app.ai.tools import Args
 @dataclass(frozen=True)
 class Lookup:
     """One look at what AresGate knows: the name of a tool (app/ai/tools.py, or ``scan_exposure``
-    in app/agents/probe.py) and what it is asked for."""
+    in app/agents/probe.py, or ``read_services`` in app/agents/fingerprint.py) and what it is asked
+    for."""
 
     tool: str
     args: Args = field(default_factory=Args)
@@ -210,12 +211,161 @@ NOISE_CLEANER: Final = Template(
     ),
 )
 
+VULNERABILITY_SCANNER: Final = Template(
+    key="vulnerability_scanner",
+    name="Vulnerability scanner",
+    tagline="Reads what your devices' services announce, and what is wrong with it",
+    description=(
+        "Connects to the web, mail and SSH services of the devices AresGate has seen at home and "
+        "reads what each says of itself: an expired or weak certificate, an SSH server that still "
+        "speaks protocol 1, a web server that asks for a password in the clear, the software and "
+        "version a service announces. It logs in to nothing and changes nothing, tests only your "
+        "own network, only when you start it and only once you have allowed it on the agent."
+    ),
+    icon="shield-alert",
+    brief=(
+        "You look for vulnerabilities on the home network. You are given what the services of "
+        "the devices announce about themselves and what is wrong with each. Say which matter "
+        "most and why, and what to do about each in plain words: update, renew, switch to the "
+        "encrypted address, turn it off. For a software version, say what to look up and where. "
+        "Never suggest attacking anything and never invent a weakness that was not reported."
+    ),
+    goal="Tell me which of my devices need an update or a fix first, and how.",
+    first=(Lookup("read_services"), Lookup("scan_exposure")),
+    asks=("device", "new_devices"),
+    interval_minutes=None,
+    active=True,
+    needs=("ai", "devices"),
+    setup=(
+        "Connect OPNsense or ntopng under Integrations, so that AresGate knows which devices are "
+        "on the network. It reads only those.",
+        "Edit the agent and allow it to test your network: it does nothing until you do. It "
+        "connects to a short list of ports, reads a certificate, a greeting or a web server's "
+        "headers, and logs in to nothing.",
+        "Start it by hand when you want a check, for example after adding a device. It is never "
+        "on a schedule.",
+    ),
+)
+ROGUE_DEVICE_WATCH: Final = Template(
+    key="rogue_device_watch",
+    name="Rogue device watch",
+    tagline="Notices a device that joined your network and should not have",
+    description=(
+        "Looks at the devices that appeared on your network for the first time lately and at "
+        "what the alerts say about them, and tells you which to check: one with no name, one "
+        "from a maker you do not own anything from, one that was loud the moment it joined."
+    ),
+    icon="wifi",
+    brief=(
+        "You watch for devices that should not be on the home network. Look at the devices that "
+        "appeared recently, and whether they appear in any incident or alert. Say which the "
+        "owner should check, and how to tell whether it is theirs: ask who in the house owns "
+        "it, look at the router's list, check the maker. Do not assume a new device is hostile; "
+        "most are a phone or a guest."
+    ),
+    goal="Tell me about any new device I should check, and ignore the ones that look like phones.",
+    first=(
+        Lookup("new_devices", Args(hours=72, limit=10)),
+        Lookup("open_incidents", Args(limit=5)),
+    ),
+    asks=("new_devices", "device", "open_incidents", "incident", "alerts"),
+    interval_minutes=120,
+    needs=("ai", "devices"),
+    setup=(
+        "Connect OPNsense or ntopng under Integrations: they tell AresGate which devices are on "
+        "the network, and when each first appeared.",
+        "Choose the AI the agents ask under Settings > Agents.",
+        "Start it once by hand. Devices already there are not new, so it reports only what joins "
+        "from then on.",
+    ),
+)
+FIREWALL_REVIEWER: Final = Template(
+    key="firewall_reviewer",
+    name="Firewall reviewer",
+    tagline="Reads what your firewall turned away, and what it says about your setup",
+    description=(
+        "Looks at the ports and the addresses the firewall refused most, and at the alerts that "
+        "repeat, and tells you what it suggests: a service someone keeps trying to reach, a "
+        "rule that is noisy, an address worth blocking for good. It only reads. It cannot "
+        "change a rule."
+    ),
+    icon="flame",
+    brief=(
+        "You review what the home firewall has turned away. Look at the ports that were targeted "
+        "most, the addresses refused most and the alerts that repeat. Say what it tells the "
+        "owner about their network and what, if anything, to change in the firewall. You cannot "
+        "change a rule yourself, so never say that you did."
+    ),
+    goal="Tell me what the firewall is telling me, and one thing to change if there is one.",
+    first=(
+        Lookup("targeted_ports", Args(hours=24, limit=5)),
+        Lookup("blocked_sources", Args(hours=24, limit=5)),
+        Lookup("noisy_alerts", Args(hours=24, limit=5)),
+    ),
+    asks=("targeted_ports", "blocked_sources", "noisy_alerts", "alerts", "reputation"),
+    interval_minutes=720,
+    needs=("ai", "firewall"),
+    setup=(
+        "Connect OPNsense under Integrations and turn on its firewall log: this agent reads "
+        "what the firewall refused.",
+        "Choose the AI the agents ask under Settings > Agents.",
+    ),
+)
+PENETRATION_TEST_PLANNER: Final = Template(
+    key="penetration_test_planner",
+    name="Penetration test planner",
+    tagline="Thinks like an attacker about your network, so you can close the way in first",
+    description=(
+        "Reads what the other agents found, what has been probing you and which services are "
+        "open, and sets out how an attacker would go about it: the most likely way in, what they "
+        "would reach next and what to close first. It plans and explains; it never attacks "
+        "anything and sends nothing to your network."
+    ),
+    icon="swords",
+    brief=(
+        "You plan a penetration test of the home network on paper, as a defender. You are given "
+        "what the other agents reported and what has been probing the network. Describe the "
+        "most likely ways in, in order, what an attacker would reach after each, and what the "
+        "owner should close first to cut that path. Use only what you were given; mark a guess "
+        "as a guess. Never give instructions for breaking into anything: say what to defend, "
+        "not how to attack."
+    ),
+    goal="Show me the way in an attacker would most likely take, and what to close first.",
+    first=(
+        Lookup("agent_findings", Args(limit=10)),
+        Lookup("targeted_ports", Args(hours=72, limit=5)),
+        Lookup("open_incidents", Args(limit=5)),
+    ),
+    asks=(
+        "agent_findings",
+        "targeted_ports",
+        "open_incidents",
+        "incident",
+        "device",
+        "blocked_sources",
+        "new_devices",
+    ),
+    interval_minutes=None,
+    needs=("ai", "alerts", "agents"),
+    setup=(
+        "Make a Vulnerability scanner or an Exposure scanner agent and run it: this agent builds "
+        "on what they found, and has little to say without it.",
+        "Connect at least one source of alerts under Integrations, so that it knows what has "
+        "been probing you.",
+        "Choose the AI the agents ask under Settings > Agents, and start it by hand after a scan.",
+    ),
+)
+
 TEMPLATES: Final[tuple[Template, ...]] = (
     THREAT_HUNTER,
     INTELLIGENCE_ANALYST,
     HEALTH_WATCH,
     NOISE_CLEANER,
     EXPOSURE_SCANNER,
+    VULNERABILITY_SCANNER,
+    ROGUE_DEVICE_WATCH,
+    FIREWALL_REVIEWER,
+    PENETRATION_TEST_PLANNER,
 )
 
 

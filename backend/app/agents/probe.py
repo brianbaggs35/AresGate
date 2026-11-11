@@ -45,6 +45,9 @@ class Service:
     name: str
     severity: str
     why: str
+    # Whether what it says is that the port is open, which is all a test of ports finds out. What
+    # is read from a service (fingerprint.py) says more than that, so it is worded on its own.
+    opens: bool = True
 
 
 PORTS: Final[Mapping[int, Service]] = {
@@ -98,6 +101,13 @@ class Hit:
     target: Target
     port: int
     service: Service
+
+    @property
+    def headline(self) -> str:
+        where = self.target.label
+        if self.service.opens:
+            return f"{self.service.name} is open on {where}"
+        return f"{self.service.name} on {where}, port {self.port}"
 
 
 @dataclass(frozen=True)
@@ -171,6 +181,8 @@ def scan(
 
 
 def line(hit: Hit) -> str:
+    if not hit.service.opens:
+        return f"{hit.headline}. {hit.service.why}"
     return f"{hit.target.label}: port {hit.port} ({hit.service.name}) is open. {hit.service.why}"
 
 

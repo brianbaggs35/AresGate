@@ -193,5 +193,8 @@ def test_old_runs_are_forgotten_with_their_steps_and_recent_and_waiting_ones_are
 def test_every_template_is_found_by_its_key_and_no_other_is() -> None:
     assert [catalog.template(item.key) for item in catalog.TEMPLATES] == list(catalog.TEMPLATES)
     assert catalog.template("nothing") is None
-    assert {item.key for item in catalog.TEMPLATES if item.active} == {"exposure_scanner"}
+    assert {item.key for item in catalog.TEMPLATES if item.active} == {
+        "exposure_scanner",
+        "vulnerability_scanner",
+    }
     assert all(item.interval_minutes is None for item in catalog.TEMPLATES if item.active)

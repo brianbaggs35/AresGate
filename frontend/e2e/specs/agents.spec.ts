@@ -28,7 +28,7 @@ test.describe('agents', () => {
     await expect(page).toHaveTitle('Agents · AresGate')
     await expect(agents.heading).toHaveText('Agents')
     await expect(agents.empty).toBeVisible()
-    await expect(agents.kinds).toHaveCount(5)
+    await expect(agents.kinds).toHaveCount(9)
     await expect(agents.cards).toHaveCount(0)
   })
 
@@ -62,7 +62,7 @@ test.describe('agents', () => {
 
     await agents.make.click()
     await expect(agents.dialog).toBeVisible()
-    await expect(agents.dialogKinds).toHaveCount(5)
+    await expect(agents.dialogKinds).toHaveCount(9)
     await agents.chooseKind('Threat hunter')
     await agents.dialogName.fill('Night watch')
     await agents.dialogGoal.fill('Only wake me for real compromises.')

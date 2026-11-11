@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.agents import catalog, flow, probe, proposals
+from app.agents import catalog, fingerprint, flow, probe, proposals
 from app.agents import settings as agent_settings
 from app.agents.catalog import Lookup, Template
 from app.ai import gateway, tools
@@ -43,6 +43,8 @@ from app.models.base import utcnow
 
 PURPOSE: Final = "agent"
 SCAN: Final = "scan_exposure"
+READ: Final = "read_services"
+ACTIVE: Final = (SCAN, READ)
 # The model is asked up to this many times: it may ask to look at more twice, and the last time
 # has to answer with what it has.
 MAX_ROUNDS: Final = 3
@@ -149,6 +151,8 @@ class Work:
     policy: AddressPolicy = netguard.HOME_NETWORK
     ports: Mapping[int, probe.Service] = field(default_factory=lambda: probe.PORTS)
     connect: Callable[[str, int, float], bool] = probe.connects
+    read: fingerprint.Reader = fingerprint.look
+    read_ports: Sequence[int] = fingerprint.PORTS
 
 
 def label(lookup: Lookup) -> str:
@@ -434,7 +438,7 @@ def _look(work: Work, lookups: Sequence[Lookup], now: datetime) -> list[Entry]:
         # The owner reads what is found as it is: it is only made safe for a provider later.
         redactor = Redactor(db, Level.LOCAL, now)
         for lookup in lookups:
-            if lookup.tool == SCAN:
+            if lookup.tool in ACTIVE:
                 entries.append(_test(work, db, lookup, now))
                 continue
             tool = tools.by_name(lookup.tool)
@@ -460,24 +464,31 @@ def _test(work: Work, db: Session, lookup: Lookup, now: datetime) -> Entry:
     """Tests the devices on the network, if the agent has been allowed to."""
     if not work.snapshot.allow_active:
         return Entry(
-            tool=SCAN,
+            tool=lookup.tool,
             label=label(lookup),
             summary="not run: the agent isn't allowed to test the network",
             lines=["The agent hasn't been allowed to test the network, so nothing was sent."],
             refs=[],
             hits=[],
         )
-    found = probe.scan(db, now, policy=work.policy, ports=work.ports, connect=work.connect)
+    if lookup.tool == READ:
+        found = fingerprint.scan(db, now, policy=work.policy, ports=work.read_ports, read=work.read)
+        summary = fingerprint.summary(found)
+        nothing = f"Nothing worth saying in what the services of {found.tested} devices announce."
+    else:
+        found = probe.scan(db, now, policy=work.policy, ports=work.ports, connect=work.connect)
+        summary = probe.summary(found)
+        nothing = f"Nothing risky answered on {found.tested} devices."
     return Entry(
-        tool=SCAN,
+        tool=lookup.tool,
         label=label(lookup),
-        summary=probe.summary(found),
-        lines=[probe.line(hit) for hit in found.hits]
-        or [f"Nothing risky answered on {found.tested} devices."],
+        summary=summary,
+        lines=[probe.line(hit) for hit in found.hits] or [nothing],
         refs=[],
         hits=[
             {
                 "device": hit.target.label,
+                "title": hit.headline,
                 "port": hit.port,
                 "service": hit.service.name,
                 "severity": hit.service.severity,
@@ -678,7 +689,7 @@ def _found_by_testing(ran: Sequence[Entry]) -> list[Finding]:
     return [
         Finding(
             severity=str(hit["severity"]),
-            title=f"{hit['service']} is open on {hit['device']}",
+            title=str(hit["title"]),
             detail=str(hit["why"]),
             cites=[],
             status="new",

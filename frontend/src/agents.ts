@@ -8,14 +8,18 @@ import {
   Clock,
   Eye,
   FileText,
+  Flame,
   HeartPulse,
   ListChecks,
   LoaderCircle,
   Pause,
   Radar,
   ScanSearch,
+  ShieldAlert,
   Sparkles,
+  Swords,
   Telescope,
+  Wifi,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
@@ -44,6 +48,10 @@ const ICONS: Readonly<Record<string, Icon>> = {
   'heart-pulse': HeartPulse,
   'scan-search': ScanSearch,
   sparkles: Sparkles,
+  'shield-alert': ShieldAlert,
+  wifi: Wifi,
+  flame: Flame,
+  swords: Swords,
 }
 
 /** The icon for a kind of agent, and a robot for one that this version doesn't know. */

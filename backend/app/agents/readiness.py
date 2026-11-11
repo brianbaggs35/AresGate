@@ -13,9 +13,9 @@ from typing import Final
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents.catalog import Template
+from app.agents.catalog import EXPOSURE_SCANNER, VULNERABILITY_SCANNER, Template
 from app.ai import gateway
-from app.models import Device, IntegrationConnection
+from app.models import Agent, AgentRun, Device, IntegrationConnection
 
 PURPOSE: Final = "agent"
 # The programs that tell AresGate about alerts and what the firewall turned away.
@@ -107,6 +107,26 @@ def _devices(db: Session, now: datetime) -> Check:
     )
 
 
+def _agents(db: Session, now: datetime) -> Check:
+    """Whether a scanner has run, which is what a planner builds on."""
+    scanned = db.scalar(
+        select(func.count())
+        .select_from(AgentRun)
+        .join(Agent, Agent.id == AgentRun.agent_id)
+        .where(
+            Agent.template.in_((EXPOSURE_SCANNER.key, VULNERABILITY_SCANNER.key)),
+            AgentRun.status == "succeeded",
+        )
+    )
+    return Check(
+        "agents",
+        bool(scanned),
+        "A scanner agent that has finished a run, for it to build on",
+        "Make a Vulnerability scanner or an Exposure scanner agent, allow it and start it once.",
+        "/agents",
+    )
+
+
 NEEDS: Final = {
     "ai": _ai,
     "alerts": _alerts,
@@ -114,6 +134,7 @@ NEEDS: Final = {
     "intel": _intel,
     "integrations": _integrations,
     "devices": _devices,
+    "agents": _agents,
 }
 
 

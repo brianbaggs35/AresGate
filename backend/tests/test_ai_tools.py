@@ -18,6 +18,8 @@ from app.intel import store as intel_store
 from app.intel import subjects, virustotal
 from app.intel.virustotal import Report
 from app.models import (
+    Agent,
+    AgentRun,
     CollectorHealth,
     Device,
     DeviceAddress,
@@ -86,6 +88,7 @@ class TestTheList:
             "noisy_alerts",
             "targeted_ports",
             "repeated_incidents",
+            "agent_findings",
             "cleanup_candidates",
         )
         assert all(tools.by_name(name) is not None for name in tools.names())
@@ -707,6 +710,66 @@ class TestRepeatedIncidents:
 
         assert found.lines == ["No open incidents repeat each other."]
         assert found.summary == "no repeated incidents"
+
+
+class TestAgentFindings:
+    def test_each_agent_is_listed_by_what_its_last_finished_run_reported(
+        self, session: Session
+    ) -> None:
+        hunter = Agent(name="Night watch", template="threat_hunter")
+        scanner = Agent(name="Scanner", template="exposure_scanner")
+        session.add_all([hunter, scanner])
+        session.flush()
+        session.add_all(
+            [
+                AgentRun(
+                    agent_id=hunter.id,
+                    trigger="manual",
+                    status="succeeded",
+                    finished_at=NOW - timedelta(days=1),
+                    summary="Old news.",
+                    findings=[{"severity": "low", "title": "Settled"}],
+                ),
+                AgentRun(
+                    agent_id=hunter.id,
+                    trigger="manual",
+                    status="succeeded",
+                    finished_at=NOW - timedelta(hours=2),
+                    summary="Something is going on.",
+                    findings=[{"severity": "high", "title": "Brute force on the NAS"}],
+                ),
+                AgentRun(
+                    agent_id=hunter.id,
+                    trigger="manual",
+                    status="failed",
+                    finished_at=NOW,
+                    summary="Broke.",
+                ),
+                AgentRun(
+                    agent_id=scanner.id,
+                    trigger="manual",
+                    status="succeeded",
+                    finished_at=NOW - timedelta(hours=1),
+                    summary="",
+                ),
+            ]
+        )
+        session.commit()
+
+        found = run(session, "agent_findings")
+
+        assert found.lines == [
+            f"Scanner, {NOW - timedelta(hours=1):%Y-%m-%d %H:%M} UTC: nothing",
+            f"Night watch, {NOW - timedelta(hours=2):%Y-%m-%d %H:%M} UTC: Something is going on.",
+            "- high: Brute force on the NAS",
+        ]
+        assert found.summary == "2 agent reports"
+
+    def test_with_no_finished_run_it_says_so(self, session: Session) -> None:
+        found = run(session, "agent_findings", Args(limit=2))
+
+        assert found.lines == ["No agent has finished a run yet."]
+        assert found.summary == "no agent findings"
 
 
 class TestCleanupCandidates:
