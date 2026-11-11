@@ -425,6 +425,94 @@ def test_a_test_of_the_network_that_finds_nothing_says_so(
     assert looked[0].detail["lines"] == ["Nothing risky answered on 1 devices."]
 
 
+def test_a_vulnerability_scan_reads_the_services_and_reports_what_each_says(
+    session: Session, settings: Settings
+) -> None:
+    known_device(session, "127.0.0.1", "camera")
+    run_id = asked(session, made(session, "vulnerability_scanner", allow_active=True))
+    said = {
+        443: [probe.Service("Expired certificate", "medium", "It ran out.", opens=False)],
+        22: [probe.Service("SSH protocol 1", "critical", "It is broken.", opens=False)],
+    }
+
+    execute(
+        session,
+        settings,
+        run_id,
+        probing=Probing(
+            netguard.HOME_NETWORK_AND_LOOPBACK,
+            {23: probe.PORTS[23]},
+            lambda address, port, timeout: True,
+            lambda address, port, timeout: said.get(port, []),
+            (22, 443),
+        ),
+    )
+
+    done = finished(session, run_id)
+    assert done.status == "succeeded"
+    assert [(item["severity"], item["title"]) for item in done.findings] == [
+        ("critical", "SSH protocol 1 on camera (127.0.0.1), port 22"),
+        ("medium", "Expired certificate on camera (127.0.0.1), port 443"),
+        ("critical", "Telnet is open on camera (127.0.0.1)"),
+    ]
+    assert "read services: read the services of 1 device, 2 things to know" in done.summary
+    looked = [step for step in steps_of(session, run_id) if step.title == "Looked at read services"]
+    assert "It is broken." in str(looked[0].detail["lines"])
+
+
+def test_a_vulnerability_scan_that_says_nothing_worth_saying_says_so(
+    session: Session, settings: Settings
+) -> None:
+    known_device(session, "127.0.0.1")
+    run_id = asked(session, made(session, "vulnerability_scanner", allow_active=True))
+
+    execute(
+        session,
+        settings,
+        run_id,
+        probing=Probing(
+            netguard.HOME_NETWORK_AND_LOOPBACK,
+            {},
+            lambda address, port, timeout: False,
+            lambda address, port, timeout: [],
+            (443,),
+        ),
+    )
+
+    looked = [step for step in steps_of(session, run_id) if step.title == "Looked at read services"]
+    assert looked[0].detail["lines"] == [
+        "Nothing worth saying in what the services of 1 devices announce."
+    ]
+
+
+def test_a_vulnerability_scan_by_an_agent_not_allowed_to_reads_nothing(
+    session: Session, settings: Settings
+) -> None:
+    known_device(session, "127.0.0.1", "camera")
+    found = made(session, "vulnerability_scanner", allow_active=False)
+    waiting = AgentRun(agent_id=found.id, trigger="manual", status="queued", requested_at=utcnow())
+    session.add(waiting)
+    session.commit()
+    read: list[str] = []
+
+    def reading(address: str, port: int, timeout: float) -> list[probe.Service]:
+        read.append(address)
+        return []
+
+    execute(
+        session,
+        settings,
+        waiting.id,
+        probing=Probing(
+            netguard.HOME_NETWORK_AND_LOOPBACK, {}, lambda a, p, t: False, reading, (443,)
+        ),
+    )
+
+    assert read == []
+    done = finished(session, waiting.id)
+    assert done.summary.count("not run: the agent isn't allowed to test the network") == 2
+
+
 def test_a_run_that_was_stopped_before_it_began_is_not_run(
     session: Session, settings: Settings
 ) -> None:
@@ -726,7 +814,7 @@ def test_what_langgraph_would_trace_is_switched_off() -> None:
 def test_every_template_names_only_tools_that_exist_and_lookups_the_model_may_ask_for() -> None:
     for item in catalog.TEMPLATES:
         assert all(tools.by_name(name) is not None for name in item.asks)
-        assert {lookup.tool for lookup in item.first} <= {*item.asks, *tools.names(), graph.SCAN}
+        assert {lookup.tool for lookup in item.first} <= {*item.asks, *tools.names(), *graph.ACTIVE}
         assert graph.system_for(item).startswith("You are an agent of AresGate")
         assert graph.schema(item)["required"] == [
             "summary",

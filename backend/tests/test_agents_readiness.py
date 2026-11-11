@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.agents import catalog, readiness
-from app.models import Device, IntegrationConnection
+from app.models import Agent, AgentRun, Device, IntegrationConnection
 from app.models.base import utcnow
 from tests.test_agents_api import BASE, make
 
@@ -94,3 +94,24 @@ class TestTheApi:
 
         assert info["key"] == "health_watch"
         assert {check["key"]: check["ok"] for check in info["checks"]}["integrations"] is True
+
+
+def test_a_planner_needs_a_scanner_that_has_finished_a_run(session: Session) -> None:
+    assert checks(session, catalog.PENETRATION_TEST_PLANNER)["agents"] is False
+    scanner = Agent(name="Scan", template="vulnerability_scanner")
+    other = Agent(name="Hunter", template="threat_hunter")
+    session.add_all([scanner, other])
+    session.flush()
+    session.add_all(
+        [
+            AgentRun(agent_id=other.id, trigger="manual", status="succeeded"),
+            AgentRun(agent_id=scanner.id, trigger="manual", status="failed"),
+        ]
+    )
+    session.commit()
+    assert checks(session, catalog.PENETRATION_TEST_PLANNER)["agents"] is False
+
+    session.add(AgentRun(agent_id=scanner.id, trigger="manual", status="succeeded"))
+    session.commit()
+
+    assert checks(session, catalog.PENETRATION_TEST_PLANNER)["agents"] is True

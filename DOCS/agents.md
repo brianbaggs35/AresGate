@@ -17,6 +17,10 @@ agent still looks, but it only keeps what it saw, and the page says why the AI c
 | Health watch | Notices when an integration or a collector stops working. | Every 2 hours |
 | Noise cleaner | Finds duplicate, stale and noisy incidents across your integrations and suggests tidying them. | Every 6 hours |
 | Exposure scanner | Tests your devices for services that should not be open. | Only when you start it |
+| Vulnerability scanner | Reads what your devices' web, mail and SSH services announce about themselves, and what is wrong with it. | Only when you start it |
+| Rogue device watch | Looks at devices that joined your network lately and tells you which to check. | Every 2 hours |
+| Firewall reviewer | Reads what the firewall turned away most and what it says about your setup. | Every 12 hours |
+| Penetration test planner | Plans, on paper, how an attacker would get in, from what the other agents found, and what to close first. | Only when you start it |
 
 Your own instructions are added to what a kind already does, and the AI is told that they come from
 you. They can narrow what an agent cares about ("ignore routine scanning"); they cannot make it do
@@ -106,6 +110,45 @@ The scanner is the one agent that reaches out, so it has more rules than the res
   Telnet or a database open to the whole network. A service that is normal, such as a router's web
   page, is information only.
 
+## The vulnerability scanner
+
+The vulnerability scanner is the second agent that reaches out, on the same terms as the exposure
+scanner: you allow it on the agent, it is never on a schedule, and it reads only devices AresGate
+has seen in the last seven days at their addresses on your private networks, at most 32 in a run.
+It goes one step further than asking whether a door is locked: for a few ports it reads what the
+service says of itself, which anyone who connects can read.
+
+- **A certificate** (ports 443, 465, 636, 993, 995 and 8443): it is read and not trusted or
+  changed. It is reported if it has run out, runs out within 30 days, uses an RSA key under 2048
+  bits or a SHA-1 or MD5 signature, and, as information only, if the device signed it itself, as
+  most devices at home do.
+- **A greeting** (ports 21, 22 and 25): what the server sends first. An SSH server that speaks
+  protocol 1 (or accepts it as well as protocol 2) is reported as serious.
+- **A web page's headers** (ports 80, 8000, 8080 and 8888): one `HEAD /` request, no login. It is
+  reported if the server asks for a password over plain HTTP, where anyone on the network can read
+  it.
+- **What a service announces** (any of these): a name and version, which is reported as low so
+  that you can look it up.
+
+It has no list of software with known flaws, which would be out of date the day it was written;
+it reports what a service says and the AI explains what matters. It logs in to nothing, sends
+nothing but what a browser or mail client would send first and changes nothing. It also runs the
+exposure scanner's test of risky ports in the same run.
+
+## The agents that only read
+
+- **Rogue device watch** reads the devices that appeared on the network for the first time in the
+  last three days and the open incidents, and says which are worth checking and how to tell whether
+  one is yours. It does not assume a new device is hostile.
+- **Firewall reviewer** reads the ports the firewall refused most connections to, the addresses it
+  turned away most and the alerts that repeat, and says what to change, if anything. It cannot change a
+  rule.
+- **Penetration test planner** reads what the other agents reported last (the new *agent_findings*
+  lookup, which the assistant can use too) and what has been probing you, and describes the most
+  likely ways in, in order, and what to close first to cut each path. It plans for a defender: it
+  sends nothing to your network and is told never to give instructions for attacking anything. It
+  has little to say until a scanner has finished a run, and says so under *What it needs*.
+
 ## Privacy
 
 Nothing an agent does leaves your house except the questions to your AI provider, which go through
@@ -150,6 +193,9 @@ other suggestion. The default is to only suggest.
   adds no other code. What it needs are the checks in `backend/app/agents/readiness.py`.
 - What a run can look at are the read-only tools in `backend/app/ai/tools.py`, which the assistant
   shares. A tool only reads: a test fails if its source adds, deletes or commits.
+- The vulnerability scanner's reading is `backend/app/agents/fingerprint.py`: the judging is plain
+  functions of a certificate, a greeting and a set of headers, and what is read goes through one
+  function a test replaces.
 - The noise cleaner's candidates are found in `backend/app/incidents/cleanup.py` (plain queries,
   no AI) and recorded, applied, turned down and taken back in `backend/app/agents/proposals.py`,
   which calls `backend/app/incidents/bulk.py`, so a suggestion is undone like a bulk change. A

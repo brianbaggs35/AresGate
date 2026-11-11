@@ -40,6 +40,16 @@ Every release's notes are here, newest first. The format follows
   press and can be taken back. Under Settings > Agents, *Tidying up* lets it do the surest of it
   itself, which the Activity page records. Migration `0041` adds the suggestions.
 
+- **Four more agents.** A *vulnerability scanner* reads what the web, mail and SSH services of
+  your devices announce (an expired or weak certificate, an SSH server that still speaks protocol
+  1, a password asked for in the clear, the software and version a service announces), a *rogue
+  device watch* tells you which new device to check, a *firewall reviewer* reads what the firewall
+  turned away and says what to change, and a *penetration test planner* works out from what the
+  other agents found how an attacker would most likely get in and what to close first, on paper
+  and sending nothing. The scanner is allowed on the agent and run by hand like the exposure
+  scanner. The assistant and the agents can also read what the agents last reported
+  (*agent_findings*).
+
 ### Fixed
 
 - **Two pages asking for the AI's settings at once no longer fail the first time.** The settings

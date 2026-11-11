@@ -11,7 +11,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Final, cast
@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.agents import catalog, flow, graph, probe, service
+from app.agents import catalog, fingerprint, flow, graph, probe, service
 from app.agents.graph import State, Work
 from app.ai.gateway import Context
 from app.integrations import netguard
@@ -43,6 +43,8 @@ class Probing:
     policy: AddressPolicy = netguard.HOME_NETWORK
     ports: Mapping[int, probe.Service] = field(default_factory=lambda: probe.PORTS)
     connect: Callable[[str, int, float], bool] = probe.connects
+    read: fingerprint.Reader = fingerprint.look
+    read_ports: Sequence[int] = fingerprint.PORTS
 
 
 def _begin(new_session: Callable[[], Session], run_id: int) -> graph.Snapshot | None:
@@ -211,6 +213,8 @@ async def execute(
         policy=chosen.policy,
         ports=chosen.ports,
         connect=chosen.connect,
+        read=chosen.read,
+        read_ports=chosen.read_ports,
     )
     state: State | None = None
     node = ""

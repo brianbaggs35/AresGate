@@ -1,4 +1,4 @@
-import { Bot, Radar, Sparkles, Telescope } from '@lucide/vue'
+import { Bot, Flame, Radar, ShieldAlert, Sparkles, Swords, Telescope, Wifi } from '@lucide/vue'
 
 import {
   AGENT_STATE,
@@ -32,6 +32,10 @@ describe('agent icons', () => {
   it('gives each kind its own, and a robot to one it does not know', () => {
     expect(agentIcon('radar')).toBe(Radar)
     expect(agentIcon('telescope')).toBe(Telescope)
+    expect(agentIcon('shield-alert')).toBe(ShieldAlert)
+    expect(agentIcon('wifi')).toBe(Wifi)
+    expect(agentIcon('flame')).toBe(Flame)
+    expect(agentIcon('swords')).toBe(Swords)
     expect(agentIcon('something-new')).toBe(Bot)
   })
 })

@@ -31,6 +31,8 @@ from app.integrations.registry import INTEGRATIONS
 from app.intel import store as intel_store
 from app.intel import virustotal
 from app.models import (
+    Agent,
+    AgentRun,
     AiTriage,
     CollectorHealth,
     Device,
@@ -474,6 +476,36 @@ def repeated_incidents(db: Session, redactor: Redactor, args: Args, now: datetim
     return Found(lines, refs, _plural(len(groups), "repeated incident"))
 
 
+def agent_findings(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What each agent reported the last time it finished a run, so that one agent can build on
+    the work of another. The words were written by a model, so they are redacted as any others."""
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    latest = (
+        select(AgentRun)
+        .distinct(AgentRun.agent_id)
+        .where(AgentRun.status == "succeeded")
+        .order_by(AgentRun.agent_id, AgentRun.finished_at.desc())
+        .subquery()
+    )
+    rows = db.execute(
+        select(Agent.name, latest.c.finished_at, latest.c.summary, latest.c.findings)
+        .join(latest, latest.c.agent_id == Agent.id)
+        .order_by(latest.c.finished_at.desc())
+        .limit(limit)
+    ).all()
+    if not rows:
+        return Found(["No agent has finished a run yet."], [], "no agent findings")
+    lines: list[str] = []
+    for name, finished, summary, findings in rows:
+        said = redactor.text(summary, 300) or "nothing"
+        lines.append(f"{redactor.text(name, 80)}, {_when(finished)}: {said}")
+        lines += [
+            f"- {item.get('severity', 'info')}: {redactor.text(str(item.get('title', '')), 160)}"
+            for item in findings[:MAX_ITEMS]
+        ]
+    return Found(lines, [], _plural(len(rows), "agent report"))
+
+
 def cleanup_candidates(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     """What could be tidied among the incidents: open ones that say the same thing, old quiet ones
     and ones the AI is sure are noise. Each has a key to name it by."""
@@ -561,6 +593,12 @@ TOOLS: Final[Sequence[Tool]] = (
         "Open incidents that say the same thing about different subjects, so are one campaign or "
         "one noisy rule. Uses: limit (1-10, default 5).",
         repeated_incidents,
+    ),
+    Tool(
+        "agent_findings",
+        "What the other agents reported the last time each one finished a run, with how serious "
+        "each finding was. Uses: limit (1-10, default 5).",
+        agent_findings,
     ),
     Tool(
         "cleanup_candidates",
