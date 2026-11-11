@@ -38,7 +38,13 @@ describe('AgentMission', () => {
     const { wrapper, find } = await show({
       attention: [
         attention(),
-        attention({ title: 'Odd logins', status: 'ongoing', severity: 'medium', agent_id: 5 }),
+        attention({
+          title: 'Odd logins',
+          status: 'ongoing',
+          severity: 'medium',
+          agent_id: 5,
+          action: '',
+        }),
       ],
       total: 2,
       agents: [agent({ state: 'running' })],
@@ -50,6 +56,10 @@ describe('AgentMission', () => {
     expect(needs[0]!.text()).toContain('A scan got further than usual')
     expect(needs[0]!.text()).toContain('Night watch')
     expect(needs[0]!.text()).not.toContain('still open')
+    expect(needs[0]!.find('[data-test="mission-action"]').text()).toBe(
+      'Close port 22 on the router.',
+    )
+    expect(needs[1]!.find('[data-test="mission-action"]').exists()).toBe(false)
     expect(needs[0]!.attributes('href')).toBe('/agents/3')
     expect(needs[1]!.text()).toContain('still open')
     expect(needs[1]!.attributes('href')).toBe('/agents/5')

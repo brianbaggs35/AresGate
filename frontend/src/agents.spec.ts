@@ -15,7 +15,13 @@ import {
 import {
   AGENT_STATE,
   INTERVALS,
+  CONFIDENCE,
   fleetLine,
+  findingsOverTime,
+  moreOf,
+  refsOf,
+  reportedFor,
+  tookMs,
   MAX_ROUNDS,
   PROPOSAL_ACTION,
   PROPOSAL_STATUS,
@@ -281,5 +287,54 @@ describe('fleetLine', () => {
   it('says it is quiet, or that there are no agents', () => {
     expect(fleetLine([idle], 0)).toEqual({ text: 'All quiet: nothing needs you', tone: 'good' })
     expect(fleetLine([], 0)).toEqual({ text: 'No agents yet', tone: 'idle' })
+  })
+})
+
+describe('what a run found, over time and in detail', () => {
+  it('says how sure an agent is, in words', () => {
+    expect(CONFIDENCE.low.label).toBe('Not very sure')
+    expect(CONFIDENCE.high.label).toBe('Sure')
+  })
+
+  it('says how long a finding has been reported', () => {
+    expect(reportedFor({ runs_seen: 1, first_seen_at: '2026-11-10T12:00:00Z' })).toBe(
+      'First time it was reported',
+    )
+    expect(
+      reportedFor({
+        runs_seen: 3,
+        first_seen_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+      }),
+    ).toBe('Reported in 3 runs in a row, since 3 hours ago')
+  })
+
+  it('charts the runs that finished, oldest first, a series for each severity there was', () => {
+    const { categories, series } = findingsOverTime([
+      run({ id: 3, by_severity: { high: 1 } }),
+      run({ id: 2, status: 'failed', by_severity: { critical: 5 } }),
+      run({ id: 1, by_severity: { high: 2, low: 1 } }),
+    ])
+
+    expect(categories).toEqual(['Run 1', 'Run 3'])
+    expect(series.map((each) => each.id)).toEqual(['low', 'high'])
+    expect(series.find((each) => each.id === 'high')!.values).toEqual([2, 1])
+    expect(series.find((each) => each.id === 'low')!.values).toEqual([1, 0])
+    expect(findingsOverTime([]).series).toEqual([])
+  })
+
+  it('says how long a step took, which the last one cannot', () => {
+    const first = { at: '2026-11-10T12:00:00Z' }
+    expect(tookMs(first, { at: '2026-11-10T12:00:03Z' })).toBe(3000)
+    expect(tookMs({ at: '2026-11-10T12:00:03Z' }, first)).toBe(0)
+    expect(tookMs(first, undefined)).toBeNull()
+  })
+
+  it('reads the references and the lines left out of a step, and nothing it cannot read', () => {
+    expect(
+      refsOf({ detail: { refs: [{ kind: 'incident', key: '4', label: 'Incident 4' }, null] } }),
+    ).toEqual([{ kind: 'incident', key: '4', label: 'Incident 4' }])
+    expect(refsOf({ detail: {} })).toEqual([])
+    expect(moreOf({ detail: { more: 4 } })).toBe(4)
+    expect(moreOf({ detail: { more: 'many' } })).toBe(0)
   })
 })

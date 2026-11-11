@@ -165,6 +165,21 @@ exposure scanner's test of risky ports in the same run.
   or more), and how many addresses were never refused before. Give it a week of data before you
   trust its idea of usual.
 
+## What a run tells you
+
+A run's page reads top to bottom as a report. Each finding has its severity, whether it is new or
+still open, what the agent saw and why it matters, **what to do** (left out when there is nothing
+to do), **how sure** the agent is, given only what it was shown, how long it has been reported
+(since when, and in how many runs in a row, looking back through the agent's last thirty runs that
+finished) and what it is based on, with a link to each incident. Above them, *Since its run ...*
+counts what is new, what is still open and what the run before reported that this one does not,
+which is how you see that something was fixed. *How it has been going* draws the findings of each
+of its last runs by severity, so you can see whether an agent is finding more or less.
+
+*What it did* lists each step with how long it took, a link to each incident it looked at, and
+*What it saw*, up to forty lines of it (the rest are counted, not kept). An agent that tests your
+network states its findings with high confidence, because a port that answered did answer.
+
 ## Mission control
 
 The top of the Agents page treats the agents as one team. It says whether anything needs you (or

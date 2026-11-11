@@ -31,6 +31,7 @@ class Item:
     severity: str
     title: str
     detail: str
+    action: str
     status: str
 
 
@@ -88,6 +89,7 @@ def gather(db: Session) -> Attention:
                 severity=str(found.get("severity")),
                 title=str(found.get("title", "")),
                 detail=str(found.get("detail", "")),
+                action=str(found.get("action") or ""),
                 status="ongoing" if found.get("status") == "ongoing" else "new",
             )
             for found in run.findings

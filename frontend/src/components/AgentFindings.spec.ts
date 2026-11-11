@@ -68,4 +68,36 @@ describe('AgentFindings', () => {
       'Still open',
     ])
   })
+
+  it('says what to do and how sure the agent is, and leaves out what to do when there is nothing', async () => {
+    const { wrapper } = await open([
+      finding(),
+      finding({ title: 'Nothing to do', action: '', confidence: 'low' }),
+    ])
+
+    const actions = wrapper.findAll('[data-test="finding-action"]')
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.text()).toBe('What to do: Close port 22 on the router.')
+    expect(wrapper.findAll('[data-test="finding-confidence"]').map((each) => each.text())).toEqual([
+      'Sure',
+      'Not very sure',
+    ])
+  })
+
+  it('says how long it has been reported', async () => {
+    const { wrapper } = await open([
+      finding(),
+      finding({
+        title: 'Again',
+        runs_seen: 4,
+        status: 'ongoing',
+        first_seen_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      }),
+    ])
+
+    expect(wrapper.findAll('[data-test="finding-history"]').map((each) => each.text())).toEqual([
+      'First time it was reported',
+      'Reported in 4 runs in a row, since 2 days ago',
+    ])
+  })
 })

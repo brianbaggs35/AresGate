@@ -67,6 +67,13 @@ const more = computed(() => props.total - props.attention.length)
           </span>
           <span class="need__text">
             <span class="text-title-small need__title">{{ item.title }}</span>
+            <span
+              v-if="item.action"
+              class="text-body-small need__action"
+              data-test="mission-action"
+            >
+              {{ item.action }}
+            </span>
             <span class="text-body-small text-medium-emphasis">
               {{ item.agent_name }} · {{ formatAgo(item.finished_at) }}
               <template v-if="item.status === 'ongoing'"> · still open</template>
@@ -226,6 +233,10 @@ const more = computed(() => props.total - props.attention.length)
 }
 
 .need__title {
+  overflow-wrap: anywhere;
+}
+
+.need__action {
   overflow-wrap: anywhere;
 }
 

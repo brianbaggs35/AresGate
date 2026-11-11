@@ -168,6 +168,54 @@ describe('AgentView', () => {
     expect(find('run-ai').text()).toContain('No AI provider is set up.')
   })
 
+  it('says how the run differs from the one before, when there is one', async () => {
+    const { find } = await open({
+      runs: {
+        7: runDetail({
+          findings_list: [finding()],
+          findings: 1,
+          changes: {
+            since: '2026-11-10T09:00:00Z',
+            gone: [{ severity: 'low', title: 'Old news' }],
+          },
+        }),
+      },
+    })
+
+    expect(find('changes-new').text()).toBe('1 new')
+    expect(find('changes-gone-list').text()).toContain('Old news')
+  })
+
+  it('says nothing of changes for a run with nothing before it', async () => {
+    const { find } = await open()
+
+    expect(find('agent-changes').exists()).toBe(false)
+  })
+
+  it('charts how the agent has been finding things, run by run', async () => {
+    const { find } = await open({
+      agent: detail({ runs: [run({ by_severity: { high: 2 }, findings: 2 })] }),
+    })
+
+    expect(find('agent-trend').exists()).toBe(true)
+  })
+
+  it('reads the summary of the daily briefing as a briefing', async () => {
+    const { find } = await open({
+      agent: detail({ template: 'daily_briefing' }),
+      runs: { 7: runDetail({ summary: 'Nothing needs you today.' }) },
+    })
+
+    expect(find('run-briefing').text()).toBe("Today's briefing")
+    expect(find('run-summary').text()).toBe('Nothing needs you today.')
+  })
+
+  it('does not call the summary of another kind of agent a briefing', async () => {
+    const { find } = await open()
+
+    expect(find('run-briefing').exists()).toBe(false)
+  })
+
   it('says why a run failed', async () => {
     const { find } = await open({
       agent: detail({ runs: [run({ status: 'failed' })] }),

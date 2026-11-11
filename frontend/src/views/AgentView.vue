@@ -22,10 +22,12 @@ import {
   severityOf,
   usageLine,
 } from '@/agents'
+import AgentChanges from '@/components/AgentChanges.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentFindings from '@/components/AgentFindings.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
 import AgentTimeline from '@/components/AgentTimeline.vue'
+import AgentTrend from '@/components/AgentTrend.vue'
 import AgentProposals from '@/components/AgentProposals.vue'
 import AgentSetup from '@/components/AgentSetup.vue'
 import AgentUsage from '@/components/AgentUsage.vue'
@@ -84,6 +86,8 @@ const finished = computed(() =>
 const succeeded = computed(
   () => finished.value.filter((each) => each.status === 'succeeded').length,
 )
+/** Whether this agent writes the daily briefing, so that its summary is read as one. */
+const briefs = computed(() => agent.value?.template === 'daily_briefing')
 const took = computed(() => (run.value ? formatElapsed(elapsedMs(run.value, now.value)) : ''))
 
 async function loadRun(quiet: boolean) {
@@ -315,9 +319,13 @@ onMounted(() => load())
         >
           {{ run.error }}
         </v-alert>
+        <p v-if="briefs && run.summary" class="text-label-large" data-test="run-briefing">
+          Today's briefing
+        </p>
         <p v-if="run.summary" class="text-body-large run__summary" data-test="run-summary">
           {{ run.summary }}
         </p>
+        <AgentChanges v-if="run.changes" :changes="run.changes" :findings="run.findings_list" />
         <v-alert v-if="run.ai" type="info" variant="tonal" density="compact" data-test="run-ai">
           The AI took no part in this run: {{ run.ai }}
         </v-alert>
@@ -353,6 +361,13 @@ onMounted(() => load())
         description="Press Run now and watch it work, or wait for its schedule."
         data-test="agent-no-runs"
       />
+
+      <section v-if="agent.runs.length" class="section" aria-labelledby="trend-title">
+        <h2 id="trend-title" class="text-title-large">How it has been going</h2>
+        <v-card class="pa-4 pa-sm-5">
+          <AgentTrend :runs="agent.runs" />
+        </v-card>
+      </section>
 
       <section v-if="agent.runs.length" class="section" aria-labelledby="history-title">
         <h2 id="history-title" class="text-title-large">Earlier runs</h2>

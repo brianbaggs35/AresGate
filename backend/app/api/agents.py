@@ -1,6 +1,7 @@
 """Agents: what the owner makes to look at the network for them, how each is doing and what it
 found (see ``app/agents``). For someone signed in."""
 
+from collections import Counter
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -11,7 +12,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstrai
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents import attention, catalog, graph, proposals, readiness, service
+from app.agents import attention, catalog, graph, history, proposals, readiness, service
 from app.agents import settings as agent_settings
 from app.ai import catalog as ai_catalog
 from app.ai import gateway, limits
@@ -108,6 +109,8 @@ class RunOut(BaseModel):
     # How many findings it has, and how serious the worst is.
     findings: int
     worst: str | None
+    # How many findings there are of each severity, for the severities there are any of.
+    by_severity: dict[str, int]
     rounds: int
     error: str | None
     # Why the AI took no part, or empty if it did.
@@ -174,6 +177,27 @@ class FindingOut(BaseModel):
     cites: list[dict[str, str]]
     # Whether the agent's last run said the same: new, or ongoing.
     status: str
+    # What to do about it, how sure the agent is (low, medium or high), and how long it has been
+    # reported: since when, and in how many runs in a row.
+    action: str
+    confidence: str
+    first_seen_at: AwareDatetime
+    runs_seen: int
+
+
+class GoneOut(BaseModel):
+    """A finding the run before reported and this one does not."""
+
+    severity: str
+    title: str
+
+
+class ChangesOut(BaseModel):
+    """How a run differs from the one before it that finished well: when that was, and what it
+    reported that this one no longer does."""
+
+    since: AwareDatetime
+    gone: list[GoneOut]
 
 
 class StepOut(BaseModel):
@@ -186,6 +210,8 @@ class StepOut(BaseModel):
 
 class RunDetail(RunOut):
     findings_list: list[FindingOut]
+    # None for a run that did not finish well, or the first one.
+    changes: ChangesOut | None
     steps: list[StepOut]
     call_ids: list[int]
 
@@ -218,6 +244,7 @@ class AttentionOut(BaseModel):
     severity: str
     title: str
     detail: str
+    action: str
     status: Literal["new", "ongoing"]
 
 
@@ -312,6 +339,7 @@ def _run_out(run: AgentRun) -> RunOut:
         summary=run.summary,
         findings=len(findings),
         worst=worst,
+        by_severity=dict(Counter(str(item.get("severity", "info")) for item in findings)),
         rounds=run.rounds,
         error=run.error,
         ai=run.ai,
@@ -903,6 +931,35 @@ def _run(db: Db, agent_id: int, run_id: int) -> AgentRun:
     return found
 
 
+def _finding_out(item: dict[str, object], run: AgentRun, before: list[AgentRun]) -> FindingOut:
+    title = str(item.get("title", ""))
+    kept = history.streak(run, before, title)
+    confidence = str(item.get("confidence"))
+    return FindingOut(
+        severity=str(item.get("severity", "info")),
+        title=title,
+        detail=str(item.get("detail", "")),
+        cites=cast("list[dict[str, str]]", item.get("cites") or []),
+        status="ongoing" if item.get("status") == "ongoing" else "new",
+        action=str(item.get("action") or ""),
+        confidence=confidence if confidence in graph.CONFIDENCE else "medium",
+        first_seen_at=kept.since,
+        runs_seen=kept.runs,
+    )
+
+
+def _changes(run: AgentRun, before: list[AgentRun]) -> ChangesOut | None:
+    if run.status != "succeeded" or not before:
+        return None
+    return ChangesOut(
+        since=before[0].finished_at or before[0].requested_at,
+        gone=[
+            GoneOut(severity=item.severity, title=item.title)
+            for item in history.gone(run, before[0])
+        ],
+    )
+
+
 @router.get("/{agent_id}/runs/{run_id}")
 def get_run(agent_id: int, run_id: int, db: Db) -> RunDetail:
     """One run, with every step it took so far."""
@@ -910,18 +967,11 @@ def get_run(agent_id: int, run_id: int, db: Db) -> RunDetail:
     steps = db.scalars(
         select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.seq)
     ).all()
+    before = history.earlier(db, run)
     return RunDetail(
         **_run_out(run).model_dump(),
-        findings_list=[
-            FindingOut(
-                severity=str(item.get("severity", "info")),
-                title=str(item.get("title", "")),
-                detail=str(item.get("detail", "")),
-                cites=cast("list[dict[str, str]]", item.get("cites") or []),
-                status="ongoing" if item.get("status") == "ongoing" else "new",
-            )
-            for item in run.findings
-        ],
+        findings_list=[_finding_out(item, run, before) for item in run.findings],
+        changes=_changes(run, before),
         steps=[
             StepOut(seq=step.seq, at=step.at, node=step.node, title=step.title, detail=step.detail)
             for step in steps

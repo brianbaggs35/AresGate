@@ -62,6 +62,8 @@ def finding(**changes: object) -> dict[str, object]:
         "title": "A scan got further than usual",
         "detail": "Check the firewall rule for port 22.",
         "cites": [],
+        "action": "Close port 22 on the router.",
+        "confidence": "high",
         **changes,
     }
 
@@ -171,6 +173,8 @@ def test_a_run_without_ai_collects_what_the_template_looks_at_and_says_why_the_a
     first_look = steps_of(session, run_id)[1]
     assert first_look.detail["tool"] == "open_incidents"
     assert f"Scan from {ATTACKER}" in str(first_look.detail["lines"])
+    assert first_look.detail["more"] == 0
+    assert [ref["kind"] for ref in first_look.detail["refs"]] == ["incident"]  # type: ignore[attr-defined, union-attr]
     assert [step.seq for step in steps_of(session, run_id)] == [1, 2, 3, 4, 5, 6]
 
 
@@ -204,6 +208,7 @@ def test_a_run_shows_the_model_only_what_the_level_allows_and_keeps_its_report(
     assert done.summary == "One scan reached the firewall and went no further."
     [kept] = done.findings
     assert kept["severity"] == "high"
+    assert (kept["action"], kept["confidence"]) == ("Close port 22 on the router.", "high")
     assert kept["cites"] == [
         {"kind": "incident", "key": str(seen.id), "label": f"Incident {seen.id}"}
     ]
@@ -746,7 +751,14 @@ def test_what_a_model_says_is_cut_down_to_what_is_allowed() -> None:
         {
             "summary": 7,
             "findings": [
-                finding(severity="catastrophic", title="x" * 500, detail=None, cites="nothing"),
+                finding(
+                    severity="catastrophic",
+                    title="x" * 500,
+                    detail=None,
+                    cites="nothing",
+                    action=5,
+                    confidence="certain",
+                ),
                 "not a finding",
                 *[finding(title=f"Finding {n}") for n in range(30)],
             ],
@@ -764,7 +776,9 @@ def test_what_a_model_says_is_cut_down_to_what_is_allowed() -> None:
     assert reading is not None
     assert reading.summary == ""
     assert len(reading.findings) == graph.MAX_FINDINGS
-    assert reading.findings[0] == ("info", "x" * graph.MAX_TITLE, "", [])
+    assert reading.findings[0] == graph.Raised("info", "x" * graph.MAX_TITLE, "", [], "", "medium")
+    assert reading.findings[1].action == "Close port 22 on the router."
+    assert reading.findings[1].confidence == "high"
     assert len(reading.lookups) == graph.MAX_LOOKUPS
     assert reading.lookups[0] == catalog.Lookup(
         "device", tools.Args(id=None, name="nas", hours=2, limit=None)

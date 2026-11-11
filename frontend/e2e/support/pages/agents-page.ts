@@ -40,6 +40,8 @@ export class AgentsPage {
   readonly runStatus: Locator
   readonly summary: Locator
   readonly findings: Locator
+  /** The chart of what the agent found in each of its last runs. */
+  readonly trend: Locator
   readonly steps: Locator
   readonly history: Locator
   readonly notice: Locator
@@ -83,6 +85,7 @@ export class AgentsPage {
     this.runStatus = page.getByTestId('run-status')
     this.summary = page.getByTestId('run-summary')
     this.findings = page.getByTestId('finding')
+    this.trend = page.getByTestId('agent-trend')
     this.steps = page.getByTestId('timeline-step')
     this.history = page.getByTestId('history-run')
     this.notice = page.getByTestId('undo-notice-text')

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { Step } from '@/api/agents'
-import { linesOf, nodeInfo } from '@/agents'
-import { formatClock } from '@/format'
+import { linesOf, moreOf, nodeInfo, refsOf, tookMs } from '@/agents'
+import { citeRoute } from '@/chat'
+import { formatClock, formatElapsed } from '@/format'
 
 /**
  * What a run did, step by step, as it did it. A step that looked at something can be opened to
  * read what it saw, in the words the owner reads, not what a provider was sent (which the AI
- * usage page has). While the run is going, the last line says it is still at it.
+ * usage page has), with a link to each incident it read and how long the step took. While the
+ * run is going, the last line says it is still at it.
  */
 defineProps<{
   steps: readonly Step[]
@@ -22,7 +24,7 @@ const summaryOf = (step: Step): string => {
 <template>
   <div class="timeline" data-test="agent-timeline">
     <ol v-if="steps.length || live" class="timeline__steps">
-      <li v-for="step in steps" :key="step.seq" class="step" data-test="timeline-step">
+      <li v-for="(step, at) in steps" :key="step.seq" class="step" data-test="timeline-step">
         <span class="step__marker" :class="`step__marker--${step.node}`" aria-hidden="true">
           <v-icon :icon="nodeInfo(step.node).icon" size="16" />
         </span>
@@ -32,6 +34,9 @@ const summaryOf = (step: Step): string => {
             <span class="text-label-small text-medium-emphasis step__when">
               {{ nodeInfo(step.node).label }} ·
               <time :datetime="step.at">{{ formatClock(step.at) }}</time>
+              <span v-if="tookMs(step, steps[at + 1]) !== null" data-test="step-took">
+                · took {{ formatElapsed(tookMs(step, steps[at + 1]) ?? 0) }}
+              </span>
             </span>
           </div>
           <p
@@ -44,11 +49,30 @@ const summaryOf = (step: Step): string => {
           <details v-if="linesOf(step).length" class="step__more" data-test="step-more">
             <summary class="text-label-large">What it saw ({{ linesOf(step).length }})</summary>
             <ul class="step__lines text-body-medium">
-              <li v-for="(line, at) in linesOf(step)" :key="at" data-test="step-line">
+              <li v-for="(line, row) in linesOf(step)" :key="row" data-test="step-line">
                 {{ line }}
               </li>
             </ul>
+            <p
+              v-if="moreOf(step)"
+              class="text-body-small text-medium-emphasis step__rest"
+              data-test="step-rest"
+            >
+              And {{ moreOf(step) }} more it did not keep.
+            </p>
           </details>
+          <div v-if="refsOf(step).length" class="step__refs" data-test="step-refs">
+            <v-chip
+              v-for="ref in refsOf(step)"
+              :key="`${ref.kind}-${ref.key}`"
+              size="small"
+              variant="tonal"
+              :to="citeRoute(ref) ?? undefined"
+              data-test="step-ref"
+            >
+              {{ ref.label }}
+            </v-chip>
+          </div>
         </div>
       </li>
       <li v-if="live" class="step step--live" data-test="timeline-working">
@@ -160,6 +184,17 @@ const summaryOf = (step: Step): string => {
   background: rgba(var(--v-theme-on-surface), 0.05);
   list-style: none;
   overflow-wrap: anywhere;
+}
+
+.step__refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.step__rest {
+  margin: 0.5rem 0 0;
 }
 
 .step--live {
