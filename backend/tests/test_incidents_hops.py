@@ -110,7 +110,8 @@ class TestWhatEachDidAboutIt:
         once = build(incident(), [signal("opnsense")], blocked=1)
         often = build(incident(), [signal("opnsense")], blocked=4)
 
-        assert once is not None and often is not None
+        assert once is not None
+        assert often is not None
         assert once.hops[1].note == "Turned it away 1 time."
         assert often.hops[1].note == "Turned it away 4 times."
 
@@ -118,7 +119,8 @@ class TestWhatEachDidAboutIt:
         once = build(incident(), [signal("suricata")], dropped=1)
         often = build(incident(), [signal("suricata")], dropped=3)
 
-        assert once is not None and often is not None
+        assert once is not None
+        assert often is not None
         assert once.hops[1].note == "Stopped 1 alert."
         assert often.hops[1].note == "Stopped 3 alerts."
 

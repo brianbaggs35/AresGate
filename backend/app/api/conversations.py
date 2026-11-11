@@ -124,6 +124,13 @@ def _reputation(row: IntelSubject | None, ruling: IntelOverride | None) -> Reput
     )
 
 
+def _name_from(end: conversations.End, name: str | None) -> Literal["program", "dns"] | None:
+    """Where a name came from: what a program told, or else a reverse lookup."""
+    if not name:
+        return None
+    return "program" if end.name else "dns"
+
+
 def _end(
     end: conversations.End, reputations: dict[str, ReputationOut], dns: dict[str, str]
 ) -> EndOut:
@@ -137,7 +144,7 @@ def _end(
         location=end.location,  # type: ignore[arg-type]
         blacklisted=end.blacklisted,
         reputation=reputations.get(end.address),
-        name_from=("program" if end.name else "dns") if name else None,
+        name_from=_name_from(end, name),
     )
 
 

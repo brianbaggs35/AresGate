@@ -188,18 +188,16 @@ const ends = computed(() => {
       <figcaption class="text-label-large text-medium-emphasis">
         <v-icon :icon="Binary" size="16" aria-hidden="true" /> The first bytes of the packet
       </figcaption>
-      <div class="evidence__dump" role="table" aria-label="The first bytes of the packet">
-        <div
-          v-for="row in evidence.dump"
-          :key="row.offset"
-          class="evidence__dump-row"
-          role="row"
-          data-test="evidence-dump-row"
-        >
-          <span class="text-medium-emphasis" role="cell">{{ row.offset }}</span>
-          <span role="cell">{{ row.hex }}</span>
-          <span class="evidence__dump-text" role="cell">{{ row.text }}</span>
-        </div>
+      <div class="evidence__dump-scroll">
+        <table class="evidence__dump" aria-label="The first bytes of the packet">
+          <tbody>
+            <tr v-for="row in evidence.dump" :key="row.offset" data-test="evidence-dump-row">
+              <td class="text-medium-emphasis">{{ row.offset }}</td>
+              <td>{{ row.hex }}</td>
+              <td class="evidence__dump-text">{{ row.text }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </figure>
     <figure v-if="evidence.excerpt" class="evidence__log" data-test="evidence-excerpt">
@@ -338,21 +336,22 @@ const ends = computed(() => {
   white-space: nowrap;
 }
 
-.evidence__dump {
-  display: flex;
-  flex-direction: column;
+.evidence__dump-scroll {
   max-width: 100%;
   overflow-x: auto;
+}
+
+.evidence__dump {
+  border-collapse: collapse;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
 }
 
-.evidence__dump-row {
-  display: grid;
-  grid-template-columns: 3rem 24.5rem 1fr;
-  gap: 1rem;
-  width: max-content;
+.evidence__dump td {
+  padding: 0 1rem 0 0;
+  white-space: pre;
+  vertical-align: top;
 }
 
 .evidence__dump-text {
