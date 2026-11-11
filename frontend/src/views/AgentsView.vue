@@ -7,6 +7,7 @@ import { errorMessage } from '@/api/client'
 import { agentIcon } from '@/agents'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
+import AgentSpend from '@/components/AgentSpend.vue'
 import AppPage from '@/components/AppPage.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -118,6 +119,10 @@ onMounted(() => load())
         <RouterLink :to="{ name: 'settings-ai' }" data-test="agents-ai-link"
           >AI settings</RouterLink
         >
+        ·
+        <RouterLink :to="{ name: 'settings-agents' }" data-test="agents-ai-agents-link"
+          >Agent settings</RouterLink
+        >
       </v-alert>
 
       <v-alert
@@ -129,6 +134,8 @@ onMounted(() => load())
       >
         {{ problem }}
       </v-alert>
+
+      <AgentSpend :usage="overview.usage" :limits="overview.limits" />
 
       <ul v-if="agents.length" class="cards" data-test="agents-list">
         <li v-for="agent in agents" :key="agent.id">

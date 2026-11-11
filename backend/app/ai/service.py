@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -90,9 +91,13 @@ def usage(db: Session, now: datetime) -> AiSettings:
     """Whether AI is used and which provider is asked, made if this is the first look."""
     found = db.get(AiSettings, 1)
     if found is None:
-        found = AiSettings(id=1, enabled=False, provider=None, updated_at=now)
-        db.add(found)
-        db.flush()
+        # Two requests that look for the first time at once make it only once.
+        db.execute(
+            insert(AiSettings)
+            .values(id=1, enabled=False, provider=None, updated_at=now)
+            .on_conflict_do_nothing()
+        )
+        found = db.get_one(AiSettings, 1)
     return found
 
 

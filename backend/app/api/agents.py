@@ -1,18 +1,24 @@
 """Agents: what the owner makes to look at the network for them, how each is doing and what it
 found (see ``app/agents``). For someone signed in."""
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.agents import catalog, graph, service
-from app.ai import gateway
+from app.agents import settings as agent_settings
+from app.ai import catalog as ai_catalog
+from app.ai import gateway, limits
+from app.api.ai_usage import LimitOut
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
-from app.models import MIN_INTERVAL_MINUTES, Agent, AgentRun, AgentStep
+from app.integrations.registry import SettingsError
+from app.models import MIN_INTERVAL_MINUTES, Agent, AgentRun, AgentStep, AiProvider
 from app.models.base import utcnow
 
 router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(signed_in)])
@@ -22,6 +28,8 @@ RUNS_SHOWN = 30
 # How many of an agent's last runs a card draws, and how far back its counts go.
 RECENT = 14
 WEEK = timedelta(days=7)
+# How far back what the agents used of the AI is counted, which is how long a run is kept.
+USAGE_DAYS = 30
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 Interval = Annotated[int, Field(ge=MIN_INTERVAL_MINUTES, le=MAX_INTERVAL_MINUTES)]
@@ -49,6 +57,19 @@ class EdgeOut(BaseModel):
     conditional: bool
 
 
+class UsageOut(BaseModel):
+    """What the AI was asked and what it cost: how many runs, requests, tokens (those in the cache
+    among them) and millionths of a US dollar, and how many requests there was no price for."""
+
+    runs: int
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    cost_micros: int
+    unpriced_calls: int
+
+
 class RunOut(BaseModel):
     id: int
     trigger: Literal["manual", "schedule"]
@@ -66,6 +87,10 @@ class RunOut(BaseModel):
     error: str | None
     # Why the AI took no part, or empty if it did.
     ai: str
+    # What it used of the AI, and who answered last.
+    usage: UsageOut
+    provider: str | None
+    model: str | None
 
 
 class AgentOut(BaseModel):
@@ -85,6 +110,8 @@ class AgentOut(BaseModel):
     last_run: RunOut | None
     # The outcomes of its last runs, oldest first, for a glance at how it is going.
     recent: list[Status]
+    # What it used of the AI over the last 30 days.
+    usage: UsageOut
 
 
 class FindingOut(BaseModel):
@@ -108,10 +135,19 @@ class RunDetail(RunOut):
     call_ids: list[int]
 
 
+class DayOut(BaseModel):
+    day: date
+    runs: int
+    tokens: int
+    cost_micros: int
+
+
 class AgentDetail(AgentOut):
     template_info: TemplateOut
     runs: list[RunOut]
     graph: list[EdgeOut]
+    # Each of the last 30 days, oldest first, with what the agent used of the AI.
+    days: list[DayOut]
 
 
 class Overview(BaseModel):
@@ -119,6 +155,9 @@ class Overview(BaseModel):
     templates: list[TemplateOut]
     # Why the AI would not be asked now, or None if it would be. Agents still collect without it.
     ai: str | None
+    # What all the agents used of the AI over the last 30 days, and the limits on what they spend.
+    usage: UsageOut
+    limits: list[LimitOut]
 
 
 class AgentIn(BaseModel):
@@ -180,6 +219,17 @@ def _run_out(run: AgentRun) -> RunOut:
         rounds=run.rounds,
         error=run.error,
         ai=run.ai,
+        usage=UsageOut(
+            runs=1,
+            calls=run.calls,
+            input_tokens=run.input_tokens,
+            output_tokens=run.output_tokens,
+            cached_tokens=run.cached_tokens,
+            cost_micros=run.cost_micros,
+            unpriced_calls=run.unpriced_calls,
+        ),
+        provider=run.provider,
+        model=run.model,
     )
 
 
@@ -194,6 +244,65 @@ def _state(agent: Agent, last: AgentRun | None) -> State:
     if agent.interval_minutes is not None and not agent.enabled:
         return "paused"
     return "idle"
+
+
+def _usage(db: Session, now: datetime, agent_id: int | None = None) -> UsageOut:
+    """What the runs that ended in the last 30 days used of the AI, of one agent or of all."""
+    query = select(
+        func.count(),
+        func.coalesce(func.sum(AgentRun.calls), 0),
+        func.coalesce(func.sum(AgentRun.input_tokens), 0),
+        func.coalesce(func.sum(AgentRun.output_tokens), 0),
+        func.coalesce(func.sum(AgentRun.cached_tokens), 0),
+        func.coalesce(func.sum(AgentRun.cost_micros), 0),
+        func.coalesce(func.sum(AgentRun.unpriced_calls), 0),
+    ).where(AgentRun.finished_at >= now - timedelta(days=USAGE_DAYS))
+    if agent_id is not None:
+        query = query.where(AgentRun.agent_id == agent_id)
+    runs, calls, received, written, cached, cost, unpriced = db.execute(query).one()
+    return UsageOut(
+        runs=runs,
+        calls=int(calls),
+        input_tokens=int(received),
+        output_tokens=int(written),
+        cached_tokens=int(cached),
+        cost_micros=int(cost),
+        unpriced_calls=int(unpriced),
+    )
+
+
+def _days(db: Session, now: datetime, agent_id: int) -> list[DayOut]:
+    """Each of the last 30 days (UTC), oldest first, with what the agent's runs of that day used
+    of the AI."""
+    since = now - timedelta(days=USAGE_DAYS - 1)
+    day = func.date(func.timezone("UTC", AgentRun.finished_at))
+    rows = db.execute(
+        select(
+            day,
+            func.count(),
+            func.coalesce(
+                func.sum(AgentRun.input_tokens + AgentRun.output_tokens + AgentRun.cached_tokens), 0
+            ),
+            func.coalesce(func.sum(AgentRun.cost_micros), 0),
+        )
+        .where(
+            AgentRun.agent_id == agent_id,
+            AgentRun.finished_at
+            >= datetime(since.year, since.month, since.day, tzinfo=since.tzinfo),
+        )
+        .group_by(day)
+    ).all()
+    found = {when: (runs, int(tokens), int(cost)) for when, runs, tokens, cost in rows}
+    first = since.date()
+    return [
+        DayOut(
+            day=first + timedelta(days=offset),
+            runs=found.get(first + timedelta(days=offset), (0, 0, 0))[0],
+            tokens=found.get(first + timedelta(days=offset), (0, 0, 0))[1],
+            cost_micros=found.get(first + timedelta(days=offset), (0, 0, 0))[2],
+        )
+        for offset in range(USAGE_DAYS)
+    ]
 
 
 def _agent_out(db: Db, agent: Agent) -> AgentOut:
@@ -221,6 +330,7 @@ def _agent_out(db: Db, agent: Agent) -> AgentOut:
         state=_state(agent, last),
         last_run=_run_out(last) if last else None,
         recent=[_status(run.status) for run in reversed(runs)],
+        usage=_usage(db, utcnow(), agent.id),
     )
 
 
@@ -246,14 +356,130 @@ def _check(item: catalog.Template, interval_minutes: int | None) -> None:
         )
 
 
+class AskingOut(BaseModel):
+    """Who the agents ask now: the provider and its model, and whether it charges by the token."""
+
+    provider: str
+    label: str
+    model: str
+    charges: bool
+
+
+class AgentSettingsOut(BaseModel):
+    # Which AI the agents ask: what Settings > AI chose, one of their own, or none.
+    ai_source: Literal["shared", "own", "off"]
+    provider: str | None
+    model: str | None
+    # Who they ask now, or None with the reason why not.
+    asking: AskingOut | None
+    reason: str | None
+    limits: list[LimitOut]
+
+
+class AgentSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ai_source: Literal["shared", "own", "off"]
+    provider: str | None = Field(default=None, max_length=32)
+    model: str | None = Field(default=None, max_length=128)
+    # What the agents may spend, in US dollars, or None for no limit.
+    daily: Annotated[Decimal | None, Field(gt=0, le=limits.MAX_DOLLARS, decimal_places=2)] = None
+    monthly: Annotated[Decimal | None, Field(gt=0, le=limits.MAX_DOLLARS, decimal_places=2)] = None
+
+
+def _limit_out(item: limits.Limit) -> LimitOut:
+    return LimitOut(
+        period=item.period,
+        limit_micros=item.limit_micros,
+        spent_micros=item.spent_micros,
+        state=item.state,
+    )
+
+
+def _settings_out(db: Session, now: datetime) -> AgentSettingsOut:
+    chosen = agent_settings.get(db, now)
+    picked = agent_settings.pick(db, now)
+    asking: AskingOut | None = None
+    reason = picked.reason
+    row = db.get(AiProvider, picked.provider) if picked.provider else None
+    definition = ai_catalog.provider(picked.provider) if picked.provider else None
+    if row is not None and definition is not None and (picked.model or row.model):
+        asking = AskingOut(
+            provider=definition.key,
+            label=definition.label,
+            model=picked.model or row.model,
+            charges=definition.kind is ai_catalog.Kind.HOSTED,
+        )
+    elif reason is None:
+        reason = "The AI provider the agents ask is gone. Choose one under Settings > Agents."
+    return AgentSettingsOut(
+        ai_source=cast("Literal['shared', 'own', 'off']", chosen.ai_source),
+        provider=chosen.provider,
+        model=chosen.model,
+        asking=asking,
+        reason=reason,
+        limits=[_limit_out(item) for item in agent_settings.status(db, now)],
+    )
+
+
+@router.get("/settings")
+def get_settings(db: Db) -> AgentSettingsOut:
+    """Which AI the agents ask and what they may spend."""
+    return _settings_out(db, utcnow())
+
+
+@router.put("/settings")
+def change_settings(
+    body: AgentSettingsIn,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> AgentSettingsOut:
+    """Chooses which AI the agents ask (the one chosen under Settings > AI, one of their own, or
+    none) and what they may spend."""
+    now = utcnow()
+    try:
+        agent_settings.save(
+            db,
+            source=body.ai_source,
+            provider=body.provider,
+            model=body.model,
+            daily=body.daily,
+            monthly=body.monthly,
+            now=now,
+        )
+    except SettingsError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            [
+                {"type": "value_error", "loc": ["body", name], "msg": message}
+                for name, message in error.problems.items()
+            ],
+        ) from error
+    record_audit(
+        db,
+        request,
+        Action.AGENT_SETTINGS_CHANGED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"ai_source": body.ai_source, "provider": body.provider or "none"},
+    )
+    out = _settings_out(db, now)
+    db.commit()
+    return out
+
+
 @router.get("")
 def list_agents(db: Db) -> Overview:
     """Every agent, what each is doing, and what one can be made from."""
     agents = db.scalars(select(Agent).order_by(Agent.created_at, Agent.id)).all()
+    now = utcnow()
     return Overview(
         agents=[_agent_out(db, agent) for agent in agents],
         templates=[_template_out(item) for item in catalog.TEMPLATES],
-        ai=gateway.availability(db, utcnow()),
+        ai=gateway.availability(db, now, agent_settings.PURPOSE),
+        usage=_usage(db, now),
+        limits=[_limit_out(item) for item in agent_settings.status(db, now)],
     )
 
 
@@ -313,6 +539,7 @@ def get_agent(agent_id: int, db: Db) -> AgentDetail:
             EdgeOut(source=e.source, target=e.target, conditional=e.conditional)
             for e in graph.structure()
         ],
+        days=_days(db, utcnow(), agent.id),
     )
 
 

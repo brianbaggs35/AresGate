@@ -1,9 +1,11 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from app.models.agents import (
+    AI_SOURCES,
     MIN_INTERVAL_MINUTES,
     Agent,
     AgentRun,
+    AgentSettings,
     AgentStep,
 )
 from app.models.agents import (
@@ -60,6 +62,7 @@ from app.models.verdicts import VERDICTS, VerdictRule
 __all__ = [
     "AGENT_STATUSES",
     "AGENT_TRIGGERS",
+    "AI_SOURCES",
     "ALERT_KINDS",
     "CLASSES",
     "INCIDENT_STATUSES",
@@ -69,6 +72,7 @@ __all__ = [
     "VERDICTS",
     "Agent",
     "AgentRun",
+    "AgentSettings",
     "AgentStep",
     "AiAlias",
     "AiCall",

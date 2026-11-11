@@ -21,6 +21,30 @@ Your own instructions are added to what a kind already does, and the AI is told 
 you. They can narrow what an agent cares about ("ignore routine scanning"); they cannot make it do
 more than its kind can.
 
+## Which AI the agents use, and what they cost
+
+An agent may run every hour, so Settings > Agents gives the agents their own choice of AI:
+
+- **The same as Settings > AI** (the default): they ask whichever provider you chose there, while
+  AI is turned on there.
+- **A provider of their own**: choose one of the providers on Settings > AI (or set one up right
+  there, key and all) and, if you like, a model for the agents, such as a cheaper one than you ask
+  questions of. This works even while AI is off for everything else.
+- **None**: they still look at your network and keep what they saw, but no AI reads it.
+
+What a provider is shown does not change with this: it is the level chosen under Settings > AI,
+for every use of the AI.
+
+The agents' spending has a daily and a monthly limit of its own. When one is used up the agents
+stop asking a provider that charges by the token, and carry on looking, until spending is back
+under it. A provider on your own computer costs nothing and is never stopped. The limits on the
+AI usage page still hold everything, the agents included.
+
+Every run keeps what it used: requests, tokens (and how many of them the provider already had
+cached), what that cost and which model answered. An agent's page shows the last 30 days, and the
+Agents page adds all the agents up. Every request is also recorded as the provider saw it on the
+AI usage page, under *Agents*.
+
 ## How a run works
 
 Every run is a graph, built with [LangGraph](https://langchain-ai.github.io/langgraph/), that the
@@ -76,6 +100,9 @@ the code and cannot be turned on from the environment.
   `backend/app/agents/flow.py`, so the rest of the code does not depend on its API.
 - A kind is a template in `backend/app/agents/catalog.py`: what it looks at first, what more it may
   ask the model for, and how often it runs. Adding a kind adds no other code.
+- Which provider the agents ask is `backend/app/agents/settings.py`; the gateway
+  (`backend/app/ai/gateway.py`) follows it for requests whose purpose is `agent`, and a run adds up
+  what its requests used when it ends (`run._spent`).
 - The worker (`backend/app/agents/run.py`) starts the runs that are due, runs what waits and keeps
   every step in `agent_steps`. The API is in `backend/app/api/agents.py`.
 - The tests' harness can run the agents when a test says, with the devices that "answer" chosen by

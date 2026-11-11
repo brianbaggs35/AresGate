@@ -20,11 +20,13 @@ import {
   outcome,
   scheduleText,
   severityOf,
+  usageLine,
 } from '@/agents'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentFindings from '@/components/AgentFindings.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
 import AgentTimeline from '@/components/AgentTimeline.vue'
+import AgentUsage from '@/components/AgentUsage.vue'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -280,6 +282,14 @@ onMounted(() => load())
               {{ formatAgo(run.started_at ?? run.requested_at) }}
               <template v-if="run.started_at"> · {{ took }}</template>
             </p>
+            <p
+              v-if="!isLive(run)"
+              class="text-body-medium text-medium-emphasis run__meta"
+              data-test="run-usage"
+            >
+              {{ usageLine(run.usage) }}
+              <template v-if="run.model"> · {{ run.model }}</template>
+            </p>
           </div>
           <v-chip
             v-if="status"
@@ -372,6 +382,11 @@ onMounted(() => load())
             </button>
           </li>
         </ul>
+      </section>
+
+      <section class="section" aria-labelledby="usage-title">
+        <h2 id="usage-title" class="text-title-large">What it costs</h2>
+        <AgentUsage :usage="agent.usage" :days="agent.days" />
       </section>
 
       <section class="section" aria-labelledby="about-title">

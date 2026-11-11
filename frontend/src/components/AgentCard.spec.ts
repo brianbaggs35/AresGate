@@ -1,5 +1,5 @@
 import AgentCard from '@/components/AgentCard.vue'
-import { agent, run } from '@/test/agents'
+import { agent, run, usage } from '@/test/agents'
 import { mountWithPlugins } from '@/test/mount'
 
 async function open(item = agent(), busy = false) {
@@ -112,5 +112,17 @@ describe('AgentCard', () => {
     expect(blocked.find('agent-blocked').text()).toBe('Allow it to test the network first.')
     expect(allowed.find('agent-run').attributes('disabled')).toBeUndefined()
     expect(allowed.find('agent-blocked').exists()).toBe(false)
+  })
+
+  it('says what it cost over 30 days, once it has asked the AI something', async () => {
+    const { find } = await open(agent({ usage: usage({ cost_micros: 3_000 }) }))
+
+    expect(find('agent-cost').text()).toBe('$0.0030 in 30 days')
+  })
+
+  it('says nothing of cost before it has asked the AI anything', async () => {
+    const { find } = await open(agent({ usage: usage({ calls: 0 }) }))
+
+    expect(find('agent-cost').exists()).toBe(false)
   })
 })

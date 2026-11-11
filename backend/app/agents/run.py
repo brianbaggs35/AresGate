@@ -25,7 +25,7 @@ from app.agents.graph import State, Work
 from app.ai.gateway import Context
 from app.integrations import netguard
 from app.integrations.netguard import AddressPolicy
-from app.models import Agent, AgentRun, AgentStep
+from app.models import Agent, AgentRun, AgentStep, AiCall
 from app.models.base import utcnow
 
 logger = logging.getLogger(__name__)
@@ -112,6 +112,20 @@ def _keep(
         db.commit()
 
 
+def _spent(db: Session, run: AgentRun, call_ids: list[int]) -> None:
+    """Notes what a run's requests to the AI came to: how many, their tokens and cost, and who
+    answered last. Taken from the record of them while it is still there."""
+    run.calls = len(call_ids)
+    rows = db.scalars(select(AiCall).where(AiCall.id.in_(call_ids)).order_by(AiCall.id)).all()
+    run.input_tokens = sum(row.input_tokens for row in rows)
+    run.output_tokens = sum(row.output_tokens for row in rows)
+    run.cached_tokens = sum(row.cached_tokens for row in rows)
+    run.cost_micros = sum(row.cost_micros or 0 for row in rows)
+    run.unpriced_calls = sum(1 for row in rows if row.ok and row.cost_micros is None)
+    run.provider = rows[-1].provider if rows else None
+    run.model = rows[-1].model if rows else None
+
+
 def _finish(
     new_session: Callable[[], Session],
     run_id: int,
@@ -130,6 +144,7 @@ def _finish(
             run.rounds = state["round"]
             run.ai = audit.clean(state["ai"], 500) or ""
             run.call_ids = state["call_ids"]
+            _spent(db, run, state["call_ids"])
         run.status = status
         run.error = audit.clean(error, 500)
         run.finished_at = utcnow()

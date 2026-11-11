@@ -1,4 +1,5 @@
 import type { ChatCite } from '@/api/aiChat'
+import type { UsageLimit } from '@/api/aiUsage'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 
 /** What an agent is doing: going, waiting to go, doing nothing, or kept from running by itself. */
@@ -26,6 +27,19 @@ export interface Template {
   tools: string[]
 }
 
+/** What agents asked of the AI and what it cost: the money is in millionths of a US dollar, the
+ * tokens in the cache are counted apart from the rest, and a request to a model whose price isn't
+ * known is counted but not priced. */
+export interface Usage {
+  runs: number
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  cost_micros: number
+  unpriced_calls: number
+}
+
 /** One time an agent ran. */
 export interface Run {
   id: number
@@ -44,6 +58,10 @@ export interface Run {
   error: string | null
   /** Why the AI took no part, or empty if it did. */
   ai: string
+  /** What it used of the AI, and who answered last (none if nobody was asked). */
+  usage: Usage
+  provider: string | null
+  model: string | null
 }
 
 export interface Agent {
@@ -63,6 +81,17 @@ export interface Agent {
   last_run: Run | null
   /** The outcomes of its last runs, oldest first. */
   recent: RunStatus[]
+  /** What it used of the AI over the last 30 days. */
+  usage: Usage
+}
+
+/** One day of what an agent used of the AI. */
+export interface UsageDay {
+  /** The date, UTC, as `2026-11-10`. */
+  day: string
+  runs: number
+  tokens: number
+  cost_micros: number
 }
 
 /** One arrow of the graph an agent runs. A conditional one is only followed sometimes. */
@@ -76,6 +105,8 @@ export interface AgentDetail extends Agent {
   template_info: Template
   runs: Run[]
   graph: Edge[]
+  /** Each of the last 30 days, oldest first. */
+  days: UsageDay[]
 }
 
 export interface Overview {
@@ -83,6 +114,9 @@ export interface Overview {
   templates: Template[]
   /** Why the AI would not be asked now, or null if it would be. Agents still collect without it. */
   ai: string | null
+  /** What all the agents used of the AI over the last 30 days, and the limits on what they spend. */
+  usage: Usage
+  limits: UsageLimit[]
 }
 
 export interface Finding {
@@ -118,6 +152,36 @@ export interface AgentChoices {
   allow_active: boolean
 }
 
+/** Where the agents get their AI: what Settings > AI chose, a provider of their own, or none. */
+export type AiSource = 'shared' | 'own' | 'off'
+
+/** Who the agents ask now, and whether that charges by the token. */
+export interface Asking {
+  provider: string
+  label: string
+  model: string
+  charges: boolean
+}
+
+export interface AgentSettings {
+  ai_source: AiSource
+  provider: string | null
+  model: string | null
+  /** Who they ask now, or null and why not. */
+  asking: Asking | null
+  reason: string | null
+  limits: UsageLimit[]
+}
+
+/** What the owner chooses for the agents' use of the AI. The limits are in dollars. */
+export interface AgentSettingsChoices {
+  ai_source: AiSource
+  provider: string | null
+  model: string | null
+  daily: string | null
+  monthly: string | null
+}
+
 const BASE = '/agents'
 
 export const fetchAgents = () => apiGet<Overview>(BASE)
@@ -139,3 +203,8 @@ export const fetchRun = (id: number, run: number) => apiGet<RunDetail>(`${BASE}/
 
 export const cancelRun = (id: number, run: number, csrfToken: string) =>
   apiPost<Run>(`${BASE}/${id}/runs/${run}/cancel`, undefined, csrfToken)
+
+export const fetchAgentSettings = () => apiGet<AgentSettings>(`${BASE}/settings`)
+
+export const saveAgentSettings = (choices: AgentSettingsChoices, csrfToken: string) =>
+  apiPut<AgentSettings>(`${BASE}/settings`, choices, csrfToken)

@@ -8,6 +8,9 @@ import {
   RUN_STATUS,
   agentIcon,
   anyLive,
+  cachedShare,
+  costWords,
+  dailyCost,
   elapsedMs,
   isLive,
   linesOf,
@@ -17,8 +20,10 @@ import {
   scheduleText,
   severityOf,
   shape,
+  tokensOf,
+  usageLine,
 } from '@/agents'
-import { EDGES, agent, run, step } from '@/test/agents'
+import { EDGES, agent, days, run, step, usage } from '@/test/agents'
 
 describe('agent icons', () => {
   it('gives each kind its own, and a robot to one it does not know', () => {
@@ -173,5 +178,43 @@ describe('severities', () => {
   it('are the ones the page knows, and information for any other', () => {
     expect(severityOf('critical')).toBe('critical')
     expect(severityOf('mysterious')).toBe('info')
+  })
+})
+
+describe('what agents used of the AI', () => {
+  it('adds what was sent and what came back', () => {
+    expect(tokensOf(usage({ input_tokens: 900, output_tokens: 100 }))).toBe(1000)
+  })
+
+  it('says how much of what was sent was already cached, and none for nothing sent', () => {
+    expect(cachedShare(usage({ input_tokens: 1000, cached_tokens: 400 }))).toBe(40)
+    expect(cachedShare(usage({ input_tokens: 0, cached_tokens: 0 }))).toBe(0)
+  })
+
+  it('says what it cost, that nothing was used, or that the price is not known', () => {
+    expect(costWords(usage({ calls: 0 }))).toBe('No AI used')
+    expect(costWords(usage({ cost_micros: 12_500 }))).toBe('$0.01')
+    expect(costWords(usage({ cost_micros: 0, unpriced_calls: 2 }))).toBe('Price unknown')
+    expect(costWords(usage({ cost_micros: 2_000_000, unpriced_calls: 1 }))).toBe('$2.00 and more')
+  })
+
+  it('sums it up in a line for a run or an agent', () => {
+    expect(usageLine(usage({ calls: 0 }))).toBe('Used no AI')
+    expect(usageLine(usage({ calls: 1, input_tokens: 800, output_tokens: 200 }))).toBe(
+      '1 request · 1,000 tokens · $0.01',
+    )
+    expect(usageLine(usage({ calls: 3, input_tokens: 20_000, output_tokens: 0 }))).toContain(
+      '3 requests · ',
+    )
+  })
+
+  it('draws each day of the cost in dollars, with the days named', () => {
+    const bars = dailyCost(days({ 29: 4_000 }))
+
+    expect(bars.categories).toHaveLength(30)
+    expect(bars.categories[0]).toBe('Oct 13')
+    expect(bars.series).toHaveLength(1)
+    expect(bars.series[0]?.values[29]).toBeCloseTo(0.004)
+    expect(bars.series[0]?.values[0]).toBe(0)
   })
 })

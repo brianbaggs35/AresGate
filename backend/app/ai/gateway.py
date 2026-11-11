@@ -29,6 +29,7 @@ import anyio.from_thread
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.agents import settings as agent_settings
 from app.ai import limits, redaction, service, wire
 from app.ai.catalog import Kind, ProviderDef
 from app.ai.catalog import provider as provider_def
@@ -159,31 +160,44 @@ def system_for(level: Level, system: str, start: str = "") -> str:
     return "\n\n".join([*parts, system])
 
 
-def _unavailable(db: Session, now: datetime) -> tuple[AiProvider | None, str | None]:
-    """The provider to ask, or the reason there is none."""
-    chosen = service.usage(db, now)
-    if not chosen.enabled:
-        return None, "AI is turned off. Turn it on under Settings > AI to use it."
-    if chosen.provider is None:
-        return None, "No AI provider is chosen. Choose one under Settings > AI."
-    row = db.get(AiProvider, chosen.provider)
-    definition = provider_def(chosen.provider)
+def _unavailable(
+    db: Session, now: datetime, purpose: str = ""
+) -> tuple[AiProvider | None, str | None, str | None]:
+    """The provider to ask and the model to ask it for (None for the one it was set up with), or
+    the reason there is no provider. The agents have a choice of their own."""
+    agents = purpose == agent_settings.PURPOSE
+    if agents:
+        picked = agent_settings.pick(db, now)
+        if picked.reason is not None or picked.provider is None:
+            return None, picked.reason, None
+        chosen, override = picked.provider, picked.model
+        where = "Settings > Agents"
+    else:
+        shared = service.usage(db, now)
+        if not shared.enabled:
+            return None, "AI is turned off. Turn it on under Settings > AI to use it.", None
+        if shared.provider is None:
+            return None, "No AI provider is chosen. Choose one under Settings > AI.", None
+        chosen, override = shared.provider, None
+        where = "Settings > AI"
+    row = db.get(AiProvider, chosen)
+    definition = provider_def(chosen)
     if row is None or definition is None:
-        return None, "The AI provider that was chosen is gone. Choose one under Settings > AI."
-    if not row.model:
-        return None, "The AI provider has no model yet. Choose one under Settings > AI."
+        return None, f"The AI provider that was chosen is gone. Choose one under {where}.", None
+    if not (override or row.model):
+        return None, f"The AI provider has no model yet. Choose one under {where}.", None
     # A provider on the owner's own computer, or Ollama's cloud, costs nothing by the token.
     if definition.kind is Kind.HOSTED:
-        stopped = limits.reached(db, now)
+        stopped = limits.reached(db, now) or (agent_settings.reached(db, now) if agents else None)
         if stopped is not None:
-            return None, stopped
-    return row, None
+            return None, stopped, None
+    return row, None, override
 
 
-def availability(db: Session, now: datetime) -> str | None:
+def availability(db: Session, now: datetime, purpose: str = "") -> str | None:
     """Why nothing would be asked now, in words for whoever is waiting for an answer, or None when
     a provider would be asked."""
-    return _unavailable(db, now)[1]
+    return _unavailable(db, now, purpose)[1]
 
 
 def prepare(
@@ -191,7 +205,7 @@ def prepare(
 ) -> Prepared | Unavailable:
     """Everything needed to send a question: the provider, with its key opened, and the prompt as
     that provider may read it. Changes the database only to make stand-ins."""
-    row, reason = _unavailable(db, now)
+    row, reason, model = _unavailable(db, now, question.purpose)
     if row is None:
         return Unavailable(reason or "")
     definition = provider_def(row.provider)
@@ -217,7 +231,7 @@ def prepare(
     return Prepared(
         question=question,
         definition=definition,
-        model=row.model,
+        model=model or row.model,
         target=target,
         level=level,
         system=system_for(level, question.system, start),

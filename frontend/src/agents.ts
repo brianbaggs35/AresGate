@@ -18,7 +18,9 @@ import {
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
-import type { Agent, AgentState, Edge, Run, RunStatus, Step } from '@/api/agents'
+import type { Agent, AgentState, Edge, Run, RunStatus, Step, Usage, UsageDay } from '@/api/agents'
+import type { BarSeries } from '@/charts/BarChart.vue'
+import { dayLabel, formatMoney, formatTokens } from '@/aiUsage'
 import { formatCount } from '@/format'
 import { SEVERITIES, type Severity } from '@/severity'
 
@@ -165,3 +167,39 @@ export function linesOf(step: Pick<Step, 'detail'>): string[] {
 /** A severity the model named, as one the page knows: anything else is only information. */
 export const severityOf = (value: string): Severity =>
   SEVERITIES.find((known) => known === value) ?? 'info'
+
+/** All the tokens of what agents asked of the AI, what was sent and what came back. */
+export const tokensOf = (usage: Pick<Usage, 'input_tokens' | 'output_tokens'>): number =>
+  usage.input_tokens + usage.output_tokens
+
+/** How much of what was sent the provider already had cached, as a percentage: what a cache saves
+ * is the point of asking in the same words each time. */
+export function cachedShare(usage: Pick<Usage, 'input_tokens' | 'cached_tokens'>): number {
+  return usage.input_tokens === 0 ? 0 : Math.round((usage.cached_tokens / usage.input_tokens) * 100)
+}
+
+/** What it cost, or that nothing was asked: a request to a model with no known price is not
+ * counted in it, and the words say so. */
+export function costWords(usage: Pick<Usage, 'calls' | 'cost_micros' | 'unpriced_calls'>): string {
+  if (usage.calls === 0) return 'No AI used'
+  if (usage.unpriced_calls === 0) return formatMoney(usage.cost_micros)
+  return usage.cost_micros === 0 ? 'Price unknown' : `${formatMoney(usage.cost_micros)} and more`
+}
+
+/** What a run or an agent used of the AI in a line: requests, tokens and cost. */
+export function usageLine(usage: Usage): string {
+  if (usage.calls === 0) return 'Used no AI'
+  const requests = `${formatCount(usage.calls)} ${usage.calls === 1 ? 'request' : 'requests'}`
+  return `${requests} · ${formatTokens(tokensOf(usage))} tokens · ${costWords(usage)}`
+}
+
+/** Each day's cost as a bar chart reads it: the labels, and the cost in dollars of each. */
+export function dailyCost(days: readonly UsageDay[]): {
+  categories: string[]
+  series: BarSeries[]
+} {
+  return {
+    categories: days.map((day) => dayLabel(`${day.day}T12:00:00Z`)),
+    series: [{ id: 'cost', label: 'Cost', values: days.map((day) => day.cost_micros / 1_000_000) }],
+  }
+}

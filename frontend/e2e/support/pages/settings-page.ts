@@ -11,6 +11,7 @@ export class SettingsPage {
   readonly noiseFiltersLink: Locator
   readonly threatDetectionLink: Locator
   readonly aiLink: Locator
+  readonly agentsLink: Locator
   readonly dataLink: Locator
 
   constructor(private readonly page: Page) {
@@ -23,6 +24,7 @@ export class SettingsPage {
     this.noiseFiltersLink = page.getByTestId('settings-nav-noise-filters')
     this.threatDetectionLink = page.getByTestId('settings-nav-threat-detection')
     this.aiLink = page.getByTestId('settings-nav-ai')
+    this.agentsLink = page.getByTestId('settings-nav-agents')
     this.dataLink = page.getByTestId('settings-nav-data')
   }
 

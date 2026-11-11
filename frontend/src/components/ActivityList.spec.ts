@@ -92,6 +92,7 @@ describe('ActivityList', () => {
       'agent.deleted',
       'agent.run_requested',
       'agent.run_cancelled',
+      'agent.settings_changed',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -144,6 +145,7 @@ describe('ActivityList', () => {
       'An agent was removed',
       'An agent was asked to run',
       'An agent run was stopped',
+      'The settings of the agents were changed',
     ])
   })
 

@@ -3,7 +3,7 @@ import type { Overview } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
-import { agent, overview } from '@/test/agents'
+import { agent, limits, overview, usage } from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentsView from '@/views/AgentsView.vue'
 
@@ -103,6 +103,30 @@ describe('AgentsView', () => {
     expect(find('agents-ai').text()).toContain('No AI provider is set up.')
     expect(find('agents-ai').text()).toContain('still collect')
     expect(find('agents-ai-link').attributes('href')).toBe('/settings/ai')
+  })
+
+  it('links to the settings of the agents as well', async () => {
+    const { find } = await open(overview({ ai: 'AI is turned off for the agents.' }))
+
+    expect(find('agents-ai-agents-link').attributes('href')).toBe('/settings/agents')
+  })
+
+  it('says what the agents cost, and how much of their limits is gone', async () => {
+    const { find } = await open(
+      overview({
+        usage: usage({ cost_micros: 4_000_000 }),
+        limits: limits([{ limit_micros: 5_000_000, spent_micros: 4_000_000, state: 'warning' }]),
+      }),
+    )
+
+    expect(find('spend-cost').text()).toBe('$4.00')
+    expect(find('spend-limit-day').text()).toContain('nearly used up')
+  })
+
+  it('says nothing about cost before the agents have asked the AI anything', async () => {
+    const { find } = await open(overview({ usage: usage({ calls: 0 }) }))
+
+    expect(find('agents-spend').exists()).toBe(false)
   })
 
   it('says nothing about the AI when it would be asked', async () => {

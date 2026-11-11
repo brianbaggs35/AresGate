@@ -3,9 +3,11 @@ import {
   changeAgent,
   createAgent,
   fetchAgent,
+  fetchAgentSettings,
   fetchAgents,
   fetchRun,
   removeAgent,
+  saveAgentSettings,
   startRun,
   type AgentChoices,
 } from '@/api/agents'
@@ -84,5 +86,21 @@ describe('agents', () => {
     await cancelRun(3, 9, 'a-token')
 
     expect(post).toHaveBeenCalledWith('/agents/3/runs/9/cancel', undefined, 'a-token')
+  })
+
+  it('reads which AI the agents ask', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ ai_source: 'shared' })
+
+    await expect(fetchAgentSettings()).resolves.toEqual({ ai_source: 'shared' })
+    expect(get).toHaveBeenCalledWith('/agents/settings')
+  })
+
+  it('keeps which AI the agents ask and what they may spend, with the sign-in token', async () => {
+    const put = vi.spyOn(client, 'apiPut').mockResolvedValue({ ai_source: 'off' })
+    const choices = { ai_source: 'off', provider: null, model: null, daily: '1', monthly: null }
+
+    await saveAgentSettings(choices as never, 'a-token')
+
+    expect(put).toHaveBeenCalledWith('/agents/settings', choices, 'a-token')
   })
 })
