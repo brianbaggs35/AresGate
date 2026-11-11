@@ -89,6 +89,7 @@ describe('BottomNavigation', () => {
         'Threat intelligence',
         'Interfaces',
         'AI usage',
+        'Trust',
         'Alerts',
         'Status',
         'Settings',
@@ -130,7 +131,7 @@ describe('BottomNavigation', () => {
       expect(wrapper.find('[data-test="nav-more"]').attributes('aria-expanded')).toBe('false')
     })
 
-    it.each(['/logs', '/ai-usage', '/status', '/settings/account', '/settings/activity'])(
+    it.each(['/logs', '/ai-usage', '/trust', '/status', '/settings/account', '/settings/activity'])(
       'is marked as the place that is open on %s',
       async (route) => {
         const { wrapper } = await open(route)

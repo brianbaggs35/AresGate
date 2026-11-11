@@ -53,6 +53,12 @@ describe('commandsFor', () => {
     expect(ids('ai usage')).not.toContain('go-settings-ai-usage')
   })
 
+  it('finds the Trust page by what it is for', () => {
+    for (const search of ['trust', 'safe', 'allowlist', 'false positive']) {
+      expect(ids(search)).toContain('go-trust')
+    }
+  })
+
   it('puts a title that starts with the search first, then one that has it, then the rest', () => {
     // "Incidents" starts with it, and "Show … incidents" only has it.
     const found = ids('incidents')
@@ -66,7 +72,7 @@ describe('commandsFor', () => {
       'incidents-all',
     ])
     // A word in the keywords only comes after one in a title.
-    expect(commandsFor('list').every(({ group }) => group === 'Incidents')).toBe(true)
+    expect(commandsFor('view').every(({ group }) => group === 'Incidents')).toBe(true)
     expect(ids('theme dark')[0]).toBe('theme-dark')
   })
 

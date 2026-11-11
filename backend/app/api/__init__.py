@@ -32,6 +32,7 @@ from app.api import (
     threat_intel,
     threat_settings,
     threats,
+    trust,
     two_factor,
     verdicts,
 )
@@ -59,6 +60,7 @@ api_router.include_router(events.router)
 api_router.include_router(incidents.router)
 api_router.include_router(logs.router)
 api_router.include_router(searches.router)
+api_router.include_router(trust.router)
 api_router.include_router(verdicts.router)
 api_router.include_router(noise.router)
 api_router.include_router(chains.router)

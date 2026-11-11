@@ -39,6 +39,7 @@ describe('navigation', () => {
       'threat-intelligence',
       'interfaces',
       'ai-usage',
+      'trust',
       'alerts',
       'status',
       'settings',

@@ -26,6 +26,7 @@ from app.models import (
     DeviceAddress,
     IncidentChain,
     IntegrationConnection,
+    VerdictRule,
 )
 from app.models.base import utcnow
 from tests.helpers import new_event
@@ -88,6 +89,7 @@ class TestTheList:
             "integrations",
             "reputation",
             "who_is",
+            "trusted",
             "attack_chains",
             "new_devices",
             "noisy_alerts",
@@ -1020,3 +1022,28 @@ class TestAttackChains:
         session.commit()
 
         assert run(session, "attack_chains").summary == "no chains"
+
+
+class TestTrusted:
+    def test_what_the_owner_trusts_is_listed_with_why_and_how_often_it_was_applied(
+        self, session: Session
+    ) -> None:
+        safe = VerdictRule(verdict="not_suspicious", address=PUBLIC, note="My own scanner")
+        low = VerdictRule(verdict="low_priority", signature="ET SCAN x")
+        session.add_all([safe, low, VerdictRule(verdict="threat", address=HOME)])
+        session.commit()
+
+        found = run(session, "trusted")
+
+        assert found.lines == [
+            f"[trust {low.id}] Every “ET SCAN x” alert is trusted as low priority, "
+            "applied to 0 signals",
+            f"[trust {safe.id}] Everything about {PUBLIC} is trusted as safe, "
+            "applied to 0 signals: My own scanner",
+        ]
+        assert found.summary == "2 trust decisions"
+
+    def test_with_nothing_trusted_it_says_so(self, session: Session) -> None:
+        found = run(session, "trusted", Args(limit=3))
+
+        assert found.summary == "nothing is trusted"

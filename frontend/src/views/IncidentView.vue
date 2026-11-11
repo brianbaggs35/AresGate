@@ -21,6 +21,7 @@ import {
   type IncidentDetail,
   type IncidentStatus,
 } from '@/api/incidents'
+import type { Trust } from '@/api/trust'
 import { fetchVerdicts, type Verdict } from '@/api/verdicts'
 import BarChart from '@/charts/BarChart.vue'
 import AiChip from '@/components/AiChip.vue'
@@ -31,6 +32,7 @@ import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentConversations from '@/components/IncidentConversations.vue'
 import IncidentPath from '@/components/IncidentPath.vue'
+import TrustButton from '@/components/TrustButton.vue'
 import IncidentCoverage from '@/components/IncidentCoverage.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
 import IncidentInsights from '@/components/IncidentInsights.vue'
@@ -65,6 +67,7 @@ import { usePolling } from '@/polling'
 import { SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import { needsReading } from '@/triage'
+import { isAddress } from '@/trust'
 import { mutedIn } from '@/verdicts'
 
 /** How often the page asks again while it is on screen. */
@@ -224,6 +227,27 @@ const caption = computed(() => {
   return listed.value < shown.value.signal_count ? `${base} Only those listed below.` : base
 })
 
+/** The subject can be trusted when it is an address. */
+const trustable = computed(() => isAddress(shown.value.subject))
+/** The device on the network that sent to the subject, if one did: what a narrow decision limits
+ * itself to. */
+const sender = computed(() => {
+  const found = shown.value.devices.find((device) =>
+    shown.value.signals.some(
+      (each) => each.src_address === device.address && each.dst_address === shown.value.subject,
+    ),
+  )
+  return found ? { address: found.address, name: found.hostname } : null
+})
+const signature = computed(
+  () => shown.value.signals.find((each) => each.signature)?.signature ?? null,
+)
+
+function trusted(rule: Trust) {
+  notice.value = `Trusted: ${rule.about}. You can take it back under Trust.`
+  void load(true)
+}
+
 const updated = computed(() =>
   new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(updatedAt.value as Date),
 )
@@ -252,6 +276,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           {{ meaning }}
         </p>
         <template #actions>
+          <TrustButton
+            v-if="trustable"
+            :address="shown.subject"
+            :device="sender"
+            :signature="signature"
+            @trusted="trusted"
+          />
           <v-btn
             v-for="action in actions"
             :key="action.status"

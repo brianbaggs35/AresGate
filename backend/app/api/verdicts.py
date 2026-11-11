@@ -3,7 +3,7 @@ or is a real threat), remembered as rules that are applied to the signals that f
 someone signed in."""
 
 from datetime import datetime
-from ipaddress import IPv4Network, IPv6Network, ip_network
+from ipaddress import ip_network
 from typing import Annotated, Literal, Self, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
@@ -21,6 +21,7 @@ from sqlalchemy import select
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.incidents import engine, rules, verdicts
+from app.incidents.trust import destination_text
 from app.integrations import registry
 from app.models import VerdictRule
 
@@ -110,18 +111,12 @@ class VerdictChange(BaseModel):
     note: Note | None = None
 
 
-def _destination_text(network: IPv4Network | IPv6Network) -> str:
-    """A single address as itself, and a network in the notation of its prefix."""
-    single = network.prefixlen == network.max_prefixlen
-    return str(network.network_address) if single else str(network)
-
-
-def _out(rule: VerdictRule, hits: tuple[int, datetime | None]) -> VerdictOut:
+def rule_out(rule: VerdictRule, hits: tuple[int, datetime | None]) -> VerdictOut:
     return VerdictOut(
         id=rule.id,
         verdict=cast(Verdict, rule.verdict),
         address=str(rule.address) if rule.address is not None else None,
-        destination=(_destination_text(rule.destination) if rule.destination is not None else None),
+        destination=(destination_text(rule.destination) if rule.destination is not None else None),
         source=rule.source,
         source_name=rules.name_of(rule.source) if rule.source is not None else None,
         signature=rule.signature,
@@ -134,7 +129,7 @@ def _out(rule: VerdictRule, hits: tuple[int, datetime | None]) -> VerdictOut:
 
 
 def _shown(db: Db, rule: VerdictRule) -> VerdictOut:
-    return _out(rule, verdicts.hits(db, [rule.id]).get(rule.id, (0, None)))
+    return rule_out(rule, verdicts.hits(db, [rule.id]).get(rule.id, (0, None)))
 
 
 def _given(db: Db, rule: VerdictRule, replaced: Verdict | None) -> VerdictGiven:
@@ -148,18 +143,18 @@ def _found(db: Db, rule_id: int) -> VerdictRule:
     return rule
 
 
-def _facts(rule: VerdictRule) -> dict[str, str | int | bool]:
+def facts(rule: VerdictRule) -> dict[str, str | int | bool]:
     """What the audit log says of a verdict: which it is and what it is about."""
-    facts: dict[str, str | int | bool] = {"verdict_id": rule.id, "verdict": rule.verdict}
+    said: dict[str, str | int | bool] = {"verdict_id": rule.id, "verdict": rule.verdict}
     if rule.address is not None:
-        facts["address"] = str(rule.address)
+        said["address"] = str(rule.address)
     if rule.destination is not None:
-        facts["destination"] = _destination_text(rule.destination)
+        said["destination"] = destination_text(rule.destination)
     if rule.source is not None:
-        facts["source"] = rule.source
+        said["source"] = rule.source
     if rule.signature is not None:
-        facts["signature"] = rule.signature
-    return facts
+        said["signature"] = rule.signature
+    return said
 
 
 @router.get("")
@@ -169,7 +164,7 @@ def list_verdicts(db: Db) -> VerdictList:
         select(VerdictRule).order_by(VerdictRule.updated_at.desc(), VerdictRule.id.desc())
     ).all()
     hits = verdicts.hits(db, [rule.id for rule in found])
-    return VerdictList(items=[_out(rule, hits.get(rule.id, (0, None))) for rule in found])
+    return VerdictList(items=[rule_out(rule, hits.get(rule.id, (0, None))) for rule in found])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -205,7 +200,7 @@ def give_verdict(
         db.add(rule)
         db.flush()
         record_audit(
-            db, request, Action.VERDICT_GIVEN, Outcome.SUCCESS, user=auth.user, detail=_facts(rule)
+            db, request, Action.VERDICT_GIVEN, Outcome.SUCCESS, user=auth.user, detail=facts(rule)
         )
         was = None
     else:
@@ -222,7 +217,7 @@ def give_verdict(
             Action.VERDICT_CHANGED,
             Outcome.SUCCESS,
             user=auth.user,
-            detail={**_facts(rule), "from": was},
+            detail={**facts(rule), "from": was},
         )
     engine.reapply(db, engine.reach(db, rule))
     db.commit()
@@ -252,7 +247,7 @@ def change_verdict(
             Action.VERDICT_CHANGED,
             Outcome.SUCCESS,
             user=auth.user,
-            detail={**_facts(rule), "from": was},
+            detail={**facts(rule), "from": was},
         )
         engine.reapply(db, engine.reach(db, rule))
         db.commit()
@@ -271,7 +266,7 @@ def remove_verdict(
     engine.hold(db)
     rule = _found(db, rule_id)
     record_audit(
-        db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=_facts(rule)
+        db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=facts(rule)
     )
     reached = engine.reach(db, rule)
     db.delete(rule)

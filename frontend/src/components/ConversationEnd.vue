@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 
 import type { ConversationEnd, Reputation } from '@/api/incidents'
 import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
+import TrustButton from '@/components/TrustButton.vue'
 import { countryName, endTitle, flagOf, LOCATION, locationOf, portLine } from '@/evidence'
 import { JUDGEMENT, RULING } from '@/threatIntel'
 
@@ -19,11 +20,20 @@ const props = defineProps<{
   end: ConversationEnd
   /** Which end it is, to say so: the one that sent, or the one it was sent to. */
   side: 'client' | 'server'
+  /** The other end of the conversation, where this one can be trusted for what that sent to it. */
+  peer?: ConversationEnd
 }>()
 const emit = defineEmits<{ ruled: [] }>()
 
 const ruling = computed(() => props.end.reputation?.ruling ?? null)
 const ruleOpen = ref(false)
+/** The device on your network that talked to this end, for a decision about only what it sent. */
+const device = computed(() => {
+  const other = props.peer
+  return other && locationOf(other) === 'local'
+    ? { address: other.address, name: other.name }
+    : null
+})
 const where = computed(() => locationOf(props.end))
 const title = computed(() => endTitle(props.end))
 const port = computed(() => portLine(props.end))
@@ -146,6 +156,7 @@ const current = computed(() =>
         “{{ end.reputation.ruling_note }}”
       </p>
       <div v-if="ruleable" class="end__rule">
+        <TrustButton :address="end.address" :device="device" small @trusted="emit('ruled')" />
         <v-btn
           variant="text"
           size="small"

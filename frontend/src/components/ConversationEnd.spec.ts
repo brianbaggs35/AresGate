@@ -1,8 +1,10 @@
 import type { Reputation } from '@/api/incidents'
+import * as trustApi from '@/api/trust'
 import ConversationEnd from '@/components/ConversationEnd.vue'
 import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
 import { conversationEnd } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { trustRule } from '@/test/trust'
 
 async function show(
   changes: Parameters<typeof conversationEnd>[0],
@@ -254,5 +256,66 @@ describe('ConversationEnd', () => {
 
     expect(wrapper.find('[data-test="end-rule"]').exists()).toBe(false)
     expect(wrapper.findComponent(ThreatRulingDialog).exists()).toBe(false)
+  })
+
+  describe('trusting', () => {
+    const inDialog = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+
+    async function remote(peer?: ReturnType<typeof conversationEnd>) {
+      const mounted = await mountWithPlugins(ConversationEnd, {
+        props: {
+          end: conversationEnd({ address: '52.1.2.3', location: 'remote', name: null }),
+          side: 'server',
+          peer,
+        },
+        signedIn: 'admin',
+        withApp: true,
+      })
+      const button = mounted.wrapper.find('[data-test="trust-button"]')
+      return { ...mounted, button }
+    }
+
+    it('offers to trust an address on the internet', async () => {
+      const { button } = await remote()
+
+      expect(button.attributes('aria-label')).toBe('Trust 52.1.2.3')
+    })
+
+    it('does not offer it for a device on your network', async () => {
+      const wrapper = await show({})
+
+      expect(wrapper.find('[data-test="trust-button"]').exists()).toBe(false)
+    })
+
+    it('offers only the address when the other end is not a device of yours', async () => {
+      const { button } = await remote(conversationEnd({ address: '8.8.8.8', location: 'remote' }))
+      await button.trigger('click')
+      await flushPromises()
+
+      expect(inDialog('scope-address')).not.toBeNull()
+      expect(inDialog('scope-traffic')).toBeNull()
+    })
+
+    it('offers what the device on your network sent to it, first', async () => {
+      const { button } = await remote(conversationEnd({ address: '192.168.1.30', name: 'camera' }))
+      await button.trigger('click')
+      await flushPromises()
+
+      expect(inDialog('scope-traffic')?.textContent).toContain('Only what camera sends to 52.1.2.3')
+    })
+
+    it('says `ruled` once it is trusted, so that the page reads the incident again', async () => {
+      vi.spyOn(trustApi, 'trust').mockResolvedValue(trustRule())
+      const { button, wrapper } = await remote()
+      await button.trigger('click')
+      await flushPromises()
+
+      inDialog('trust-save')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(wrapper.findComponent(ConversationEnd).emitted('ruled')).toHaveLength(1)
+    })
   })
 })
