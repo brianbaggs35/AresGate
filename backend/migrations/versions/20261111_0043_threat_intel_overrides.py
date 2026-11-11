@@ -30,8 +30,9 @@ def upgrade() -> None:
         sa.Column("set_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("kind", "subject", name="uq_threat_intel_overrides_subject"),
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
-    op.drop_table("threat_intel_overrides")
+    op.drop_table("threat_intel_overrides", if_exists=True)
