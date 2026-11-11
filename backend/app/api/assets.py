@@ -281,13 +281,19 @@ class PortOut(BaseModel):
 class StandingOut(BaseModel):
     """What threat intelligence has kept of a peer. Nothing is asked of a service to show it."""
 
+    # What it comes to: the owner's ruling where there is one, else what the service made of it.
     judgement: Judgement
+    # What the service made of it, which a ruling does not change.
+    reported: Judgement
     malicious: int
     suspicious: int
     engines: int
     owner: str | None
     country: str | None
     checked_at: AwareDatetime
+    # What the owner of the network ruled of the peer, and why, if they did.
+    ruling: Literal["safe", "suspicious"] | None
+    ruling_note: str | None
 
 
 class PeerOut(BaseModel):
@@ -419,12 +425,15 @@ def _peer(item: detail.Peer) -> PeerOut:
         if standing is None
         else StandingOut(
             judgement=cast("Judgement", standing.judgement),
+            reported=cast("Judgement", standing.reported),
             malicious=standing.malicious,
             suspicious=standing.suspicious,
             engines=standing.engines,
             owner=standing.owner,
             country=standing.country,
             checked_at=standing.checked_at,
+            ruling=cast("Literal['safe', 'suspicious'] | None", standing.ruling),
+            ruling_note=standing.ruling_note,
         ),
     )
 

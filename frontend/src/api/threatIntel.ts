@@ -1,10 +1,29 @@
-import { apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 
 /** What a search is about: an internet address, a domain, or a web address. */
 export type SubjectKind = 'ip' | 'domain' | 'url'
 
 /** What VirusTotal makes of the subject, from the counts of its engines. */
 export type Judgement = 'malicious' | 'suspicious' | 'clean' | 'unknown'
+
+/** What the owner of the network says of a subject, whatever the services made of it. */
+export type Verdict = 'safe' | 'suspicious'
+
+/** What the owner ruled of a subject: it corrects a false positive or a false negative. */
+export interface Ruling {
+  kind: SubjectKind
+  /** The subject as it is shown: the address, the domain, or the host of a web address. */
+  subject: string
+  verdict: Verdict
+  note: string | null
+  /** When it was ruled. */
+  set_at: string
+  /** What the ruling comes to, on the scale of a judgement. */
+  judgement: Judgement
+}
+
+/** What is known of a ruling where it was not read as one: what was ruled, and why. */
+export type Ruled = Pick<Ruling, 'verdict' | 'note'> & Partial<Pick<Ruling, 'set_at'>>
 
 /** One thing VirusTotal says beyond the counts, such as who owns an address. */
 export interface Detail {
@@ -17,7 +36,12 @@ export interface Lookup {
   kind: SubjectKind
   /** The subject as it was searched for. */
   subject: string
+  /** What it comes to: the owner's ruling where there is one, else what VirusTotal made of it. */
   judgement: Judgement
+  /** What VirusTotal made of it, which a ruling does not change. */
+  reported_judgement: Judgement
+  /** What the owner ruled of it, or null if they did not. */
+  ruling: Ruling | null
   /** When AresGate asked VirusTotal about the subject. */
   checked_at: string
   /** Whether the answer was kept from an earlier check, so that none came from VirusTotal now. */
@@ -98,4 +122,25 @@ export function fetchKnownThreats(query: KnownQuery = {}): Promise<KnownPage> {
   if (query.offset) params.set('offset', String(query.offset))
   const search = params.toString()
   return apiGet<KnownPage>(search ? `/threat-intel/subjects?${search}` : '/threat-intel/subjects')
+}
+
+/** Everything the owner has ruled on, the latest first, whether or not a service has answered. */
+export function fetchRulings(): Promise<{ items: Ruling[] }> {
+  return apiGet<{ items: Ruling[] }>('/threat-intel/overrides')
+}
+
+/** Rules a subject safe or suspicious, in place of any ruling there was. Nothing is sent to a
+ * service, so any address, domain or web address on the internet can be ruled on. */
+export function ruleOnThreat(
+  subject: string,
+  verdict: Verdict,
+  note: string | null,
+  csrfToken: string,
+): Promise<Ruling> {
+  return apiPut<Ruling>('/threat-intel/overrides', { subject, verdict, note }, csrfToken)
+}
+
+/** Takes back what the owner ruled of a subject, so it is what the services made of it again. */
+export function takeBackRuling(subject: string, csrfToken: string): Promise<undefined> {
+  return apiDelete(`/threat-intel/overrides?subject=${encodeURIComponent(subject)}`, csrfToken)
 }

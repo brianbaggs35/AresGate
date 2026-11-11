@@ -3,21 +3,24 @@ import { ExternalLink, RefreshCw, X } from '@lucide/vue'
 import { computed, ref, useId } from 'vue'
 import { useDisplay } from 'vuetify'
 
-import type { Lookup } from '@/api/threatIntel'
+import type { Lookup, Ruling } from '@/api/threatIntel'
+import ThreatRuling from '@/components/ThreatRuling.vue'
 import { useKeyboardReturn } from '@/dialog'
 import { formatCount, formatDateTime } from '@/format'
-import { JUDGEMENT, KIND } from '@/threatIntel'
+import { JUDGEMENT, KIND, RULING } from '@/threatIntel'
 
 /**
  * What VirusTotal reported of one search, in a window over the page: the judgement first, then
  * the counts of its engines, the community's score, the categories it was given and what else
  * VirusTotal says, and what AresGate has kept of the subject: when it first asked, how often, and
  * whether the judgement changed. The counts are shown beside the judgement, because one engine's
- * flag can be a false positive. Check again asks VirusTotal for a newer answer, which the page
- * that opened the window sends. The whole screen on a phone.
+ * flag can be a false positive. Where the owner has ruled the subject safe or suspicious, that is
+ * what it is shown as, and what VirusTotal said stays beside it; the owner can rule here, or take
+ * the ruling back, and the page that opened the window is told. Check again asks VirusTotal for a
+ * newer answer, which the page that opened the window sends. The whole screen on a phone.
  */
 const props = defineProps<{ lookup: Lookup; busy?: boolean }>()
-const emit = defineEmits<{ refresh: [] }>()
+const emit = defineEmits<{ refresh: []; ruled: [ruling: Ruling | null] }>()
 const open = defineModel<boolean>({ required: true })
 
 const { xs: phone } = useDisplay()
@@ -31,6 +34,8 @@ function takeTheKeyboard() {
 }
 
 const appearance = computed(() => JUDGEMENT[props.lookup.judgement])
+/** What the owner ruled, and how that is shown, if they ruled. */
+const ruled = computed(() => (props.lookup.ruling ? RULING[props.lookup.ruling.verdict] : null))
 const engines = computed(
   () =>
     props.lookup.malicious +
@@ -39,10 +44,10 @@ const engines = computed(
     props.lookup.undetected,
 )
 
-/** What the counts say, in a sentence. */
+/** What the counts say, in a sentence: what VirusTotal made of it, whatever the owner ruled. */
 const summary = computed(() => {
   const { lookup } = props
-  switch (lookup.judgement) {
+  switch (lookup.reported_judgement) {
     case 'malicious':
       return `${lookup.malicious} of ${engines.value} engines flagged it as malicious.`
     case 'suspicious':
@@ -169,16 +174,22 @@ const source = computed(() => {
       <v-card-text class="report__body">
         <div class="report__verdict">
           <v-chip
-            :color="appearance.color"
+            :color="ruled ? ruled.color : appearance.color"
             variant="tonal"
             size="large"
-            :prepend-icon="appearance.icon"
+            :prepend-icon="ruled ? ruled.icon : appearance.icon"
             data-test="report-judgement"
             :data-judgement="lookup.judgement"
           >
-            {{ appearance.label }}
+            {{ ruled ? ruled.label : appearance.label }}
           </v-chip>
+          <p v-if="lookup.ruling?.note" class="report__why" data-test="report-ruling-note">
+            “{{ lookup.ruling.note }}”
+          </p>
           <p class="text-body-large report__summary" data-test="report-summary">
+            <template v-if="ruled">
+              VirusTotal said: {{ JUDGEMENT[lookup.reported_judgement].short.toLowerCase() }}.
+            </template>
             {{ summary }}
           </p>
         </div>
@@ -194,7 +205,7 @@ const source = computed(() => {
         </v-alert>
 
         <div
-          v-if="lookup.judgement !== 'unknown'"
+          v-if="lookup.reported_judgement !== 'unknown'"
           class="verdict-bar"
           aria-hidden="true"
           data-test="report-bar"
@@ -207,7 +218,11 @@ const source = computed(() => {
             :data-part="part.key"
           />
         </div>
-        <ul v-if="lookup.judgement !== 'unknown'" class="verdict-legend" data-test="report-counts">
+        <ul
+          v-if="lookup.reported_judgement !== 'unknown'"
+          class="verdict-legend"
+          data-test="report-counts"
+        >
           <li v-for="part in segments" :key="part.key">
             <span
               class="verdict-legend__dot"
@@ -248,6 +263,14 @@ const source = computed(() => {
             </v-chip>
           </div>
         </section>
+
+        <ThreatRuling
+          v-if="lookup.repeatable"
+          :subject="lookup.subject"
+          :ruling="lookup.ruling"
+          class="report__ruling"
+          @changed="emit('ruled', $event)"
+        />
 
         <section class="report__section" aria-label="What AresGate has kept">
           <h3 class="text-title-small">What AresGate has kept</h3>
@@ -357,6 +380,19 @@ const source = computed(() => {
 
 .report__summary {
   margin: 0;
+}
+
+.report__why {
+  margin: 0;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.report__ruling {
+  padding: 1rem;
+  border: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
 }
 
 .verdict-bar {

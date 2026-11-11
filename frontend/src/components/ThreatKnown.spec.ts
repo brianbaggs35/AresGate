@@ -4,7 +4,14 @@ import type { KnownPage, Lookup } from '@/api/threatIntel'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { CLEAN_LOOKUP, KEPT_URL, MALICIOUS_LOOKUP, knownPage } from '@/test/threatIntel'
+import {
+  CLEAN_LOOKUP,
+  KEPT_URL,
+  MALICIOUS_LOOKUP,
+  RULED_LOOKUP,
+  SAFE_RULING,
+  knownPage,
+} from '@/test/threatIntel'
 
 async function mountKnown(result: KnownPage | Error = knownPage()) {
   const fetch = vi.spyOn(threatIntel, 'fetchKnownThreats')
@@ -304,5 +311,43 @@ describe('ThreatKnown', () => {
       KEPT_URL.subject,
     )
     expect(reportWindow()?.querySelector('[data-test="report-refresh"]')).toBeNull()
+  })
+
+  it('says what the owner ruled of an answer, which comes to the ruling and not what VirusTotal said', async () => {
+    const { rows } = await mountKnown(
+      knownPage({
+        items: [
+          { ...RULED_LOOKUP, cached: true },
+          { ...CLEAN_LOOKUP, cached: true },
+        ],
+      }),
+    )
+
+    expect(rows()[0]?.attributes('data-judgement')).toBe('clean')
+    expect(rows()[0]?.find('[data-test="known-ruled"]').text()).toBe('Ruled by you')
+    expect(rows()[0]?.find('[data-test="known-tally"]').text()).toBe('4 of 84 flagged')
+    expect(rows()[0]?.attributes('aria-label')).toBe(
+      '93.184.216.34, IP address, Clean. You ruled it safe. Open its report.',
+    )
+    expect(rows()[1]?.find('[data-test="known-ruled"]').exists()).toBe(false)
+  })
+
+  it('shows an answer as ruled when its report was ruled, and tells the page to read again', async () => {
+    const { wrapper, rows } = await mountKnown()
+    await rows()[0]?.trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(ThreatReportDialog).vm.$emit('ruled', SAFE_RULING)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').judgement).toBe('clean')
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').ruling).toEqual(SAFE_RULING)
+    expect(wrapper.emitted('ruled')).toHaveLength(1)
+
+    wrapper.findComponent(ThreatReportDialog).vm.$emit('ruled', null)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').judgement).toBe('malicious')
+    expect(wrapper.emitted('ruled')).toHaveLength(2)
   })
 })

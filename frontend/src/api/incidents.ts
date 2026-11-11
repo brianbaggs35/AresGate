@@ -337,7 +337,13 @@ export interface Insights {
 
 /** What the threat-intelligence service said of an address it was asked about. */
 export interface Reputation {
+  /** What it comes to: the owner's ruling where there is one, else what the service made of it. */
   judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  /** What the service made of it, which a ruling does not change. */
+  reported: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  /** What the owner of the network ruled of the address, and why, if they did. */
+  ruling: 'safe' | 'suspicious' | null
+  ruling_note: string | null
   malicious: number
   suspicious: number
   /** How many engines gave a view at all. */

@@ -1,6 +1,8 @@
+import type { Reputation } from '@/api/incidents'
 import ConversationEnd from '@/components/ConversationEnd.vue'
+import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
 import { conversationEnd } from '@/test/incidents'
-import { mountWithPlugins } from '@/test/mount'
+import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 async function show(
   changes: Parameters<typeof conversationEnd>[0],
@@ -10,6 +12,18 @@ async function show(
     props: { end: conversationEnd(changes), side },
   })
   return wrapper
+}
+
+const FLAGGED: Reputation = {
+  judgement: 'malicious',
+  reported: 'malicious',
+  ruling: null,
+  ruling_note: null,
+  malicious: 3,
+  suspicious: 1,
+  engines: 84,
+  owner: 'Example Hosting',
+  country: 'NL',
 }
 
 describe('ConversationEnd', () => {
@@ -61,6 +75,9 @@ describe('ConversationEnd', () => {
       location: 'remote',
       reputation: {
         judgement: 'malicious',
+        reported: 'malicious',
+        ruling: null,
+        ruling_note: null,
         malicious: 3,
         suspicious: 1,
         engines: 84,
@@ -71,6 +88,9 @@ describe('ConversationEnd', () => {
     const suspicious = await show({
       reputation: {
         judgement: 'suspicious',
+        reported: 'suspicious',
+        ruling: null,
+        ruling_note: null,
         malicious: 0,
         suspicious: 2,
         engines: 70,
@@ -90,6 +110,9 @@ describe('ConversationEnd', () => {
     const clean = await show({
       reputation: {
         judgement: 'clean',
+        reported: 'clean',
+        ruling: null,
+        ruling_note: null,
         malicious: 0,
         suspicious: 0,
         engines: 90,
@@ -100,6 +123,9 @@ describe('ConversationEnd', () => {
     const unknown = await show({
       reputation: {
         judgement: 'unknown',
+        reported: 'unknown',
+        ruling: null,
+        ruling_note: null,
         malicious: 0,
         suspicious: 0,
         engines: 0,
@@ -112,5 +138,110 @@ describe('ConversationEnd', () => {
     expect(clean.find('[data-test="end-client"]').classes()).not.toContain('end--flagged')
     expect(unknown.find('[data-test="end-reputation"]').text()).toBe('No report yet')
     expect(unknown.find('[data-test="end-client"]').classes()).not.toContain('end--flagged')
+  })
+
+  it('draws an address the owner ruled safe quietly, with what the service said beside it', async () => {
+    const wrapper = await show({
+      location: 'remote',
+      blacklisted: true,
+      reputation: { ...FLAGGED, judgement: 'clean', ruling: 'safe', ruling_note: "A friend's box" },
+    })
+
+    expect(wrapper.find('[data-test="end-ruling"]').text()).toBe('You ruled it safe')
+    expect(wrapper.find('[data-test="end-reputation"]').text()).toBe('4 of 84 engines flag it')
+    expect(wrapper.find('[data-test="end-ruling-note"]').text()).toBe("“A friend's box”")
+    expect(wrapper.find('[data-test="end-client"]').classes()).not.toContain('end--flagged')
+    // What a program said is still said: it is only not drawn as a warning.
+    expect(wrapper.find('[data-test="end-blacklisted"]').exists()).toBe(true)
+  })
+
+  it('draws an address the owner ruled suspicious as a warning, though no service flagged it', async () => {
+    const wrapper = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'suspicious',
+        reported: 'clean',
+        ruling: 'suspicious',
+        malicious: 0,
+        suspicious: 0,
+        engines: 90,
+      },
+    })
+
+    expect(wrapper.find('[data-test="end-ruling"]').text()).toBe('You ruled it suspicious')
+    expect(wrapper.find('[data-test="end-reputation"]').text()).toBe('No engine of 90 flags it')
+    expect(wrapper.find('[data-test="end-client"]').classes()).toContain('end--flagged')
+    expect(wrapper.find('[data-test="end-ruling-note"]').exists()).toBe(false)
+  })
+
+  it('says what the owner ruled of an address no service reported on', async () => {
+    const wrapper = await show({
+      location: 'remote',
+      reputation: {
+        judgement: 'suspicious',
+        reported: 'unknown',
+        ruling: 'suspicious',
+        ruling_note: null,
+        malicious: 0,
+        suspicious: 0,
+        engines: 0,
+        owner: null,
+        country: null,
+      },
+    })
+
+    expect(wrapper.find('[data-test="end-ruling"]').text()).toBe('You ruled it suspicious')
+    expect(wrapper.find('[data-test="end-reputation"]').text()).toBe('No report yet')
+  })
+
+  it('offers to rule on an address on the internet, and says it when the owner did', async () => {
+    const wrapper = await show({ location: 'remote', reputation: FLAGGED })
+    const rule = wrapper.find('[data-test="end-rule"]')
+    expect(rule.text()).toBe('Rule on it')
+    expect(rule.attributes('aria-label')).toBe('Rule on it for 192.168.1.20')
+    expect(wrapper.findComponent(ThreatRulingDialog).props('modelValue')).toBe(false)
+
+    await rule.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findComponent(ThreatRulingDialog)
+    expect(dialog.props('modelValue')).toBe(true)
+    expect(dialog.props('subject')).toBe('192.168.1.20')
+    expect(dialog.props('ruling')).toBeNull()
+    expect(dialog.props('heard')).toBe('VirusTotal said: 4 of 84 engines flag it.')
+
+    dialog.vm.$emit('changed', null)
+    expect(wrapper.emitted('ruled')).toHaveLength(1)
+  })
+
+  it('offers to change a ruling that was made, which the window starts from', async () => {
+    const wrapper = await show({
+      location: 'remote',
+      reputation: { ...FLAGGED, judgement: 'clean', ruling: 'safe', ruling_note: 'Mine' },
+    })
+
+    expect(wrapper.find('[data-test="end-rule"]').text()).toBe('Change my ruling')
+    expect(wrapper.find('[data-test="end-rule"]').attributes('aria-label')).toBe(
+      'Change my ruling of 192.168.1.20',
+    )
+    expect(wrapper.findComponent(ThreatRulingDialog).props('ruling')).toEqual({
+      verdict: 'safe',
+      note: 'Mine',
+    })
+  })
+
+  it('can be ruled on with nothing said of it by a service', async () => {
+    const wrapper = await show({ location: 'remote', reputation: null })
+
+    expect(wrapper.find('[data-test="end-rule"]').exists()).toBe(true)
+    expect(wrapper.findComponent(ThreatRulingDialog).props('heard')).toBeNull()
+  })
+
+  it('does not offer to rule on a device on your network', async () => {
+    const wrapper = await show({})
+
+    expect(wrapper.find('[data-test="end-rule"]').exists()).toBe(false)
+    expect(wrapper.findComponent(ThreatRulingDialog).exists()).toBe(false)
   })
 })

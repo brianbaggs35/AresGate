@@ -1,4 +1,5 @@
 import IncidentConversations from '@/components/IncidentConversations.vue'
+import ConversationEnd from '@/components/ConversationEnd.vue'
 import { conversation, conversationEnd } from '@/test/incidents'
 import { mountWithPlugins } from '@/test/mount'
 
@@ -90,5 +91,15 @@ describe('IncidentConversations', () => {
     expect(many.find('[data-test="conversations-left"]').text()).toContain(
       'And 8 more conversations,',
     )
+  })
+
+  it('says that an address was ruled on, from either end', async () => {
+    const wrapper = await show()
+    const [client, server] = wrapper.findAllComponents(ConversationEnd)
+
+    client?.vm.$emit('ruled')
+    server?.vm.$emit('ruled')
+
+    expect(wrapper.emitted('ruled')).toHaveLength(2)
   })
 })

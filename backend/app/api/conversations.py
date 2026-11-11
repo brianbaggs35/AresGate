@@ -11,20 +11,27 @@ from sqlalchemy.orm import Session
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.events.event import Severity
 from app.incidents import conversations, rules
+from app.intel import overrides, virustotal
 from app.intel import store as intel_store
-from app.intel import virustotal
+from app.models import IntelOverride, IntelSubject
 
 
 class ReputationOut(BaseModel):
     """What the threat-intelligence service said of an address that was asked about."""
 
+    # What it comes to: the owner's ruling where there is one, else what the service made of it.
     judgement: Literal["malicious", "suspicious", "clean", "unknown"]
+    # What the service made of it, which a ruling does not change.
+    reported: Literal["malicious", "suspicious", "clean", "unknown"]
     malicious: int
     suspicious: int
     # How many engines gave a view at all.
     engines: int
     owner: str | None
     country: str | None
+    # What the owner of the network ruled of the address, and why, if they did.
+    ruling: Literal["safe", "suspicious"] | None
+    ruling_note: str | None
 
 
 class EndOut(BaseModel):
@@ -78,24 +85,39 @@ class ConversationsOut(BaseModel):
 
 
 def _reputations(db: Session, found: conversations.Conversations) -> dict[str, ReputationOut]:
-    """What VirusTotal said of each address of the conversations that it was asked about."""
+    """What VirusTotal said of each address of the conversations that it was asked about, and what
+    the owner of the network ruled of each, which stands over it."""
     addresses = {
         ip_address(end.address)
         for each in found.items
         for end in (each.client, each.server)
         if ip_address(end.address).is_global
     }
-    return {
-        row.subject: ReputationOut(
-            judgement=row.judgement,  # type: ignore[arg-type]
-            malicious=row.malicious,
-            suspicious=row.suspicious,
-            engines=row.malicious + row.suspicious + row.harmless + row.undetected,
-            owner=row.owner,
-            country=row.country,
-        )
-        for row in intel_store.reports_for(db, virustotal.PROVIDER, addresses)
+    reports = {
+        row.subject: row for row in intel_store.reports_for(db, virustotal.PROVIDER, addresses)
     }
+    rulings = overrides.for_addresses(db, addresses)
+    return {
+        address: _reputation(reports.get(address), rulings.get(address))
+        for address in reports.keys() | rulings.keys()
+    }
+
+
+def _reputation(row: IntelSubject | None, ruling: IntelOverride | None) -> ReputationOut:
+    """What is known against one address: the service's report, if it gave one, and the ruling."""
+    reported = row.judgement if row else "unknown"
+    verdict = ruling.verdict if ruling else None
+    return ReputationOut(
+        judgement=overrides.effective(reported, verdict),  # type: ignore[arg-type]
+        reported=reported,  # type: ignore[arg-type]
+        malicious=row.malicious if row else 0,
+        suspicious=row.suspicious if row else 0,
+        engines=row.malicious + row.suspicious + row.harmless + row.undetected if row else 0,
+        owner=row.owner if row else None,
+        country=row.country if row else None,
+        ruling=verdict,  # type: ignore[arg-type]
+        ruling_note=ruling.note if ruling else None,
+    )
 
 
 def _end(end: conversations.End, reputations: dict[str, ReputationOut]) -> EndOut:

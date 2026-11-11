@@ -71,6 +71,10 @@ its two ends with an arrow between them, the busiest first (**What was sent, and
 add, so the page can say what is being missed and where to connect it (**What more connecting would
 show**). The more integrations are connected, the more every part of the page has to show.
 
+Where the owner has ruled an address safe or suspicious (see
+[Correcting what VirusTotal says](integrations.md#correcting-what-virustotal-says)), that is what
+the end shows, and what VirusTotal said stays beside it.
+
 The AI is told all of it, a line to a conversation and a line to each technique, through the same
 redaction as everything else, and its reading has *observations*: short statements of what stands
 out in what was sent (migration `0042` adds `ai_triage.observations`).

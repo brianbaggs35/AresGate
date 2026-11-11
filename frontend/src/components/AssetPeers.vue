@@ -2,12 +2,13 @@
 import type { AssetPeer } from '@/api/assets'
 import { formatAgo, formatCount } from '@/format'
 import { describePort } from '@/ports'
-import { JUDGEMENT } from '@/threatIntel'
+import { JUDGEMENT, RULING } from '@/threatIntel'
 
 /**
  * The other addresses an asset's traffic went to, and the ones that sent it traffic, over the last
  * week, the most often seen first. Each says which ports the traffic used at the far end, and what
- * threat intelligence has kept of the address: its judgement and the counts behind it. A peer on a
+ * threat intelligence has kept of the address: its judgement and the counts behind it, or what the
+ * owner ruled of it, which stands over them. A peer on a
  * network of its own is never sent to a service, so it says it is on the network. A public peer
  * with nothing kept says so, and shows no judgement of its own.
  */
@@ -20,8 +21,14 @@ function events(count: number): string {
 /** How many engines flagged the address, of how many gave a verdict. */
 function flagged(peer: AssetPeer): string {
   const standing = peer.standing
-  if (!standing || standing.judgement === 'unknown') return ''
+  if (!standing || standing.reported === 'unknown') return ''
   return `${formatCount(standing.malicious + standing.suspicious)} of ${formatCount(standing.engines)} engines flagged it`
+}
+
+/** What the owner ruled of the address, if they did: it stands over what the service said. */
+function ruled(peer: AssetPeer): string {
+  const ruling = peer.standing?.ruling
+  return ruling ? RULING[ruling].label : ''
 }
 
 /** Who owns the address, when threat intelligence says. */
@@ -77,11 +84,11 @@ function owner(peer: AssetPeer): string {
             </v-chip>
           </span>
           <span
-            v-if="flagged(item) || owner(item)"
+            v-if="ruled(item) || flagged(item) || owner(item)"
             class="peer__intel text-body-small text-medium-emphasis"
             data-test="peer-intel"
           >
-            {{ [flagged(item), owner(item)].filter(Boolean).join(' · ') }}
+            {{ [ruled(item), flagged(item), owner(item)].filter(Boolean).join(' · ') }}
           </span>
         </li>
       </ul>
@@ -133,11 +140,11 @@ function owner(peer: AssetPeer): string {
             </v-chip>
           </span>
           <span
-            v-if="flagged(item) || owner(item)"
+            v-if="ruled(item) || flagged(item) || owner(item)"
             class="peer__intel text-body-small text-medium-emphasis"
             data-test="peer-intel"
           >
-            {{ [flagged(item), owner(item)].filter(Boolean).join(' · ') }}
+            {{ [ruled(item), flagged(item), owner(item)].filter(Boolean).join(' · ') }}
           </span>
         </li>
       </ul>

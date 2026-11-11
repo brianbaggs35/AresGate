@@ -20,12 +20,13 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.assets import inventory
 from app.assets.inventory import Asset, Network
+from app.intel import overrides, virustotal
 from app.intel import store as intel_store
-from app.intel import virustotal
 from app.models import (
     DeviceAddress,
     Event,
     Incident,
+    IntelOverride,
     IntelSubject,
     MetricSample,
     MetricSeries,
@@ -90,15 +91,21 @@ class PortSeen:
 
 @dataclass(frozen=True)
 class Standing:
-    """What threat intelligence has kept of a peer: the judgement, and the counts behind it."""
+    """What threat intelligence has kept of a peer: the judgement, and the counts behind it. The
+    judgement is what the owner ruled where they did, and ``reported`` is what the service made of
+    it, which a ruling does not change."""
 
     judgement: str
+    reported: str
     malicious: int
     suspicious: int
     engines: int
     owner: str | None
     country: str | None
     checked_at: datetime
+    # What the owner ruled of the peer, and why, if they did.
+    ruling: str | None = None
+    ruling_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -308,16 +315,16 @@ def _peers(
     ).all()
     peers = [(address, count, last) for address, count, last in rows if address is not None]
     ports = _ports(db, ours, theirs, addresses, [address for address, _, _ in peers], since)
-    standing = intel_store.answers_for(
-        db, virustotal.PROVIDER, [address for address, _, _ in peers if address.is_global]
-    )
+    outside = [address for address, _, _ in peers if address.is_global]
+    standing = intel_store.answers_for(db, virustotal.PROVIDER, outside)
+    rulings = overrides.for_addresses(db, outside)
     return tuple(
         Peer(
             address=address,
             events=count,
             last_seen_at=last,
             ports=ports.get(address, ()),
-            standing=_standing(standing.get(address)),
+            standing=_standing(standing.get(address), rulings.get(str(address))),
             internal=not address.is_global,
         )
         for address, count, last in peers
@@ -357,18 +364,24 @@ def _ports(
     return {address: tuple(seen) for address, seen in found.items()}
 
 
-def _standing(kept: IntelSubject | None) -> Standing | None:
-    """What a kept answer says of a peer, as the page shows it."""
-    if kept is None:
+def _standing(kept: IntelSubject | None, ruling: IntelOverride | None) -> Standing | None:
+    """What a kept answer and the owner's ruling say of a peer, as the page shows it."""
+    when = kept.checked_at if kept is not None else ruling.set_at if ruling is not None else None
+    if when is None:
         return None
+    reported = kept.judgement if kept else "unknown"
+    verdict = ruling.verdict if ruling else None
     return Standing(
-        judgement=kept.judgement,
-        malicious=kept.malicious,
-        suspicious=kept.suspicious,
-        engines=kept.malicious + kept.suspicious + kept.harmless + kept.undetected,
-        owner=kept.owner,
-        country=kept.country,
-        checked_at=kept.checked_at,
+        judgement=overrides.effective(reported, verdict),
+        reported=reported,
+        malicious=kept.malicious if kept else 0,
+        suspicious=kept.suspicious if kept else 0,
+        engines=kept.malicious + kept.suspicious + kept.harmless + kept.undetected if kept else 0,
+        owner=kept.owner if kept else None,
+        country=kept.country if kept else None,
+        checked_at=when,
+        ruling=verdict,
+        ruling_note=ruling.note if ruling else None,
     )
 
 

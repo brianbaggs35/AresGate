@@ -4,6 +4,7 @@ import type { IntegrationSummary } from '@/api/integrations'
 import * as threatIntelApi from '@/api/threatIntel'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatLookup from '@/components/ThreatLookup.vue'
+import ThreatRulings from '@/components/ThreatRulings.vue'
 import { summary } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { knownPage } from '@/test/threatIntel'
@@ -25,10 +26,11 @@ async function open(result: IntegrationSummary[] | Error) {
   if (result instanceof Error) fetch.mockRejectedValue(result)
   else fetch.mockResolvedValue(result)
   const known = vi.spyOn(threatIntelApi, 'fetchKnownThreats').mockResolvedValue(knownPage())
+  const rulings = vi.spyOn(threatIntelApi, 'fetchRulings').mockResolvedValue({ items: [] })
   const mounted = await mountWithPlugins(ThreatIntelView, { signedIn: 'brian' })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
-  return { ...mounted, fetch, known, find }
+  return { ...mounted, fetch, known, rulings, find }
 }
 
 describe('ThreatIntelView', () => {
@@ -139,5 +141,49 @@ describe('ThreatIntelView', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists what the owner ruled, with or without a service connected', async () => {
+    const connected = await open(listWith('connected'))
+    expect(connected.find('threat-rulings').exists()).toBe(true)
+    connected.wrapper.unmount()
+
+    const without = await open(listWith('not_connected'))
+    expect(without.find('threat-rulings').exists()).toBe(true)
+  })
+
+  it('reads the rulings and what is kept again after an answer is ruled', async () => {
+    const { wrapper, known, rulings } = await open(listWith('connected'))
+    expect(rulings).toHaveBeenCalledTimes(1)
+
+    wrapper.findComponent(ThreatKnown).vm.$emit('ruled')
+    await flushPromises()
+
+    expect(rulings).toHaveBeenCalledTimes(2)
+    expect(known).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads the answers again after something is ruled in the list of rulings', async () => {
+    const { wrapper, known } = await open(listWith('connected'))
+
+    wrapper.findComponent(ThreatRulings).vm.$emit('changed')
+    await flushPromises()
+
+    expect(known).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads what is kept after a search result is ruled', async () => {
+    const { wrapper, known } = await open(listWith('connected'))
+
+    wrapper.findComponent(ThreatLookup).vm.$emit('ruled')
+    await flushPromises()
+
+    expect(known).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists no rulings while the page is loading or did not load', async () => {
+    const { find } = await open(new ApiError(503, 'Service unavailable', 'unavailable'))
+
+    expect(find('threat-rulings').exists()).toBe(false)
   })
 })

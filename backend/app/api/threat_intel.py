@@ -4,23 +4,36 @@ together never ask VirusTotal more often than its free API allows. Every answer 
 whose answer is still fresh is shown from what was kept, and VirusTotal isn't asked about it again,
 unless the search asks for that. While a limit VirusTotal set itself holds, nothing is sent: a
 search says when it may go, or shows the answer kept if there is one. Everything kept can be looked
-through too, which asks VirusTotal nothing."""
+through too, which asks VirusTotal nothing. The owner can rule a subject safe or suspicious
+whatever VirusTotal made of it, to correct a false positive or a false negative: a ruling is shown
+in place of VirusTotal's judgement, which is kept beside it as what VirusTotal said."""
 
 import math
 from datetime import datetime
 from typing import Annotated, Literal, cast
 
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from app.api.deps import Db, SettingsDep, signed_in
+from app import audit
+from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.api.integrations import api_log_recorder
+from app.audit import Action, Outcome
 from app.integrations import netguard, service
 from app.integrations.client import Recorder
-from app.intel import budget, candidates, connection, known, store, subjects, virustotal
+from app.intel import (
+    budget,
+    candidates,
+    connection,
+    known,
+    overrides,
+    store,
+    subjects,
+    virustotal,
+)
 from app.intel.run import CONNECTION, DEFINITION
-from app.models import IntelSubject, utcnow
+from app.models import IntelOverride, IntelSubject, utcnow
 
 RecorderDep = Annotated[Recorder, Depends(api_log_recorder)]
 
@@ -44,6 +57,35 @@ class DetailOut(BaseModel):
 
 type Kind = Literal["ip", "domain", "url"]
 type Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
+type Verdict = Literal["safe", "suspicious"]
+
+
+class RulingIn(BaseModel):
+    """What the owner makes of a subject: an internet address, a domain or a web address."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(max_length=subjects.MAX_LENGTH)
+    verdict: Verdict
+    # Why, for whoever reads it later.
+    note: str | None = Field(default=None, max_length=overrides.MAX_NOTE)
+
+
+class RulingOut(BaseModel):
+    """What the owner ruled of a subject, whatever the services made of it."""
+
+    kind: Kind
+    # The subject as it is shown: the address, the domain, or the host of a web address.
+    subject: str
+    verdict: Verdict
+    note: str | None
+    set_at: AwareDatetime
+    # What the ruling comes to on the scale of a judgement.
+    judgement: Judgement
+
+
+class RulingsOut(BaseModel):
+    items: list[RulingOut]
 
 
 class LookupOut(BaseModel):
@@ -55,7 +97,12 @@ class LookupOut(BaseModel):
     kind: Kind
     # The subject as it was searched for. For a web address in the list of what is kept, its host.
     subject: str
+    # What it comes to: the owner's ruling where there is one, else what VirusTotal made of it.
     judgement: Judgement
+    # What VirusTotal made of it, which a ruling does not change.
+    reported_judgement: Judgement
+    # What the owner ruled of it, if they did.
+    ruling: RulingOut | None
     checked_at: AwareDatetime
     cached: bool
     stale: bool
@@ -124,7 +171,7 @@ def list_known(
     return KnownOut(
         total=found.total,
         counts=CountsOut(**found.counts),
-        items=[_out(row, None, now, cached=True) for row in found.rows],
+        items=[_out(row, None, now, cached=True, ruling=ruling) for row, ruling in found.rows],
     )
 
 
@@ -156,7 +203,7 @@ def look_up(
     now = utcnow()
     kept = store.kept(db, virustotal.PROVIDER, subject)
     if kept is not None and not body.refresh and store.fresh(kept, now):
-        return _out(kept, subject, now, cached=True)
+        return _out(kept, subject, now, cached=True, ruling=overrides.ruling_for(db, subject))
     try:
         target = service.load_target(db, settings, DEFINITION, CONNECTION, row)
     except service.Incomplete as incomplete:
@@ -215,9 +262,10 @@ def _kept_or(
     kept = store.kept(db, virustotal.PROVIDER, subject)
     if kept is None:
         raise refusal
+    ruling = overrides.ruling_for(db, subject)
     if asked:
-        return _out(kept, subject, now, cached=False)
-    return _out(kept, subject, now, cached=True, notice=str(refusal.detail))
+        return _out(kept, subject, now, cached=False, ruling=ruling)
+    return _out(kept, subject, now, cached=True, ruling=ruling, notice=str(refusal.detail))
 
 
 def _held(pause: budget.Pause, now: datetime) -> HTTPException:
@@ -238,11 +286,12 @@ def _out(
     now: datetime,
     *,
     cached: bool,
+    ruling: IntelOverride | None,
     notice: str | None = None,
 ) -> LookupOut:
     """The answer kept for a subject. A search shows the subject as it was searched for. The list
     of what is kept has no search, so it shows what the answer is kept as, and for a web address,
-    which is kept as a hash, the host it was on."""
+    which is kept as a hash, the host it was on. ``ruling`` is what the owner ruled of it."""
     answer = store.answer_of(row)
     report = answer.report if isinstance(answer, virustotal.Reported) else None
     if subject is not None:
@@ -254,7 +303,11 @@ def _out(
     return LookupOut(
         kind=cast("Kind", row.kind),
         subject=text,
-        judgement=virustotal.judge(report),
+        judgement=cast(
+            "Judgement", overrides.effective(virustotal.judge(report), ruling and ruling.verdict)
+        ),
+        reported_judgement=virustotal.judge(report),
+        ruling=_ruling(ruling),
         checked_at=row.checked_at,
         cached=cached,
         stale=not store.fresh(row, now),
@@ -277,3 +330,89 @@ def _out(
         else [],
         link=virustotal.link_of(row.kind, row.subject),
     )
+
+
+def _ruling(found: IntelOverride | None) -> RulingOut | None:
+    """What the owner ruled of a subject, as it is told, or nothing where they did not."""
+    return None if found is None else _told(found)
+
+
+def _told(found: IntelOverride) -> RulingOut:
+    """What the owner ruled of a subject, as it is told."""
+    return RulingOut(
+        kind=cast("Kind", found.kind),
+        subject=found.host,
+        verdict=cast("Verdict", found.verdict),
+        note=found.note,
+        set_at=found.set_at,
+        judgement=cast("Judgement", overrides.JUDGEMENT_OF[found.verdict]),
+    )
+
+
+def _subject_of(text: str) -> subjects.Subject:
+    """What a ruling is about, or the refusal of it in words for the person ruling."""
+    try:
+        return subjects.parse(text)
+    except subjects.Refusal as refusal:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(refusal)) from refusal
+
+
+def _facts(found: IntelOverride) -> dict[str, str]:
+    """What the audit log says of a ruling: what it is about and what it was. The owner's note is
+    kept with the ruling, not in the log."""
+    return {"kind": found.kind, "subject": found.host, "verdict": found.verdict}
+
+
+@router.get("/overrides")
+def list_rulings(db: Db) -> RulingsOut:
+    """Everything the owner has ruled on, the latest first, whether or not any service has answered
+    about it."""
+    return RulingsOut(items=[_told(row) for row in overrides.listing(db)])
+
+
+@router.put("/overrides")
+def rule(
+    body: RulingIn,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> RulingOut:
+    """Rules a subject safe or suspicious, whatever the services made of it, in place of any
+    ruling there was. Nothing is sent to a service, and none is needed: a subject nobody has asked
+    about can be ruled on too."""
+    subject = _subject_of(body.subject)
+    note = audit.clean(body.note, overrides.MAX_NOTE) if body.note else None
+    found = overrides.rule(db, subject, body.verdict, note, utcnow())
+    record_audit(
+        db,
+        request,
+        Action.THREAT_INTEL_RULED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail=_facts(found),
+    )
+    db.commit()
+    return _told(found)
+
+
+@router.delete("/overrides", status_code=status.HTTP_204_NO_CONTENT)
+def take_back(
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+    subject: Annotated[str, Query(max_length=subjects.MAX_LENGTH)],
+) -> Response:
+    """Takes back what the owner ruled of a subject, so it is what the services made of it again."""
+    found = overrides.take_back(db, _subject_of(subject))
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing is ruled of that.")
+    record_audit(
+        db,
+        request,
+        Action.THREAT_INTEL_RULING_CLEARED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail=_facts(found),
+    )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

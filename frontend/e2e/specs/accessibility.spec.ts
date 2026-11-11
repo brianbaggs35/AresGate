@@ -435,6 +435,26 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('ruling on a threat has no WCAG 2.2 AA problems', async ({ page, shell }) => {
+      await page.goto('/threat-intelligence')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await page.getByTestId('rulings-subject').locator('input').fill('8.8.4.4')
+      await page.getByTestId('rulings-rule').click()
+      const dialog = page.getByTestId('ruling-dialog')
+      await dialog.getByTestId('ruling-choice-suspicious').click()
+      await dialog.getByTestId('ruling-note').locator('textarea').fill('It scanned me')
+      await dialog.getByTestId('ruling-save').click()
+      await expect(dialog.getByTestId('ruling-lead')).toContainText('You ruled it suspicious')
+
+      await expectAccessible(page, { include: '[data-test="ruling-dialog"]' })
+
+      await dialog.getByTestId('ruling-done').click()
+      await expect(page.getByTestId('ruling-verdict')).toHaveText('Suspicious')
+
+      await expectAccessible(page)
+    })
+
     test('the threat detection settings have no WCAG 2.2 AA problems', async ({
       page,
       harness,

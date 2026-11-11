@@ -4,11 +4,12 @@ import { computed, onUnmounted, ref } from 'vue'
 
 import { ApiError, errorMessage } from '@/api/client'
 import type { Pause } from '@/api/integrations'
-import { searchThreatIntel, type Lookup } from '@/api/threatIntel'
+import { searchThreatIntel, type Lookup, type Ruling } from '@/api/threatIntel'
 import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { limitNotice } from '@/integrations'
 import { useSessionStore } from '@/stores/session'
+import { withRuling } from '@/threatIntel'
 
 /**
  * Searches VirusTotal for an internet address, a domain or a web address, once the connection is
@@ -17,10 +18,11 @@ import { useSessionStore } from '@/stores/session'
  * holds, a notice says when searches resume: that is not a failure. A search refused for the
  * spacing between lookups says how long to wait. A search of something AresGate has an answer
  * kept for shows that answer when VirusTotal can't be asked, and the report says why. Check again,
- * in the report, asks VirusTotal for a newer answer than the one kept.
+ * in the report, asks VirusTotal for a newer answer than the one kept. The report is where the
+ * owner rules the subject safe or suspicious, whatever VirusTotal made of it.
  */
 const props = defineProps<{ pause?: Pause | null }>()
-const emit = defineEmits<{ refused: []; answered: [] }>()
+const emit = defineEmits<{ refused: []; answered: []; ruled: [] }>()
 
 const session = useSessionStore()
 const query = ref('')
@@ -75,6 +77,13 @@ async function search() {
   busy.value = true
   await ask(subject, false)
   busy.value = false
+}
+
+/** Shows the last search as the owner ruled it, or as VirusTotal made it again where the ruling was
+ * taken back, and tells the page, so that what else it shows is read again. */
+function ruled(ruling: Ruling | null) {
+  if (last.value) last.value = withRuling(last.value, ruling)
+  emit('ruled')
 }
 
 /** Asks VirusTotal again about the last search, whatever is kept of it. */
@@ -158,6 +167,7 @@ async function checkAgain() {
       :lookup="last"
       :busy="checking"
       @refresh="checkAgain"
+      @ruled="ruled"
     />
   </SectionCard>
 </template>

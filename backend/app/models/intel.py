@@ -89,3 +89,29 @@ class IntelSubject(Base):
     # The categories the engines gave, and what else the service says: each one's label and text.
     categories: Mapped[list[str]] = mapped_column(JSONB, default=list)
     details: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
+
+
+class IntelOverride(Base):
+    """What the owner of this network says of a subject, whatever the services made of it: that it
+    is safe, or that it is suspicious. It corrects a false positive or a false negative. A ruling
+    belongs to the owner, not to a service, so it stands whether or not any service has answered
+    about the subject, and a newer answer never replaces it. A subject is ruled on once, and kept
+    the way an answer about it is: an address or a domain as text, a web address as its hash."""
+
+    __tablename__ = "threat_intel_overrides"
+    __table_args__ = (
+        UniqueConstraint("kind", "subject", name="uq_threat_intel_overrides_subject"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    # What kind of subject it is: ip, domain or url.
+    kind: Mapped[str] = mapped_column(String(8))
+    # The address as text, the domain, or the SHA-256 of a web address.
+    subject: Mapped[str] = mapped_column(String(253))
+    # What the subject is shown as: the address, the domain, or the host of a web address.
+    host: Mapped[str] = mapped_column(String(253))
+    # safe or suspicious.
+    verdict: Mapped[str] = mapped_column(String(12))
+    # Why, in the owner's words.
+    note: Mapped[str | None] = mapped_column(String(500), default=None)
+    set_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

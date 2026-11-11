@@ -14,8 +14,8 @@ from app.ai.tools import Args
 from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
+from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.intel import subjects, virustotal
 from app.intel.virustotal import Report
 from app.models import (
     Agent,
@@ -25,6 +25,7 @@ from app.models import (
     DeviceAddress,
     IntegrationConnection,
 )
+from app.models.base import utcnow
 from tests.helpers import new_event
 from tests.test_ai_service import NOW
 from tests.test_ai_triage import ATTACKER, DEVICE, incident, kept, signals
@@ -496,6 +497,33 @@ class TestReputation:
             f"analysed {REPORT.analysed_at:%Y-%m-%d %H:%M} UTC.",
         ]
         assert found.summary == f"VirusTotal's report on {PUBLIC}"
+
+    def test_what_the_owner_ruled_of_an_address_comes_first_and_stands_over_the_report(
+        self, session: Session
+    ) -> None:
+        save_report(session, PUBLIC, REPORT)
+        overrides.rule(session, subjects.of_address(PUBLIC), "safe", "A friend's server", utcnow())
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines[0] == (
+            f"The owner of the network has ruled {PUBLIC} safe: A friend's server "
+            "That stands over what VirusTotal says."
+        )
+        assert f"{PUBLIC}: 3 of 84 engines flag it as malicious" in found.lines[1]
+
+    def test_an_address_with_a_ruling_and_no_report_says_both(self, session: Session) -> None:
+        overrides.rule(session, subjects.of_address(PUBLIC), "suspicious", None, utcnow())
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"The owner of the network has ruled {PUBLIC} suspicious. "
+            "That stands over what VirusTotal says.",
+            f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report.",
+        ]
 
     def test_a_report_without_an_owner_or_country_says_so(self, session: Session) -> None:
         save_report(session, PUBLIC, replace(REPORT, owner=None, country=None))

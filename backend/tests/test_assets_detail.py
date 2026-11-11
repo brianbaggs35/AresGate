@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.assets import detail, inventory
 from app.config import Settings
 from app.events.event import Severity
+from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.intel import subjects, virustotal
 from app.metrics.store import record as record_samples
 from app.models import DeviceAddress, IntegrationConnection, Interface, User, utcnow
 from e2e import factories
@@ -482,6 +482,43 @@ def test_a_peer_shows_what_threat_intelligence_kept_of_it_and_asks_nothing(
     assert peers["52.1.2.4"]["standing"]["judgement"] == "unknown"
     assert peers["52.1.2.6"]["standing"] is None
     assert (peers["192.168.1.30"]["internal"], peers["192.168.1.30"]["standing"]) == (True, None)
+
+
+def test_a_peer_the_owner_ruled_on_is_shown_as_ruled_beside_what_the_service_said(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    stock(session)
+    now = utcnow()
+    factories.events(
+        session,
+        settings,
+        now,
+        [
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3", dst_port=443, protocol="tcp"),
+            EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.6", dst_port=443, protocol="tcp"),
+        ],
+    )
+    intel_store.keep(
+        session,
+        virustotal.PROVIDER,
+        subjects.of_address(ip_address("52.1.2.3")),
+        virustotal.Reported(REPORT),
+        now,
+    )
+    overrides.rule(
+        session, subjects.of_address(ip_address("52.1.2.3")), "safe", "My friend's server", now
+    )
+    overrides.rule(session, subjects.of_address(ip_address("52.1.2.6")), "suspicious", None, now)
+    session.commit()
+
+    peers = {item["address"]: item for item in page_of(client, session, "laptop")["talks_to"]}
+
+    ruled = peers["52.1.2.3"]["standing"]
+    assert (ruled["judgement"], ruled["reported"], ruled["malicious"]) == ("clean", "malicious", 4)
+    assert (ruled["ruling"], ruled["ruling_note"]) == ("safe", "My friend's server")
+    alone = peers["52.1.2.6"]["standing"]
+    assert (alone["judgement"], alone["reported"], alone["engines"]) == ("suspicious", "unknown", 0)
+    assert alone["ruling"] == "suspicious"
 
 
 def test_incidents_its_addresses_are_in_are_listed(
