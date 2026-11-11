@@ -366,8 +366,11 @@ def _ports(
 
 def _standing(kept: IntelSubject | None, ruling: IntelOverride | None) -> Standing | None:
     """What a kept answer and the owner's ruling say of a peer, as the page shows it."""
-    when = kept.checked_at if kept is not None else ruling.set_at if ruling is not None else None
-    if when is None:
+    if kept is not None:
+        when = kept.checked_at
+    elif ruling is not None:
+        when = ruling.set_at
+    else:
         return None
     reported = kept.judgement if kept else "unknown"
     verdict = ruling.verdict if ruling else None

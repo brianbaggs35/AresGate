@@ -292,15 +292,13 @@ def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
             f"{shown} isn't on the internet",
         )
     ruling = overrides.for_addresses(db, [address]).get(str(address))
-    said = (
-        []
-        if ruling is None
-        else [
-            f"The owner of the network has ruled {shown} {ruling.verdict}"
-            + (f": {redactor.text(ruling.note, 200)}" if ruling.note else ".")
-            + " That stands over what VirusTotal says."
-        ]
-    )
+    said: list[str] = []
+    if ruling is not None:
+        why = f": {redactor.text(ruling.note, 200)}" if ruling.note else "."
+        said.append(
+            f"The owner of the network has ruled {shown} {ruling.verdict}{why}"
+            " That stands over what VirusTotal says."
+        )
     report = intel_store.report_for(db, virustotal.PROVIDER, address)
     if report is None:
         silent = (

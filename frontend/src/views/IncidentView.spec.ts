@@ -555,7 +555,7 @@ describe('IncidentView', () => {
       wrapper.findComponent(IncidentConversations).vm.$emit('ruled')
       await flushPromises()
 
-      expect(fetchIncident.mock.calls.length).toBe(before + 1)
+      expect(fetchIncident.mock.calls).toHaveLength(before + 1)
     })
 
     it('says what connecting the others would add, when some are not connected', async () => {
