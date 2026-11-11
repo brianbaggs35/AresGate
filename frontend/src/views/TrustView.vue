@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CircleCheck, Plus, RefreshCw, ShieldCheck, Sparkles } from '@lucide/vue'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import {
