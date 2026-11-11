@@ -7,7 +7,7 @@ from typing import Final
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.agents import catalog
+from app.agents import catalog, proposals
 from app.models import Agent, AgentRun
 
 # How long a run is kept after it is over.
@@ -106,9 +106,11 @@ def interrupted(db: Session, now: datetime) -> int:
 
 
 def prune(db: Session, now: datetime) -> None:
-    """Forgets the runs that are over and older than they are kept, with their steps."""
+    """Forgets the runs that are over and older than they are kept, with their steps, and the
+    suggestions that are old."""
     db.execute(
         delete(AgentRun).where(
             AgentRun.finished_at.is_not(None), AgentRun.finished_at < now - RETENTION
         )
     )
+    proposals.forget(db, now)

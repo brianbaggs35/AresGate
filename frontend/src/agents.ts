@@ -14,11 +14,22 @@ import {
   Pause,
   Radar,
   ScanSearch,
+  Sparkles,
   Telescope,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
-import type { Agent, AgentState, Edge, Run, RunStatus, Step, Usage, UsageDay } from '@/api/agents'
+import type {
+  Agent,
+  AgentState,
+  Edge,
+  ProposalStatus,
+  Run,
+  RunStatus,
+  Step,
+  Usage,
+  UsageDay,
+} from '@/api/agents'
 import type { BarSeries } from '@/charts/BarChart.vue'
 import { dayLabel, formatMoney, formatTokens } from '@/aiUsage'
 import { formatCount } from '@/format'
@@ -32,6 +43,7 @@ const ICONS: Readonly<Record<string, Icon>> = {
   telescope: Telescope,
   'heart-pulse': HeartPulse,
   'scan-search': ScanSearch,
+  sparkles: Sparkles,
 }
 
 /** The icon for a kind of agent, and a robot for one that this version doesn't know. */
@@ -203,3 +215,21 @@ export function dailyCost(days: readonly UsageDay[]): {
     series: [{ id: 'cost', label: 'Cost', values: days.map((day) => day.cost_micros / 1_000_000) }],
   }
 }
+
+/** What applying a suggestion does to the incidents it is about, in the words of a button's hint. */
+export const PROPOSAL_ACTION: Readonly<Record<string, string>> = {
+  dismiss: 'It would dismiss',
+  resolve: 'It would mark resolved',
+  not_suspicious: 'It would mark not suspicious',
+}
+
+/** Where a suggestion is, in words and a color: never a color alone. */
+export const PROPOSAL_STATUS: Readonly<Record<ProposalStatus, { label: string; color: string }>> = {
+  pending: { label: 'Waiting', color: 'info' },
+  applied: { label: 'Done', color: 'success' },
+  dismissed: { label: 'Left alone', color: 'default' },
+  undone: { label: 'Taken back', color: 'warning' },
+}
+
+export const incidentsWords = (count: number): string =>
+  `${formatCount(count)} ${count === 1 ? 'incident' : 'incidents'}`

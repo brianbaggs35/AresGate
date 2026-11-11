@@ -8,6 +8,7 @@ import {
   saveAgentSettings,
   type AgentSettings,
   type AiSource,
+  type CleanupMode,
 } from '@/api/agents'
 import { dollarsOf, limitColor, limitName, limitPercent, limitWords } from '@/aiUsage'
 import { errorMessage } from '@/api/client'
@@ -31,9 +32,9 @@ const settings = ref<AgentSettings | null>(null)
 const ai = ref<Ai | null>(null)
 const loadError = ref<string | null>(null)
 const loading = ref(false)
-const busy = ref<'ai' | 'limits' | null>(null)
-const failure = ref<{ ai?: string; limits?: string }>({})
-const saved = ref<'ai' | 'limits' | null>(null)
+const busy = ref<'ai' | 'limits' | 'cleanup' | null>(null)
+const failure = ref<{ ai?: string; limits?: string; cleanup?: string }>({})
+const saved = ref<'ai' | 'limits' | 'cleanup' | null>(null)
 
 const source = ref<AiSource>('shared')
 /** The provider whose settings are shown, and the model the agents ask of it (null for the one it
@@ -42,6 +43,20 @@ const chosen = ref<string | null>(null)
 const model = ref<string | null>(null)
 const daily = ref('')
 const monthly = ref('')
+const cleanup = ref<CleanupMode>('suggest')
+
+const CLEANUP: readonly { value: CleanupMode; title: string; hint: string }[] = [
+  {
+    value: 'suggest',
+    title: 'Only suggest',
+    hint: 'The noise cleaner lists what it would tidy, and you apply it with one press.',
+  },
+  {
+    value: 'auto',
+    title: 'Do the surest itself',
+    hint: 'It also tidies what it is very sure of, such as old quiet incidents, and says what it did. You can take any of it back.',
+  },
+]
 
 const SOURCES: readonly { value: AiSource; title: string; hint: string }[] = [
   {
@@ -84,6 +99,7 @@ function adopt(next: AgentSettings) {
   source.value = next.ai_source
   chosen.value = next.provider ?? chosen.value
   model.value = next.model
+  cleanup.value = next.cleanup_mode
   daily.value = dollarsOf(next.limits.find(({ period }) => period === 'day')?.limit_micros ?? null)
   monthly.value = dollarsOf(
     next.limits.find(({ period }) => period === 'month')?.limit_micros ?? null,
@@ -126,7 +142,7 @@ const invalidLimits = computed(
 )
 
 /** Keeps what was changed in one card, with what is kept of the other: the two are saved apart. */
-async function save(part: 'ai' | 'limits') {
+async function save(part: 'ai' | 'limits' | 'cleanup') {
   const kept = settings.value as AgentSettings
   const limitOf = (period: 'day' | 'month') =>
     dollarsOf(kept.limits.find((limit) => limit.period === period)?.limit_micros ?? null) || null
@@ -148,8 +164,9 @@ async function save(part: 'ai' | 'limits') {
               ai_source: kept.ai_source,
               provider: kept.provider,
               model: kept.model,
-              daily: daily.value.trim() || null,
-              monthly: monthly.value.trim() || null,
+              daily: part === 'limits' ? daily.value.trim() || null : limitOf('day'),
+              monthly: part === 'limits' ? monthly.value.trim() || null : limitOf('month'),
+              ...(part === 'cleanup' ? { cleanup_mode: cleanup.value } : {}),
             },
         token,
       ),
@@ -385,6 +402,61 @@ onMounted(load)
         data-test="agent-limits-saved"
       >
         The limits are saved.
+      </output>
+    </SectionCard>
+
+    <SectionCard
+      title="Tidying up"
+      description="The noise cleaner finds duplicate and noisy incidents across your integrations. It only ever changes AresGate's own list, never anything serious, and everything it does can be taken back from the agent's page."
+      data-test="agent-cleanup-card"
+    >
+      <v-radio-group
+        v-model="cleanup"
+        label="What the noise cleaner does with what it finds"
+        hide-details
+        data-test="agent-cleanup"
+      >
+        <v-radio
+          v-for="choice in CLEANUP"
+          :key="choice.value"
+          :value="choice.value"
+          :data-test="`cleanup-${choice.value}`"
+        >
+          <template #label>
+            <span class="source">
+              <span class="text-body-large">{{ choice.title }}</span>
+              <span class="text-body-medium text-medium-emphasis">{{ choice.hint }}</span>
+            </span>
+          </template>
+        </v-radio>
+      </v-radio-group>
+      <div class="actions">
+        <v-btn
+          color="primary"
+          :loading="busy === 'cleanup'"
+          :disabled="busy !== null"
+          data-test="agent-cleanup-save"
+          @click="save('cleanup')"
+        >
+          Save
+        </v-btn>
+      </div>
+      <v-alert
+        v-if="failure.cleanup"
+        type="error"
+        variant="tonal"
+        class="mt-4"
+        role="alert"
+        data-test="agent-cleanup-failure"
+      >
+        {{ failure.cleanup }}
+      </v-alert>
+      <output
+        v-else-if="saved === 'cleanup'"
+        class="d-block text-body-medium mt-4"
+        data-test="agent-cleanup-saved"
+      >
+        Saved.
       </output>
     </SectionCard>
   </template>

@@ -40,6 +40,8 @@ export interface Template {
   ready: boolean
   /** The steps to set it up, for someone making one for the first time. */
   setup: string[]
+  /** Whether it suggests changes for the owner to approve, as the cleanup agent does. */
+  proposes: boolean
 }
 
 /** What agents asked of the AI and what it cost: the money is in millionths of a US dollar, the
@@ -98,6 +100,37 @@ export interface Agent {
   recent: RunStatus[]
   /** What it used of the AI over the last 30 days. */
   usage: Usage
+  /** How many of its suggestions wait for the owner. */
+  proposals: number
+}
+
+/** Where a suggestion of the cleanup agent is. */
+export type ProposalStatus = 'pending' | 'applied' | 'dismissed' | 'undone'
+
+/** Something the cleanup agent suggests tidying, and what became of it. */
+export interface Proposal {
+  id: number
+  agent_id: number
+  agent_name: string
+  /** `duplicates`, `stale` or `benign`. */
+  kind: string
+  title: string
+  detail: string
+  /** What is done to the incidents: `dismiss`, `resolve` or `not_suspicious`. */
+  action: string
+  incident_ids: number[]
+  /** The incident that stays when the rest of a group of duplicates is dismissed. */
+  keep_id: number | null
+  confidence: number
+  status: ProposalStatus
+  decided_by: 'owner' | 'agent' | null
+  created_at: string
+  decided_at: string | null
+}
+
+export interface ProposalList {
+  pending: Proposal[]
+  recent: Proposal[]
 }
 
 /** One day of what an agent used of the AI. */
@@ -122,6 +155,8 @@ export interface AgentDetail extends Agent {
   graph: Edge[]
   /** Each of the last 30 days, oldest first. */
   days: UsageDay[]
+  /** What it suggests tidying, and what was decided lately. */
+  suggestions: ProposalList
 }
 
 export interface Overview {
@@ -132,6 +167,8 @@ export interface Overview {
   /** What all the agents used of the AI over the last 30 days, and the limits on what they spend. */
   usage: Usage
   limits: UsageLimit[]
+  /** How many suggestions of the cleanup agent wait for the owner. */
+  proposals: number
 }
 
 export interface Finding {
@@ -172,6 +209,9 @@ export interface AgentChoices {
 /** Where the agents get their AI: what Settings > AI chose, a provider of their own, or none. */
 export type AiSource = 'shared' | 'own' | 'off'
 
+/** What the cleanup agent does with what it finds. */
+export type CleanupMode = 'suggest' | 'auto'
+
 /** Who the agents ask now, and whether that charges by the token. */
 export interface Asking {
   provider: string
@@ -184,6 +224,8 @@ export interface AgentSettings {
   ai_source: AiSource
   provider: string | null
   model: string | null
+  /** Whether the cleanup agent only suggests tidying, or does the surest of it too. */
+  cleanup_mode: CleanupMode
   /** Who they ask now, or null and why not. */
   asking: Asking | null
   reason: string | null
@@ -197,6 +239,8 @@ export interface AgentSettingsChoices {
   model: string | null
   daily: string | null
   monthly: string | null
+  /** Left out, it stays as it was. */
+  cleanup_mode?: CleanupMode
 }
 
 const BASE = '/agents'
@@ -225,3 +269,14 @@ export const fetchAgentSettings = () => apiGet<AgentSettings>(`${BASE}/settings`
 
 export const saveAgentSettings = (choices: AgentSettingsChoices, csrfToken: string) =>
   apiPut<AgentSettings>(`${BASE}/settings`, choices, csrfToken)
+
+export const fetchProposals = () => apiGet<ProposalList>(`${BASE}/proposals`)
+
+export const applyProposal = (id: number, csrfToken: string) =>
+  apiPost<Proposal>(`${BASE}/proposals/${id}/apply`, undefined, csrfToken)
+
+export const dismissProposal = (id: number, csrfToken: string) =>
+  apiPost<Proposal>(`${BASE}/proposals/${id}/dismiss`, undefined, csrfToken)
+
+export const undoProposal = (id: number, csrfToken: string) =>
+  apiPost<Proposal>(`${BASE}/proposals/${id}/undo`, undefined, csrfToken)

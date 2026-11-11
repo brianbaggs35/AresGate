@@ -1,14 +1,18 @@
 import {
+  applyProposal,
   cancelRun,
   changeAgent,
   createAgent,
+  dismissProposal,
   fetchAgent,
   fetchAgentSettings,
   fetchAgents,
+  fetchProposals,
   fetchRun,
   removeAgent,
   saveAgentSettings,
   startRun,
+  undoProposal,
   type AgentChoices,
 } from '@/api/agents'
 import * as client from '@/api/client'
@@ -102,5 +106,20 @@ describe('agents', () => {
     await saveAgentSettings(choices as never, 'a-token')
 
     expect(put).toHaveBeenCalledWith('/agents/settings', choices, 'a-token')
+  })
+
+  it('reads, applies, turns down and takes back suggestions', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ pending: [], recent: [] })
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({})
+
+    await fetchProposals()
+    await applyProposal(5, 'token')
+    await dismissProposal(5, 'token')
+    await undoProposal(5, 'token')
+
+    expect(get).toHaveBeenCalledWith('/agents/proposals')
+    expect(post).toHaveBeenCalledWith('/agents/proposals/5/apply', undefined, 'token')
+    expect(post).toHaveBeenCalledWith('/agents/proposals/5/dismiss', undefined, 'token')
+    expect(post).toHaveBeenCalledWith('/agents/proposals/5/undo', undefined, 'token')
   })
 })

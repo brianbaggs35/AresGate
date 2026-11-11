@@ -15,6 +15,7 @@ agent still looks, but it only keeps what it saw, and the page says why the AI c
 | Threat hunter | Reads the open incidents, the latest alerts and who the firewall turned away most, follows up on what looks wrong, and says what, if anything, needs you. | Every hour |
 | Intelligence analyst | Checks who is behind the traffic against what VirusTotal has reported (it reads what AresGate kept; it asks VirusTotal nothing). | Every 6 hours |
 | Health watch | Notices when an integration or a collector stops working. | Every 2 hours |
+| Noise cleaner | Finds duplicate, stale and noisy incidents across your integrations and suggests tidying them. | Every 6 hours |
 | Exposure scanner | Tests your devices for services that should not be open. | Only when you start it |
 
 Your own instructions are added to what a kind already does, and the AI is told that they come from
@@ -112,6 +113,34 @@ the same gateway as every other: addresses are replaced by stand-ins for a hoste
 every request is recorded. LangGraph's tracing to LangSmith, a hosted service, is switched off in
 the code and cannot be turned on from the environment.
 
+## The noise cleaner
+
+The noise cleaner is for the list that grows while you are not looking. Several programs report
+the same attack in their own words, scans repeat for days, and the AI often knows an incident is
+noise. Each run finds three kinds of thing, the same way every time and without the AI:
+
+- **Duplicates**: open incidents with the same title. The most serious and most recent stays; the
+  rest would be dismissed.
+- **Old and quiet**: open incidents nothing has touched for three days. They would be marked
+  resolved.
+- **Noise the AI is sure of**: incidents the AI read and is at least 80% sure are noise. They
+  would get a "not suspicious" verdict.
+
+Nothing serious is ever suggested: an incident that is high or critical, one AresGate is sure
+about (65% or more), or one that already has a verdict that quiets it is left alone. The AI only
+gets to veto: it may name a suggestion to leave alone and say why, never add one or change what it
+does.
+
+What it finds is shown on the agent's page under *What it suggests tidying*, each with how sure it
+is, the incidents it would change and what it would do to them. **Apply** does it, through the same
+bulk changes the incident list has, and **Leave it** turns it down; neither is asked again unless
+what is in it changes. Everything it did can be taken back with **Take it back**, which puts the
+incidents as they were.
+
+Under Settings > Agents, *Tidying up* lets the noise cleaner do the surest of it itself, at 80% or
+more. What it did is on the Activity page and on the agent's page, and can be taken back like any
+other suggestion. The default is to only suggest.
+
 ## For developers
 
 - The graph and its nodes are in `backend/app/agents/graph.py`. Every call to LangGraph is in
@@ -121,6 +150,10 @@ the code and cannot be turned on from the environment.
   adds no other code. What it needs are the checks in `backend/app/agents/readiness.py`.
 - What a run can look at are the read-only tools in `backend/app/ai/tools.py`, which the assistant
   shares. A tool only reads: a test fails if its source adds, deletes or commits.
+- The noise cleaner's candidates are found in `backend/app/incidents/cleanup.py` (plain queries,
+  no AI) and recorded, applied, turned down and taken back in `backend/app/agents/proposals.py`,
+  which calls `backend/app/incidents/bulk.py`, so a suggestion is undone like a bulk change. A
+  suggestion is kept once per agent by its key (`agent_proposals`, migration `0041`).
 - Which provider the agents ask is `backend/app/agents/settings.py`; the gateway
   (`backend/app/ai/gateway.py`) follows it for requests whose purpose is `agent`, and a run adds up
   what its requests used when it ends (`run._spent`).

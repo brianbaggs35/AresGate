@@ -40,6 +40,13 @@ export class AgentsPage {
   readonly steps: Locator
   readonly history: Locator
   readonly notice: Locator
+  /** What the noise cleaner suggests on its page, and the buttons of each suggestion. */
+  readonly suggestions: Locator
+  readonly proposals: Locator
+  readonly apply: Locator
+  readonly dismiss: Locator
+  readonly undo: Locator
+  readonly recentStatus: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -74,6 +81,12 @@ export class AgentsPage {
     this.steps = page.getByTestId('timeline-step')
     this.history = page.getByTestId('history-run')
     this.notice = page.getByTestId('undo-notice-text')
+    this.suggestions = page.getByTestId('agent-suggestions')
+    this.proposals = page.getByTestId('proposal')
+    this.apply = page.getByTestId('proposal-apply')
+    this.dismiss = page.getByTestId('proposal-dismiss')
+    this.undo = page.getByTestId('proposal-undo')
+    this.recentStatus = page.getByTestId('recent-status')
   }
 
   async goto(): Promise<void> {

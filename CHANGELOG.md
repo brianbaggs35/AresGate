@@ -33,6 +33,13 @@ Every release's notes are here, newest first. The format follows
   devices are there, what to do when one is not and a link to where, and the steps to set the kind
   up from the start.
 
+- **A noise cleaner agent that tidies the incident list.** It finds open incidents that say the
+  same thing, quiet ones nothing has touched for three days and ones the AI is sure are noise,
+  and suggests dismissing, resolving or marking each, never anything serious. Each suggestion on
+  the agent's page says how sure it is and which incidents it would change, is applied with one
+  press and can be taken back. Under Settings > Agents, *Tidying up* lets it do the surest of it
+  itself, which the Activity page records. Migration `0041` adds the suggestions.
+
 ### Fixed
 
 - **Two pages asking for the AI's settings at once no longer fail the first time.** The settings

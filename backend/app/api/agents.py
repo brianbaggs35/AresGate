@@ -1,6 +1,7 @@
 """Agents: what the owner makes to look at the network for them, how each is doing and what it
 found (see ``app/agents``). For someone signed in."""
 
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal, cast
@@ -10,7 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstrai
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents import catalog, graph, readiness, service
+from app.agents import catalog, graph, proposals, readiness, service
 from app.agents import settings as agent_settings
 from app.ai import catalog as ai_catalog
 from app.ai import gateway, limits
@@ -18,13 +19,22 @@ from app.api.ai_usage import LimitOut
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.integrations.registry import SettingsError
-from app.models import MIN_INTERVAL_MINUTES, Agent, AgentRun, AgentStep, AiProvider
+from app.models import (
+    MIN_INTERVAL_MINUTES,
+    Agent,
+    AgentProposal,
+    AgentRun,
+    AgentStep,
+    AiProvider,
+)
 from app.models.base import utcnow
 
 router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(signed_in)])
 
 MAX_INTERVAL_MINUTES = 7 * 24 * 60
 RUNS_SHOWN = 30
+# How many suggestions are listed, of each kind.
+PROPOSALS_SHOWN = 30
 # How many of an agent's last runs a card draws, and how far back its counts go.
 RECENT = 14
 WEEK = timedelta(days=7)
@@ -62,6 +72,8 @@ class TemplateOut(BaseModel):
     checks: list[CheckOut]
     ready: bool
     setup: list[str]
+    # Whether it suggests tidying incidents, which the owner applies and can take back.
+    proposes: bool
 
 
 class EdgeOut(BaseModel):
@@ -106,6 +118,32 @@ class RunOut(BaseModel):
     model: str | None
 
 
+class ProposalOut(BaseModel):
+    """Something the cleanup agent suggests tidying, and what became of it."""
+
+    id: int
+    agent_id: int
+    agent_name: str
+    kind: str
+    title: str
+    detail: str
+    # What is done to the incidents: dismiss them, resolve them or give them a verdict.
+    action: str
+    incident_ids: list[int]
+    keep_id: int | None
+    confidence: int
+    status: Literal["pending", "applied", "dismissed", "undone"]
+    decided_by: Literal["owner", "agent"] | None
+    created_at: AwareDatetime
+    decided_at: AwareDatetime | None
+
+
+class ProposalList(BaseModel):
+    # Waiting for the owner, the surest first, and what was decided lately, newest first.
+    pending: list[ProposalOut]
+    recent: list[ProposalOut]
+
+
 class AgentOut(BaseModel):
     id: int
     name: str
@@ -125,6 +163,8 @@ class AgentOut(BaseModel):
     recent: list[Status]
     # What it used of the AI over the last 30 days.
     usage: UsageOut
+    # How many of its suggestions wait for the owner.
+    proposals: int
 
 
 class FindingOut(BaseModel):
@@ -163,6 +203,8 @@ class AgentDetail(AgentOut):
     graph: list[EdgeOut]
     # Each of the last 30 days, oldest first, with what the agent used of the AI.
     days: list[DayOut]
+    # What it suggests tidying, and what was decided lately.
+    suggestions: ProposalList
 
 
 class Overview(BaseModel):
@@ -173,6 +215,8 @@ class Overview(BaseModel):
     # What all the agents used of the AI over the last 30 days, and the limits on what they spend.
     usage: UsageOut
     limits: list[LimitOut]
+    # How many suggestions of the cleanup agents wait for the owner.
+    proposals: int
 
 
 class AgentIn(BaseModel):
@@ -214,6 +258,7 @@ def _template_out(db: Session, item: catalog.Template, now: datetime) -> Templat
         ],
         ready=readiness.ready(found),
         setup=list(item.setup),
+        proposes=item.proposes,
     )
 
 
@@ -327,7 +372,18 @@ def _days(db: Session, now: datetime, agent_id: int) -> list[DayOut]:
     ]
 
 
-def _agent_out(db: Db, agent: Agent) -> AgentOut:
+def _waiting(db: Session) -> dict[int, int]:
+    """How many suggestions wait for the owner, for each agent that has any."""
+    rows = db.execute(
+        select(AgentProposal.agent_id, func.count())
+        .where(AgentProposal.status == "pending")
+        .group_by(AgentProposal.agent_id)
+    ).all()
+    return {agent_id: total for agent_id, total in rows}
+
+
+def _agent_out(db: Db, agent: Agent, waiting: dict[int, int] | None = None) -> AgentOut:
+    suggested = _waiting(db) if waiting is None else waiting
     runs = db.scalars(
         select(AgentRun)
         .where(AgentRun.agent_id == agent.id)
@@ -353,6 +409,7 @@ def _agent_out(db: Db, agent: Agent) -> AgentOut:
         last_run=_run_out(last) if last else None,
         recent=[_status(run.status) for run in reversed(runs)],
         usage=_usage(db, utcnow(), agent.id),
+        proposals=suggested.get(agent.id, 0),
     )
 
 
@@ -392,6 +449,8 @@ class AgentSettingsOut(BaseModel):
     ai_source: Literal["shared", "own", "off"]
     provider: str | None
     model: str | None
+    # Whether the cleanup agent only suggests tidying, or does the surest of it too.
+    cleanup_mode: Literal["suggest", "auto"]
     # Who they ask now, or None with the reason why not.
     asking: AskingOut | None
     reason: str | None
@@ -404,6 +463,8 @@ class AgentSettingsIn(BaseModel):
     ai_source: Literal["shared", "own", "off"]
     provider: str | None = Field(default=None, max_length=32)
     model: str | None = Field(default=None, max_length=128)
+    # Left out, it stays as it was.
+    cleanup_mode: Literal["suggest", "auto"] | None = None
     # What the agents may spend, in US dollars, or None for no limit.
     daily: Annotated[Decimal | None, Field(gt=0, le=limits.MAX_DOLLARS, decimal_places=2)] = None
     monthly: Annotated[Decimal | None, Field(gt=0, le=limits.MAX_DOLLARS, decimal_places=2)] = None
@@ -438,9 +499,152 @@ def _settings_out(db: Session, now: datetime) -> AgentSettingsOut:
         ai_source=cast("Literal['shared', 'own', 'off']", chosen.ai_source),
         provider=chosen.provider,
         model=chosen.model,
+        cleanup_mode=cast("Literal['suggest', 'auto']", chosen.cleanup_mode),
         asking=asking,
         reason=reason,
         limits=[_limit_out(item) for item in agent_settings.status(db, now)],
+    )
+
+
+def _proposal_out(proposal: AgentProposal, names: dict[int, str]) -> ProposalOut:
+    return ProposalOut(
+        id=proposal.id,
+        agent_id=proposal.agent_id,
+        agent_name=names.get(proposal.agent_id, "An agent that is gone"),
+        kind=proposal.kind,
+        title=proposal.title,
+        detail=proposal.detail,
+        action=proposal.action,
+        incident_ids=proposal.incident_ids,
+        keep_id=proposal.keep_id,
+        confidence=proposal.confidence,
+        status=cast("Literal['pending', 'applied', 'dismissed', 'undone']", proposal.status),
+        decided_by=cast("Literal['owner', 'agent'] | None", proposal.decided_by),
+        created_at=proposal.created_at,
+        decided_at=proposal.decided_at,
+    )
+
+
+def _suggestions(db: Session, agent_id: int | None = None) -> ProposalList:
+    """What waits for the owner, the surest first, and what was decided in the last 30 days."""
+    names = {agent.id: agent.name for agent in db.scalars(select(Agent))}
+    scope = [AgentProposal.agent_id == agent_id] if agent_id is not None else []
+    waiting = db.scalars(
+        select(AgentProposal)
+        .where(AgentProposal.status == "pending", *scope)
+        .order_by(AgentProposal.confidence.desc(), AgentProposal.id.desc())
+        .limit(PROPOSALS_SHOWN)
+    ).all()
+    decided = db.scalars(
+        select(AgentProposal)
+        .where(
+            AgentProposal.status != "pending",
+            AgentProposal.decided_at >= utcnow() - timedelta(days=30),
+            *scope,
+        )
+        .order_by(AgentProposal.decided_at.desc(), AgentProposal.id.desc())
+        .limit(PROPOSALS_SHOWN)
+    ).all()
+    return ProposalList(
+        pending=[_proposal_out(item, names) for item in waiting],
+        recent=[_proposal_out(item, names) for item in decided],
+    )
+
+
+@router.get("/proposals")
+def list_proposals(db: Db) -> ProposalList:
+    """What the cleanup agents suggest tidying and what was decided about it lately."""
+    return _suggestions(db)
+
+
+def _proposal(db: Db, proposal_id: int) -> AgentProposal:
+    found = db.get(AgentProposal, proposal_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no such suggestion.")
+    return found
+
+
+def _decide(
+    db: Db,
+    request: Request,
+    auth: SignedIn,
+    proposal_id: int,
+    action: Action,
+    change: Callable[[AgentProposal, datetime], int],
+) -> ProposalOut:
+    found = _proposal(db, proposal_id)
+    now = utcnow()
+    try:
+        changed = change(found, now)
+    except proposals.Settled as settled:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(settled)) from settled
+    record_audit(
+        db,
+        request,
+        action,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={
+            "proposal": found.id,
+            "agent": found.agent_id,
+            "kind": found.kind,
+            "incidents": changed,
+        },
+    )
+    out = _proposal_out(found, {agent.id: agent.name for agent in db.scalars(select(Agent))})
+    db.commit()
+    return out
+
+
+@router.post("/proposals/{proposal_id}/apply")
+def apply_proposal(
+    proposal_id: int,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> ProposalOut:
+    """Does what a suggestion says, in a way that can be taken back."""
+    return _decide(
+        db,
+        request,
+        auth,
+        proposal_id,
+        Action.AGENT_PROPOSAL_APPLIED,
+        lambda found, now: proposals.apply(db, found, "owner", now),
+    )
+
+
+@router.post("/proposals/{proposal_id}/dismiss")
+def dismiss_proposal(
+    proposal_id: int,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> ProposalOut:
+    """Turns a suggestion down, so that the agent does not make it again."""
+
+    def turn_down(found: AgentProposal, now: datetime) -> int:
+        proposals.dismiss(db, found, now)
+        return 0
+
+    return _decide(db, request, auth, proposal_id, Action.AGENT_PROPOSAL_DISMISSED, turn_down)
+
+
+@router.post("/proposals/{proposal_id}/undo")
+def undo_proposal(
+    proposal_id: int,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> ProposalOut:
+    """Takes back what a suggestion did."""
+    return _decide(
+        db,
+        request,
+        auth,
+        proposal_id,
+        Action.AGENT_PROPOSAL_UNDONE,
+        lambda found, now: proposals.undo(db, found, now),
     )
 
 
@@ -469,6 +673,7 @@ def change_settings(
             daily=body.daily,
             monthly=body.monthly,
             now=now,
+            cleanup=body.cleanup_mode,
         )
     except SettingsError as error:
         raise HTTPException(
@@ -484,7 +689,11 @@ def change_settings(
         Action.AGENT_SETTINGS_CHANGED,
         Outcome.SUCCESS,
         user=auth.user,
-        detail={"ai_source": body.ai_source, "provider": body.provider or "none"},
+        detail={
+            "ai_source": body.ai_source,
+            "provider": body.provider or "none",
+            "cleanup": body.cleanup_mode or "unchanged",
+        },
     )
     out = _settings_out(db, now)
     db.commit()
@@ -496,12 +705,14 @@ def list_agents(db: Db) -> Overview:
     """Every agent, what each is doing, and what one can be made from."""
     agents = db.scalars(select(Agent).order_by(Agent.created_at, Agent.id)).all()
     now = utcnow()
+    waiting = _waiting(db)
     return Overview(
-        agents=[_agent_out(db, agent) for agent in agents],
+        agents=[_agent_out(db, agent, waiting) for agent in agents],
         templates=[_template_out(db, item, now) for item in catalog.TEMPLATES],
         ai=gateway.availability(db, now, agent_settings.PURPOSE),
         usage=_usage(db, now),
         limits=[_limit_out(item) for item in agent_settings.status(db, now)],
+        proposals=sum(waiting.values()),
     )
 
 
@@ -562,6 +773,7 @@ def get_agent(agent_id: int, db: Db) -> AgentDetail:
             for e in graph.structure()
         ],
         days=_days(db, utcnow(), agent.id),
+        suggestions=_suggestions(db, agent.id),
     )
 
 

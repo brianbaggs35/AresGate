@@ -117,6 +117,11 @@ const when = computed(() => {
       {{ costWords(agent.usage) }} in 30 days
     </p>
 
+    <p v-if="agent.proposals" class="text-body-small agent__proposals" data-test="agent-proposals">
+      {{ agent.proposals === 1 ? '1 clean-up is' : `${agent.proposals} clean-ups are` }} waiting for
+      you.
+    </p>
+
     <div class="agent__actions">
       <v-btn
         variant="tonal"

@@ -16,6 +16,8 @@ export class AgentSettingsPage {
   readonly saveLimits: Locator
   readonly limitsSaved: Locator
   readonly limitsFailure: Locator
+  readonly saveCleanup: Locator
+  readonly cleanupSaved: Locator
 
   constructor(private readonly page: Page) {
     this.headings = page.getByRole('heading', { level: 2 })
@@ -30,11 +32,18 @@ export class AgentSettingsPage {
     this.saveLimits = page.getByTestId('agent-limits-save')
     this.limitsSaved = page.getByTestId('agent-limits-saved')
     this.limitsFailure = page.getByTestId('agent-limits-failure')
+    this.saveCleanup = page.getByTestId('agent-cleanup-save')
+    this.cleanupSaved = page.getByTestId('agent-cleanup-saved')
   }
 
   /** The radio button of where the agents get their AI: `shared`, `own` or `off`. */
   source(key: string): Locator {
     return this.page.getByTestId(`source-${key}`).getByRole('radio')
+  }
+
+  /** The radio button of what the noise cleaner does: `suggest` or `auto`. */
+  cleanup(key: string): Locator {
+    return this.page.getByTestId(`cleanup-${key}`).getByRole('radio')
   }
 
   /** The option of one provider in the choice of their own, by its key such as `anthropic`. */
