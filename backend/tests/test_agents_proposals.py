@@ -90,7 +90,9 @@ class TestKeepingSuggestions:
         mild = incident(session, subject="198.51.100.9", title="Scan of ssh", severity=1)
         incident(session, subject="198.51.100.40", last_seen_at=NOW - 9 * DAY, title="Old")
         session.commit()
-        assert first and second and mild.id
+        assert first
+        assert second
+        assert mild.id
         every = found(session)
 
         made, done = record(session, agent, every, set(), auto=True)
@@ -201,7 +203,8 @@ class TestApplying:
 
         assert proposals.apply(session, proposal, "owner", NOW) == 1
         assert session.get_one(Incident, second).status == "resolved"
-        assert first and third
+        assert first
+        assert third
 
     def test_a_decided_suggestion_cannot_be_decided_again(self, session: Session) -> None:
         agent = stored(session)
@@ -210,7 +213,7 @@ class TestApplying:
 
         for call in (
             lambda: proposals.apply(session, done, "owner", NOW),
-            lambda: proposals.dismiss(session, turned_down, NOW),
+            lambda: proposals.dismiss(turned_down, NOW),
         ):
             with pytest.raises(proposals.Settled, match="already been"):
                 call()
@@ -223,7 +226,7 @@ class TestDismissing:
         agent = stored(session)
         proposal = keep(session, agent.id)
 
-        proposals.dismiss(session, proposal, NOW)
+        proposals.dismiss(proposal, NOW)
 
         assert (proposal.status, proposal.decided_by, proposal.decided_at) == (
             "dismissed",

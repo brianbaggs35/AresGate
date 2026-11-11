@@ -132,7 +132,7 @@ def apply(db: Session, proposal: AgentProposal, by: str, now: datetime) -> int:
     return changed
 
 
-def dismiss(db: Session, proposal: AgentProposal, now: datetime) -> None:
+def dismiss(proposal: AgentProposal, now: datetime) -> None:
     """Turns a suggestion down, so that it is not made again."""
     if proposal.status != "pending":
         raise Settled(f"This suggestion has already been {proposal.status}.")
