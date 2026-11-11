@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MessagesSquare, RefreshCw, Sparkles } from '@lucide/vue'
+import { Eye, MessagesSquare, RefreshCw, Sparkles } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -129,6 +129,22 @@ async function accept() {
 
       <p class="text-title-medium" data-test="ai-headline">{{ reading.headline }}</p>
       <p class="text-body-large" data-test="ai-story">{{ reading.story }}</p>
+
+      <section
+        v-if="reading.observations.length"
+        aria-labelledby="ai-observations"
+        class="ai-reading__checks"
+        data-test="ai-observations"
+      >
+        <h3 id="ai-observations" class="text-title-small">
+          <v-icon :icon="Eye" size="18" aria-hidden="true" /> What stands out in what was sent
+        </h3>
+        <ul class="text-body-large">
+          <li v-for="line in reading.observations" :key="line" data-test="ai-observation">
+            {{ line }}
+          </li>
+        </ul>
+      </section>
 
       <section v-if="reading.checks.length" aria-labelledby="ai-checks" class="ai-reading__checks">
         <h3 id="ai-checks" class="text-title-small">What to check</h3>

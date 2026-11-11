@@ -29,11 +29,11 @@ from app.ai import brief, gateway, service
 from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
 from app.events.event import Severity
-from app.incidents import attention, filters, occurrences, queries
+from app.incidents import attention, conversations, filters, insights, occurrences, queries
 from app.incidents.verdicts import MUTING
 from app.intel import store as intel_store
 from app.intel import virustotal
-from app.models import CLASSES, AiCall, AiTriage, Incident, IncidentSignal, IntelSubject
+from app.models import CLASSES, AiCall, AiTriage, Incident, IntelSubject
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
 from app.threats import calls, settings
@@ -42,6 +42,11 @@ PURPOSE: Final = "triage"
 MAX_SIGNALS: Final = 30
 FIRST_SIGNALS: Final = 10
 MAX_CHECKS: Final = 4
+MAX_OBSERVATIONS: Final = 5
+MAX_OBSERVATION: Final = 240
+# How many conversations and techniques are told of what the programs said, and how many lines
+# of what they said there is room for.
+MAX_TOLD: Final = 6
 MAX_HEADLINE: Final = 160
 MAX_STORY: Final = 2000
 MAX_CHECK: Final = 300
@@ -78,6 +83,13 @@ background, "threat" only for a compromise or an attack you are sure of, and "no
 should decide. Alarms must stay rare: suggest "threat" only with a confidence of 80 or more. Say \
 why in "verdict_reason", in one sentence.
 
+"observations" are one to five short, plain statements of what stands out in what was actually \
+sent, taken from "What the programs said of the traffic" and nothing else: who talked to whom and \
+over what service, what was asked for, how much moved and for how long, where the other end is and \
+whether any program or reputation service flags it, and what the programs that said more add. Say \
+what is ordinary as well as what is not, and never a guess. If the programs said nothing beyond \
+the basics, it may be empty.
+
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
 "story" is two to four sentences: what happened in order, what it means for the home, and what \
 has already been done about it (a ban or a block, if there was one). "checks" are one to four \
@@ -96,6 +108,7 @@ SCHEMA: Final[Mapping[str, object]] = {
         "headline": {"type": "string"},
         "story": {"type": "string"},
         "checks": {"type": "array", "items": {"type": "string"}},
+        "observations": {"type": "array", "items": {"type": "string"}},
         "verdict": {"type": "string", "enum": ["none", *VERDICTS]},
         "verdict_reason": {"type": "string"},
     },
@@ -105,6 +118,7 @@ SCHEMA: Final[Mapping[str, object]] = {
         "headline",
         "story",
         "checks",
+        "observations",
         "verdict",
         "verdict_reason",
     ],
@@ -120,6 +134,7 @@ class Reading:
     headline: str
     story: str
     checks: list[str]
+    observations: list[str]
     verdict: str | None
     verdict_reason: str | None
 
@@ -175,10 +190,9 @@ def signal_line(occurrence: occurrences.Occurrence) -> str:
     return f"{when} {signal.source} {signal.kind} {severity}: {what}{where}{protocol}{verdict}"
 
 
-def _timeline(signals: list[IncidentSignal]) -> list[str]:
+def _timeline(found: list[occurrences.Occurrence]) -> list[str]:
     """One line for each kind of signal, which repeats are folded into; of a long incident the
     first and the last, which tell how it began and where it stands."""
-    found = occurrences.group(signals)
     if len(found) <= MAX_SIGNALS:
         return [signal_line(item) for item in found]
     left = len(found) - MAX_SIGNALS
@@ -219,10 +233,73 @@ def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
         ]
     lines += _device_lines(db, incident, redactor)
     lines += _reputation_lines(db, incident, redactor)
-    lines.append(
-        redactor.evidence("signals, oldest first", _timeline(queries.signals(db, incident)))
-    )
+    found = occurrences.group(queries.signals(db, incident))
+    lines.append(redactor.evidence("signals, oldest first", _timeline(found)))
+    if told := _told_lines(found):
+        lines.append(redactor.evidence("What the programs said of the traffic", told))
     return "\n".join(lines)
+
+
+def _end_text(end: conversations.End) -> str:
+    """One end of a conversation: the address with its name, port and service, and where it is."""
+    text = end.address if end.name is None else f"{end.address} ({end.name})"
+    if end.port is not None:
+        text += f":{end.port}"
+        text += f" ({end.service})" if end.service else ""
+    where = [word for word in (end.location, end.country) if word]
+    if end.blacklisted:
+        where.append("on a blacklist")
+    return f"{text} [{', '.join(where)}]" if where else text
+
+
+def size_of(count: int) -> str:
+    size = float(count)
+    for unit in ("B", "kB", "MB", "GB"):
+        if size < 1000 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1000
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _conversation_line(each: conversations.Conversation) -> str:
+    """One conversation in a line: who to whom, what over, how many alerts and what the programs
+    said of the flow."""
+    kind = " ".join(word for word in (each.protocol, each.app) if word)
+    parts = [
+        f"{_end_text(each.client)} -> {_end_text(each.server)}" + (f" {kind}" if kind else ""),
+        f"{each.alerts} alerts of {each.kinds} kinds",
+    ]
+    if each.bytes_out is not None or each.bytes_in is not None:
+        sent, got = each.bytes_out or 0, each.bytes_in or 0
+        parts.append(f"largest flow sent {size_of(sent)} and got {size_of(got)}")
+    if each.duration is not None:
+        parts.append(f"lasted {each.duration} s")
+    if each.names:
+        parts.append("asked for " + ", ".join(name["value"] for name in each.names))
+    parts.append("reported by " + ", ".join(each.programs))
+    return "; ".join(parts)
+
+
+def _told_lines(found: list[occurrences.Occurrence]) -> list[str]:
+    """What the connected programs said of the incident beyond the basics, a line each: the
+    conversations, the techniques they matched it to and the words that sort it. Nothing where
+    none of them said anything."""
+    said = insights.of(found)
+    told = conversations.of(found)
+    lines = [f"Conversation: {_conversation_line(each)}" for each in told.items[:MAX_TOLD]]
+    if told.total > MAX_TOLD:
+        lines.append(f"... {told.total - MAX_TOLD} more conversations ...")
+    lines += [
+        f"Technique {each.id} {each.name} ({each.tactic or 'tactic not said'}): {each.count} alerts"
+        for each in said.techniques[:MAX_TOLD]
+    ]
+    if said.tags:
+        lines.append("Groups and categories: " + ", ".join(each.value for each in said.tags))
+    lines += [f"Machine it was about: {each.value}" for each in said.hosts[:MAX_TOLD]]
+    lines += [
+        f"{each.kind} named: {each.value} ({each.count} alerts)" for each in said.named[:MAX_TOLD]
+    ]
+    return lines
 
 
 def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[str]:
@@ -331,6 +408,12 @@ def parse(text: str) -> Reading | None:
     given = fields.get("checks")
     items = cast("list[object]", given) if isinstance(given, list) else []
     texts = (_text(item, MAX_CHECK) for item in items)
+    seen = fields.get("observations")
+    noted = (
+        (_text(item, MAX_OBSERVATION) for item in cast("list[object]", seen))
+        if isinstance(seen, list)
+        else ()
+    )
     verdict = fields.get("verdict")
     return Reading(
         classification=classification,
@@ -338,6 +421,7 @@ def parse(text: str) -> Reading | None:
         headline=headline,
         story=story,
         checks=[line for line in texts if line][:MAX_CHECKS],
+        observations=[line for line in noted if line][:MAX_OBSERVATIONS],
         verdict=verdict if isinstance(verdict, str) and verdict in VERDICTS else None,
         verdict_reason=_text(fields.get("verdict_reason"), MAX_REASON),
     )
@@ -366,6 +450,7 @@ def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: d
         "headline": reading.headline,
         "story": reading.story,
         "checks": reading.checks,
+        "observations": reading.observations,
         "verdict": reading.verdict,
         "verdict_reason": reading.verdict_reason,
         "provider": answered.provider,

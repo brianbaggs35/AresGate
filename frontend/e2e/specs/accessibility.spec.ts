@@ -427,6 +427,8 @@ for (const theme of ['light', 'dark'] as const) {
       await incidents.goto('?address=8.8.4.11')
       await incidents.cards.first().click()
       await expect(page.getByTestId('insights-card')).toBeVisible()
+      await expect(page.getByTestId('conversations-card')).toBeVisible()
+      await expect(page.getByTestId('coverage-card')).toBeVisible()
       await expect(page.getByTestId('evidence-excerpt').first()).toBeVisible()
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)

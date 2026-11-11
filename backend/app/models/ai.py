@@ -173,6 +173,8 @@ class AiTriage(Base):
     headline: Mapped[str] = mapped_column(String(160))
     story: Mapped[str] = mapped_column(Text)
     checks: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # What stands out in what was actually sent, one plain statement each.
+    observations: Mapped[list[str]] = mapped_column(JSONB, default=list)
     # What it suggests the owner say about it, if anything, and why.
     verdict: Mapped[str | None] = mapped_column(String(16), default=None)
     verdict_reason: Mapped[str | None] = mapped_column(String(300), default=None)

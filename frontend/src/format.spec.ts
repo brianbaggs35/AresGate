@@ -11,6 +11,7 @@ import {
   formatDays,
   formatDue,
   formatDuration,
+  formatSpan,
   formatElapsed,
   formatFigure,
   formatList,
@@ -254,5 +255,19 @@ describe('formatList', () => {
     expect(formatList(['CrowdSec', 'OPNsense', 'Wazuh'], 'en-US')).toBe(
       'CrowdSec, OPNsense, and Wazuh',
     )
+  })
+})
+
+describe('formatSpan', () => {
+  it.each([
+    [0, '0 s'],
+    [45, '45 s'],
+    [60, '1 min'],
+    [61, '1 min 1 s'],
+    [3599, '59 min 59 s'],
+    [3600, '1 h'],
+    [2 * 3600 + 5 * 60, '2 h 5 min'],
+  ])('says %d seconds as %s', (seconds, said) => {
+    expect(formatSpan(seconds)).toBe(said)
   })
 })

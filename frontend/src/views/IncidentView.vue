@@ -28,6 +28,8 @@ import CallChip from '@/components/CallChip.vue'
 import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
+import IncidentConversations from '@/components/IncidentConversations.vue'
+import IncidentCoverage from '@/components/IncidentCoverage.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
 import IncidentInsights from '@/components/IncidentInsights.vue'
 import IncidentOccurrences from '@/components/IncidentOccurrences.vue'
@@ -345,7 +347,22 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 
       <IncidentWhere :incident="shown" />
 
+      <SectionCard
+        v-if="shown.conversations"
+        title="What was sent, and to whom"
+        description="Who talked to whom in the alerts, what it went over and how much, with what each program knows of both ends put together. What two programs both saw is one conversation, counted once."
+        data-test="conversations-card"
+      >
+        <IncidentConversations :conversations="shown.conversations" />
+      </SectionCard>
+
       <IncidentInsights v-if="shown.insights" :insights="shown.insights" />
+
+      <IncidentCoverage
+        v-if="shown.missing.length"
+        :sources="shown.sources"
+        :missing="shown.missing"
+      />
 
       <SectionCard
         v-if="hasRepeats"

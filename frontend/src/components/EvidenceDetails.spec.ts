@@ -1,5 +1,5 @@
 import EvidenceDetails from '@/components/EvidenceDetails.vue'
-import { evidence } from '@/test/incidents'
+import { evidence, flowEnd } from '@/test/incidents'
 import { mountWithPlugins } from '@/test/mount'
 
 async function show(changes: Parameters<typeof evidence>[0]) {
@@ -86,5 +86,54 @@ describe('EvidenceDetails', () => {
     expect(wrapper.find('[data-test="evidence-excerpt"] code').text()).toBe(
       'sshd: Failed password for root',
     )
+  })
+
+  it('says what the program says of the flow in its own plain words, with its score', async () => {
+    const wrapper = await show({ summary: 'Low goodput ratio [19.7%]', score: 10 })
+
+    expect(wrapper.find('[data-test="evidence-summary"]').text()).toBe('Low goodput ratio [19.7%]')
+    expect(wrapper.find('[data-test="evidence-score"]').text()).toBe('Its own score: 10')
+  })
+
+  it('names the two ends of the flow and how long it lasted', async () => {
+    const wrapper = await show({
+      flow: {
+        client: flowEnd({ address: '192.168.7.57', name: 'workstation' }),
+        server: flowEnd({
+          address: '8.8.4.4',
+          port: 53,
+          service: 'domain',
+          country: 'US',
+          blacklisted: true,
+        }),
+        protocol: 'tcp',
+        duration: 61,
+      },
+    })
+
+    expect(wrapper.find('[data-test="evidence-flow"]').text()).toBe(
+      'workstation8.8.4.4, port 53 (domain) (United States) (on a blacklist)',
+    )
+    expect(wrapper.find('[data-test="evidence-duration"]').text()).toBe('Lasted 1 min 1 s')
+  })
+
+  it('names one end where only one is known, and no time where there is none', async () => {
+    const wrapper = await show({
+      flow: {
+        client: null,
+        server: flowEnd({ address: '8.8.4.4', blacklisted: false }),
+        protocol: null,
+        duration: null,
+      },
+    })
+
+    expect(wrapper.find('[data-test="evidence-flow"]').text()).toBe('8.8.4.4')
+    expect(wrapper.find('[data-test="evidence-duration"]').exists()).toBe(false)
+  })
+
+  it('shows what was sent where the packet was kept', async () => {
+    const wrapper = await show({ payload: 'GET /admin HTTP/1.1' })
+
+    expect(wrapper.find('[data-test="evidence-payload"] code').text()).toBe('GET /admin HTTP/1.1')
   })
 })

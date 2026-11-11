@@ -1,8 +1,28 @@
-import { Bug, FileText, Flag, Globe, Link, Search, Server, User } from '@lucide/vue'
+import {
+  Bug,
+  FileText,
+  Fingerprint,
+  Flag,
+  Globe,
+  Info,
+  Link,
+  Search,
+  Server,
+  User,
+} from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
-import type { Confirmation, Evidence, FlowVolume, Named, Occurrence } from '@/api/incidents'
+import type {
+  Confirmation,
+  Conversation,
+  Evidence,
+  FlowEnd,
+  FlowVolume,
+  Named,
+  Occurrence,
+} from '@/api/incidents'
 import { formatBytes, formatCount, formatList } from '@/format'
+import { serviceOf } from '@/ports'
 
 type Icon = NonNullable<IconProps['icon']>
 
@@ -16,6 +36,13 @@ export const NAMED: Readonly<Record<string, { label: string; plural: string; ico
   user: { label: 'User', plural: 'Users', icon: User },
   file: { label: 'File', plural: 'Files', icon: FileText },
   country: { label: 'Country', plural: 'Countries', icon: Flag },
+  cve: { label: 'Known vulnerability', plural: 'Known vulnerabilities', icon: Bug },
+  community_id: {
+    label: 'Flow ID, to find it in other tools',
+    plural: 'Flow IDs, to find them in other tools',
+    icon: Fingerprint,
+  },
+  info: { label: 'What the traffic said', plural: 'What the traffic said', icon: Info },
 }
 
 /** What a kind of thing is called, for one that this version doesn't know as it is. */
@@ -85,7 +112,11 @@ export function hasDetail(evidence: Evidence | null): evidence is Evidence {
       evidence.traffic !== null ||
       evidence.host !== null ||
       evidence.app !== null ||
-      evidence.excerpt !== null)
+      evidence.excerpt !== null ||
+      evidence.summary !== null ||
+      evidence.score !== null ||
+      evidence.flow !== null ||
+      evidence.payload !== null)
   )
 }
 
@@ -128,4 +159,72 @@ export function worthListing(occurrence: Occurrence): boolean {
 export function agreedBy(occurrence: Occurrence): string {
   const names = occurrence.confirmations.map(({ source_name: name }) => name)
   return names.length > 0 ? formatList(names) : 'another program'
+}
+
+/** Where an address is, said in words, for one that no program said anything of. */
+export const LOCATION = {
+  local: 'On your network',
+  remote: 'On the internet',
+} as const
+
+const PRIVATE_V4 = [/^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./, /^127\./]
+const PRIVATE_V6 = [/^f[cd][0-9a-f]{2}:/i, /^fe[89ab][0-9a-f]:/i, /^::1$/]
+
+/** Whether an address is one that only your own network uses: a private, link-local or loopback
+ * one. */
+export function isPrivateAddress(address: string): boolean {
+  return [...PRIVATE_V4, ...PRIVATE_V6].some((pattern) => pattern.test(address))
+}
+
+/** Where one end of a conversation is: what the program said, or what the address itself says. */
+export function locationOf(end: Pick<FlowEnd, 'address' | 'location'>): 'local' | 'remote' {
+  if (end.location) return end.location
+  return end.address && isPrivateAddress(end.address) ? 'local' : 'remote'
+}
+
+/** A country's name in the reader's language, from the two letters a program gives: those letters
+ * again where they are not a country's. */
+export function countryName(code: string, locale?: string): string {
+  try {
+    return new Intl.DisplayNames(locale, { type: 'region' }).of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
+/** The flag for a country's two letters, or nothing for anything that is not two letters. The flag
+ * is a decoration: the country is always named beside it. */
+export function flagOf(code: string): string {
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(0x1f1a5 + code.charCodeAt(0), 0x1f1a5 + code.charCodeAt(1))
+}
+
+/** What one end of a conversation is called: its name where a program gave one, or its address. */
+export function endTitle(end: Pick<FlowEnd, 'address' | 'name'>): string {
+  return end.name ?? end.address ?? 'unknown'
+}
+
+/** The service on a conversation's port: what the program called it, or what the port is known
+ * for. */
+export function serviceFor(end: Pick<FlowEnd, 'service' | 'port'>): string | null {
+  return end.service ?? (end.port === null ? null : serviceOf(end.port))
+}
+
+/** The port as a line: `53`, or `53 (domain)`. */
+export function portLine(end: Pick<FlowEnd, 'service' | 'port'>): string | null {
+  if (end.port === null) return null
+  const service = serviceFor(end)
+  return service ? `${end.port.toString()} (${service})` : end.port.toString()
+}
+
+/** What the conversation carried, as one bar of what the client sent and what it got back. */
+export function conversationVolume(conversation: Conversation): Volume | null {
+  return (
+    volumesOf({
+      packets_out: null,
+      packets_in: null,
+      bytes_out: conversation.bytes_out,
+      bytes_in: conversation.bytes_in,
+    })[0] ?? null
+  )
 }

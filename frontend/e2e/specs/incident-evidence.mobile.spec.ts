@@ -19,6 +19,8 @@ test.describe('what the programs said of an incident, on a phone', () => {
     await page.getByTestId('incident').filter({ hasText: ATTACKER }).click()
 
     await expect(page.getByTestId('insights-card')).toBeVisible()
+    await expect(page.getByTestId('conversations-card')).toBeVisible()
+    await expect(page.getByTestId('coverage-card')).toBeVisible()
     await expect(page.getByTestId('evidence-excerpt').first()).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

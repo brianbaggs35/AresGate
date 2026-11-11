@@ -7,7 +7,7 @@ program, the words, the severity, the two ends and the port are one occurrence, 
 the time of its first and last.
 """
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 
@@ -124,3 +124,12 @@ def group(signals: Sequence[IncidentSignal]) -> list[Occurrence]:
             confirmations=_confirm(known.confirmations, twin),
         )
     return list(found.values())
+
+
+def reports(occurrence: Occurrence) -> Iterable[tuple[str, int, evidence.Evidence | None]]:
+    """What each program said of an occurrence: the program, how many of its alerts, and what it
+    said besides the basics. The first report is the occurrence's own; the others are the programs
+    that agreed."""
+    yield occurrence.first.source, occurrence.count, evidence.load(occurrence.first)
+    for confirmation in occurrence.confirmations:
+        yield confirmation.source, confirmation.count, confirmation.evidence

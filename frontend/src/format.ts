@@ -115,6 +115,19 @@ export function formatDuration(seconds: number): string {
   return parts.join(' ')
 }
 
+/** How long a flow lasted, from seconds: "45 s", "1 min 1 s" or "2 h 5 min". */
+export function formatSpan(seconds: number): string {
+  if (seconds < 60) return `${seconds.toString()} s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) {
+    const rest = seconds % 60
+    return rest ? `${minutes.toString()} min ${rest.toString()} s` : `${minutes.toString()} min`
+  }
+  const rest = minutes % 60
+  const hours = Math.floor(minutes / 60)
+  return rest ? `${hours.toString()} h ${rest.toString()} min` : `${hours.toString()} h`
+}
+
 /** A number of days in words: "1 day" or "30 days". */
 export function formatDays(days: number): string {
   return `${days.toString()} ${days === 1 ? 'day' : 'days'}`

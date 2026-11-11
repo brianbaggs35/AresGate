@@ -17,7 +17,9 @@ from sqlalchemy import ColumnElement, func, or_, select
 
 from app.ai import catalog, triage
 from app.api import asking
+from app.api import conversations as conversation_api
 from app.api.ai import AiContext
+from app.api.conversations import ConversationsOut
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
@@ -26,6 +28,8 @@ from app.events.event import Severity
 from app.incidents import (
     attention,
     bulk,
+    conversations,
+    coverage,
     engine,
     episode,
     evidence,
@@ -228,6 +232,8 @@ class ReadingOut(BaseModel):
     story: str
     # Things the owner can check for themselves, most useful first.
     checks: list[str]
+    # What stands out in what was actually sent, one plain statement each.
+    observations: list[str]
     verdict: Verdict | None
     verdict_reason: str | None
     read_at: AwareDatetime
@@ -267,6 +273,28 @@ class TrafficOut(BaseModel):
     bytes_in: int | None
 
 
+class EndpointOut(BaseModel):
+    """One end of the flow an alert is about, as far as the program said who it is."""
+
+    address: str | None
+    name: str | None
+    port: int | None
+    service: str | None
+    country: str | None
+    location: Literal["local", "remote"] | None
+    blacklisted: bool | None
+
+
+class FlowOut(BaseModel):
+    """The two ends of the flow an alert is about, and what the program knows of the flow."""
+
+    client: EndpointOut | None
+    server: EndpointOut | None
+    protocol: str | None
+    # How long it went on for, in seconds.
+    duration: int | None
+
+
 class EvidenceOut(BaseModel):
     """What one program said of an alert besides who, where and when (app/incidents/evidence.py).
     A member is empty where the program said nothing for it."""
@@ -280,6 +308,12 @@ class EvidenceOut(BaseModel):
     host: str | None
     app: str | None
     excerpt: str | None
+    # The program's own plain words for it, how it scored it, who the flow was between and what
+    # was sent, where it kept the packet.
+    summary: str | None
+    score: int | None
+    flow: FlowOut | None
+    payload: str | None
 
 
 class ConfirmationOut(BaseModel):
@@ -329,6 +363,14 @@ class ContributionOut(BaseModel):
     source_name: str
     reports: int
     adds: list[str]
+
+
+class MissingOut(BaseModel):
+    """An integration that is not connected, and what it would add to an incident."""
+
+    source: str
+    source_name: str
+    adds: str
 
 
 class InsightsOut(BaseModel):
@@ -383,6 +425,10 @@ class IncidentDetail(IncidentOut):
     family: FamilyBrief | None
     # What the programs said besides the basics, added up. None when none said anything.
     insights: InsightsOut | None
+    # Who talked to whom, what over and how much, as the programs between them describe it.
+    conversations: ConversationsOut | None
+    # The integrations that are not connected, and what each would add to an incident.
+    missing: list[MissingOut]
 
 
 class TermOut(BaseModel):
@@ -569,6 +615,7 @@ def _reading(read: AiTriage | None) -> ReadingOut | None:
         headline=read.headline,
         story=read.story,
         checks=read.checks,
+        observations=read.observations,
         verdict=cast(Verdict | None, read.verdict),
         verdict_reason=read.verdict_reason,
         read_at=read.read_at,
@@ -684,6 +731,35 @@ def _evidence(said: evidence.Evidence | None) -> EvidenceOut | None:
         host=said.get("host"),
         app=said.get("app"),
         excerpt=said.get("excerpt"),
+        summary=said.get("summary"),
+        score=said.get("score"),
+        flow=_flow(said.get("flow")),
+        payload=said.get("payload"),
+    )
+
+
+def _endpoint(end: evidence.Endpoint | None) -> EndpointOut | None:
+    if not end:
+        return None
+    return EndpointOut(
+        address=end.get("address"),
+        name=end.get("name"),
+        port=end.get("port"),
+        service=end.get("service"),
+        country=end.get("country"),
+        location=cast(Literal["local", "remote"] | None, end.get("location")),
+        blacklisted=end.get("blacklisted"),
+    )
+
+
+def _flow(flow: evidence.Flow | None) -> FlowOut | None:
+    if not flow:
+        return None
+    return FlowOut(
+        client=_endpoint(flow.get("client")),
+        server=_endpoint(flow.get("server")),
+        protocol=flow.get("protocol"),
+        duration=flow.get("duration"),
     )
 
 
@@ -823,6 +899,11 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         occurrences=_occurrences(grouped),
         family=_family(db, incident),
         insights=_insights(insights.of(grouped)),
+        conversations=conversation_api.out(db, conversations.of(grouped)),
+        missing=[
+            MissingOut(source=each.source, source_name=rules.name_of(each.source), adds=each.adds)
+            for each in coverage.missing(db)
+        ],
     )
 
 

@@ -390,7 +390,7 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             dst_address=target,
             dst_port=port,
             protocol="tcp",
-            raw=_record(program, target, port) if spec.detailed else None,
+            raw=_record(program, target, port, sender) if spec.detailed else None,
         )
         events.append(reported)
         if spec.twin:
@@ -451,15 +451,15 @@ def _twin(event: NewEvent, program: str, identity: str) -> NewEvent:
         occurred_at=event.occurred_at + timedelta(seconds=2),
         identity=(identity,),
         summary=f"{program.capitalize()} saw {event.src_address} try ssh",
-        raw=_record(program, str(event.dst_address), event.dst_port or 22)
+        raw=_record(program, str(event.dst_address), event.dst_port or 22, str(event.src_address))
         if event.raw is not None
         else None,
     )
 
 
-def _record(program: str, device: str, port: int) -> dict[str, object]:
+def _record(program: str, device: str, port: int, sender: str) -> dict[str, object]:
     """What a program's own record of an ssh alert holds, in the shape that program gives it
-    (see app/incidents/evidence.py)."""
+    (see app/incidents/evidence.py). ``sender`` is the address the flow came from."""
     if program == "wazuh":
         return {
             "rule": {
@@ -496,12 +496,39 @@ def _record(program: str, device: str, port: int) -> dict[str, object]:
                 "bytes_toserver": 2210,
                 "bytes_toclient": 1320,
             },
+            "payload_printable": "SSH-2.0-libssh_0.9.6",
         }
     return {
         "alert_id": {"value": 12, "label": "Scan attacker"},
         "score": {"value": 100},
-        "l7_proto": {"value": 92, "label": "SSH"},
+        "severity": {"label": "<i class='fas fa-info-circle'></i> ", "value": 5},
+        "l7_proto": {"value": 92, "label": "TCP:SSH", "l7_label": "SSH"},
         "cli_name": {"value": "scanner.example.net"},
+        "cli_ip": {
+            "ip": sender,
+            "label": sender,
+            "country": "NL",
+            "location": "remote",
+            "blacklisted": "1",
+        },
+        "srv_ip": {
+            "ip": device,
+            "name": "web-server",
+            "location": "local",
+            "blacklisted": "0",
+        },
+        "cli_port": {"label": "40000", "value": "40000"},
+        "srv_port": {"label": "ssh", "value": str(port)},
+        "proto": {"label": "TCP", "value": "6"},
+        "duration": 61,
+        "total_bytes": {
+            "bytes_sent": 3300,
+            "bytes_rcvd": 1120,
+            "total_bytes": 4420,
+            "total_packets": 40,
+        },
+        "description": {"descr": "Many failed logins in a short time [score 100]"},
+        "community_id": {"value": "1:wuAD1nbZujmJpN7Q+jmNBESaYLc="},
     }
 
 

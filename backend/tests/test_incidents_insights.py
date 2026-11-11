@@ -142,3 +142,30 @@ def test_an_evidence_record_missing_members_is_read_all_the_same() -> None:
 
     assert [each.value for each in found.tags] == ["only-tags"]
     assert evidence.load(signal(0, evidence=kept)) is not None
+
+
+def test_what_a_program_says_of_the_flow_is_listed_among_what_it_added() -> None:
+    found = insights.of(
+        occurrences.group(
+            [
+                signal(
+                    0,
+                    source="ntopng",
+                    evidence=said(
+                        flow={"client": {"address": "10.0.0.5"}},
+                        score=10,
+                        summary="Low goodput",
+                        payload="GET /",
+                    ),
+                )
+            ]
+        )
+    )
+
+    [program] = found.programs
+    assert program.adds == [
+        "Who the flow was between",
+        "Its own score",
+        "Its own description",
+        "What was sent",
+    ]

@@ -51,6 +51,8 @@ export interface Reading extends Glance {
   story: string
   /** Things to check for yourself, most useful first. */
   checks: string[]
+  /** What stands out in what was actually sent, one plain statement each. */
+  observations: string[]
   verdict: VerdictKind | null
   verdict_reason: string | null
   read_at: string
@@ -226,6 +228,29 @@ export interface FlowVolume {
   bytes_in: number | null
 }
 
+/** One end of the flow an alert is about, as far as the program said who it is. */
+export interface FlowEnd {
+  address: string | null
+  /** What it is called, where that is not the address. */
+  name: string | null
+  port: number | null
+  /** What the port is for, as the program names it. */
+  service: string | null
+  /** A country code. */
+  country: string | null
+  location: 'local' | 'remote' | null
+  blacklisted: boolean | null
+}
+
+/** The two ends of the flow an alert is about, and what the program knows of the flow. */
+export interface FlowDetail {
+  client: FlowEnd | null
+  server: FlowEnd | null
+  protocol: string | null
+  /** How long it went on for, in seconds. */
+  duration: number | null
+}
+
 /** What one program said of an alert besides who, where and when. A member is empty where the
  * program said nothing for it. */
 export interface Evidence {
@@ -240,6 +265,12 @@ export interface Evidence {
   app: string | null
   /** The log line it came from. */
   excerpt: string | null
+  /** The program's own plain words for it, how it scored it by its own measure, who the flow was
+   * between, and what was sent where it kept the packet. */
+  summary: string | null
+  score: number | null
+  flow: FlowDetail | null
+  payload: string | null
 }
 
 /** A program that reported the same alert as the first did, moments later: it agrees, and it may
@@ -304,6 +335,65 @@ export interface Insights {
   programs: Contribution[]
 }
 
+/** What the threat-intelligence service said of an address it was asked about. */
+export interface Reputation {
+  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  malicious: number
+  suspicious: number
+  /** How many engines gave a view at all. */
+  engines: number
+  owner: string | null
+  country: string | null
+}
+
+/** One end of a conversation: the address and what the programs said of it. */
+export interface ConversationEnd extends FlowEnd {
+  address: string
+  reputation: Reputation | null
+}
+
+/** What the traffic asked for: a host name, a name looked up, a site, an address. */
+export interface AskedFor {
+  kind: string
+  value: string
+}
+
+/** The alerts of one flow's kind, from one address to another over a port: who talked to whom, what
+ * over and how much, with what the programs between them said of it put together. */
+export interface Conversation {
+  client: ConversationEnd
+  server: ConversationEnd
+  protocol: string | null
+  /** What kind of traffic a program recognised. */
+  app: string | null
+  alerts: number
+  kinds: number
+  first_at: string
+  last_at: string
+  severity: Severity
+  /** The biggest flow a program counted: what the client sent and got back, and how long the
+   * longest took, in seconds. */
+  bytes_out: number | null
+  bytes_in: number | null
+  duration: number | null
+  names: AskedFor[]
+  /** The programs that reported it, the one that reported most first. */
+  programs: { source: string; source_name: string }[]
+}
+
+export interface Conversations {
+  items: Conversation[]
+  /** How many there were, which is more than `items` where it is cut to fit. */
+  total: number
+}
+
+/** An integration that is not connected, and what it would add to an incident. */
+export interface MissingProgram {
+  source: string
+  source_name: string
+  adds: string
+}
+
 /** Your word on a whole kind of incident: set all of it aside, or never set any of it aside. */
 export type OwnerCall = 'background' | 'watch'
 
@@ -357,6 +447,10 @@ export interface IncidentDetail extends Incident {
   family: FamilyBrief | null
   /** What the programs said besides the basics, added up. Null when none said anything. */
   insights: Insights | null
+  /** Who talked to whom, what over and how much. Null when no alert was about two addresses. */
+  conversations: Conversations | null
+  /** The integrations that are not connected, and what each would add to an incident. */
+  missing: MissingProgram[]
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */

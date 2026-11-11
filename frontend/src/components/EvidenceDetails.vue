@@ -1,9 +1,29 @@
 <script setup lang="ts">
-import { ArrowDownToLine, ArrowUpFromLine, Crosshair, Tag, Terminal } from '@lucide/vue'
+import {
+  ArrowDownToLine,
+  ArrowRight,
+  ArrowUpFromLine,
+  Crosshair,
+  Gauge,
+  PackageOpen,
+  Tag,
+  Terminal,
+  Timer,
+} from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Evidence } from '@/api/incidents'
-import { APP_ICON, HOST_ICON, namedByKind, namedLook, volumesOf } from '@/evidence'
+import {
+  APP_ICON,
+  HOST_ICON,
+  countryName,
+  endTitle,
+  namedByKind,
+  namedLook,
+  portLine,
+  volumesOf,
+} from '@/evidence'
+import { formatSpan } from '@/format'
 
 /**
  * What one program said of an alert besides who, where and when, in the same layout for every
@@ -15,11 +35,38 @@ const props = defineProps<{ evidence: Evidence }>()
 
 const volumes = computed(() => volumesOf(props.evidence.traffic))
 const named = computed(() => namedByKind(props.evidence.named))
+/** The two ends of the flow, where the program said who they were, each as one line. */
+const ends = computed(() => {
+  const flow = props.evidence.flow
+  if (!flow) return []
+  return [flow.client, flow.server]
+    .filter((end) => end !== null)
+    .map((end) => {
+      const port = portLine(end)
+      const country = end.country ? countryName(end.country) : null
+      return {
+        title: endTitle(end),
+        port,
+        country,
+        blacklisted: end.blacklisted === true,
+      }
+    })
+})
 </script>
 
 <template>
   <div class="evidence" data-test="evidence">
-    <div v-if="evidence.host || evidence.app" class="evidence__about">
+    <p
+      v-if="evidence.summary"
+      class="text-body-large evidence__summary"
+      data-test="evidence-summary"
+    >
+      {{ evidence.summary }}
+    </p>
+    <div
+      v-if="evidence.host || evidence.app || evidence.score !== null || evidence.flow"
+      class="evidence__about"
+    >
       <v-chip
         v-if="evidence.host"
         size="small"
@@ -38,7 +85,36 @@ const named = computed(() => namedByKind(props.evidence.named))
       >
         {{ evidence.app }}
       </v-chip>
+      <v-chip
+        v-if="evidence.score !== null"
+        size="small"
+        variant="tonal"
+        :prepend-icon="Gauge"
+        data-test="evidence-score"
+      >
+        Its own score: {{ evidence.score }}
+      </v-chip>
+      <v-chip
+        v-if="evidence.flow?.duration != null"
+        size="small"
+        variant="tonal"
+        :prepend-icon="Timer"
+        data-test="evidence-duration"
+      >
+        Lasted {{ formatSpan(evidence.flow.duration) }}
+      </v-chip>
     </div>
+    <p v-if="ends.length" class="text-body-large evidence__flow" data-test="evidence-flow">
+      <template v-for="(end, place) in ends" :key="place">
+        <v-icon v-if="place > 0" :icon="ArrowRight" size="18" aria-label="to" />
+        <span>
+          <b>{{ end.title }}</b>
+          <template v-if="end.port">, port {{ end.port }}</template>
+          <template v-if="end.country"> ({{ end.country }})</template>
+          <template v-if="end.blacklisted"> (on a blacklist)</template>
+        </span>
+      </template>
+    </p>
 
     <dl v-if="evidence.facts.length" class="evidence__facts" data-test="evidence-facts">
       <div v-for="fact in evidence.facts" :key="fact.label" class="evidence__fact">
@@ -101,6 +177,12 @@ const named = computed(() => namedByKind(props.evidence.named))
       </v-chip>
     </div>
 
+    <figure v-if="evidence.payload" class="evidence__log" data-test="evidence-payload">
+      <figcaption class="text-label-large text-medium-emphasis">
+        <v-icon :icon="PackageOpen" size="16" aria-hidden="true" /> What was sent
+      </figcaption>
+      <code class="text-body-medium">{{ evidence.payload }}</code>
+    </figure>
     <figure v-if="evidence.excerpt" class="evidence__log" data-test="evidence-excerpt">
       <figcaption class="text-label-large text-medium-emphasis">
         <v-icon :icon="Terminal" size="16" aria-hidden="true" /> The log line
@@ -124,6 +206,21 @@ const named = computed(() => namedByKind(props.evidence.named))
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+.evidence__summary {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid rgb(var(--v-theme-primary));
+}
+
+.evidence__flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .evidence__facts {
