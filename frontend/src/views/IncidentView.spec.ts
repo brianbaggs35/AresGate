@@ -7,6 +7,7 @@ import {
   detail,
   evidence,
   incident,
+  conversation,
   insights,
   occurrence,
   reading,
@@ -531,6 +532,30 @@ describe('IncidentView', () => {
       const some = await open({ found: detail({ insights: insights() }) })
       expect(some.find('insights-card').exists()).toBe(true)
       expect(some.text('insight-program-name')).toBe('Wazuh')
+    })
+
+    it('draws who talked to whom only when an alert was about two addresses', async () => {
+      const none = await open()
+      expect(none.find('conversations-card').exists()).toBe(false)
+
+      const some = await open({
+        found: detail({ conversations: { items: [conversation()], total: 1 } }),
+      })
+      expect(some.find('conversations-card').exists()).toBe(true)
+      expect(some.text('end-title')).toBe('workstation')
+    })
+
+    it('says what connecting the others would add, when some are not connected', async () => {
+      const all = await open()
+      expect(all.find('coverage-card').exists()).toBe(false)
+
+      const some = await open({
+        found: detail({
+          missing: [{ source: 'wazuh', source_name: 'Wazuh', adds: 'The log line.' }],
+        }),
+      })
+      expect(some.find('coverage-card').exists()).toBe(true)
+      expect(some.text('coverage-missing')).toContain('Wazuh')
     })
 
     it('says what it made of an incident it has read, beside how serious it is', async () => {

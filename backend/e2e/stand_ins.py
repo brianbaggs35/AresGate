@@ -1218,6 +1218,9 @@ def _reading_of_an_incident(asked: Mapping[str, Any]) -> str | None:
             "story": f"It tried the ports of {device} one after another. Nothing answered, and "
             "nothing on your network talked back to it.",
             "checks": ["Make sure the ports it touched are not open to the internet"],
+            "observations": [
+                "The address tried one port after another and was answered by none of them."
+            ],
             "verdict": "low_priority",
             "verdict_reason": "Routine scanning that never got anywhere.",
         }

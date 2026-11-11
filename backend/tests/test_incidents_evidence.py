@@ -1,7 +1,7 @@
 """What the programs reported besides the basics, boiled down for an incident to keep."""
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from sqlalchemy.orm import Session
@@ -374,3 +374,281 @@ class TestReadingWhatWasNotKept:
         monkeypatch.setattr(evidence, "BATCH", 1)
 
         assert [evidence.read_pending(session) for _ in range(3)] == [1, 1, 0]
+
+
+# A flow alert as ntopng's alert list gives it, with the addresses and names made up.
+NTOPNG_FLOW: dict[str, Any] = {
+    "msg": {
+        "name": "Low Goodput Ratio",
+        "description": "Low goodput ratio <b>[19.7%]</b> <a href='/x'>edit</a>",
+    },
+    "alert_id": {"label": "Low Goodput Ratio", "value": "12"},
+    "cli_ip": {
+        "ip": "192.168.7.57",
+        "name": "workstation",
+        "label": "workstation",
+        "value": "192.168.7.57",
+        "country": "",
+        "location": "local",
+        "blacklisted": "0",
+    },
+    "srv_ip": {
+        "ip": "8.8.4.4",
+        "name": "8.8.4.4",
+        "value": "8.8.4.4",
+        "country": "us",
+        "location": "remote",
+        "blacklisted": "1",
+    },
+    "cli_port": {"label": "56664", "value": "56664"},
+    "srv_port": {"label": "domain", "value": "53"},
+    "info": {"label": "example.com", "value": "example.com"},
+    "proto": {"label": "TCP", "value": "6"},
+    "score": {"label": "10", "value": 10},
+    "duration": 61,
+    "l7_proto": {"label": "TCP:DNS", "value": "5", "l4_label": "TCP", "l7_label": "DNS"},
+    "severity": {"label": "<i class='fas fa-info-circle'></i> ", "value": 3},
+    "mitre_data": {
+        "mitre_id": "T1071",
+        "mitre_tactic": "command-and-control",
+        "mitre_tactic_i18n": "Command and Control",
+        "mitre_technique": "app-layer",
+        "mitre_technique_i18n": "Application Layer Protocol",
+        "mitre_subtechnique_i18n": "DNS",
+    },
+    "cli_network": {"label": "192.168.7.0/24", "value": "4"},
+    "srv_network": {"label": "", "value": ""},
+    "vlan_id": {"label": "", "value": 20},
+    "cli_host_pool_id": {"label": "Cameras", "value": "3"},
+    "total_bytes": {"bytes_rcvd": 722, "bytes_sent": 399, "total_bytes": 1121, "total_packets": 16},
+    "community_id": {"name": "1:abc=", "value": "1:abc="},
+    "alert_category": {"icon": "x", "label": "Network", "value": "3"},
+    "description": {"descr": "Low goodput ratio [19.7%]"},
+}
+
+
+class TestNtopngFlow:
+    def test_it_says_who_the_flow_was_between_and_what_it_was(self) -> None:
+        found = said("ntopng", NTOPNG_FLOW)
+
+        assert found["flow"] == {
+            "client": {
+                "address": "192.168.7.57",
+                "name": "workstation",
+                "port": 56664,
+                "location": "local",
+                "blacklisted": False,
+            },
+            "server": {
+                "address": "8.8.4.4",
+                "port": 53,
+                "service": "domain",
+                "country": "US",
+                "location": "remote",
+                "blacklisted": True,
+            },
+            "protocol": "tcp",
+            "duration": 61,
+        }
+        assert found["app"] == "dns"
+        assert found["score"] == 10
+        assert found["traffic"] == {"bytes_out": 399, "bytes_in": 722}
+
+    def test_it_says_what_it_made_of_it_in_plain_words(self) -> None:
+        found = said("ntopng", NTOPNG_FLOW)
+
+        assert found["summary"] == "Low goodput ratio [19.7%]"
+        assert facts(found) == {
+            "Alert type": "Low Goodput Ratio",
+            "Score": "10",
+            "Severity": "Notice",
+            "Category": "Network",
+            "Packets": "16",
+            "Client network": "192.168.7.0/24",
+            "VLAN": "20",
+            "Host pool": "Cameras",
+        }
+        assert found["mitre"] == [
+            {
+                "id": "T1071",
+                "tactic": "Command and Control",
+                "technique": "Application Layer Protocol: DNS",
+            }
+        ]
+
+    def test_what_the_traffic_asked_for_is_named_for_the_kind_of_traffic_it_was(self) -> None:
+        found = said("ntopng", NTOPNG_FLOW)
+
+        assert {"kind": "dns", "value": "example.com"} in found["indicators"]
+        assert {"kind": "community_id", "value": "1:abc="} in found["indicators"]
+        for app, kind in (("TLS", "sni"), ("HTTP", "hostname"), ("Telegram", "info")):
+            raw = {**NTOPNG_FLOW, "l7_proto": {"label": f"TCP:{app}"}}
+            assert {"kind": kind, "value": "example.com"} in said("ntopng", raw)["indicators"]
+
+    def test_the_description_is_the_plain_one_when_it_is_the_only_one_given(self) -> None:
+        raw = {"msg": {"description": "<p>Low   goodput\n ratio</p> &amp; more"}}
+
+        assert said("ntopng", raw)["summary"] == "Low goodput ratio & more"
+        assert said("ntopng", {"description": "Plain words"})["summary"] == "Plain words"
+
+    def test_the_default_pool_and_no_vlan_are_not_facts(self) -> None:
+        raw = {
+            "alert_id": {"label": "Scan"},
+            "cli_host_pool_id": {"label": "Default"},
+            "vlan_id": {"label": "", "value": 0},
+        }
+
+        assert facts(said("ntopng", raw)) == {"Alert type": "Scan"}
+
+    @pytest.mark.parametrize(
+        ("level", "name"),
+        [(0, "None"), (2, "Info"), (4, "Warning"), (5, "Error"), (6, "Critical"), (8, "Emergency")],
+    )
+    def test_severity_is_said_in_words_not_in_the_html_ntopng_gives_for_its_page(
+        self, level: int, name: str
+    ) -> None:
+        raw = {"severity": {"label": "<i></i>", "value": level}}
+
+        assert facts(said("ntopng", raw)) == {"Severity": name}
+
+    def test_a_severity_it_has_no_word_for_is_left_out(self) -> None:
+        raw = {"score": {"value": 3}, "severity": {"value": 7}}
+
+        assert "Severity" not in facts(said("ntopng", raw))
+
+    def test_the_app_is_a_plain_member_in_a_version_that_gives_it_so(self) -> None:
+        assert said("ntopng", {"l7_proto": "SSH", "score": 1})["app"] == "ssh"
+        assert said("ntopng", {"l7_proto": {"label": "SSH"}, "score": 1})["app"] == "ssh"
+
+    def test_a_technique_with_nothing_to_say_is_none(self) -> None:
+        raw = {"score": 1, "mitre_data": {"mitre_id": "", "mitre_tactic": "x"}}
+
+        assert said("ntopng", raw)["mitre"] == []
+        assert said("ntopng", {"score": 1, "mitre_data": "x"})["mitre"] == []
+
+    def test_a_technique_without_a_subtechnique_is_just_the_technique(self) -> None:
+        raw = {"mitre_data": {"mitre_id": "T1046", "mitre_technique": "Network Scanning"}}
+
+        assert said("ntopng", raw)["mitre"] == [
+            {"id": "T1046", "tactic": "", "technique": "Network Scanning"}
+        ]
+
+    def test_the_flow_may_be_given_inside_a_member_of_its_own(self) -> None:
+        raw = {"flow": {"cli_ip": {"ip": "10.0.0.5"}, "srv_port": {"label": "https", "value": 443}}}
+
+        assert said("ntopng", raw)["flow"] == {
+            "client": {"address": "10.0.0.5"},
+            "server": {"port": 443, "service": "https"},
+        }
+
+
+class TestSuricataDetail:
+    RULE: ClassVar[dict[str, Any]] = {
+        "alert_severity": 2,
+        "alert": {
+            "metadata": {
+                "signature_severity": ["Major"],
+                "confidence": ["High"],
+                "affected_product": ["Linux"],
+                "attack_target": ["Server"],
+                "deployment": ["Perimeter"],
+                "mitre_technique_id": ["T1190"],
+                "mitre_technique_name": ["Exploit Public-Facing Application"],
+                "mitre_tactic_name": ["Initial Access"],
+            }
+        },
+        "http": {
+            "http_content_type": "text/html",
+            "length": 512,
+            "redirect": "https://example.com/login",
+        },
+        "dns": {"rcode": "NXDOMAIN"},
+        "tls": {
+            "subject": "CN=example.com",
+            "issuerdn": "CN=Example CA",
+            "ja3": {"hash": "e7d705a3286e19ea42f587b344ee6865"},
+        },
+        "payload_printable": "GET /admin HTTP/1.1\r\nHost: example.com\x00",
+    }
+
+    def test_it_says_what_the_rule_says_of_itself(self) -> None:
+        found = said("opnsense", self.RULE)
+
+        assert facts(found) == {
+            "Priority": "Medium",
+            "Rule severity": "Major",
+            "Rule confidence": "High",
+            "Affected product": "Linux",
+            "Target": "Server",
+            "Deployment": "Perimeter",
+            "HTTP content type": "text/html",
+            "HTTP response size": "512",
+            "Redirected to": "https://example.com/login",
+            "DNS answer": "NXDOMAIN",
+            "Certificate for": "CN=example.com",
+            "Certificate issued by": "CN=Example CA",
+            "TLS client fingerprint": "e7d705a3286e19ea42f587b344ee6865",
+        }
+        assert found["mitre"] == [
+            {
+                "id": "T1190",
+                "tactic": "Initial Access",
+                "technique": "Exploit Public-Facing Application",
+            }
+        ]
+
+    def test_it_keeps_what_was_sent_when_the_firewall_kept_the_packet(self) -> None:
+        assert said("opnsense", self.RULE)["payload"] == "GET /admin HTTP/1.1  Host: example.com"
+
+    def test_a_rule_that_names_no_technique_matches_none(self) -> None:
+        raw = {"alert_gid": 1, "alert": {"metadata": {"signature_severity": ["Minor"]}}}
+
+        assert said("opnsense", raw)["mitre"] == []
+
+    def test_the_metadata_may_be_flattened_and_a_priority_it_does_not_know_is_left_out(
+        self,
+    ) -> None:
+        raw = {"alert_metadata": {"deployment": "Internal"}, "alert_severity": 9}
+
+        assert facts(said("opnsense", raw)) == {"Deployment": "Internal"}
+
+
+class TestWazuhDetail:
+    def test_it_says_what_the_log_names_and_what_the_vulnerability_detector_found(self) -> None:
+        raw = {
+            "rule": {"id": "23504", "level": 7},
+            "data": {
+                "srcip": "203.0.113.9",
+                "srcport": "40000",
+                "dstport": "22",
+                "protocol": "tcp",
+                "command": "/bin/sh",
+                "win": {"system": {"eventID": "4625"}},
+                "vulnerability": {
+                    "cve": "CVE-2026-0001",
+                    "title": "Buffer overflow in example",
+                    "severity": "High",
+                    "status": "Active",
+                    "package": {"name": "example", "version": "1.2"},
+                },
+            },
+        }
+
+        found = said("wazuh", raw)
+
+        assert facts(found) == {
+            "Rule": "23504",
+            "Level": "7",
+            "Address in the log": "203.0.113.9",
+            "Port in the log": "40000",
+            "Destination port": "22",
+            "Protocol": "tcp",
+            "Command": "/bin/sh",
+            "Windows event": "4625",
+            "Vulnerability": "Buffer overflow in example",
+            "Vulnerability severity": "High",
+            "Package": "example",
+            "Package version": "1.2",
+            "Fix": "Active",
+        }
+        assert found["indicators"] == [{"kind": "cve", "value": "CVE-2026-0001"}]

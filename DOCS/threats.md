@@ -43,9 +43,37 @@ event's own record goes with the event's retention and an incident outlives it. 
 before it was kept get it, a batch each run of the engine, while their events are stored.
 
 The fields read are those the programs' documentation names; OPNsense returns Suricata's EVE record
-flattened a little, so each member is looked for nested and with underscores or dots in its name,
-and ntopng's members are read from its source and have not been tried against a live ntopng. What a
-version leaves out is simply not shown.
+flattened a little, so each member is looked for nested and with underscores or dots in its name.
+ntopng's flow alerts are read as its alert list gives them (checked against a real answer): who the
+client and the server are (name, country, whether the address is on your network or the internet,
+whether ntopng has it on a blacklist), the ports and the service each is, the transport and the kind
+of traffic, how long the flow lasted, how much each side sent, ntopng's own score, severity and
+category, the technique it matched, its plain description and the flow's community ID. Suricata adds
+the rule's own metadata (its severity, the product it is about, the technique), the certificate and
+fingerprint of a TLS flow and, where OPNsense keeps the packet, what was sent. Wazuh adds what its
+log names (addresses, ports, the command) and what its vulnerability detector found. What a version
+leaves out is simply not shown. Migration `0042` has each signal read again for all of this, a
+batch each run, while its event is stored.
+
+### What was sent, and to whom
+
+`app/incidents/conversations.py` groups the alerts of an incident by the two addresses, the port and
+the protocol, which is what makes a conversation, and puts together what every program said of each
+one: the first word any program said of an address (its name, country, location) is told of that
+address everywhere, an address on any blacklist is on one, the biggest flow and the longest time any
+program counted are kept, and what the traffic asked for (the name looked up, the site connected to)
+is listed. Two programs that describe the same flow are one description, and a flow reported again
+and again is one conversation with that many alerts. Where VirusTotal has been asked about an
+address on the internet, what it said is on that end. The incident page draws each conversation as
+its two ends with an arrow between them, the busiest first (**What was sent, and to whom**).
+
+`app/incidents/coverage.py` says which of the integrations are not connected and what each would
+add, so the page can say what is being missed and where to connect it (**What more connecting would
+show**). The more integrations are connected, the more every part of the page has to show.
+
+The AI is told all of it, a line to a conversation and a line to each technique, through the same
+redaction as everything else, and its reading has *observations*: short statements of what stands
+out in what was sent (migration `0042` adds `ai_triage.observations`).
 
 `app/incidents/insights.py` adds it up for the whole incident, once for every alert (an alert two
 programs both described counts what they said once): the techniques, the machines, the

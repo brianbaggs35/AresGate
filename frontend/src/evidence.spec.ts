@@ -1,14 +1,22 @@
 import {
   agreedBy,
+  conversationVolume,
+  countryName,
+  endTitle,
+  flagOf,
   hasDetail,
+  isPrivateAddress,
+  locationOf,
   namedByKind,
   namedLook,
+  portLine,
   reportsOf,
+  serviceFor,
   share,
   volumesOf,
   worthListing,
 } from '@/evidence'
-import { confirmation, evidence, occurrence, signal } from '@/test/incidents'
+import { confirmation, conversation, evidence, flowEnd, occurrence, signal } from '@/test/incidents'
 
 describe('namedLook', () => {
   it('says what a kind of thing is called, and has a fallback for one it does not know', () => {
@@ -133,5 +141,99 @@ describe('reports and what is worth listing', () => {
     [occurrence({ evidence: evidence() }), false],
   ])('whether %# is worth listing', (item, listed) => {
     expect(worthListing(item)).toBe(listed)
+  })
+})
+
+describe('what hasDetail counts', () => {
+  it.each([
+    { summary: 'Low goodput ratio' },
+    { score: 0 },
+    { flow: { client: null, server: null, protocol: 'tcp', duration: null } },
+    { payload: 'GET /admin' },
+  ])('%j is detail', (said) => {
+    expect(hasDetail(evidence(said))).toBe(true)
+  })
+})
+
+describe('where an address is', () => {
+  it.each([
+    ['10.1.2.3', true],
+    ['192.168.7.57', true],
+    ['172.16.0.1', true],
+    ['172.31.255.1', true],
+    ['172.32.0.1', false],
+    ['169.254.1.1', true],
+    ['127.0.0.1', true],
+    ['8.8.4.4', false],
+    ['fd12:3456::1', true],
+    ['fe80::1', true],
+    ['::1', true],
+    ['2001:db8::1', false],
+  ])('whether %s is only on your network: %s', (address, private_) => {
+    expect(isPrivateAddress(address)).toBe(private_)
+  })
+
+  it('goes by what a program said, and by the address where none did', () => {
+    expect(locationOf({ address: '8.8.4.4', location: 'local' })).toBe('local')
+    expect(locationOf({ address: '192.168.1.20', location: null })).toBe('local')
+    expect(locationOf({ address: '8.8.4.4', location: null })).toBe('remote')
+    expect(locationOf({ address: null, location: null })).toBe('remote')
+  })
+})
+
+describe('countries', () => {
+  it('names a country in words and draws its flag', () => {
+    expect(countryName('NL', 'en')).toBe('Netherlands')
+    expect(flagOf('NL')).toBe('🇳🇱')
+  })
+
+  it('keeps what is not a country as it was, and has no flag for it', () => {
+    expect(countryName('not a code', 'en')).toBe('not a code')
+    expect(flagOf('N')).toBe('')
+    expect(flagOf('nl')).toBe('')
+  })
+
+  it('keeps the letters of a code that the language has no name for', () => {
+    vi.spyOn(Intl, 'DisplayNames').mockImplementation(function () {
+      return { of: () => undefined } as unknown as Intl.DisplayNames
+    })
+
+    expect(countryName('ZZ', 'en')).toBe('ZZ')
+  })
+})
+
+describe('the ends of a conversation', () => {
+  it('is called by its name, or by its address, or says it is unknown', () => {
+    expect(endTitle({ address: '8.8.4.4', name: 'dns.example' })).toBe('dns.example')
+    expect(endTitle({ address: '8.8.4.4', name: null })).toBe('8.8.4.4')
+    expect(endTitle({ address: null, name: null })).toBe('unknown')
+  })
+
+  it('has the service the program named, or the one the port is known for', () => {
+    expect(serviceFor(flowEnd({ port: 53, service: 'domain' }))).toBe('domain')
+    expect(serviceFor(flowEnd({ port: 443 }))).toBe('HTTPS')
+    expect(serviceFor(flowEnd({ port: 4444 }))).toBeNull()
+    expect(serviceFor(flowEnd())).toBeNull()
+  })
+
+  it('says its port with the service', () => {
+    expect(portLine(flowEnd({ port: 53, service: 'domain' }))).toBe('53 (domain)')
+    expect(portLine(flowEnd({ port: 4444 }))).toBe('4444')
+    expect(portLine(flowEnd())).toBeNull()
+  })
+})
+
+describe('conversationVolume', () => {
+  it('is what the client sent and got back, as one bar', () => {
+    expect(conversationVolume(conversation())).toMatchObject({
+      label: 'Data',
+      outText: '399 B',
+      inText: '722 B',
+      outShare: 36,
+    })
+  })
+
+  it('is nothing where no program counted any', () => {
+    expect(conversationVolume(conversation({ bytes_out: null, bytes_in: null }))).toBeNull()
   })
 })

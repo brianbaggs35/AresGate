@@ -71,6 +71,80 @@ test.describe('what the programs said of an incident', () => {
     await expect(suricata.getByTestId('evidence-app')).toHaveText('ssh')
   })
 
+  test('draws who talked to whom, with what each program knows of both ends', async ({
+    harness,
+    page,
+  }) => {
+    await harness.createIncidents([SAID])
+
+    await openIncident(page)
+
+    const card = page.getByTestId('conversations-card')
+    await expect(card).toBeVisible()
+    const talk = card.getByTestId('conversation').first()
+    // ntopng says who the flow was between and what it was; Wazuh and OPNsense add their own.
+    const client = talk.getByTestId('end-client')
+    await expect(client.getByTestId('end-title')).toHaveText(ATTACKER)
+    await expect(client.getByTestId('end-location')).toHaveText('On the internet')
+    await expect(client.getByTestId('end-country')).toContainText('Netherlands')
+    await expect(client.getByTestId('end-blacklisted')).toHaveText('On a blacklist')
+    const server = talk.getByTestId('end-server')
+    await expect(server.getByTestId('end-title')).toHaveText('web-server')
+    await expect(server.getByTestId('end-location')).toHaveText('On your network')
+    await expect(server.getByTestId('end-port')).toContainText('port 22 (ssh)')
+    await expect(talk.getByTestId('conversation-over')).toContainText('SSH')
+    await expect(talk.getByTestId('conversation-volume')).toContainText('Sent 3.2 KB')
+    await expect(talk.getByTestId('conversation-duration')).toHaveText('Lasted 1 min 1 s')
+    await expect(talk.getByTestId('conversation-programs')).toContainText('ntopng')
+  })
+
+  test('shows ntopng’s own words, its score and the flow it described', async ({
+    harness,
+    page,
+  }) => {
+    await harness.createIncidents([SAID])
+
+    await openIncident(page)
+
+    const ntopng = page
+      .getByTestId('occurrence')
+      .filter({ hasText: 'ntopng' })
+      .getByTestId('occurrence-report')
+      .first()
+    await expect(ntopng.getByTestId('evidence-summary')).toContainText('Many failed logins')
+    await expect(ntopng.getByTestId('evidence-score')).toHaveText('Its own score: 100')
+    await expect(ntopng.getByTestId('evidence-flow')).toContainText('web-server, port 22 (ssh)')
+    await expect(ntopng.getByTestId('evidence-duration')).toHaveText('Lasted 1 min 1 s')
+  })
+
+  test('shows what was sent where the firewall kept the packet', async ({ harness, page }) => {
+    await harness.createIncidents([SAID])
+
+    await openIncident(page)
+
+    await expect(page.getByTestId('evidence-payload').first()).toContainText('SSH-2.0-libssh_0.9.6')
+  })
+
+  test('says what connecting the programs that are not connected would add', async ({
+    harness,
+    page,
+  }) => {
+    await harness.createIncidents([SAID])
+
+    await openIncident(page)
+
+    const card = page.getByTestId('coverage-card')
+    await expect(card).toBeVisible()
+    await expect(card.getByTestId('coverage-seen').getByTestId('coverage-name')).toHaveText([
+      'ntopng',
+      'OPNsense',
+      'Wazuh',
+    ])
+    await expect(card.getByTestId('coverage-missing').first()).toContainText('Not connected')
+    await card.getByTestId('coverage-connect-wazuh').click()
+    await expect(page).toHaveURL(/\/integrations\/wazuh$/)
+  })
+
   test('opens and closes what each program said', async ({ harness, page }) => {
     await harness.createIncidents([SAID])
     await openIncident(page)

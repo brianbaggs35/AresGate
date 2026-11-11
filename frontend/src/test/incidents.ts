@@ -2,8 +2,11 @@ import type {
   Ban,
   BulkResult,
   Confirmation,
+  Conversation,
+  ConversationEnd,
   Evidence,
   FamilyBrief,
+  FlowEnd,
   Incident,
   IncidentResponse,
   IncidentDetail,
@@ -162,6 +165,72 @@ export function evidence(changes: Partial<Evidence> = {}): Evidence {
     host: null,
     app: null,
     excerpt: null,
+    summary: null,
+    score: null,
+    flow: null,
+    payload: null,
+    ...changes,
+  }
+}
+
+/** One end of a flow that no program said anything of, unless given. */
+export function flowEnd(changes: Partial<FlowEnd> = {}): FlowEnd {
+  return {
+    address: null,
+    name: null,
+    port: null,
+    service: null,
+    country: null,
+    location: null,
+    blacklisted: null,
+    ...changes,
+  }
+}
+
+/** One end of a conversation: the device on your network, unless given. */
+export function conversationEnd(changes: Partial<ConversationEnd> = {}): ConversationEnd {
+  return {
+    address: '192.168.1.20',
+    name: 'workstation',
+    port: null,
+    service: null,
+    country: null,
+    location: 'local',
+    blacklisted: false,
+    reputation: null,
+    ...changes,
+  }
+}
+
+/** A device on your network that sent 399 bytes to a server on the internet over DNS and got 722
+ * back, as ntopng and OPNsense between them describe it, unless given. */
+export function conversation(changes: Partial<Conversation> = {}): Conversation {
+  return {
+    client: conversationEnd(),
+    server: conversationEnd({
+      address: '8.8.4.4',
+      name: null,
+      port: 53,
+      service: 'domain',
+      country: 'US',
+      location: 'remote',
+      blacklisted: false,
+    }),
+    protocol: 'tcp',
+    app: 'dns',
+    alerts: 12,
+    kinds: 2,
+    first_at: new Date(NOW - 40 * MINUTE).toISOString(),
+    last_at: new Date(NOW - 5 * MINUTE).toISOString(),
+    severity: 'medium',
+    bytes_out: 399,
+    bytes_in: 722,
+    duration: 61,
+    names: [{ kind: 'dns', value: 'example.com' }],
+    programs: [
+      { source: 'ntopng', source_name: 'ntopng' },
+      { source: 'opnsense', source_name: 'OPNsense' },
+    ],
     ...changes,
   }
 }
@@ -262,6 +331,8 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     occurrences: [],
     family: familyBrief(),
     insights: null,
+    conversations: null,
+    missing: [],
     ...changes,
   }
 }
@@ -274,6 +345,7 @@ export function reading(changes: Partial<Reading> = {}): Reading {
     headline: 'An internet scanner tried ssh on one device',
     story: 'It tried a few passwords and gave up. Nothing got in, and the address was banned.',
     checks: ['Make sure ssh is not open to the internet'],
+    observations: ['One address tried a few passwords over ssh and was turned away.'],
     verdict: 'low_priority',
     verdict_reason: 'Routine background scanning.',
     read_at: new Date(NOW - 3 * MINUTE).toISOString(),

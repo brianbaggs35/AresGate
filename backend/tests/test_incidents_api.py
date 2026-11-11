@@ -15,7 +15,9 @@ from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.incidents import episode, queries, search
-from app.models import AuditEvent, Device, DeviceAddress, Incident, User
+from app.intel import store as intel_store
+from app.intel import subjects, virustotal
+from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
 from tests.helpers import OTHER_ORIGIN, new_event
@@ -1256,3 +1258,170 @@ class TestWhatTheProgramsSaid:
         ]
         # What is added up is not cut.
         assert body["insights"]["techniques"][0]["count"] == 4
+
+
+class TestWhatWasSent:
+    """Who talked to whom, what over and how much, and what more connecting a program would add."""
+
+    NTOPNG: ClassVar[dict[str, Any]] = {
+        "alert_id": {"label": "Low Goodput Ratio"},
+        "cli_ip": {"ip": DEVICE, "name": "workstation", "location": "local"},
+        "srv_ip": {"ip": ATTACKER, "country": "us", "location": "remote", "blacklisted": "1"},
+        "cli_port": {"value": 40000},
+        "srv_port": {"label": "domain", "value": 53},
+        "proto": {"label": "TCP"},
+        "l7_proto": {"l7_label": "DNS"},
+        "duration": 61,
+        "score": {"value": 10},
+        "total_bytes": {"bytes_sent": 399, "bytes_rcvd": 722, "total_packets": 16},
+        "info": {"value": "example.com"},
+        "description": {"descr": "Low goodput ratio [19.7%]"},
+    }
+
+    def detail(self, client: TestClient) -> dict[str, Any]:
+        [only] = listed(client)
+        return client.get(f"{BASE}/{only['id']}").json()  # type: ignore[no-any-return]
+
+    def flow(self, session: Session, settings: Settings) -> None:
+        store(
+            session,
+            settings,
+            alert(
+                NOW,
+                n=1,
+                source="ntopng",
+                connection="api",
+                severity=Severity.HIGH,
+                src_address=DEVICE,
+                src_port=40000,
+                dst_address=ATTACKER,
+                dst_port=53,
+                protocol="tcp",
+                raw=self.NTOPNG,
+            ),
+        )
+        run(session)
+
+    def test_the_conversation_is_told_with_what_the_program_said_of_the_flow(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+
+        body = self.detail(client)
+
+        [conversation] = body["conversations"]["items"]
+        assert body["conversations"]["total"] == 1
+        assert conversation["client"]["address"] == DEVICE
+        assert conversation["client"]["name"] == "workstation"
+        assert conversation["client"]["location"] == "local"
+        assert conversation["client"]["reputation"] is None
+        assert conversation["server"]["address"] == ATTACKER
+        assert conversation["server"]["port"] == 53
+        assert conversation["server"]["country"] == "US"
+        assert conversation["server"]["blacklisted"] is True
+        assert conversation["protocol"] == "tcp"
+        assert conversation["app"] == "dns"
+        assert (conversation["alerts"], conversation["kinds"]) == (1, 1)
+        assert conversation["severity"] == "high"
+        assert (conversation["bytes_out"], conversation["bytes_in"]) == (399, 722)
+        assert conversation["duration"] == 61
+        assert conversation["names"] == [{"kind": "dns", "value": "example.com"}]
+        assert conversation["programs"] == [{"source": "ntopng", "source_name": "ntopng"}]
+
+    def test_the_flow_the_program_described_is_in_what_it_said_of_the_alert(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+
+        [occurrence] = self.detail(client)["occurrences"]
+
+        said = occurrence["evidence"]
+        assert said["summary"] == "Low goodput ratio [19.7%]"
+        assert said["score"] == 10
+        assert said["payload"] is None
+        assert said["flow"]["duration"] == 61
+        assert said["flow"]["client"]["name"] == "workstation"
+        assert said["flow"]["server"]["blacklisted"] is True
+        assert said["flow"]["protocol"] == "tcp"
+
+    def test_what_a_program_could_not_say_of_an_end_is_left_out(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        raw = {"alert_id": {"label": "Scan"}, "duration": 3, "cli_ip": {"ip": DEVICE}}
+        store(session, settings, alert(NOW, n=1, source="ntopng", connection="api", raw=raw))
+        run(session)
+
+        [occurrence] = self.detail(client)["occurrences"]
+
+        assert occurrence["evidence"]["flow"]["server"] is None
+        assert occurrence["evidence"]["flow"]["client"]["blacklisted"] is None
+
+    def test_a_conversation_has_what_the_reputation_service_said_of_its_address(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        intel_store.keep(
+            session,
+            virustotal.PROVIDER,
+            subjects.of_address(ip_address(ATTACKER)),
+            virustotal.Reported(
+                virustotal.Report(
+                    malicious=3,
+                    suspicious=1,
+                    harmless=60,
+                    undetected=20,
+                    reputation=-12,
+                    analysed_at=NOW,
+                    country="NL",
+                    owner="Example Hosting",
+                )
+            ),
+            NOW,
+        )
+        session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["server"]["reputation"] == {
+            "judgement": "malicious",
+            "malicious": 3,
+            "suspicious": 1,
+            "engines": 84,
+            "owner": "Example Hosting",
+            "country": "NL",
+        }
+        # Only the internet is looked up: the device on the network is not.
+        assert conversation["client"]["reputation"] is None
+
+    def test_an_incident_about_a_rule_has_no_conversations(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1, src_address=None, dst_address=None))
+        run(session)
+
+        assert self.detail(client)["conversations"] is None
+
+    def test_it_says_which_programs_would_add_something_if_they_were_connected(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        session.add(
+            IntegrationConnection(
+                integration="ntopng",
+                connection="api",
+                base_url="https://ntopng:3000",
+                last_attempt_at=NOW,
+            )
+        )
+        session.commit()
+
+        missing = self.detail(client)["missing"]
+
+        assert [each["source"] for each in missing] == [
+            "opnsense",
+            "wazuh",
+            "crowdsec",
+            "virustotal",
+        ]
+        assert missing[1]["source_name"] == "Wazuh"
+        assert "MITRE" in missing[1]["adds"]

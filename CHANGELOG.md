@@ -4,6 +4,29 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **An incident says what was sent and to whom.** A new card draws each conversation the alerts
+  are about as its two ends with an arrow between them: who it is (the name and address, where it
+  is, its country, whether ntopng has it on a blacklist, what VirusTotal says of it if it was
+  asked), what it went over (the transport, the kind of traffic, the service on the port), how
+  much each side sent, how long it lasted and what it asked for. What every program said of the
+  same flow is put together, so two programs describing one flow are one conversation, and the
+  more integrations are connected, the more each conversation says.
+- **ntopng's alerts are read for everything they hold**: the client and the server with their
+  names, countries and blacklist flags, the ports and services, the kind of traffic, how long and
+  how much, its own score and category, the technique it matched, its plain description and the
+  flow's community ID. Suricata's rule metadata, a TLS flow's certificate and fingerprint, and
+  what was sent where OPNsense keeps the packet are read too, and so are the addresses, ports and
+  command Wazuh's logs name and what its vulnerability detector found. Each is shown with the
+  alert it came from. Migration `0042` has signals read again for this.
+- **The incident page says what connecting more would add.** Programs that reported are listed
+  beside the ones that are not connected, with what each would add and a way to connect it.
+- **The AI notes what stands out in what was sent.** It is told what the programs said of the
+  traffic (through the redaction, as everything else is) and its reading lists short observations.
+
 ## 0.1.1
 
 ### Added

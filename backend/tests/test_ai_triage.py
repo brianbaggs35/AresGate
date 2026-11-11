@@ -109,6 +109,7 @@ def reading(**changes: object) -> dict[str, object]:
         "headline": "An internet scanner looked at one device",
         "story": "It tried a few ports. Nothing got in.",
         "checks": ["Look at the firewall rules for port 22", "Nothing else needed"],
+        "observations": ["One address tried ports 22 and 80", "No data came back"],
         "verdict": "low_priority",
         "verdict_reason": "Routine background scanning.",
     }
@@ -346,6 +347,112 @@ class TestWhatTheAiIsAsked:
 
         assert " -> " not in self.prompt(session, found)
 
+    def test_it_is_told_what_the_programs_said_of_the_traffic_beyond_the_basics(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        flow = {
+            "duration": 61,
+            "client": {"address": ATTACKER, "name": "scanner", "location": "remote"},
+            "server": {
+                "address": DEVICE,
+                "port": 22,
+                "service": "ssh",
+                "country": "NL",
+                "blacklisted": True,
+            },
+        }
+        signals(
+            session,
+            found,
+            1,
+            source="ntopng",
+            evidence={
+                "facts": [],
+                "tags": ["Brute Force"],
+                "mitre": [{"id": "T1110", "tactic": "Credential Access", "technique": "Brute"}],
+                "indicators": [{"kind": "hostname", "value": "scanner.example.net"}],
+                "traffic": {"bytes_out": 2_500_000, "bytes_in": 722},
+                "host": "web1 (192.168.1.20)",
+                "app": "ssh",
+                "flow": flow,
+            },
+        )
+
+        said = self.prompt(session, found)
+
+        assert "What the programs said of the traffic" in said
+        # The address of a device at home goes as a stand-in, as it does everywhere in the prompt.
+        assert re.search(
+            rf"Conversation: {ATTACKER} \(scanner\) \[remote\] -> HOST_\d+:22 \(ssh\) "
+            r"\[NL, on a blacklist\] tcp ssh; 1 alerts of 1 kinds; "
+            r"largest flow sent 2\.5 MB and got 722 B; lasted 61 s; "
+            r"asked for scanner\.example\.net; reported by ntopng",
+            said,
+        )
+        assert "Technique T1110 Brute (Credential Access): 1 alerts" in said
+        assert "Groups and categories: Brute Force" in said
+        assert re.search(r"Machine it was about: web1 \(HOST_\d+\)", said)
+        assert "hostname named: scanner.example.net (1 alerts)" in said
+
+    def test_the_traffic_is_told_in_stand_ins_where_the_level_hides_addresses(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        signals(
+            session,
+            found,
+            1,
+            evidence={
+                "facts": [],
+                "tags": [],
+                "mitre": [],
+                "indicators": [],
+                "flow": {"client": {"address": ATTACKER, "name": "scanner"}},
+            },
+        )
+
+        said = self.prompt(session, found, Level.STRICT)
+
+        assert "What the programs said of the traffic" in said
+        assert "Conversation: " in said
+        assert ATTACKER not in said
+
+    def test_a_flow_with_no_volume_ends_or_names_is_told_by_what_is_known(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        signals(session, found, 2, evidence=None, dst_port=None, protocol=None, signature="x")
+
+        said = self.prompt(session, found)
+
+        assert re.search(
+            rf"Conversation: {ATTACKER} -> HOST_\d+; 2 alerts of 1 kinds; reported by", said
+        )
+        assert "largest flow" not in said
+        assert "lasted" not in said
+        assert "asked for" not in said
+
+    def test_many_conversations_are_told_of_the_busiest_and_counted(self, session: Session) -> None:
+        found = incident(session, signal_count=9)
+        for port in range(9):
+            signals(session, found, 1, dst_port=1000 + port, evidence=None)
+
+        said = self.prompt(session, found)
+
+        assert said.count("Conversation: ") == 6
+        assert "... 3 more conversations ..." in said
+
+    def test_data_sizes_are_told_in_the_unit_that_reads_best(self) -> None:
+        assert [triage.size_of(count) for count in (0, 999, 1500, 2_000_000, 7_300_000_000)] == [
+            "0 B",
+            "999 B",
+            "1.5 kB",
+            "2.0 MB",
+            "7.3 GB",
+        ]
+        assert triage.size_of(5 * 10**12) == "5000.0 GB"
+
     def test_the_question_names_what_it_is_and_what_is_about(self, session: Session) -> None:
         found = incident(session)
 
@@ -374,9 +481,27 @@ class TestWhatTheAnswerMeans:
             headline="An internet scanner looked at one device",
             story="It tried a few ports. Nothing got in.",
             checks=["Look at the firewall rules for port 22", "Nothing else needed"],
+            observations=["One address tried ports 22 and 80", "No data came back"],
             verdict="low_priority",
             verdict_reason="Routine background scanning.",
         )
+
+    def test_observations_are_kept_to_their_number_and_length_and_may_be_left_out(self) -> None:
+        many = [f"note {number}" for number in range(9)]
+        said = triage.parse(json.dumps(reading(observations=[*many, 7, " ", "x" * 500])))
+
+        assert said is not None
+        assert said.observations == many[: triage.MAX_OBSERVATIONS]
+        long = triage.parse(json.dumps(reading(observations=["x" * 500])))
+        assert long is not None
+        assert len(long.observations[0]) <= triage.MAX_OBSERVATION
+        for left_out in ({"observations": "not a list"}, {"observations": None}):
+            plain = triage.parse(json.dumps(reading(**left_out)))
+            assert plain is not None
+            assert plain.observations == []
+        bare = reading()
+        del bare["observations"]
+        assert triage.parse(json.dumps(bare)) is not None
 
     def test_an_answer_in_a_code_fence_or_a_sentence_is_read(self) -> None:
         text = json.dumps(reading())

@@ -13,7 +13,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from app.incidents import evidence
+from app.incidents import evidence, occurrences
 from app.incidents.occurrences import Occurrence
 
 # How many of each there are room to show.
@@ -26,7 +26,11 @@ ADDS: Final = (
     ("host", "The machine it was about"),
     ("app", "The application"),
     ("indicators", "Hosts, URLs and users it named"),
+    ("flow", "Who the flow was between"),
     ("traffic", "How much traffic it was"),
+    ("score", "Its own score"),
+    ("summary", "Its own description"),
+    ("payload", "What was sent"),
     ("excerpt", "The log line"),
     ("facts", "The rule's details"),
 )
@@ -89,14 +93,6 @@ def _top[T](counts: Counter[T]) -> list[tuple[T, int]]:
     return sorted(counts.items(), key=lambda item: (-item[1], str(item[0])))[:LIMIT]
 
 
-def _each(occurrence: Occurrence) -> Iterable[tuple[str, int, evidence.Evidence | None]]:
-    """The reports of an occurrence by program: the program, how many of its alerts, what it said.
-    The first report is the occurrence's own; the others are the programs that agreed."""
-    yield occurrence.first.source, occurrence.count, evidence.load(occurrence.first)
-    for confirmation in occurrence.confirmations:
-        yield confirmation.source, confirmation.count, confirmation.evidence
-
-
 class _Seen:
     """What the programs said of one alert, each thing once, however many of them said it."""
 
@@ -144,15 +140,15 @@ class _Tally:
         _count(self.apps, seen.apps, weight)
 
 
-def of(occurrences: Sequence[Occurrence]) -> Insights:
+def of(grouped: Sequence[Occurrence]) -> Insights:
     """Adds up what the programs said, for the occurrences of an incident."""
     tally = _Tally()
     reports: Counter[str] = Counter()
     adds: dict[str, set[str]] = {}
-    for occurrence in occurrences:
+    for occurrence in grouped:
         # What two programs both said of an alert is said once.
         seen = _Seen()
-        for source, count, said in _each(occurrence):
+        for source, count, said in occurrences.reports(occurrence):
             reports[source] += count
             gave = adds.setdefault(source, set())
             if said is not None:

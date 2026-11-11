@@ -43,6 +43,17 @@ describe('AiReading', () => {
       ])
     })
 
+    it('lists what stands out in what was sent, when the AI noted any', async () => {
+      const { wrapper, find } = await show()
+
+      expect(wrapper.findAll('[data-test="ai-observation"]').map((item) => item.text())).toEqual([
+        'One address tried a few passwords over ssh and was turned away.',
+      ])
+      const none = await show(detail({ reading: reading({ observations: [] }) }))
+      expect(none.find('ai-observations').exists()).toBe(false)
+      expect(find('ai-observations').exists()).toBe(true)
+    })
+
     it('lists nothing when there is nothing to check', async () => {
       const { find } = await show(detail({ reading: reading({ checks: [] }) }))
 
