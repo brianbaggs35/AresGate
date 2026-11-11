@@ -136,9 +136,13 @@ class TestTheModule:
 
 class TestRuling:
     def test_it_is_for_someone_signed_in(self, client: TestClient) -> None:
-        assert client.get(RULINGS).status_code == 401
-        assert client.put(RULINGS, json={"subject": ADDRESS, "verdict": "safe"}).status_code == 401
-        assert client.delete(RULINGS, params={"subject": ADDRESS}).status_code == 401
+        answers = [
+            client.get(RULINGS),
+            client.put(RULINGS, json={"subject": ADDRESS, "verdict": "safe"}),
+            client.delete(RULINGS, params={"subject": ADDRESS}),
+        ]
+
+        assert [answer.status_code for answer in answers] == [401, 401, 401]
 
     def test_it_needs_the_csrf_token(self, client: TestClient, csrf_token: str) -> None:
         response = client.put(RULINGS, json={"subject": ADDRESS, "verdict": "safe"})
@@ -318,9 +322,8 @@ class TestWhatIsKept:
         rule(client, csrf_token, "never-asked.example.org", "safe")
 
         assert client.get(KNOWN).json()["total"] == 3
-        assert "never-asked.example.org" in [
-            item["subject"] for item in client.get(RULINGS).json()["items"]
-        ]
+        ruled = [item["subject"] for item in client.get(RULINGS).json()["items"]]
+        assert ruled == ["never-asked.example.org"]
 
     def test_a_newer_answer_does_not_replace_a_ruling(
         self, client: TestClient, csrf_token: str, kept: None, session: Session
