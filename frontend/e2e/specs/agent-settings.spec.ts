@@ -18,6 +18,7 @@ test.describe('Settings > Agents', () => {
     await expect(agentSettings.headings).toHaveText([
       'Which AI the agents use',
       'What the agents may spend',
+      'Tidying up',
     ])
     await expect(agentSettings.source('shared')).toBeChecked()
     await expect(agentSettings.state).toHaveText('Not asking an AI')
@@ -111,5 +112,20 @@ test.describe('Settings > Agents', () => {
     await page.reload()
     await expect(agentSettings.daily).toHaveValue('1.5')
     await expect(agentSettings.monthly).toHaveValue('20')
+  })
+
+  test('lets the noise cleaner act on the surest of what it finds, if told to', async ({
+    agentSettings,
+    page,
+  }) => {
+    await agentSettings.goto()
+    await expect(agentSettings.cleanup('suggest')).toBeChecked()
+
+    await agentSettings.cleanup('auto').check()
+    await agentSettings.saveCleanup.click()
+
+    await expect(agentSettings.cleanupSaved).toBeVisible()
+    await page.reload()
+    await expect(agentSettings.cleanup('auto')).toBeChecked()
   })
 })

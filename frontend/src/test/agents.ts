@@ -6,6 +6,8 @@ import type {
   Edge,
   Finding,
   Overview,
+  Proposal,
+  ProposalList,
   Run,
   RunDetail,
   Step,
@@ -30,6 +32,7 @@ export const template = (overrides: Partial<Template> = {}): Template => ({
   checks: [],
   ready: true,
   setup: ['Connect an integration.', 'Start it once by hand.'],
+  proposes: false,
   ...overrides,
 })
 
@@ -81,6 +84,7 @@ export const settings = (overrides: Partial<AgentSettings> = {}): AgentSettings 
   ai_source: 'shared',
   provider: null,
   model: null,
+  cleanup_mode: 'suggest',
   asking: {
     provider: 'anthropic',
     label: 'Anthropic',
@@ -136,6 +140,7 @@ export const agent = (overrides: Partial<Agent> = {}): Agent => ({
   last_run: run(),
   recent: ['succeeded', 'failed', 'succeeded'],
   usage: usage(),
+  proposals: 0,
   ...overrides,
 })
 
@@ -146,12 +151,37 @@ export const EDGES: Edge[] = [
   { source: 'think', target: 'report', conditional: true },
 ]
 
+export const proposal = (overrides: Partial<Proposal> = {}): Proposal => ({
+  id: 5,
+  agent_id: 3,
+  agent_name: 'Night watch',
+  kind: 'duplicates',
+  title: '3 open incidents say the same thing',
+  detail: 'Scan of ssh is open 3 times. Incident 11 stays; the other 2 would be dismissed.',
+  action: 'dismiss',
+  incident_ids: [12, 13],
+  keep_id: 11,
+  confidence: 85,
+  status: 'pending',
+  decided_by: null,
+  created_at: '2026-11-10T12:00:00Z',
+  decided_at: null,
+  ...overrides,
+})
+
+export const suggestions = (overrides: Partial<ProposalList> = {}): ProposalList => ({
+  pending: [],
+  recent: [],
+  ...overrides,
+})
+
 export const detail = (overrides: Partial<AgentDetail> = {}): AgentDetail => ({
   ...agent(),
   template_info: template(),
   runs: [run()],
   graph: EDGES,
   days: days({ 29: 4_000, 28: 2_500 }),
+  suggestions: suggestions(),
   ...overrides,
 })
 
@@ -161,6 +191,7 @@ export const overview = (overrides: Partial<Overview> = {}): Overview => ({
   ai: null,
   usage: usage(),
   limits: limits(),
+  proposals: 0,
   ...overrides,
 })
 

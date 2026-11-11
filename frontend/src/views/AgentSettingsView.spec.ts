@@ -348,6 +348,38 @@ describe('AgentSettingsView', () => {
       expect(find('agent-limit-daily-field').find('input').element).toHaveProperty('value', '1.5')
     })
 
+    it('lets the cleanup agent do the surest itself, keeping the rest as it was', async () => {
+      const { find, click, save } = await open(
+        settings({ ai_source: 'own', provider: 'anthropic', model: 'claude-sonnet-5-5' }),
+      )
+      expect(find('cleanup-suggest').find('input').element).toHaveProperty('checked', true)
+
+      await find('cleanup-auto').find('input').setValue(true)
+      await click('agent-cleanup-save')
+
+      expect(save).toHaveBeenCalledWith(
+        {
+          ai_source: 'own',
+          provider: 'anthropic',
+          model: 'claude-sonnet-5-5',
+          daily: null,
+          monthly: null,
+          cleanup_mode: 'auto',
+        },
+        expect.any(String),
+      )
+      expect(find('agent-cleanup-saved').text()).toBe('Saved.')
+    })
+
+    it('says why the cleanup choice was refused', async () => {
+      const { find, click, save } = await open()
+      save.mockRejectedValueOnce(new ApiError(422, 'Choose suggest or auto.'))
+
+      await click('agent-cleanup-save')
+
+      expect(find('agent-cleanup-failure').text()).toBe('Choose suggest or auto.')
+    })
+
     it('keeps the choice of AI without the limits that were typed and not saved', async () => {
       const { find, choose, click, save } = await open()
 

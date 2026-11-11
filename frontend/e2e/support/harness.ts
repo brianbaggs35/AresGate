@@ -109,6 +109,9 @@ export interface IncidentRequest {
   device?: string
   device_name?: string
   status?: 'open' | 'investigating' | 'resolved' | 'dismissed'
+  /** How many days nothing has touched it, whatever the signals say: it is moved back once filed,
+   * since signals older than a day are not filed. */
+  idle_days?: number
   /** Makes every signal a port scan (the first is a brute force otherwise), as a bot sweeping the
    * network would send, from the address and this many of its neighbours of the same /24 in
    * turn, in this many bursts, over these ports in turn. */

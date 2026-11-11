@@ -28,7 +28,7 @@ test.describe('agents', () => {
     await expect(page).toHaveTitle('Agents · AresGate')
     await expect(agents.heading).toHaveText('Agents')
     await expect(agents.empty).toBeVisible()
-    await expect(agents.kinds).toHaveCount(4)
+    await expect(agents.kinds).toHaveCount(5)
     await expect(agents.cards).toHaveCount(0)
   })
 
@@ -62,7 +62,7 @@ test.describe('agents', () => {
 
     await agents.make.click()
     await expect(agents.dialog).toBeVisible()
-    await expect(agents.dialogKinds).toHaveCount(4)
+    await expect(agents.dialogKinds).toHaveCount(5)
     await agents.chooseKind('Threat hunter')
     await agents.dialogName.fill('Night watch')
     await agents.dialogGoal.fill('Only wake me for real compromises.')
@@ -183,5 +183,53 @@ test.describe('agents', () => {
     await expect(agents.heading).toHaveText('Agents')
     await expect(agents.cards).toHaveCount(0)
     await expect(agents.empty).toBeVisible()
+  })
+
+  test('has a noise cleaner that suggests tidying, which is applied with a press and taken back', async ({
+    harness,
+    aiSettings,
+    agents,
+    incidents,
+    incident,
+    page,
+  }) => {
+    // Not serious, and nothing has touched it for days.
+    await harness.createIncidents([
+      { address: '8.8.4.4', severity: 'low', idle_days: 4, device_name: 'printer' },
+    ])
+    await turnOnAi(harness, aiSettings)
+    await agents.goto()
+    await agents.kinds.filter({ hasText: 'Noise cleaner' }).getByTestId('agents-kind-make').click()
+    await agents.save.click()
+    await expect(agents.dialog).toHaveCount(0)
+    await agents.cards.first().getByTestId('agent-run').click()
+    expect(await harness.runAgents()).toBe(1)
+
+    await expect(agents.cards.first().getByTestId('agent-proposals')).toHaveText(
+      '1 clean-up is waiting for you.',
+      SEEN,
+    )
+    await agents.cards.first().getByTestId('agent-open').click()
+
+    await expect(agents.suggestions).toBeVisible()
+    await expect(agents.proposals).toHaveCount(1)
+    await expect(agents.proposals.first()).toContainText('1 old incident nothing has touched')
+    await agents.apply.click()
+
+    await expect(agents.notice).toContainText('Done')
+    await expect(agents.proposals).toHaveCount(0)
+    await expect(agents.recentStatus).toHaveText(['Done'])
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(0)
+
+    await page.goBack()
+    await agents.undo.click()
+
+    await expect(agents.notice).toContainText('Taken back')
+    await expect(agents.recentStatus).toHaveText(['Taken back'])
+    await incidents.goto()
+    await expect(incidents.cards).toHaveCount(1)
+    await incidents.cards.first().click()
+    await expect(incident.status).toHaveText('Open')
   })
 })

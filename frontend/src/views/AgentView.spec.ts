@@ -12,7 +12,9 @@ import {
   finding,
   run,
   runDetail,
+  proposal,
   step,
+  suggestions,
   template,
   usage,
 } from '@/test/agents'
@@ -488,6 +490,20 @@ describe('AgentView', () => {
 
     expect(find('setup-title').text()).toBe('It needs a little setup first')
     expect(find('setup-check').text()).toContain('Add a free VirusTotal key.')
+  })
+
+  it('shows what a cleanup agent suggests, and only for one that does', async () => {
+    const plain = await open()
+    expect(plain.find('agent-suggestions').exists()).toBe(false)
+
+    const { find } = await open({
+      agent: detail({
+        template_info: template({ proposes: true }),
+        suggestions: suggestions({ pending: [proposal()] }),
+      }),
+    })
+
+    expect(find('agent-suggestions').text()).toContain('3 open incidents say the same thing')
   })
 
   it('says there are no instructions when there are none', async () => {

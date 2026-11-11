@@ -136,4 +136,15 @@ describe('AgentCard', () => {
       'It needs a little setup first.',
     )
   })
+
+  it('says how many clean-ups wait for the owner', async () => {
+    const none = await open()
+    expect(none.find('agent-proposals').exists()).toBe(false)
+
+    const one = await open(agent({ proposals: 1 }))
+    expect(one.find('agent-proposals').text()).toBe('1 clean-up is waiting for you.')
+
+    const many = await open(agent({ proposals: 3 }))
+    expect(many.find('agent-proposals').text()).toBe('3 clean-ups are waiting for you.')
+  })
 })

@@ -276,6 +276,9 @@ class IncidentSpec(NamedTuple):
     device: str = "192.168.1.20"
     device_name: str | None = None
     status: IncidentStatusName = "open"
+    # How many days nothing has touched it, whatever the signals say: the engine only reads the
+    # last day, so an old incident can only be made by moving it back once it is filed.
+    idle_days: int = 0
     # A bot sweeping the network: every signal is a port scan, from the address and this many of
     # its neighbours in turn (they must stay in the address's /24), over as many bursts.
     neighbours: int = 0
@@ -340,6 +343,10 @@ def incidents(
             row = session.scalars(select(Incident).where(Incident.subject == address)).one()
             row.status = spec.status
             row.status_changed_at = now
+        if spec.idle_days:
+            row = session.scalars(select(Incident).where(Incident.subject == address)).one()
+            row.last_seen_at = now - timedelta(days=spec.idle_days)
+            row.first_seen_at = min(row.first_seen_at, row.last_seen_at)
     return IncidentsRecorded(len(events), len(specs))
 
 

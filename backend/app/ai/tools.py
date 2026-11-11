@@ -25,7 +25,7 @@ from app.ai import triage
 from app.ai.redaction import Redactor, read_address, read_mac
 from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
-from app.incidents import queries
+from app.incidents import cleanup, queries
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
 from app.intel import store as intel_store
@@ -474,6 +474,27 @@ def repeated_incidents(db: Session, redactor: Redactor, args: Args, now: datetim
     return Found(lines, refs, _plural(len(groups), "repeated incident"))
 
 
+def cleanup_candidates(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What could be tidied among the incidents: open ones that say the same thing, old quiet ones
+    and ones the AI is sure are noise. Each has a key to name it by."""
+    limit = _between(args.limit, 10, 1, MAX_ITEMS)
+    found = cleanup.find(db, now)[:limit]
+    if not found:
+        return Found(["There is nothing to tidy."], [], "nothing to tidy")
+    lines: list[str] = []
+    refs: dict[int, Ref] = {}
+    for item in found:
+        ids = ", ".join(f"[incident {number}]" for number in item.incidents[:MAX_ITEMS])
+        kept = f"; [incident {item.keep}] stays open" if item.keep is not None else ""
+        lines.append(
+            f"[candidate {item.key}] {item.kind}, {item.confidence} of 100 sure: "
+            f"{redactor.text(item.title, 160)} would {item.action} {ids}{kept}"
+        )
+        for number in (*item.incidents[:MAX_ITEMS], *([item.keep] if item.keep else [])):
+            refs.setdefault(number, Ref("incident", str(number), f"Incident {number}"))
+    return Found(lines, list(refs.values()), _plural(len(found), "thing to tidy", "things to tidy"))
+
+
 TOOLS: Final[Sequence[Tool]] = (
     Tool(
         "open_incidents",
@@ -540,6 +561,12 @@ TOOLS: Final[Sequence[Tool]] = (
         "Open incidents that say the same thing about different subjects, so are one campaign or "
         "one noisy rule. Uses: limit (1-10, default 5).",
         repeated_incidents,
+    ),
+    Tool(
+        "cleanup_candidates",
+        "What could be tidied among the incidents: open ones that say the same thing, old quiet "
+        "ones, and ones the AI is sure are noise, each with a key. Uses: limit (1-10, default 10).",
+        cleanup_candidates,
     ),
 )
 

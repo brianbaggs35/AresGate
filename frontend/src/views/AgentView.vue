@@ -26,6 +26,7 @@ import AgentDialog from '@/components/AgentDialog.vue'
 import AgentFindings from '@/components/AgentFindings.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
 import AgentTimeline from '@/components/AgentTimeline.vue'
+import AgentProposals from '@/components/AgentProposals.vue'
 import AgentSetup from '@/components/AgentSetup.vue'
 import AgentUsage from '@/components/AgentUsage.vue'
 import AppPage from '@/components/AppPage.vue'
@@ -383,6 +384,16 @@ onMounted(() => load())
             </button>
           </li>
         </ul>
+      </section>
+
+      <section
+        v-if="agent.template_info.proposes"
+        class="section"
+        aria-labelledby="suggestions-title"
+        data-test="agent-suggestions"
+      >
+        <h2 id="suggestions-title" class="text-title-large">What it suggests tidying</h2>
+        <AgentProposals :suggestions="agent.suggestions" @changed="saved" />
       </section>
 
       <section class="section" aria-labelledby="usage-title">

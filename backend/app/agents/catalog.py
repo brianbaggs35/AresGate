@@ -39,6 +39,9 @@ class Template:
     active: bool = False
     # What it needs in order to be useful, by the name of a check (app/agents/readiness.py), and
     # the steps to take to set it up, for someone making the agent for the first time.
+    # Whether it suggests tidying incidents, which the owner applies (or it does itself when the
+    # agents are set to, for the surest of them), always in ways that can be taken back.
+    proposes: bool = False
     needs: tuple[str, ...] = ()
     setup: tuple[str, ...] = ()
 
@@ -169,10 +172,49 @@ EXPOSURE_SCANNER: Final = Template(
     ),
 )
 
+NOISE_CLEANER: Final = Template(
+    key="noise_cleaner",
+    name="Noise cleaner",
+    tagline="Finds duplicates and noise across your integrations, so you don't have to",
+    description=(
+        "Looks for open incidents that say the same thing (the same attack reported by several "
+        "programs or from many addresses), old quiet ones nothing has touched for days, and ones "
+        "the AI is sure are noise. It suggests dismissing, resolving or marking each, and never "
+        "touches anything serious. You apply a suggestion with one press and can take it back; "
+        "if you let the agents do the surest of it themselves under Settings > Agents, it says "
+        "what it did, and that can be taken back too."
+    ),
+    icon="sparkles",
+    brief=(
+        "You tidy the incident list. You are given candidates for tidying, each with a key. "
+        "Say whether each is really noise or hides something worth the owner's attention. Name "
+        'in "rejects" the key of any candidate that should be left alone, and explain in a '
+        "finding why. Never invent a key."
+    ),
+    goal="Keep my incident list down to what needs me, and tell me what you tidied.",
+    first=(
+        Lookup("cleanup_candidates", Args(limit=10)),
+        Lookup("noisy_alerts", Args(hours=24, limit=5)),
+    ),
+    asks=("cleanup_candidates", "incident", "repeated_incidents", "noisy_alerts", "alerts"),
+    interval_minutes=360,
+    proposes=True,
+    needs=("alerts",),
+    setup=(
+        "Connect your alert sources under Integrations: the more of them report, the more "
+        "duplicates there are to find.",
+        "It works without an AI, using what AresGate already knows. With one, it also checks "
+        "each candidate before suggesting it. Choose the AI under Settings > Agents.",
+        "Look at what it suggests on its page. Under Settings > Agents you can let it do the "
+        "surest suggestions itself; each is recorded and can be taken back.",
+    ),
+)
+
 TEMPLATES: Final[tuple[Template, ...]] = (
     THREAT_HUNTER,
     INTELLIGENCE_ANALYST,
     HEALTH_WATCH,
+    NOISE_CLEANER,
     EXPOSURE_SCANNER,
 )
 

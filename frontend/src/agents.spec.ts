@@ -1,15 +1,18 @@
-import { Bot, Radar, Telescope } from '@lucide/vue'
+import { Bot, Radar, Sparkles, Telescope } from '@lucide/vue'
 
 import {
   AGENT_STATE,
   INTERVALS,
   MAX_ROUNDS,
+  PROPOSAL_ACTION,
+  PROPOSAL_STATUS,
   NODES,
   RUN_STATUS,
   agentIcon,
   anyLive,
   cachedShare,
   costWords,
+  incidentsWords,
   dailyCost,
   elapsedMs,
   isLive,
@@ -216,5 +219,22 @@ describe('what agents used of the AI', () => {
     expect(bars.series).toHaveLength(1)
     expect(bars.series[0]?.values[29]).toBeCloseTo(0.004)
     expect(bars.series[0]?.values[0]).toBe(0)
+  })
+})
+
+describe('what the cleanup agent suggests', () => {
+  it('names what each suggestion would do, and each place it can be in', () => {
+    expect(PROPOSAL_ACTION.dismiss).toBe('It would dismiss')
+    expect(Object.keys(PROPOSAL_STATUS)).toEqual(['pending', 'applied', 'dismissed', 'undone'])
+    expect(PROPOSAL_STATUS.applied.label).toBe('Done')
+  })
+
+  it('counts incidents in words', () => {
+    expect(incidentsWords(1)).toBe('1 incident')
+    expect(incidentsWords(1234)).toBe('1,234 incidents')
+  })
+
+  it('has an icon of its own', () => {
+    expect(agentIcon('sparkles')).toBe(Sparkles)
   })
 })

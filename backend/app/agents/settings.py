@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import catalog, limits, service
 from app.integrations.registry import SettingsError
-from app.models import AI_SOURCES, AgentSettings, AiProvider
+from app.models import AI_SOURCES, CLEANUP_MODES, AgentSettings, AiProvider
 
 # What the agents' requests are recorded as in ``ai_calls``.
 PURPOSE: Final = "agent"
@@ -116,6 +116,7 @@ def save(
     daily: Decimal | None,
     monthly: Decimal | None,
     now: datetime,
+    cleanup: str | None = None,
 ) -> AgentSettings:
     """Keeps which AI the agents ask and what they may spend, or raises ``SettingsError`` saying
     what is wrong. The caller commits."""
@@ -128,9 +129,13 @@ def save(
             problems["provider"] = "Choose which provider the agents ask."
         else:
             problems |= _provider_problems(db, provider, chosen_model)
+    if cleanup is not None and cleanup not in CLEANUP_MODES:
+        problems["cleanup_mode"] = "Choose suggest or auto."
     if problems:
         raise SettingsError(problems)
     chosen = get(db, now)
+    if cleanup is not None:
+        chosen.cleanup_mode = cleanup
     chosen.ai_source = source
     chosen.provider = provider if source == "own" else None
     chosen.model = chosen_model if source == "own" else None

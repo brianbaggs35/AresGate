@@ -86,6 +86,7 @@ class TestTheList:
             "noisy_alerts",
             "targeted_ports",
             "repeated_incidents",
+            "cleanup_candidates",
         )
         assert all(tools.by_name(name) is not None for name in tools.names())
         assert tools.by_name("delete_everything") is None
@@ -706,3 +707,36 @@ class TestRepeatedIncidents:
 
         assert found.lines == ["No open incidents repeat each other."]
         assert found.summary == "no repeated incidents"
+
+
+class TestCleanupCandidates:
+    def test_what_could_be_tidied_is_listed_with_a_key_to_name_it_by(
+        self, session: Session
+    ) -> None:
+        first = incident(session, subject="198.51.100.1", title="Scanning ssh")
+        second = incident(session, subject="198.51.100.2", title="Scanning ssh")
+        session.commit()
+
+        found = run(session, "cleanup_candidates")
+
+        [line] = found.lines
+        assert line.startswith("[candidate duplicates-")
+        assert f"would dismiss [incident {second.id}]; [incident {first.id}] stays open" in line
+        assert "85 of 100 sure" in line
+        assert {ref.key for ref in found.refs} == {str(first.id), str(second.id)}
+        assert found.summary == "1 thing to tidy"
+
+    def test_with_nothing_to_tidy_it_says_so(self, session: Session) -> None:
+        found = run(session, "cleanup_candidates", Args(limit=3))
+
+        assert found.lines == ["There is nothing to tidy."]
+        assert found.summary == "nothing to tidy"
+
+    def test_a_stale_group_has_no_incident_that_stays(self, session: Session) -> None:
+        incident(session, last_seen_at=NOW - 9 * HOUR * 24)
+        session.commit()
+
+        [line] = run(session, "cleanup_candidates").lines
+
+        assert "stays open" not in line
+        assert "would resolve" in line

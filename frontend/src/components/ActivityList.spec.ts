@@ -93,6 +93,9 @@ describe('ActivityList', () => {
       'agent.run_requested',
       'agent.run_cancelled',
       'agent.settings_changed',
+      'agent.proposal_applied',
+      'agent.proposal_dismissed',
+      'agent.proposal_undone',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -146,6 +149,9 @@ describe('ActivityList', () => {
       'An agent was asked to run',
       'An agent run was stopped',
       'The settings of the agents were changed',
+      'A suggestion of the noise cleaner was applied',
+      'A suggestion of the noise cleaner was turned down',
+      'A suggestion of the noise cleaner was taken back',
     ])
   })
 

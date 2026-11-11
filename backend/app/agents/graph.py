@@ -28,12 +28,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.agents import catalog, flow, probe
+from app.agents import catalog, flow, probe, proposals
+from app.agents import settings as agent_settings
 from app.agents.catalog import Lookup, Template
 from app.ai import gateway, tools
 from app.ai.gateway import Context, Question, Unavailable
 from app.ai.redaction import Level, Redactor
 from app.ai.tools import Args
+from app.incidents import cleanup
 from app.integrations import netguard
 from app.integrations.netguard import AddressPolicy
 from app.models import Device
@@ -94,10 +96,22 @@ class State(TypedDict):
     ai: str
     call_ids: Annotated[list[int], operator.add]
     steps: list[Step]
+    # The keys of the candidates for tidying that the model said to leave alone.
+    rejects: list[str]
 
 
 def initial() -> State:
-    return State(round=0, pending=[], ran=[], findings=[], summary="", ai="", call_ids=[], steps=[])
+    return State(
+        round=0,
+        pending=[],
+        ran=[],
+        findings=[],
+        summary="",
+        ai="",
+        call_ids=[],
+        steps=[],
+        rejects=[],
+    )
 
 
 @dataclass(frozen=True)
@@ -168,6 +182,13 @@ def system_for(template: Template) -> str:
         if template.asks
         else ""
     )
+    tidy = (
+        "Candidates for tidying appear as [candidate KEY]. Every one is suggested to the owner "
+        'unless you name its key in "rejects", which you should do for any that hides something '
+        "real, saying why in a finding. Only name keys you were given.\n\n"
+        if template.proposes
+        else ""
+    )
     return f"""\
 You are an agent of AresGate, a security monitor for one home network. {template.brief}
 
@@ -186,7 +207,7 @@ critical), a short title and what to do about it; leave it empty when there is n
 incident as [incident 3]. In a finding's "cites" list what it is based on, as "incident 3" or \
 "integration opnsense", only things that appeared in what you were given.
 
-Answer only with the JSON you are asked for.\
+{tidy}Answer only with the JSON you are asked for.\
 """
 
 
@@ -214,15 +235,20 @@ def schema(template: Template) -> Mapping[str, object]:
         },
         "required": ["severity", "title", "detail", "cites"],
     }
+    properties: dict[str, object] = {
+        "summary": {"type": "string"},
+        "findings": {"type": "array", "items": finding},
+        "lookups": {"type": "array", "items": lookup},
+    }
+    required = ["summary", "findings", "lookups"]
+    if template.proposes:
+        properties["rejects"] = {"type": "array", "items": {"type": "string"}}
+        required.append("rejects")
     return {
         "type": "object",
         "additionalProperties": False,
-        "properties": {
-            "summary": {"type": "string"},
-            "findings": {"type": "array", "items": finding},
-            "lookups": {"type": "array", "items": lookup},
-        },
-        "required": ["summary", "findings", "lookups"],
+        "properties": properties,
+        "required": required,
     }
 
 
@@ -286,6 +312,7 @@ class Reading:
     summary: str
     findings: list[tuple[str, str, str, list[str]]]
     lookups: list[Lookup]
+    rejects: list[str] = field(default_factory=list[str])
 
 
 def _loads(text: str) -> object:
@@ -365,10 +392,12 @@ def parse(text: str, template: Template) -> Reading | None:
     asked = fields.get("lookups")
     findings = [kept for item in _items(found) if (kept := _finding(item)) is not None]
     lookups = [kept for item in _items(asked) if (kept := _lookup(item, template)) is not None]
+    rejects = [item for item in _items(fields.get("rejects")) if isinstance(item, str)]
     return Reading(
         summary=(audit.clean(summary, MAX_SUMMARY) or "") if isinstance(summary, str) else "",
         findings=findings[:MAX_FINDINGS],
         lookups=lookups[:MAX_LOOKUPS],
+        rejects=[audit.clean(item, 60) or "" for item in rejects[: MAX_FINDINGS * 3]],
     )
 
 
@@ -562,6 +591,7 @@ def build(work: Work) -> object:
             "summary": reading.summary,
             "findings": findings,
             "pending": more,
+            "rejects": reading.rejects,
             "round": state["round"] + 1 if more else state["round"],
             "call_ids": [answer.call_id],
             "steps": [
@@ -577,14 +607,13 @@ def build(work: Work) -> object:
             ],
         }
 
-    def report(state: State) -> dict[str, object]:
+    async def report(state: State) -> dict[str, object]:
         findings = state["findings"] or _found_by_testing(state["ran"])
         summary = state["summary"] or _collected(state)
-        return {
-            "summary": summary,
-            "findings": findings,
-            "steps": [Step(title="Wrote the report", detail={"findings": len(findings)})],
-        }
+        steps = [Step(title="Wrote the report", detail={"findings": len(findings)})]
+        if template.proposes:
+            steps.append(await asyncio.to_thread(_suggest, work, state["rejects"]))
+        return {"summary": summary, "findings": findings, "steps": steps}
 
     def route(state: State) -> str:
         return "act" if state["pending"] else "report"
@@ -592,6 +621,35 @@ def build(work: Work) -> object:
     return flow.compile_graph(
         State, {"plan": plan, "act": act, "think": think, "report": report}, route
     )
+
+
+def _suggest(work: Work, rejects: Sequence[str]) -> Step:
+    """Keeps what could be tidied as suggestions for the owner, and does the surest of it where the
+    agents have been set to. The model only chooses what to leave alone."""
+    now = utcnow()
+    with work.new_session() as db:
+        found = cleanup.find(db, now)
+        auto = agent_settings.get(db, now).cleanup_mode == "auto"
+        made, done = proposals.record(
+            db, work.snapshot.agent_id, work.snapshot.run_id, found, set(rejects), now, auto=auto
+        )
+        db.commit()
+        pending = len(made) - len(done)
+        title = f"Suggested {_plural(pending, 'clean-up')}" if pending else "Nothing new to tidy"
+        if done:
+            title += f", and tidied {_plural(len(done), 'thing')} itself"
+        return Step(
+            title=title,
+            detail={
+                "lines": [f"{item.title} ({item.status})" for item in made],
+                "suggested": pending,
+                "applied": len(done),
+            },
+        )
+
+
+def _plural(count: int, one: str, many: str | None = None) -> str:
+    return f"{count} {one if count == 1 else many or one + 's'}"
 
 
 def _without_ai(reason: str, title: str) -> dict[str, object]:

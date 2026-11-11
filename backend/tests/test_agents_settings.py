@@ -428,7 +428,7 @@ class TestTheSettingsApi:
         [event] = session.scalars(
             select(AuditEvent).where(AuditEvent.action == Action.AGENT_SETTINGS_CHANGED.value)
         )
-        assert event.detail == {"ai_source": "own", "provider": "anthropic"}
+        assert event.detail == {"ai_source": "own", "provider": "anthropic", "cleanup": "unchanged"}
 
     def test_what_is_wrong_is_said_by_the_name_of_the_setting(
         self, client: TestClient, csrf_token: str
@@ -568,3 +568,58 @@ def test_a_run_row_has_no_usage_until_it_ends(session: Session) -> None:
     kept = session.get_one(AgentRun, run.id)
 
     assert (kept.calls, kept.cost_micros, kept.provider) == (0, 0, None)
+
+
+class TestTheCleanupMode:
+    def test_the_cleanup_agent_only_suggests_until_it_is_allowed_to_do_more(
+        self, session: Session
+    ) -> None:
+        assert agent_settings.get(session, NOW).cleanup_mode == "suggest"
+
+        agent_settings.save(
+            session,
+            source="shared",
+            provider=None,
+            model=None,
+            daily=None,
+            monthly=None,
+            now=NOW,
+            cleanup="auto",
+        )
+        assert agent_settings.get(session, NOW).cleanup_mode == "auto"
+
+        agent_settings.save(
+            session, source="shared", provider=None, model=None, daily=None, monthly=None, now=NOW
+        )
+        assert agent_settings.get(session, NOW).cleanup_mode == "auto"
+
+    def test_anything_else_is_refused(self, session: Session) -> None:
+        with pytest.raises(SettingsError) as raised:
+            agent_settings.save(
+                session,
+                source="shared",
+                provider=None,
+                model=None,
+                daily=None,
+                monthly=None,
+                now=NOW,
+                cleanup="always",
+            )
+        assert raised.value.problems == {"cleanup_mode": "Choose suggest or auto."}
+
+    def test_it_is_chosen_and_read_through_the_api(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        assert client.get(f"{BASE}/settings").json()["cleanup_mode"] == "suggest"
+
+        changed = client.put(
+            f"{BASE}/settings",
+            json={"ai_source": "shared", "cleanup_mode": "auto"},
+            headers=headers(csrf_token),
+        )
+
+        assert changed.json()["cleanup_mode"] == "auto"
+        kept = client.put(
+            f"{BASE}/settings", json={"ai_source": "shared"}, headers=headers(csrf_token)
+        )
+        assert kept.json()["cleanup_mode"] == "auto"

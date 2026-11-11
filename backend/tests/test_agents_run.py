@@ -17,11 +17,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.agents import catalog, graph, probe, run, service
+from app.agents import settings as agent_settings
 from app.agents.run import Probing
 from app.ai import tools
 from app.config import Settings
+from app.incidents import cleanup
 from app.integrations import netguard
-from app.models import Agent, AgentRun, AgentStep, AiCall, Device, DeviceAddress, Incident
+from app.models import (
+    Agent,
+    AgentProposal,
+    AgentRun,
+    AgentStep,
+    AiCall,
+    Device,
+    DeviceAddress,
+    Incident,
+)
 from app.models.base import utcnow
 from tests.stubs import Answer as Reply
 from tests.stubs import Seen, Serve
@@ -717,7 +728,12 @@ def test_every_template_names_only_tools_that_exist_and_lookups_the_model_may_as
         assert all(tools.by_name(name) is not None for name in item.asks)
         assert {lookup.tool for lookup in item.first} <= {*item.asks, *tools.names(), graph.SCAN}
         assert graph.system_for(item).startswith("You are an agent of AresGate")
-        assert graph.schema(item)["required"] == ["summary", "findings", "lookups"]
+        assert graph.schema(item)["required"] == [
+            "summary",
+            "findings",
+            "lookups",
+            *(["rejects"] if item.proposes else []),
+        ]
 
 
 def kept_run(session: Session, found: Agent, status: str = "succeeded", **changes: object) -> None:
@@ -817,3 +833,93 @@ def test_what_the_last_run_said_is_made_safe_for_a_provider_that_may_not_see_add
 
     assert ATTACKER not in provider.prompts[0]
     assert DEVICE not in provider.prompts[0]
+
+
+class TestTheCleanupAgent:
+    """The agent that tidies: it works without an AI, the model may only leave candidates alone,
+    and the surest are done by the agent itself only where the agents have been set to."""
+
+    def stage(self, session: Session) -> tuple[Agent, list[str]]:
+        # The worker judges what is old by the clock, so what is staged is dated by it too.
+        now = utcnow()
+        for number in (1, 2):
+            incident(
+                session,
+                subject=f"198.51.100.{number}",
+                title="Scan of ssh",
+                severity=number,
+                last_seen_at=now - timedelta(minutes=5),
+            )
+        incident(
+            session, subject="198.51.100.40", title="Old", last_seen_at=now - timedelta(days=9)
+        )
+        session.commit()
+        found = made(session, "noise_cleaner", name="Tidy")
+        return found, [item.key for item in cleanup.find(session, now)]
+
+    def test_without_an_ai_it_still_suggests_what_it_found_and_says_so(
+        self, session: Session, settings: Settings
+    ) -> None:
+        found, keys = self.stage(session)
+        run_id = asked(session, found)
+
+        execute(session, settings, run_id)
+
+        done = finished(session, run_id)
+        assert done.status == "succeeded"
+        assert done.ai
+        rows = session.scalars(select(AgentProposal).order_by(AgentProposal.id)).all()
+        assert sorted(row.key for row in rows) == sorted(keys)
+        assert {row.status for row in rows} == {"pending"}
+        assert {row.run_id for row in rows} == {run_id}
+        assert steps_of(session, run_id)[-1].title == "Suggested 2 clean-ups"
+
+    def test_the_model_is_told_the_candidates_and_may_name_ones_to_leave_alone(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found, keys = self.stage(session)
+        provider = Scripted(said(rejects=[keys[0], "not-a-key"]))
+        server = serve(provider)
+        ready(session, settings)
+        run_id = asked(session, found)
+
+        execute(session, settings, run_id, server.url)
+
+        [prompt] = provider.prompts
+        assert all(f"[candidate {key}]" in prompt for key in keys)
+        assert "Candidates for tidying appear as [candidate KEY]" in str(provider.bodies[0])
+        kept_keys = session.scalars(select(AgentProposal.key)).all()
+        assert kept_keys == keys[1:]
+        assert steps_of(session, run_id)[-1].title == "Suggested 1 clean-up"
+
+    def test_other_kinds_are_not_told_about_candidates_or_asked_to_reject(self) -> None:
+        assert "rejects" not in graph.schema(catalog.THREAT_HUNTER)["properties"]  # type: ignore[operator]
+        assert "[candidate" not in graph.system_for(catalog.THREAT_HUNTER)
+        assert "rejects" in graph.schema(catalog.NOISE_CLEANER)["properties"]  # type: ignore[operator]
+
+    def test_where_the_agents_may_it_does_the_surest_itself_and_says_so(
+        self, session: Session, settings: Settings
+    ) -> None:
+        found, _ = self.stage(session)
+        agent_settings.get(session, utcnow()).cleanup_mode = "auto"
+        session.commit()
+        run_id = asked(session, found)
+
+        execute(session, settings, run_id)
+
+        by_kind = {row.kind: row for row in session.scalars(select(AgentProposal))}
+        assert by_kind["stale"].status == "applied"
+        assert by_kind["stale"].decided_by == "agent"
+        assert by_kind["duplicates"].status == "pending"
+        last = steps_of(session, run_id)[-1]
+        assert last.title == "Suggested 1 clean-up, and tidied 1 thing itself"
+        assert last.detail["applied"] == 1
+
+    def test_a_run_with_nothing_to_tidy_says_so(self, session: Session, settings: Settings) -> None:
+        found = made(session, "noise_cleaner")
+        session.commit()
+        run_id = asked(session, found)
+
+        execute(session, settings, run_id)
+
+        assert steps_of(session, run_id)[-1].title == "Nothing new to tidy"

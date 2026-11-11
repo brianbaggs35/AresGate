@@ -3,7 +3,7 @@
 import base64
 import socket
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -157,6 +157,7 @@ def test_the_fixtures_are_listed_with_what_they_hold(e2e: TestClient) -> None:
 def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Session) -> None:
     e2e.post("/api/__test__/database/clean")
     expected = {
+        "agent_proposals": 0,
         "agent_runs": 0,
         "agent_settings": 0,
         "agent_steps": 0,
@@ -229,6 +230,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "ai_triage",
             "incidents",
             "agent_steps",
+            "agent_proposals",
             "user_sessions",
             "totp_credentials",
             "recovery_codes",
@@ -947,6 +949,22 @@ def test_incidents_can_be_made_to_order(e2e: TestClient) -> None:
     detail = e2e.get(f"/api/incidents/{attack['id']}").json()
     assert [device["hostname"] for device in detail["devices"]] == ["nas"]
     assert len(detail["signals"]) == 5
+
+
+def test_an_incident_can_be_made_to_have_been_quiet_for_days(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    made = e2e.post(
+        "/api/__test__/factories/incidents",
+        json={"incidents": [{"address": "8.8.4.4", "severity": "low", "idle_days": 4}]},
+    )
+
+    assert made.status_code == 201
+    sign_in(e2e)
+    [item] = e2e.get("/api/incidents").json()["items"]
+    assert item["subject"] == "8.8.4.4"
+    quiet = utcnow() - datetime.fromisoformat(item["last_seen_at"])
+    assert timedelta(days=3, hours=23) < quiet < timedelta(days=4, hours=1)
+    assert item["first_seen_at"] <= item["last_seen_at"]
 
 
 def test_incidents_can_be_made_with_what_was_done_about_them(e2e: TestClient) -> None:
