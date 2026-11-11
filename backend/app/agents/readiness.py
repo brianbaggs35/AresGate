@@ -20,6 +20,8 @@ from app.models import Device, IntegrationConnection
 PURPOSE: Final = "agent"
 # The programs that tell AresGate about alerts and what the firewall turned away.
 ALERT_SOURCES: Final = ("opnsense", "wazuh", "crowdsec", "ntopng")
+# Where in the web app the integrations are connected.
+INTEGRATIONS: Final = "/integrations"
 
 
 @dataclass(frozen=True)
@@ -61,7 +63,7 @@ def _alerts(db: Session, now: datetime) -> Check:
         _connected(db, ALERT_SOURCES),
         "A firewall or sensor that reports alerts, such as OPNsense or Wazuh",
         "Connect OPNsense, Wazuh, ntopng or CrowdSec, so that there is something to look at.",
-        "/integrations",
+        INTEGRATIONS,
     )
 
 
@@ -71,7 +73,7 @@ def _firewall(db: Session, now: datetime) -> Check:
         _connected(db, ("opnsense",)),
         "OPNsense connected, for what the firewall turned away",
         "Connect OPNsense, which AresGate asks what the firewall blocked.",
-        "/integrations/opnsense",
+        f"{INTEGRATIONS}/opnsense",
     )
 
 
@@ -81,7 +83,7 @@ def _intel(db: Session, now: datetime) -> Check:
         _connected(db, ("virustotal",)),
         "VirusTotal connected, for what is known about addresses",
         "Add a free VirusTotal key, which AresGate uses to ask who an address belongs to.",
-        "/integrations/virustotal",
+        f"{INTEGRATIONS}/virustotal",
     )
 
 
@@ -91,7 +93,7 @@ def _integrations(db: Session, now: datetime) -> Check:
         _connected(db, (*ALERT_SOURCES, "virustotal")),
         "At least one integration connected, to watch",
         "Connect an integration first: there is nothing to watch the health of yet.",
-        "/integrations",
+        INTEGRATIONS,
     )
 
 
@@ -101,7 +103,7 @@ def _devices(db: Session, now: datetime) -> Check:
         bool(db.scalar(select(func.count()).select_from(Device))),
         "Devices AresGate has seen on the network",
         "Connect OPNsense or ntopng, which tell AresGate which devices are on the network.",
-        "/integrations",
+        INTEGRATIONS,
     )
 
 
