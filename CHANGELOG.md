@@ -26,6 +26,13 @@ Every release's notes are here, newest first. The format follows
   beside the ones that are not connected, with what each would add and a way to connect it.
 - **The AI notes what stands out in what was sent.** It is told what the programs said of the
   traffic (through the redaction, as everything else is) and its reading lists short observations.
+- **Threat intelligence can be corrected.** A false alarm or a miss no longer has to stand. Rule
+  an address, a domain or a web address **safe** or **suspicious**, with a reason if you like, from
+  a report, from the new "What you have ruled" card on the Threat intelligence page, or from an
+  address of an incident. The ruling shows in place of what VirusTotal said, on the report, the list
+  of what AresGate knows (its counts and filters follow), an incident's conversations and an
+  asset's peers, with what VirusTotal said beside it. The AI is told, and the audit log records each
+  ruling. It needs no connection and asks no service anything. Migration `0043` adds the rulings.
 
 ## 0.1.1
 

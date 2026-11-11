@@ -69,6 +69,9 @@ describe('AssetPeers', () => {
           peer({
             standing: {
               judgement: 'malicious',
+              reported: 'malicious',
+              ruling: null,
+              ruling_note: null,
               malicious: 4,
               suspicious: 1,
               engines: 85,
@@ -97,6 +100,9 @@ describe('AssetPeers', () => {
           peer({
             standing: {
               judgement: 'unknown',
+              reported: 'unknown',
+              ruling: null,
+              ruling_note: null,
               malicious: 0,
               suspicious: 0,
               engines: 0,
@@ -138,6 +144,9 @@ describe('AssetPeers', () => {
             ports: [{ port: 3389, protocol: 'tcp', events: 2 }],
             standing: {
               judgement: 'suspicious',
+              reported: 'suspicious',
+              ruling: null,
+              ruling_note: null,
               malicious: 0,
               suspicious: 2,
               engines: 80,
@@ -162,5 +171,56 @@ describe('AssetPeers', () => {
     )
     expect(rows.at(1)?.find('[data-test="peer-internal"]').exists()).toBe(true)
     expect(rows.at(2)?.find('[data-test="peer-unchecked"]').exists()).toBe(true)
+  })
+
+  it('says what the owner ruled of a peer, which stands over what the service said', async () => {
+    const mounted = await mountWithPlugins(AssetPeers, {
+      props: {
+        talksTo: [
+          peer({
+            standing: {
+              judgement: 'clean',
+              reported: 'malicious',
+              ruling: 'safe',
+              ruling_note: 'Mine',
+              malicious: 4,
+              suspicious: 1,
+              engines: 85,
+              owner: 'Example Hosting',
+              country: 'NL',
+              checked_at: '2026-11-09T12:00:00Z',
+            },
+          }),
+        ],
+        contactedBy: [
+          peer({
+            address: '52.1.2.9',
+            standing: {
+              judgement: 'suspicious',
+              reported: 'unknown',
+              ruling: 'suspicious',
+              ruling_note: null,
+              malicious: 0,
+              suspicious: 0,
+              engines: 0,
+              owner: null,
+              country: null,
+              checked_at: '2026-11-09T12:00:00Z',
+            },
+          }),
+        ],
+      },
+    })
+    const [talk] = mounted.wrapper.findAll('[data-test="asset-talks-to"] [data-test="asset-peer"]')
+    const [contact] = mounted.wrapper.findAll(
+      '[data-test="asset-contacted-by"] [data-test="asset-peer"]',
+    )
+
+    expect(talk?.find('[data-test="peer-standing"]').text()).toBe('Clean')
+    expect(talk?.find('[data-test="peer-intel"]').text()).toBe(
+      'You ruled it safe · 5 of 85 engines flagged it · Example Hosting, NL',
+    )
+    expect(contact?.find('[data-test="peer-standing"]').text()).toBe('Suspicious')
+    expect(contact?.find('[data-test="peer-intel"]').text()).toBe('You ruled it suspicious')
   })
 })

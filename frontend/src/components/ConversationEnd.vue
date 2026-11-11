@@ -1,46 +1,65 @@
 <script setup lang="ts">
-import { Globe, Laptop, ShieldAlert } from '@lucide/vue'
-import { computed } from 'vue'
+import { Gavel, Globe, Laptop, ShieldAlert } from '@lucide/vue'
+import { computed, ref } from 'vue'
 
 import type { ConversationEnd, Reputation } from '@/api/incidents'
+import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
 import { countryName, endTitle, flagOf, LOCATION, locationOf, portLine } from '@/evidence'
-import { JUDGEMENT } from '@/threatIntel'
+import { JUDGEMENT, RULING } from '@/threatIntel'
 
 /**
  * One end of a conversation: who it is, where it is and what is known against it. A device on
  * your network is drawn quietly; an address on the internet that is on a blacklist, or that the
  * threat-intelligence service flags, is drawn in the color of a warning, with the reason written
- * out beside it, so the color is never the only thing that says so.
+ * out beside it, so the color is never the only thing that says so. An address on the internet can
+ * be ruled on from here: where the owner says it is safe, or suspicious, that is what it is drawn
+ * as, with what the service said beside it. `ruled` says that the owner ruled on it, or took it back.
  */
 const props = defineProps<{
   end: ConversationEnd
   /** Which end it is, to say so: the one that sent, or the one it was sent to. */
   side: 'client' | 'server'
 }>()
+const emit = defineEmits<{ ruled: [] }>()
 
+const ruling = computed(() => props.end.reputation?.ruling ?? null)
+const ruleOpen = ref(false)
 const where = computed(() => locationOf(props.end))
 const title = computed(() => endTitle(props.end))
 const port = computed(() => portLine(props.end))
 const country = computed(() => (props.end.country ? props.end.country : null))
-const flagged = computed(
-  () => props.end.blacklisted === true || ['malicious', 'suspicious'].includes(judgement.value),
+// What the owner says stands over what a program or a service flagged.
+const flagged = computed(() =>
+  ruling.value === 'safe'
+    ? false
+    : props.end.blacklisted === true || ['malicious', 'suspicious'].includes(judgement.value),
 )
 const judgement = computed(() => props.end.reputation?.judgement ?? 'unknown')
-/** What the engines made of an address, in words. */
+/** What the engines made of an address, in words: what the service said, whatever was ruled. */
 function engineWords(found: Reputation): string {
   const flags = found.malicious + found.suspicious
-  if (found.judgement === 'malicious' || found.judgement === 'suspicious') {
+  if (found.reported === 'malicious' || found.reported === 'suspicious') {
     return `${flags.toString()} of ${found.engines.toString()} engines flag it`
   }
-  if (found.judgement === 'clean') return `No engine of ${found.engines.toString()} flags it`
-  return JUDGEMENT[found.judgement].label
+  if (found.reported === 'clean') return `No engine of ${found.engines.toString()} flags it`
+  return JUDGEMENT[found.reported].label
 }
 
-const reputation = computed(() => {
+const engines = computed(() => {
   const found = props.end.reputation
   if (!found) return null
-  return { look: JUDGEMENT[found.judgement], text: engineWords(found) }
+  return { look: JUDGEMENT[found.reported], text: engineWords(found) }
 })
+/** What the owner ruled, in words, with the same color a judgement of it would have. */
+const ruled = computed(() => (ruling.value ? RULING[ruling.value] : null))
+/** Whether the address can be ruled on: only what is on the internet, which a service can judge. */
+const ruleable = computed(() => where.value === 'remote')
+const heard = computed(() =>
+  engines.value ? `VirusTotal said: ${engines.value.text.toLowerCase()}.` : null,
+)
+const current = computed(() =>
+  ruling.value ? { verdict: ruling.value, note: props.end.reputation?.ruling_note ?? null } : null,
+)
 </script>
 
 <template>
@@ -82,14 +101,24 @@ const reputation = computed(() => {
           On a blacklist
         </v-chip>
         <v-chip
-          v-if="reputation"
+          v-if="ruled"
           size="small"
-          :color="reputation.look.color"
+          :color="ruled.color"
           variant="tonal"
-          :prepend-icon="reputation.look.icon"
+          :prepend-icon="ruled.icon"
+          data-test="end-ruling"
+        >
+          {{ ruled.label }}
+        </v-chip>
+        <v-chip
+          v-if="engines"
+          size="small"
+          :color="ruled ? undefined : engines.look.color"
+          :variant="ruled ? 'outlined' : 'tonal'"
+          :prepend-icon="engines.look.icon"
           data-test="end-reputation"
         >
-          {{ reputation.text }}
+          {{ engines.text }}
         </v-chip>
       </div>
       <p
@@ -99,6 +128,34 @@ const reputation = computed(() => {
       >
         Belongs to {{ end.reputation.owner }}
       </p>
+      <p
+        v-if="end.reputation?.ruling_note"
+        class="text-body-medium end__why"
+        data-test="end-ruling-note"
+      >
+        “{{ end.reputation.ruling_note }}”
+      </p>
+      <div v-if="ruleable" class="end__rule">
+        <v-btn
+          variant="text"
+          size="small"
+          density="comfortable"
+          :prepend-icon="Gavel"
+          :aria-label="`${ruling ? 'Change my ruling of' : 'Rule on it for'} ${end.address}`"
+          data-test="end-rule"
+          @click="ruleOpen = true"
+        >
+          {{ ruling ? 'Change my ruling' : 'Rule on it' }}
+        </v-btn>
+      </div>
+      <ThreatRulingDialog
+        v-if="ruleable"
+        v-model="ruleOpen"
+        :subject="end.address"
+        :ruling="current"
+        :heard="heard"
+        @changed="emit('ruled')"
+      />
     </div>
   </div>
 </template>
@@ -153,6 +210,14 @@ const reputation = computed(() => {
 .end__title,
 .end__address {
   overflow-wrap: anywhere;
+}
+
+.end__why {
+  font-style: italic;
+}
+
+.end__rule {
+  margin-inline-start: -0.5rem;
 }
 
 .end__chips {

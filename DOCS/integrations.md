@@ -620,6 +620,30 @@ the page says so as a notice, with how long to wait, and the connection stays as
 was tested, and nothing was found wrong. In the log of requests, one that got HTTP 429 is marked as
 held back by a limit, not as failed.
 
+### Correcting what VirusTotal says
+
+One engine can be wrong either way: an address it flags may be a friend's server, and one it has no
+complaint about may be the one that has been scanning the network. The owner can say so. A subject
+can be ruled **safe** (to correct a false positive) or **suspicious** (to correct a false negative),
+with a reason if you like, from the report window, from the "What you have ruled" card on the
+Threat intelligence page, or on an address of an incident that is on the internet.
+
+A ruling is the owner's word, so it belongs to no service. It asks VirusTotal nothing, needs no
+connection, and can be made about something no service has been asked about. It shows in place of
+VirusTotal's judgement on every page: the report window, the list of what AresGate knows (whose
+counts and filters follow the rulings), an incident's conversations, and the peers of an asset.
+What VirusTotal said stays beside it, with its counts, as what VirusTotal said, and a newer answer
+never replaces a ruling. The AI is told of it too, as a fact about the home that stands over the
+reputation, and is asked to go by it. Taking a ruling back brings what VirusTotal said back. A
+ruling is kept as an address, a domain or the hash of a web address, like an answer, and only
+addresses, domains and web addresses on the internet can be ruled on: what is on the home network
+is refused.
+
+Rulings are made with `PUT /api/threat-intel/overrides` (`subject`, `verdict` `safe` or
+`suspicious`, an optional `note` of up to 500 characters), listed with `GET
+/api/threat-intel/overrides` and taken back with `DELETE /api/threat-intel/overrides?subject=`.
+Each ruling and each taking back is in the audit log, with what was ruled and not the note.
+
 ### Searching by hand
 
 Once the connection has been tested, the Threat intelligence page has a search. It takes an IP

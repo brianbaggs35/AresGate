@@ -4,7 +4,7 @@ import * as threatIntel from '@/api/threatIntel'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { CLEAN_LOOKUP } from '@/test/threatIntel'
+import { CLEAN_LOOKUP, SAFE_RULING } from '@/test/threatIntel'
 
 const CLEAN = CLEAN_LOOKUP
 
@@ -241,5 +241,27 @@ describe('ThreatLookup', () => {
     await wrapper.find('[data-test="threat-reopen"]').trigger('click')
 
     expect(wrapper.findComponent(ThreatReportDialog).props('modelValue')).toBe(true)
+  })
+
+  it('shows the last search as the owner ruled it, and tells the page', async () => {
+    vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
+    const { wrapper, type, submit } = await mountLookup()
+    await type('example.com')
+    await submit()
+    const report = wrapper.findComponent(ThreatReportDialog)
+
+    report.vm.$emit('ruled', { ...SAFE_RULING, verdict: 'suspicious', judgement: 'suspicious' })
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').judgement).toBe('suspicious')
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').reported_judgement).toBe(
+      'clean',
+    )
+    expect(wrapper.emitted('ruled')).toHaveLength(1)
+
+    wrapper.findComponent(ThreatReportDialog).vm.$emit('ruled', null)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatReportDialog).props('lookup').judgement).toBe('clean')
   })
 })

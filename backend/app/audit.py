@@ -81,6 +81,8 @@ class Action(StrEnum):
     THREATS_SETTINGS_CHANGED = "threats.settings_changed"
     THREATS_FAMILY_CALLED = "threats.family_called"
     THREATS_FAMILY_JUDGED = "threats.family_judged"
+    THREAT_INTEL_RULED = "threat_intel.ruled"
+    THREAT_INTEL_RULING_CLEARED = "threat_intel.ruling_cleared"
     INTERFACE_CREATED = "interface.created"
     INTERFACE_CHANGED = "interface.changed"
     INTERFACE_REMOVED = "interface.removed"

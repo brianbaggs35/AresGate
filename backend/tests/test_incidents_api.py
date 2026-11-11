@@ -15,8 +15,8 @@ from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.incidents import episode, queries, search
+from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.intel import subjects, virustotal
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
@@ -1384,14 +1384,72 @@ class TestWhatWasSent:
 
         assert conversation["server"]["reputation"] == {
             "judgement": "malicious",
+            "reported": "malicious",
             "malicious": 3,
             "suspicious": 1,
             "engines": 84,
             "owner": "Example Hosting",
             "country": "NL",
+            "ruling": None,
+            "ruling_note": None,
         }
         # Only the internet is looked up: the device on the network is not.
         assert conversation["client"]["reputation"] is None
+
+    def test_what_the_owner_ruled_of_an_address_stands_over_what_the_service_said(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        intel_store.keep(
+            session,
+            virustotal.PROVIDER,
+            subjects.of_address(ip_address(ATTACKER)),
+            virustotal.Reported(
+                virustotal.Report(
+                    malicious=3,
+                    suspicious=0,
+                    harmless=60,
+                    undetected=20,
+                    reputation=-12,
+                    analysed_at=NOW,
+                    country="NL",
+                    owner="Example Hosting",
+                )
+            ),
+            NOW,
+        )
+        overrides.rule(
+            session, subjects.of_address(ip_address(ATTACKER)), "safe", "A friend's server", NOW
+        )
+        session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        reputation = conversation["server"]["reputation"]
+        assert (reputation["judgement"], reputation["reported"]) == ("clean", "malicious")
+        assert (reputation["ruling"], reputation["ruling_note"]) == ("safe", "A friend's server")
+        assert reputation["malicious"] == 3
+
+    def test_an_address_the_owner_ruled_on_has_a_standing_without_any_report(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        overrides.rule(session, subjects.of_address(ip_address(ATTACKER)), "suspicious", None, NOW)
+        session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["server"]["reputation"] == {
+            "judgement": "suspicious",
+            "reported": "unknown",
+            "malicious": 0,
+            "suspicious": 0,
+            "engines": 0,
+            "owner": None,
+            "country": None,
+            "ruling": "suspicious",
+            "ruling_note": None,
+        }
 
     def test_an_incident_about_a_rule_has_no_conversations(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

@@ -29,8 +29,8 @@ from app.events.event import Severity
 from app.incidents import cleanup, queries
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
+from app.intel import overrides, virustotal
 from app.intel import store as intel_store
-from app.intel import virustotal
 from app.models import (
     Agent,
     AgentRun,
@@ -279,7 +279,8 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
 
 
 def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
-    """What VirusTotal has said of one address on the internet, if it has been asked about it."""
+    """What VirusTotal has said of one address on the internet, if it has been asked about it, and
+    what the owner has ruled of it, which stands over the report."""
     address = read_address(args.name or "")
     if address is None:
         return Found(["Give the address to look up, such as 203.0.113.7."], [], "no address given")
@@ -290,16 +291,30 @@ def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
             [],
             f"{shown} isn't on the internet",
         )
+    ruling = overrides.for_addresses(db, [address]).get(str(address))
+    said = (
+        []
+        if ruling is None
+        else [
+            f"The owner of the network has ruled {shown} {ruling.verdict}"
+            + (f": {redactor.text(ruling.note, 200)}" if ruling.note else ".")
+            + " That stands over what VirusTotal says."
+        ]
+    )
     report = intel_store.report_for(db, virustotal.PROVIDER, address)
     if report is None:
+        silent = (
+            f"VirusTotal hasn't reported on {shown}: it hasn't been asked, or it has no report."
+        )
         return Found(
-            [f"VirusTotal hasn't reported on {shown}: it hasn't been asked, or it has no report."],
+            [*said, silent],
             [],
             f"no VirusTotal report on {shown}",
         )
     total = report.malicious + report.suspicious + report.harmless + report.undetected
     owner = redactor.text(report.owner, 60) if report.owner else "unknown owner"
     lines = [
+        *said,
         f"{shown}: {report.malicious} of {total} engines flag it as malicious, "
         f"{report.suspicious} as suspicious, {report.harmless} as harmless and "
         f"{report.undetected} found nothing.",

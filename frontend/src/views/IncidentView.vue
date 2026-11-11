@@ -353,7 +353,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         description="Who talked to whom in the alerts, what it went over and how much, with what each program knows of both ends put together. What two programs both saw is one conversation, counted once."
         data-test="conversations-card"
       >
-        <IncidentConversations :conversations="shown.conversations" />
+        <IncidentConversations :conversations="shown.conversations" @ruled="load(true)" />
       </SectionCard>
 
       <IncidentInsights v-if="shown.insights" :insights="shown.insights" />

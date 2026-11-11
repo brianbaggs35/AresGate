@@ -1,10 +1,12 @@
-import type { KnownPage, Lookup } from '@/api/threatIntel'
+import type { KnownPage, Lookup, Ruling } from '@/api/threatIntel'
 
 /** A domain no engine flagged, as a search that asked VirusTotal answers. */
 export const CLEAN_LOOKUP: Lookup = {
   kind: 'domain',
   subject: 'example.com',
   judgement: 'clean',
+  reported_judgement: 'clean',
+  ruling: null,
   checked_at: '2026-11-09T12:00:00Z',
   cached: false,
   stale: false,
@@ -32,6 +34,7 @@ export const MALICIOUS_LOOKUP: Lookup = {
   kind: 'ip',
   subject: '93.184.216.34',
   judgement: 'malicious',
+  reported_judgement: 'malicious',
   fresh_until: '2026-11-11T12:00:00Z',
   analysed_at: '2026-11-07T00:00:00Z',
   malicious: 3,
@@ -50,6 +53,7 @@ export const KEPT_URL: Lookup = {
   kind: 'url',
   subject: 'login.example.net',
   judgement: 'unknown',
+  reported_judgement: 'unknown',
   cached: true,
   stale: true,
   repeatable: false,
@@ -69,4 +73,22 @@ export function knownPage(overrides: Partial<KnownPage> = {}): KnownPage {
     items: [{ ...MALICIOUS_LOOKUP, cached: true }, { ...CLEAN_LOOKUP, cached: true }, KEPT_URL],
     ...overrides,
   }
+}
+
+/** What the owner ruled of an address: that it is safe, and why. */
+export const SAFE_RULING: Ruling = {
+  kind: 'ip',
+  subject: '93.184.216.34',
+  verdict: 'safe',
+  note: "My friend's server",
+  set_at: '2026-11-11T09:00:00Z',
+  judgement: 'clean',
+}
+
+/** An address VirusTotal flagged, that the owner ruled safe. */
+export const RULED_LOOKUP: Lookup = {
+  ...MALICIOUS_LOOKUP,
+  judgement: 'clean',
+  reported_judgement: 'malicious',
+  ruling: SAFE_RULING,
 }

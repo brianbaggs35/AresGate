@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, Search } from '@lucide/vue'
+import { ChevronRight, Gavel, Search } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
@@ -9,6 +9,7 @@ import {
   type Judgement,
   type KnownPage,
   type Lookup,
+  type Ruling,
 } from '@/api/threatIntel'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -16,17 +17,18 @@ import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { formatAgo, formatCount } from '@/format'
 import { useSessionStore } from '@/stores/session'
-import { JUDGEMENT, JUDGEMENTS, KIND } from '@/threatIntel'
+import { JUDGEMENT, JUDGEMENTS, KIND, RULING, withRuling } from '@/threatIntel'
 
 /**
  * What AresGate knows from threat intelligence: every answer it has kept, newest first, whether a
  * search or a background lookup asked for it. Looking through them asks VirusTotal nothing. An
  * answer opens as the report it was, and Check again asks VirusTotal for a newer one, which counts
- * toward its limits as a search does. `version` changes when something on the page got an answer,
+ * toward its limits as a search does. Where the owner ruled an answer safe or suspicious, that is
+ * what its row says, and the filters and counts follow. `version` changes when something on the page got an answer,
  * so the list is read again.
  */
 const props = defineProps<{ version?: number }>()
-const emit = defineEmits<{ refused: [] }>()
+const emit = defineEmits<{ refused: []; ruled: [] }>()
 
 const PAGE = 25
 
@@ -107,14 +109,24 @@ function open(item: Lookup) {
 
 /** A sentence a screen reader says for a row, since the row is one button. */
 function describe(item: Lookup): string {
-  return `${item.subject}, ${KIND[item.kind]}, ${JUDGEMENT[item.judgement].short}. Open its report.`
+  const ruled = item.ruling
+    ? ` You ruled it ${RULING[item.ruling.verdict].short.toLowerCase()}.`
+    : ''
+  return `${item.subject}, ${KIND[item.kind]}, ${JUDGEMENT[item.judgement].short}.${ruled} Open its report.`
 }
 
 /** How many engines flagged it, of how many gave a verdict. */
 function tally(item: Lookup): string {
-  if (item.judgement === 'unknown') return 'No report'
+  if (item.reported_judgement === 'unknown') return 'No report'
   const engines = item.malicious + item.suspicious + item.harmless + item.undetected
   return `${formatCount(item.malicious + item.suspicious)} of ${formatCount(engines)} flagged`
+}
+
+/** Shows the answer that is open as the owner ruled it, or as VirusTotal made it where the ruling
+ * was taken back. The page is told, and reads the list again, whose counts and filters follow. */
+function ruled(ruling: Ruling | null) {
+  if (opened.value) opened.value = withRuling(opened.value, ruling)
+  emit('ruled')
 }
 
 /** Asks VirusTotal again about the answer that is open, and shows what came back. */
@@ -238,6 +250,15 @@ onMounted(load)
             </v-chip>
             <span class="known__subject" data-test="known-subject">{{ item.subject }}</span>
             <span class="known__facts text-body-small text-medium-emphasis">
+              <v-chip
+                v-if="item.ruling"
+                :prepend-icon="Gavel"
+                variant="outlined"
+                size="x-small"
+                data-test="known-ruled"
+              >
+                Ruled by you
+              </v-chip>
               <span>{{ KIND[item.kind] }}</span>
               <span data-test="known-tally">{{ tally(item) }}</span>
               <span data-test="known-checked">Checked {{ formatAgo(item.checked_at) }}</span>
@@ -261,6 +282,7 @@ onMounted(load)
       :lookup="opened"
       :busy="checking"
       @refresh="checkAgain"
+      @ruled="ruled"
     />
   </SectionCard>
 </template>

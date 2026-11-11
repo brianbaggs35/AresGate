@@ -23,8 +23,8 @@ from app.ai.gateway import Answer, Unavailable
 from app.ai.redaction import Level, Redactor
 from app.config import Settings
 from app.incidents import queries
+from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.intel import subjects, virustotal
 from app.models import (
     CLASSES,
     USAGE_LEVELS,
@@ -1118,6 +1118,48 @@ class TestReputationInThePrompt:
         said = self.prompt(session, found)
 
         assert "owner unknown owner, unknown country; community score 0" in said
+
+    def test_what_the_owner_ruled_of_an_address_is_given_to_the_ai_with_the_reason(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        overrides.rule(
+            session,
+            subjects.of_address(ip_address(ATTACKER)),
+            "safe",
+            "My friend's server",
+            NOW,
+        )
+
+        said = self.prompt(session, found)
+
+        assert "What the owner of the network has ruled of the internet addresses involved:" in said
+        assert f"- {ATTACKER} is ruled safe by the owner: My friend's server" in said
+        assert "stands over what a reputation service said" in triage.SYSTEM
+
+    def test_a_ruling_with_no_reason_and_a_report_are_both_given(self, session: Session) -> None:
+        found = incident(session)
+        save_report(
+            session,
+            ip_address(ATTACKER),
+            virustotal.Report(
+                malicious=0,
+                suspicious=0,
+                harmless=70,
+                undetected=5,
+                reputation=0,
+                analysed_at=NOW,
+                country=None,
+                owner=None,
+                asn=None,
+            ),
+        )
+        overrides.rule(session, subjects.of_address(ip_address(ATTACKER)), "suspicious", None, NOW)
+
+        said = self.prompt(session, found)
+
+        assert "What VirusTotal says of the internet addresses involved:" in said
+        assert f"- {ATTACKER} is ruled suspicious by the owner\n" in said + "\n"
 
     def test_an_incident_without_any_report_has_no_reputation_lines(self, session: Session) -> None:
         found = incident(session)

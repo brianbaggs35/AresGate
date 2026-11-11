@@ -31,9 +31,9 @@ from app.ai.redaction import Redactor
 from app.events.event import Severity
 from app.incidents import attention, conversations, filters, insights, occurrences, queries
 from app.incidents.verdicts import MUTING
+from app.intel import overrides, virustotal
 from app.intel import store as intel_store
-from app.intel import virustotal
-from app.models import CLASSES, AiCall, AiTriage, Incident, IntelSubject
+from app.models import CLASSES, AiCall, AiTriage, Incident, IntelOverride, IntelSubject
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
 from app.threats import calls, settings
@@ -86,8 +86,10 @@ why in "verdict_reason", in one sentence.
 "observations" are one to five short, plain statements of what stands out in what was actually \
 sent, taken from "What the programs said of the traffic" and nothing else: who talked to whom and \
 over what service, what was asked for, how much moved and for how long, where the other end is and \
-whether any program or reputation service flags it, and what the programs that said more add. Say \
-what is ordinary as well as what is not, and never a guess. If the programs said nothing beyond \
+whether any program or reputation service flags it, and what the programs that said more add. \
+Where the owner has ruled an address safe or suspicious, that is a fact about their network, so it \
+stands over what a reputation service said of it. Say what is ordinary as well as what is not, and \
+never a guess. If the programs said nothing beyond \
 the basics, it may be empty.
 
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
@@ -317,13 +319,26 @@ def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[s
 
 def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> list[str]:
     """What VirusTotal has said of the internet addresses an incident involves, if it has said
-    anything about any of them. A report is only kept for an address that was asked about."""
+    anything about any of them, and what the owner has ruled of them, which stands over it. A report
+    is only kept for an address that was asked about; a ruling may be of any."""
     reports = intel_store.reports_for(db, virustotal.PROVIDER, incident.addresses)
-    if not reports:
-        return []
-    return ["What VirusTotal says of the internet addresses involved:"] + [
-        f"- {_reputation(report, redactor)}" for report in reports
-    ]
+    rulings = overrides.for_addresses(db, incident.addresses)
+    lines: list[str] = []
+    if reports:
+        lines += ["What VirusTotal says of the internet addresses involved:"] + [
+            f"- {_reputation(report, redactor)}" for report in reports
+        ]
+    if rulings:
+        lines += ["What the owner of the network has ruled of the internet addresses involved:"] + [
+            f"- {_ruling(ruling, redactor)}" for ruling in rulings.values()
+        ]
+    return lines
+
+
+def _ruling(ruling: IntelOverride, redactor: Redactor) -> str:
+    """One address's ruling, as the AI reads it: what the owner made of it, and why."""
+    why = f": {redactor.text(ruling.note, 200)}" if ruling.note else ""
+    return f"{redactor.address(ruling.subject)} is ruled {ruling.verdict} by the owner{why}"
 
 
 def _reputation(report: IntelSubject, redactor: Redactor) -> str:

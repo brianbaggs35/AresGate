@@ -1,6 +1,7 @@
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
+import IncidentConversations from '@/components/IncidentConversations.vue'
 import VerdictPanel from '@/components/VerdictPanel.vue'
 import { useSessionStore } from '@/stores/session'
 import {
@@ -543,6 +544,18 @@ describe('IncidentView', () => {
       })
       expect(some.find('conversations-card').exists()).toBe(true)
       expect(some.text('end-title')).toBe('workstation')
+    })
+
+    it('reads the incident again when an address in it is ruled on', async () => {
+      const { fetchIncident, wrapper } = await open({
+        found: detail({ conversations: { items: [conversation()], total: 1 } }),
+      })
+      const before = fetchIncident.mock.calls.length
+
+      wrapper.findComponent(IncidentConversations).vm.$emit('ruled')
+      await flushPromises()
+
+      expect(fetchIncident.mock.calls.length).toBe(before + 1)
     })
 
     it('says what connecting the others would add, when some are not connected', async () => {

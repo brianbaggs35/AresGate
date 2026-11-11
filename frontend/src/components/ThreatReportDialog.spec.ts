@@ -1,13 +1,14 @@
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import type { Lookup } from '@/api/threatIntel'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { MALICIOUS_LOOKUP } from '@/test/threatIntel'
+import { MALICIOUS_LOOKUP, RULED_LOOKUP } from '@/test/threatIntel'
 
 const MALICIOUS = MALICIOUS_LOOKUP
 
 const UNKNOWN: Lookup = {
   ...MALICIOUS,
   judgement: 'unknown',
+  reported_judgement: 'unknown',
   malicious: 0,
   suspicious: 0,
   harmless: 0,
@@ -75,6 +76,7 @@ describe('ThreatReportDialog', () => {
     const { inWindow } = await mountReport({
       ...MALICIOUS,
       judgement: 'suspicious',
+      reported_judgement: 'suspicious',
       malicious: 0,
       suspicious: 2,
     })
@@ -91,6 +93,7 @@ describe('ThreatReportDialog', () => {
     const { inWindow } = await mountReport({
       ...MALICIOUS,
       judgement: 'clean',
+      reported_judgement: 'clean',
       malicious: 0,
       suspicious: 0,
     })
@@ -279,5 +282,67 @@ describe('ThreatReportDialog', () => {
     const { inWindow } = await mountReport(MALICIOUS, { width: 400 })
 
     expect(inWindow('[data-test="threat-report"]')?.classList).toContain('report--screen')
+  })
+
+  it('has the owner rule on the subject, and says it to the page', async () => {
+    const onRuled = vi.fn()
+    const mounted = await mountWithPlugins(ThreatReportDialog, {
+      withApp: true,
+      signedIn: 'brian',
+      props: { lookup: MALICIOUS, modelValue: true, onRuled },
+    })
+    await flushPromises()
+    const inWindow = (selector: string) =>
+      document.querySelector<HTMLElement>(`.v-overlay--active ${selector}`)
+    expect(inWindow('[data-test="ruling"]')).not.toBeNull()
+    expect(inWindow('[data-test="report-ruling-note"]')).toBeNull()
+
+    mounted.wrapper.findComponent({ name: 'ThreatRuling' }).vm.$emit('changed', null)
+
+    expect(onRuled).toHaveBeenCalledWith(null)
+  })
+
+  it('shows what the owner ruled in place of what VirusTotal said, and keeps what it said beside it', async () => {
+    const { inWindow } = await mountReport(RULED_LOOKUP)
+
+    const verdict = inWindow('[data-test="report-judgement"]')
+    expect(verdict?.textContent).toContain('You ruled it safe')
+    expect(verdict?.getAttribute('data-judgement')).toBe('clean')
+    expect(inWindow('[data-test="report-ruling-note"]')?.textContent.trim()).toBe(
+      "“My friend's server”",
+    )
+    expect(inWindow('[data-test="report-summary"]')?.textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'VirusTotal said: malicious. 3 of 84 engines flagged it as malicious.',
+    )
+    // The counts are VirusTotal's, which a ruling does not change.
+    expect(inWindow('[data-test="report-bar"]')).not.toBeNull()
+  })
+
+  it('shows what a ruling of suspicious comes to for a subject with no report', async () => {
+    const { inWindow } = await mountReport({
+      ...UNKNOWN,
+      judgement: 'suspicious',
+      ruling: {
+        ...RULED_LOOKUP.ruling!,
+        verdict: 'suspicious',
+        note: null,
+        judgement: 'suspicious',
+      },
+    })
+
+    expect(inWindow('[data-test="report-judgement"]')?.textContent).toContain(
+      'You ruled it suspicious',
+    )
+    expect(inWindow('[data-test="report-summary"]')?.textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'VirusTotal said: no report. VirusTotal has no report on it yet.',
+    )
+    expect(inWindow('[data-test="report-bar"]')).toBeNull()
+    expect(inWindow('[data-test="report-ruling-note"]')).toBeNull()
+  })
+
+  it('offers no ruling for a kept web address, which is kept without its text', async () => {
+    const { inWindow } = await mountReport({ ...MALICIOUS, kind: 'url', repeatable: false })
+
+    expect(inWindow('[data-test="ruling"]')).toBeNull()
   })
 })

@@ -10,6 +10,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatLookup from '@/components/ThreatLookup.vue'
+import ThreatRulings from '@/components/ThreatRulings.vue'
 import { useSessionStore } from '@/stores/session'
 
 /**
@@ -17,7 +18,9 @@ import { useSessionStore } from '@/stores/session'
  * the one service for now. Its search is offered once its connection has been tested. Until then
  * the page says that a threat intelligence integration is needed, with a way to the Integrations
  * page, and nothing else in AresGate waits for it. Under the search is what AresGate knows: every
- * answer it has kept, which stays readable whether or not a service is connected now.
+ * answer it has kept, which stays readable whether or not a service is connected now. Above that
+ * is what the owner has ruled safe or suspicious, whatever the services made of it, which needs no
+ * service either.
  */
 const session = useSessionStore()
 
@@ -65,6 +68,7 @@ onMounted(load)
       :pause="virustotal?.pause ?? null"
       @refused="load"
       @answered="answers += 1"
+      @ruled="answers += 1"
     />
 
     <v-skeleton-loader
@@ -93,6 +97,9 @@ onMounted(load)
       </EmptyState>
     </SectionCard>
 
-    <ThreatKnown v-if="integrations && !error" :version="answers" @refused="load" />
+    <template v-if="integrations && !error">
+      <ThreatRulings :version="answers" @changed="answers += 1" />
+      <ThreatKnown :version="answers" @refused="load" @ruled="answers += 1" />
+    </template>
   </AppPage>
 </template>
