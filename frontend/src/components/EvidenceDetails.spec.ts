@@ -147,16 +147,12 @@ describe('EvidenceDetails', () => {
 
     const rows = wrapper.findAll('[data-test="evidence-dump-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows[0]?.findAll('[role="cell"]').map((cell) => cell.text())).toEqual([
+    expect(rows[0]?.findAll('td').map((cell) => cell.text())).toEqual([
       '0000',
       '47 45 54 20 2f',
       'GET /',
     ])
-    expect(rows[1]?.findAll('[role="cell"]').map((cell) => cell.text())).toEqual([
-      '0010',
-      '61 64 6d',
-      'adm',
-    ])
+    expect(rows[1]?.findAll('td').map((cell) => cell.text())).toEqual(['0010', '61 64 6d', 'adm'])
   })
 
   it('shows no dump where the packet was not kept', async () => {

@@ -35,6 +35,11 @@ _PLACES: Final[dict[str, tuple[int, Kind]]] = {
 _UNKNOWN: Final[tuple[int, Kind]] = (2, "detector")
 
 
+def _place(source: str) -> tuple[int, Kind]:
+    """Where a program sits on the way in; one never heard of is taken for a detector."""
+    return _PLACES.get(source, _UNKNOWN)
+
+
 @dataclass(frozen=True)
 class Hop:
     kind: Kind
@@ -105,17 +110,15 @@ def build(
         seen.setdefault(signal.source, []).append(signal)
     hops = [
         Hop(
-            kind=(place := _PLACES.get(source, _UNKNOWN))[1],
+            kind=_place(source)[1],
             subject=rules.name_of(source),
             source=source,
             alerts=len(found),
             first_at=min(each.occurred_at for each in found),
             last_at=max(each.occurred_at for each in found),
-            note=_note(place[1], blocked=blocked, dropped=dropped, banned=banned),
+            note=_note(_place(source)[1], blocked=blocked, dropped=dropped, banned=banned),
         )
-        for source, found in sorted(
-            seen.items(), key=lambda item: (_PLACES.get(item[0], _UNKNOWN)[0], item[0])
-        )
+        for source, found in sorted(seen.items(), key=lambda item: (_place(item[0])[0], item[0]))
     ]
     named = {str(address): device.hostname for address, device in devices}
     near = Hop("device", named.get(inside) or inside, None)
