@@ -4,10 +4,10 @@ import { mountWithPlugins } from '@/test/mount'
 
 async function show(
   changes: Parameters<typeof conversationEnd>[0],
-  role: 'client' | 'server' = 'client',
+  side: 'client' | 'server' = 'client',
 ) {
   const { wrapper } = await mountWithPlugins(ConversationEnd, {
-    props: { end: conversationEnd(changes), role },
+    props: { end: conversationEnd(changes), side },
   })
   return wrapper
 }

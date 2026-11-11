@@ -196,7 +196,9 @@ export function countryName(code: string, locale?: string): string {
  * is a decoration: the country is always named beside it. */
 export function flagOf(code: string): string {
   if (!/^[A-Z]{2}$/.test(code)) return ''
-  return String.fromCodePoint(0x1f1a5 + code.charCodeAt(0), 0x1f1a5 + code.charCodeAt(1))
+  return String.fromCodePoint(
+    ...Array.from(code, (letter) => 0x1f1a5 + Number(letter.codePointAt(0))),
+  )
 }
 
 /** What one end of a conversation is called: its name where a program gave one, or its address. */
