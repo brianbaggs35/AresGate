@@ -26,12 +26,12 @@ given, changed or taken back.
 """
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from sqlalchemy import ColumnElement, and_, func, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
@@ -634,15 +634,55 @@ def hold(db: Session) -> None:
     db.execute(select(func.pg_advisory_xact_lock(LOCK)))
 
 
-def reapply(db: Session) -> None:
+def reach(db: Session, rule: VerdictRule) -> set[int]:
+    """The ids of the incidents that are not over and that a verdict rule can make a difference to:
+    the ones with a signal it was applied to, or could be applied to now. A signal is judged by the
+    rules it matches and by nothing else, so a rule that is given, changed or taken back leaves the
+    other incidents as they are. Asked before a rule is taken back, while its signals say so.
+
+    This is a superset: a rule that names a destination is looked for by its address only, and an
+    incident that turns out not to change is judged again to the same result."""
+    named: list[ColumnElement[bool]] = []
+    if rule.source is not None:
+        named.append(IncidentSignal.source == rule.source)
+    if rule.signature is not None:
+        named.append(IncidentSignal.signature == rule.signature)
+    if rule.address is not None:
+        named.append(
+            or_(
+                IncidentSignal.src_address == rule.address,
+                IncidentSignal.dst_address == rule.address,
+            )
+        )
+    # A rule always names something (see ``VerdictIn``), so this is never every signal.
+    touched = or_(IncidentSignal.verdict_rule_id == rule.id, and_(*named))
+    return set(
+        db.scalars(
+            select(IncidentSignal.incident_id)
+            .join(Incident, Incident.id == IncidentSignal.incident_id)
+            .where(Incident.status != "resolved", touched)
+            .distinct()
+        )
+    )
+
+
+def reapply(db: Session, only: Collection[int] | None = None) -> None:
     """Judges the signals of the incidents that are not over again, after the owner gave, changed
     or took back a verdict, or changed the noise filters. One that is over is history and keeps
     what was said at the time. The caller commits, with the verdict or the filters.
 
+    With ``only``, just those incidents (see ``reach``): one verdict is not worth judging every
+    signal there is again, which is what a filter, which can change any of them, needs.
+
     An incident with more signals than it lists (``MAX_SIGNALS``) is judged by the ones it lists,
     and counts those."""
     hold(db)
+    if only is not None and not only:
+        return
     verdict_rules = verdicts.load(db)
     noise = filters.load(db)
-    for incident in db.scalars(select(Incident).where(Incident.status != "resolved")).all():
+    query = select(Incident).where(Incident.status != "resolved").order_by(Incident.id)
+    if only is not None:
+        query = query.where(Incident.id.in_(only))
+    for incident in db.scalars(query).all():
         _rebuild(db, incident, verdict_rules, noise)

@@ -8,9 +8,18 @@ from sqlalchemy.orm import Session
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
+from app.incidents import engine
 from app.models import AuditEvent, Incident, User, VerdictRule
 from tests.helpers import OTHER_ORIGIN
-from tests.test_incidents_engine import ATTACKER, DEVICE, NOW, alert, run, store
+from tests.test_incidents_engine import (
+    ATTACKER,
+    DEVICE,
+    NOW,
+    OTHER_ATTACKER,
+    alert,
+    run,
+    store,
+)
 
 BASE = "/api/verdicts"
 SIGNATURE = "ET SCAN Potential SSH Scan"
@@ -434,3 +443,115 @@ class TestTakingAVerdictBack:
         response = client.delete(f"{BASE}/999999", headers=headers(csrf_token))
 
         assert response.status_code == 404
+
+
+class TestOnlyWhatItCouldChangeIsJudged:
+    """A verdict is judged again only in the incidents it can make a difference to: on a network
+    with thousands of open incidents, giving one must not wait for every signal to be judged."""
+
+    @pytest.fixture
+    def rebuilt(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """The subjects of the incidents that are judged again, in the order they were."""
+        subjects: list[str] = []
+        original = engine.__dict__["_rebuild"]
+
+        def spy(db: Session, incident: Incident, *rest: Any) -> None:
+            subjects.append(incident.subject)
+            original(db, incident, *rest)
+
+        monkeypatch.setattr(engine, "_rebuild", spy)
+        return subjects
+
+    @pytest.fixture
+    def two(self, session: Session, settings: Settings) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, severity=Severity.HIGH),
+            alert(NOW, n=2, severity=Severity.HIGH, src_address=OTHER_ATTACKER),
+        )
+        run(session)
+
+    def test_giving_one_leaves_the_other_incidents_alone(
+        self, client: TestClient, csrf_token: str, two: None, rebuilt: list[str]
+    ) -> None:
+        give(client, csrf_token, address=ATTACKER)
+
+        assert rebuilt == [ATTACKER]
+
+    def test_so_does_changing_one(
+        self, client: TestClient, csrf_token: str, two: None, rebuilt: list[str]
+    ) -> None:
+        rule_id = give(client, csrf_token, address=ATTACKER).json()["id"]
+        rebuilt.clear()
+
+        client.patch(f"{BASE}/{rule_id}", json={"verdict": "threat"}, headers=headers(csrf_token))
+
+        assert rebuilt == [ATTACKER]
+
+    def test_and_so_does_taking_one_back(
+        self, client: TestClient, csrf_token: str, two: None, rebuilt: list[str]
+    ) -> None:
+        rule_id = give(client, csrf_token, address=ATTACKER).json()["id"]
+        rebuilt.clear()
+
+        client.delete(f"{BASE}/{rule_id}", headers=headers(csrf_token))
+
+        assert rebuilt == [ATTACKER]
+
+    def test_a_verdict_nothing_matches_judges_nothing_again(
+        self, client: TestClient, csrf_token: str, two: None, rebuilt: list[str]
+    ) -> None:
+        give(client, csrf_token, address="8.8.4.4")
+
+        assert rebuilt == []
+
+    def test_a_verdict_on_a_program_reaches_every_incident_that_program_reported(
+        self, client: TestClient, csrf_token: str, two: None, rebuilt: list[str]
+    ) -> None:
+        give(client, csrf_token, source="wazuh")
+
+        assert sorted(rebuilt) == sorted([ATTACKER, OTHER_ATTACKER])
+
+
+class TestWhatAVerdictReaches:
+    def test_the_incidents_with_a_signal_it_is_about(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1),
+            alert(NOW, n=2, src_address=OTHER_ATTACKER, signature="ET WEB Probe"),
+        )
+        run(session)
+        by_subject = {item.subject: item.id for item in session.scalars(select(Incident))}
+        both = {by_subject[ATTACKER], by_subject[OTHER_ATTACKER]}
+
+        def reached(**about: Any) -> set[int]:
+            rule = VerdictRule(verdict="threat", **about)
+            session.add(rule)
+            session.flush()
+            return engine.reach(session, rule)
+
+        assert reached(address=ATTACKER) == {by_subject[ATTACKER]}
+        assert reached(signature="ET WEB Probe") == {by_subject[OTHER_ATTACKER]}
+        assert reached(address=ATTACKER, signature="ET WEB Probe") == set()
+        assert reached(source="opnsense") == set()
+        assert reached(source="wazuh") == both
+        # A signal that names an address as where it went is about that address too.
+        assert reached(address=DEVICE) == both
+
+    def test_an_incident_that_is_over_is_history_and_is_not_reached(
+        self, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1))
+        run(session)
+        incident = session.scalars(select(Incident)).one()
+        incident.status = "resolved"
+        session.flush()
+        rule = VerdictRule(verdict="threat", address=ATTACKER)
+        session.add(rule)
+        session.flush()
+
+        assert engine.reach(session, rule) == set()

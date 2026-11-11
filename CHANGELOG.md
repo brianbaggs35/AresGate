@@ -4,6 +4,17 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **Giving a verdict on an incident is quick again.** Saying what you think of an incident, changing
+  it or taking it back used to judge every signal of every open incident again before the page
+  answered, so the wait grew with everything AresGate had seen. Now only the incidents the verdict
+  can make a difference to are judged again: the ones with a signal it applies to, or applied to
+  before. What the incidents say is the same as before. Changing the noise filters still judges them
+  all, since a filter can change any of them.
+
 ## 0.1.2
 
 ### Added
