@@ -69,6 +69,9 @@ function shown(step: ChainStep) {
           <p class="text-body-medium text-medium-emphasis path__when">
             <v-icon :icon="Globe" size="16" aria-hidden="true" />
             <span class="path__subject" data-test="step-subject">{{ step.subject }}</span>
+            <span v-if="step.subject_name" data-test="step-subject-name">
+              ({{ step.subject_name }})
+            </span>
             at <time :datetime="step.first_seen_at">{{ formatClock(step.first_seen_at) }}</time
             >,
             {{ formatAgo(step.first_seen_at) }}

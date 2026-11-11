@@ -14,6 +14,7 @@ import {
   rawText,
   readColumns,
   readTimeMode,
+  agreement,
   routeOf,
   tableRows,
   volumeBars,
@@ -70,6 +71,22 @@ describe('the order of the events', () => {
 
   it('finds a cursor a while before an event', () => {
     expect(cursorBefore('1793000060000000.12', 60)).toBe('1793000000000000.0')
+  })
+})
+
+describe('what other programs said of the same alert', () => {
+  it('lists the programs that reported it too, or says it is such a report', () => {
+    expect(agreement(logEvent({ also_reported_by: ['Wazuh'] }))).toBe('Also reported by Wazuh')
+    expect(agreement(logEvent({ also_reported_by: ['Wazuh', 'ntopng'] }))).toBe(
+      'Also reported by Wazuh and ntopng',
+    )
+    expect(agreement(logEvent({ twin_of: 4 }))).toBe(
+      'The same alert as one already reported by another program',
+    )
+  })
+
+  it('says nothing of an event that nobody else reported', () => {
+    expect(agreement(logEvent())).toBeNull()
   })
 })
 

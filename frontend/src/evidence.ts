@@ -116,7 +116,8 @@ export function hasDetail(evidence: Evidence | null): evidence is Evidence {
       evidence.summary !== null ||
       evidence.score !== null ||
       evidence.flow !== null ||
-      evidence.payload !== null)
+      evidence.payload !== null ||
+      evidence.dump.length > 0)
   )
 }
 

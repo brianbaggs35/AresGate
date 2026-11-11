@@ -257,6 +257,14 @@ export interface FlowDetail {
   duration: number | null
 }
 
+/** One line of a dump of a packet's data: where it starts, sixteen bytes in hexadecimal and the same
+ * bytes as text, with a dot where one is not printable. */
+export interface DumpRow {
+  offset: string
+  hex: string
+  text: string
+}
+
 /** What one program said of an alert besides who, where and when. A member is empty where the
  * program said nothing for it. */
 export interface Evidence {
@@ -277,6 +285,8 @@ export interface Evidence {
   score: number | null
   flow: FlowDetail | null
   payload: string | null
+  /** The first bytes of the packet that set it off, where the program kept it. */
+  dump: DumpRow[]
 }
 
 /** A program that reported the same alert as the first did, moments later: it agrees, and it may
@@ -362,6 +372,8 @@ export interface Reputation {
 export interface ConversationEnd extends FlowEnd {
   address: string
   reputation: Reputation | null
+  /** Where its name came from: a program that saw it, or the address's reverse lookup (DNS). */
+  name_from: 'program' | 'dns' | null
 }
 
 /** What the traffic asked for: a host name, a name looked up, a site, an address. */
@@ -391,6 +403,8 @@ export interface Conversation {
   names: AskedFor[]
   /** The programs that reported it, the one that reported most first. */
   programs: { source: string; source_name: string }[]
+  /** What the traffic was for, in a few plain words, where that can be told. */
+  purpose: string | null
 }
 
 export interface Conversations {
@@ -439,6 +453,30 @@ export interface IncidentDevice {
   vendor: string | null
 }
 
+/** Where a program that saw an incident sits on the way between the internet and the device. */
+export type HopKind = 'internet' | 'firewall' | 'detector' | 'monitor' | 'agent' | 'device'
+
+export interface Hop {
+  kind: HopKind
+  /** The address, the device's name, or the program's. */
+  subject: string
+  /** What the address is called, for the internet end, where that is known. */
+  name: string | null
+  source: string | null
+  /** How many of the incident's signals this program reported. */
+  alerts: number
+  first_at: string | null
+  last_at: string | null
+  /** What it did about it, in words, where it says. */
+  note: string | null
+}
+
+/** How an incident travelled, drawn from where each program that saw it sits. */
+export interface TravelPath {
+  direction: 'inbound' | 'outbound'
+  hops: Hop[]
+}
+
 export interface IncidentDetail extends Incident {
   reasons: Reason[]
   /** Why its signals are one incident, in plain words, a fact to a line. */
@@ -463,6 +501,8 @@ export interface IncidentDetail extends Incident {
   conversations: Conversations | null
   /** The integrations that are not connected, and what each would add to an incident. */
   missing: MissingProgram[]
+  /** How it travelled, or null where there is no path to draw. */
+  path: TravelPath | null
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */

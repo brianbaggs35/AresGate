@@ -6,7 +6,7 @@
 import type { LogEvent, LogVolume } from '@/api/logs'
 import type { BarSeries } from '@/charts/BarChart.vue'
 import { severityColor } from '@/charts/palette'
-import { formatDay, formatTimestamp } from '@/format'
+import { formatDay, formatList, formatTimestamp } from '@/format'
 import { SEVERITIES, SEVERITY } from '@/severity'
 
 /** How many events the page asks for at a time. */
@@ -73,6 +73,17 @@ export function endpoint(address: string | null, port: number | null): string {
   if (!address) return port === null ? '' : `:${port.toString()}`
   if (port === null) return address
   return address.includes(':') ? `[${address}]:${port.toString()}` : `${address}:${port.toString()}`
+}
+
+/** What another program said of the same alert, in words: that others reported it too (it counts
+ * once, with the first), or that this is one of those reports. Null for an event nobody else
+ * reported. */
+export function agreement(event: LogEvent): string | null {
+  if (event.also_reported_by.length > 0) {
+    return `Also reported by ${formatList(event.also_reported_by)}`
+  }
+  if (event.twin_of !== null) return 'The same alert as one already reported by another program'
+  return null
 }
 
 /** Where an event came from and where it went, such as `203.0.113.7 → 192.168.1.20:22`; one end

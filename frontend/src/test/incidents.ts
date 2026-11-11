@@ -7,6 +7,7 @@ import type {
   Evidence,
   FamilyBrief,
   FlowEnd,
+  Hop,
   Incident,
   IncidentResponse,
   IncidentDetail,
@@ -18,6 +19,7 @@ import type {
   Reason,
   Signal,
   SourceCount,
+  TravelPath,
   Triage,
 } from '@/api/incidents'
 
@@ -173,6 +175,52 @@ export function evidence(changes: Partial<Evidence> = {}): Evidence {
     score: null,
     flow: null,
     payload: null,
+    dump: [],
+    ...changes,
+  }
+}
+
+/** A stop on the way: the internet, unless given. */
+export function hop(changes: Partial<Hop> = {}): Hop {
+  return {
+    kind: 'internet',
+    subject: '93.184.216.34',
+    name: null,
+    source: null,
+    alerts: 0,
+    first_at: null,
+    last_at: null,
+    note: null,
+    ...changes,
+  }
+}
+
+/** How an attack came in from the internet past the firewall and the intrusion detection system to
+ * a device that its agent also saw it on, unless given. */
+export function travelPath(changes: Partial<TravelPath> = {}): TravelPath {
+  return {
+    direction: 'inbound',
+    hops: [
+      hop({ name: 'scanner-17.example.net' }),
+      hop({
+        kind: 'firewall',
+        subject: 'OPNsense',
+        source: 'opnsense',
+        alerts: 12,
+        first_at: new Date(NOW - 20 * MINUTE).toISOString(),
+        last_at: new Date(NOW - 2 * MINUTE).toISOString(),
+        note: 'Turned it away 12 times.',
+      }),
+      hop({
+        kind: 'agent',
+        subject: 'Wazuh',
+        source: 'wazuh',
+        alerts: 1,
+        first_at: new Date(NOW - 10 * MINUTE).toISOString(),
+        last_at: new Date(NOW - 10 * MINUTE).toISOString(),
+      }),
+      hop({ kind: 'device', subject: 'workstation' }),
+    ],
     ...changes,
   }
 }
@@ -202,6 +250,7 @@ export function conversationEnd(changes: Partial<ConversationEnd> = {}): Convers
     location: 'local',
     blacklisted: false,
     reputation: null,
+    name_from: null,
     ...changes,
   }
 }
@@ -235,6 +284,7 @@ export function conversation(changes: Partial<Conversation> = {}): Conversation 
       { source: 'ntopng', source_name: 'ntopng' },
       { source: 'opnsense', source_name: 'OPNsense' },
     ],
+    purpose: 'Looking up a name (DNS): example.com',
     ...changes,
   }
 }
@@ -337,6 +387,7 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     insights: null,
     conversations: null,
     missing: [],
+    path: null,
     ...changes,
   }
 }

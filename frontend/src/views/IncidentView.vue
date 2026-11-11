@@ -30,6 +30,7 @@ import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentConversations from '@/components/IncidentConversations.vue'
+import IncidentPath from '@/components/IncidentPath.vue'
 import IncidentCoverage from '@/components/IncidentCoverage.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
 import IncidentInsights from '@/components/IncidentInsights.vue'
@@ -378,6 +379,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         data-test="conversations-card"
       >
         <IncidentConversations :conversations="shown.conversations" @ruled="load(true)" />
+      </SectionCard>
+
+      <SectionCard
+        v-if="shown.path"
+        title="How it travelled"
+        description="Where each program that saw it sits between the internet and the device, drawn as the path it took. AresGate sends nothing out to find the way: the path is what the programs reported, so one that did not see it is not on it."
+        data-test="path-card"
+      >
+        <IncidentPath :path="shown.path" />
       </SectionCard>
 
       <IncidentInsights v-if="shown.insights" :insights="shown.insights" />

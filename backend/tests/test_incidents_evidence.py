@@ -1,5 +1,6 @@
 """What the programs reported besides the basics, boiled down for an incident to keep."""
 
+import base64
 from datetime import timedelta
 from typing import Any, ClassVar
 
@@ -652,3 +653,38 @@ class TestWazuhDetail:
             "Fix": "Active",
         }
         assert found["indicators"] == [{"kind": "cve", "value": "CVE-2026-0001"}]
+
+
+class TestThePacketDump:
+    def packet(self, data: bytes) -> dict[str, object]:
+        return {
+            "alert_sid": 1,
+            "alert": {"signature": "x"},
+            "payload": base64.b64encode(data).decode(),
+        }
+
+    def test_the_first_bytes_are_laid_out_as_a_dump(self) -> None:
+        found = said("opnsense", self.packet(b"GET /admin HTTP/1.1\r\nHost: a\x00"))
+
+        assert found["dump"] == [
+            [
+                "0000",
+                "47 45 54 20 2f 61 64 6d 69 6e 20 48 54 54 50 2f",
+                "GET /admin HTTP/",
+            ],
+            ["0010", "31 2e 31 0d 0a 48 6f 73 74 3a 20 61 00", "1.1..Host: a."],
+        ]
+
+    def test_no_more_than_the_first_128_bytes_are_kept(self) -> None:
+        found = said("opnsense", self.packet(bytes(range(256))))
+
+        assert len(found["dump"]) == evidence.MAX_DUMP // 16
+        assert found["dump"][-1][0] == "0070"
+
+    def test_data_that_is_not_base64_is_left_out(self) -> None:
+        raw = {"alert_sid": 1, "alert": {"signature": "x"}, "payload": "not base64 !!"}
+
+        assert "dump" not in (evidence.extract("opnsense", raw) or {})
+
+    def test_no_data_is_no_dump(self) -> None:
+        assert "dump" not in (evidence.extract("opnsense", self.packet(b"")) or {})

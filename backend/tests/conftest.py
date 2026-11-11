@@ -15,6 +15,7 @@ from app import audit, cli, db, partitions
 from app.api.integrations import api_log_recorder
 from app.config import Settings
 from app.db import get_session
+from app.incidents import names
 from app.integrations import netguard
 from app.integrations.apilog import ApiLogRecorder
 from app.main import create_app
@@ -67,6 +68,17 @@ def virustotal_is_not_reached(monkeypatch: pytest.MonkeyPatch) -> None:
         return resolve(host, *args, **kwargs)
 
     monkeypatch.setattr(socket, "getaddrinfo", guarded)
+
+
+@pytest.fixture(autouse=True)
+def no_reverse_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test asks a resolver what an address is called: nothing has a name, unless the test
+    stands one in for ``names.resolver``."""
+
+    def nameless(address: str) -> None:
+        return None
+
+    monkeypatch.setattr(names, "resolver", nameless)
 
 
 @pytest.fixture(scope="session")

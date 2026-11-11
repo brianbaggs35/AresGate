@@ -2,6 +2,7 @@
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
 from dataclasses import dataclass
+from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated, Literal, NamedTuple, Self, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -34,7 +35,9 @@ from app.incidents import (
     episode,
     evidence,
     filters,
+    hops,
     insights,
+    names,
     occurrences,
     queries,
     response,
@@ -43,7 +46,7 @@ from app.incidents import (
 )
 from app.incidents.attention import Lane
 from app.incidents.queries import Order
-from app.models import AiTriage, Incident, IncidentFamily, IncidentSignal, utcnow
+from app.models import AiTriage, Device, Incident, IncidentFamily, IncidentSignal, utcnow
 from app.threats import explain
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
@@ -301,6 +304,14 @@ class FlowOut(BaseModel):
     duration: int | None
 
 
+class DumpRowOut(BaseModel):
+    """A line of a dump of a packet's data: sixteen bytes."""
+
+    offset: str
+    hex: str
+    text: str
+
+
 class EvidenceOut(BaseModel):
     """What one program said of an alert besides who, where and when (app/incidents/evidence.py).
     A member is empty where the program said nothing for it."""
@@ -320,6 +331,8 @@ class EvidenceOut(BaseModel):
     score: int | None
     flow: FlowOut | None
     payload: str | None
+    # The first bytes of the data of the packet that set it off, where the program kept it.
+    dump: list[DumpRowOut]
 
 
 class ConfirmationOut(BaseModel):
@@ -410,6 +423,30 @@ class FamilyBrief(BaseModel):
     incidents: int
 
 
+class HopOut(BaseModel):
+    """Where a program that saw the incident sits on the way between the internet and the device."""
+
+    kind: Literal["internet", "firewall", "detector", "monitor", "agent", "device"]
+    # The address, the device's name, or the program's.
+    subject: str
+    # What the address is called (the internet end), where that is known.
+    name: str | None
+    source: str | None
+    # How many of the incident's signals this program reported.
+    alerts: int
+    first_at: AwareDatetime | None
+    last_at: AwareDatetime | None
+    # What it did about it, in words, where it says.
+    note: str | None
+
+
+class PathOut(BaseModel):
+    """How it travelled, drawn from where each program that saw it sits."""
+
+    direction: Literal["inbound", "outbound"]
+    hops: list[HopOut]
+
+
 class IncidentDetail(IncidentOut):
     # Why AresGate is as sure as it is: the reasons and their points add up to the confidence.
     reasons: list[ReasonOut]
@@ -435,6 +472,8 @@ class IncidentDetail(IncidentOut):
     conversations: ConversationsOut | None
     # The integrations that are not connected, and what each would add to an incident.
     missing: list[MissingOut]
+    # How it travelled: the internet, each program that saw it in the order it sits, the device.
+    path: PathOut | None
 
 
 class TermOut(BaseModel):
@@ -745,6 +784,7 @@ def _evidence(said: evidence.Evidence | None) -> EvidenceOut | None:
         score=said.get("score"),
         flow=_flow(said.get("flow")),
         payload=said.get("payload"),
+        dump=[DumpRowOut(offset=row[0], hex=row[1], text=row[2]) for row in said.get("dump", [])],
     )
 
 
@@ -878,6 +918,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     judging = _judging(db)
     seen = queries.signals(db, incident)
     grouped = occurrences.group(seen)
+    devices = queries.devices(db, incident)
     return IncidentDetail(
         **_incident(incident, done, judging, read).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
@@ -901,7 +942,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
                 hostname=device.hostname,
                 vendor=device.vendor,
             )
-            for address, device in queries.devices(db, incident)
+            for address, device in devices
         ],
         blocked=None if done.state == "no_address" else done.tally.blocked,
         reading=_reading(read),
@@ -913,6 +954,44 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         missing=[
             MissingOut(source=each.source, source_name=rules.name_of(each.source), adds=each.adds)
             for each in coverage.missing(db)
+        ],
+        path=_path(db, incident, seen, done, devices),
+    )
+
+
+def _path(
+    db: Db,
+    incident: Incident,
+    seen: list[IncidentSignal],
+    done: response.Response,
+    found: list[tuple[IPv4Address | IPv6Address, Device]],
+) -> PathOut | None:
+    drawn = hops.build(
+        incident,
+        seen,
+        blocked=done.tally.blocked,
+        dropped=done.tally.dropped,
+        banned=any(each.in_force(utcnow()) for each in done.bans),
+        devices=found,
+    )
+    if drawn is None:
+        return None
+    # The internet end says what it is called, if anything does.
+    called = names.lookup(db, [incident.subject], utcnow())
+    return PathOut(
+        direction=drawn.direction,
+        hops=[
+            HopOut(
+                kind=each.kind,
+                subject=each.subject,
+                name=called.get(each.subject) if each.kind == "internet" else None,
+                source=each.source,
+                alerts=each.alerts,
+                first_at=each.first_at,
+                last_at=each.last_at,
+                note=each.note,
+            )
+            for each in drawn.hops
         ],
     )
 
@@ -1193,7 +1272,10 @@ def take_back_change(
 @router.get("/{incident_id}")
 def get_incident(incident_id: IncidentId, db: Db) -> IncidentDetail:
     """One incident with the reasons for its confidence, its timeline and the devices in it."""
-    return _detail(db, _found(db, incident_id))
+    detail = _detail(db, _found(db, incident_id))
+    # What was asked of the resolver about its addresses is kept.
+    db.commit()
+    return detail
 
 
 @router.patch("/{incident_id}")

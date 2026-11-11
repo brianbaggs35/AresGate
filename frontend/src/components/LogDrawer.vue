@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Search, X } from '@lucide/vue'
+import { ChevronDown, ChevronUp, CopyCheck, Search, X } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
@@ -9,7 +9,7 @@ import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import RawRecord from '@/components/RawRecord.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import { useKeyboardReturn } from '@/dialog'
-import { fieldsOf } from '@/logs'
+import { agreement, fieldsOf } from '@/logs'
 import { useSessionStore } from '@/stores/session'
 
 /**
@@ -118,6 +118,16 @@ onBeforeUnmount(() => {
         <span class="log-drawer__where text-body-medium text-medium-emphasis">
           {{ event.source_name }} · {{ event.kind }}
         </span>
+        <v-chip
+          v-if="agreement(event)"
+          size="small"
+          variant="tonal"
+          color="primary"
+          :prepend-icon="CopyCheck"
+          data-test="drawer-agreement"
+        >
+          {{ agreement(event) }}
+        </v-chip>
         <span class="log-drawer__steps">
           <v-btn
             icon

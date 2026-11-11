@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timedelta
 from ipaddress import ip_address
 from typing import Any, ClassVar
@@ -14,7 +15,7 @@ from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
-from app.incidents import episode, queries, search
+from app.incidents import episode, names, queries, search
 from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
@@ -1483,3 +1484,160 @@ class TestWhatWasSent:
         ]
         assert missing[1]["source_name"] == "Wazuh"
         assert "MITRE" in missing[1]["adds"]
+
+
+class TestHowItTravelled:
+    """Where each program that saw it sits between the internet and the device, what the address is
+    called, what the traffic was for, and the first bytes of what was sent."""
+
+    def detail(self, client: TestClient) -> dict[str, Any]:
+        [only] = listed(client)
+        return client.get(f"{BASE}/{only['id']}").json()  # type: ignore[no-any-return]
+
+    def seen_by_two(self, session: Session, settings: Settings) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, source="opnsense", connection="api", dst_port=22),
+            alert(NOW + MINUTE, n=2, dst_port=22),
+        )
+        run(session)
+
+    def test_the_programs_that_saw_it_are_on_the_path_between_the_internet_and_the_device(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(names, "resolver", {ATTACKER: "scanner-17.example.net"}.get)
+        self.seen_by_two(session, settings)
+
+        path = self.detail(client)["path"]
+
+        assert path["direction"] == "inbound"
+        assert [(hop["kind"], hop["subject"]) for hop in path["hops"]] == [
+            ("internet", ATTACKER),
+            ("firewall", "OPNsense"),
+            ("agent", "Wazuh"),
+            ("device", DEVICE),
+        ]
+        assert path["hops"][0]["name"] == "scanner-17.example.net"
+        assert path["hops"][1]["alerts"] == 1
+        assert path["hops"][1]["source"] == "opnsense"
+        assert path["hops"][2]["name"] is None
+
+    def test_the_device_is_called_by_its_name_where_it_has_one(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        device = Device(
+            mac="aa:bb:cc:00:00:09", hostname="workstation", first_seen_at=NOW, last_seen_at=NOW
+        )
+        session.add(device)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=device.id,
+                address=ip_address(DEVICE),
+                first_seen_at=NOW,
+                last_seen_at=NOW,
+            )
+        )
+        self.seen_by_two(session, settings)
+
+        assert self.detail(client)["path"]["hops"][-1]["subject"] == "workstation"
+
+    def test_an_incident_about_a_rule_has_no_path(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1, src_address=None, dst_address=None))
+        run(session)
+
+        assert self.detail(client)["path"] is None
+
+    def test_the_name_of_an_address_is_said_where_the_programs_gave_none(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(names, "resolver", {ATTACKER: "scanner-17.example.net"}.get)
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, dst_port=22, protocol="tcp"),
+        )
+        run(session)
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["client"]["address"] == ATTACKER
+        assert conversation["client"]["name"] == "scanner-17.example.net"
+        assert conversation["client"]["name_from"] == "dns"
+        # An address on the network is never looked up.
+        assert conversation["server"]["name_from"] is None
+        assert conversation["purpose"] == "Logging in to a computer (SSH)"
+
+    def test_a_name_a_program_gave_is_not_replaced_by_a_lookup(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(names, "resolver", {ATTACKER: "looked-up.example.net"}.get)
+        store(
+            session,
+            settings,
+            alert(
+                NOW,
+                n=1,
+                source="ntopng",
+                connection="api",
+                severity=Severity.HIGH,
+                src_address=DEVICE,
+                dst_address=ATTACKER,
+                dst_port=53,
+                protocol="tcp",
+                raw=TestWhatWasSent.NTOPNG | {"srv_ip": {"ip": ATTACKER, "name": "known.example"}},
+            ),
+        )
+        run(session)
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["server"]["name"] == "known.example"
+        assert conversation["server"]["name_from"] == "program"
+        assert conversation["client"]["name_from"] == "program"
+
+    def test_the_first_bytes_of_what_was_sent_are_a_dump(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(
+                NOW,
+                n=1,
+                source="opnsense",
+                connection="api",
+                raw={
+                    "alert_sid": 1,
+                    "payload": base64.b64encode(b"GET /admin HTTP/1.1\r\n").decode(),
+                },
+            ),
+        )
+        run(session)
+
+        [occurrence] = self.detail(client)["occurrences"]
+
+        assert occurrence["evidence"]["dump"][0] == {
+            "offset": "0000",
+            "hex": "47 45 54 20 2f 61 64 6d 69 6e 20 48 54 54 50 2f",
+            "text": "GET /admin HTTP/",
+        }
+        assert len(occurrence["evidence"]["dump"]) == 2

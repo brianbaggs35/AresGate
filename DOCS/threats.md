@@ -31,6 +31,13 @@ On the incident's page the twin is not an alert of its own: it is added to the f
 occurrence as a *confirmation*, which names the program, counts how often it agreed and keeps what
 it said of the alert. The alert still counts once.
 
+A program that reports a flow by its *reply* (the device talking back, which names the same two
+addresses and ports the other way round) is matched too, so a firewall that logs the request and a
+host agent that logs the answer are one alert. On the **Logs** page the first report says which
+other programs reported it too (*Also reported by Wazuh and Suricata*), and each repeat says it is
+the same alert as one already reported, so the list agrees with the incident: counted once, with
+every program that saw it named.
+
 ### What each program said besides the basics
 
 Every program says more than the columns an event keeps. `app/incidents/evidence.py` boils each
@@ -150,6 +157,34 @@ order, the device between the step that got in and the step that called out, wit
 behind each. An alert that two programs reported is shown once, with the programs that saw it. An
 incident that is a step says so at the top of its page and leads to the whole attack.
 
+### How it travelled, and what it was
+
+An incident's page says more about the traffic than who and when:
+
+- **How it travelled.** A traceroute lists the routers a packet crossed, but AresGate sends nothing
+  out to find the way: a security tool that probes back is its own kind of problem, and it does not
+  need to. Each program it reads sits at a known place between the internet and the device: the
+  firewall at the edge, an intrusion detection system just behind it, a traffic monitor on the
+  interface, a host agent on the device. The page draws the internet, each program that reported
+  the incident in that order, and the device, with what each did about it (turned it away *n*
+  times, stopped *n* alerts, banned the address). A program that did not report it is not on the
+  path, so the path is only ever what was read. An attack that a device sent out is drawn the other
+  way round. It runs across on a wide screen and down on a phone.
+- **What an address is called.** Where no program gave an address a name, AresGate asks the
+  resolver the machine already uses for its reverse record (the name the address's owner gave it:
+  `scanner-17.example.net` is a scanner, an `…compute.amazonaws.com` name is a rented server), and
+  marks it *Name from DNS* so it is never mistaken for what a program said. It does so only for
+  addresses on the internet, at most six to a page, waits two seconds at most, and keeps each
+  answer for a week (a day where there was no name). It is the one lookup AresGate makes by itself;
+  turn it off with `ARESGATE_REVERSE_DNS=false`.
+- **What it was for.** From the application a program recognised, or the port, a conversation says
+  in plain words what the traffic was for (*Logging in to a computer (SSH)*, *Looking up a name
+  (DNS): example.com*). Nothing is read from inside the traffic, and nothing is said where nothing
+  is known.
+- **The first bytes of what was sent.** Where Suricata kept the packet, the first 128 bytes are
+  shown as a hexadecimal dump beside the printable text, so the purpose of an alert can be read
+  from what it carried.
+
 ## Kinds of incident
 
 Hundreds of scanners from hundreds of addresses each make an incident of their own, because they
@@ -229,12 +264,18 @@ The API, all under `/api` and signed in:
 | `GET /threats/chains` | The attacks across two devices, the most recent first, narrowed by `confirmed`. |
 | `GET /threats/chains/{id}` | One chain: its steps in order, each with its link (`confirmed` or `inferred`), why, and the evidence. |
 
+Incident details also carry `path` (how it travelled), each conversation end a `name_from` (`program`
+or `dns`) and each conversation a `purpose`, and the log list `twin_of` and `also_reported_by`.
+The assistant and the agents can ask `who_is` (an address's reverse name) and `attack_chains`.
+
 The code is in `app/threats/` (`families.py`, `stages.py`, `calls.py`, `explain.py`, `overview.py`,
 `settings.py`, and `chains.py`, which links the incidents of an attack across two devices on
-every run of the engine), `app/events/twins.py` (the same alert from two programs), `app/incidents/occurrences.py`
+every run of the engine), `app/events/twins.py` (the same alert from two programs), `app/incidents/hops.py`, `names.py` and
+`purpose.py` (how it travelled, what an address is called and what the traffic was for), `app/incidents/occurrences.py`
 (repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
 a kind). The lanes exist twice, as Python (`lane_of`) and as SQL (`lane_clauses`), and a test holds
-them to agreeing. Migration `0028` adds the tables and columns, and `0044` the chains.
+them to agreeing. Migration `0028` adds the tables and columns, `0044` the chains and `0045` the names kept of
+addresses.
 
 The Playwright harness can make attacks that are more than scanning (`exploit`, `compromise`), a
 device that calls out instead of being called (`outbound`, which a chain needs on its second

@@ -8,6 +8,16 @@ async function open(changes: Partial<ChainDetail> = {}) {
 }
 
 describe('ChainPath', () => {
+  it('says what the address of a step is called where it has a name', async () => {
+    const { wrapper } = await open({
+      path: [chainStep({ subject_name: 'scanner-17.example.net' }), chainStep({ role: 'callout' })],
+    })
+
+    const names = wrapper.findAll('[data-test="step-subject-name"]')
+    expect(names).toHaveLength(1)
+    expect(names[0]?.text()).toBe('(scanner-17.example.net)')
+  })
+
   it('draws the steps in order with the device between the one that got in and the one that called out', async () => {
     const { wrapper } = await open()
 

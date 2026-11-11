@@ -159,6 +159,11 @@ exposure scanner's test of risky ports in the same run.
 - **Incident investigator** takes the three most serious open incidents, reads everything known of
   each, looks up who is behind an address where VirusTotal has something, and says what happened
   and what to do, or that it is probably only scanning.
+- **Who is behind an address, and attacks across two devices.** The assistant and the agents have
+  two more lookups: *who_is*, which gives an address on the internet the name its owner gave it, and
+  *attack_chains*, which lists the attacks that crossed two devices, each link marked *confirmed* or
+  *inferred* (a guess). The threat hunter, the intelligence analyst and the incident investigator use
+  them to say what an address is and whether an incident is one step of a larger attack.
 - **Anomaly watch** uses the new *what_changed* lookup (which the assistant can use too): how much
   more or less the firewall refused in the last day than is usual for a day of the week before,
   which ports were aimed at three times as often as usual or for the first time (ten connections

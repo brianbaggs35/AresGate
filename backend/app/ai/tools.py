@@ -27,6 +27,7 @@ from app.ai.redaction import Redactor, read_address, read_mac
 from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
 from app.incidents import cleanup, queries
+from app.incidents import names as dns_names
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
 from app.intel import overrides, virustotal
@@ -40,6 +41,7 @@ from app.models import (
     DeviceAddress,
     Event,
     Incident,
+    IncidentChain,
     IntegrationConnection,
 )
 
@@ -652,6 +654,70 @@ def cleanup_candidates(db: Session, redactor: Redactor, args: Args, now: datetim
     return Found(lines, list(refs.values()), _plural(len(found), "thing to tidy", "things to tidy"))
 
 
+def who_is(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What one address on the internet is called, by its reverse lookup (the name its owner gave
+    it), and what kind of server that makes it. The name is public, so it is not redacted; the
+    address is shown as the redactor shows it."""
+    address = read_address(args.name or "")
+    if address is None:
+        return Found(["Give the address to look up, such as 203.0.113.7."], [], "no address given")
+    shown = redactor.address(str(address))
+    if not address.is_global:
+        return Found(
+            [f"{shown} isn't on the internet, so it has no name to look up."],
+            [],
+            f"{shown} isn't on the internet",
+        )
+    name = dns_names.lookup(db, [str(address)], now).get(str(address))
+    if name is None:
+        return Found(
+            [f"{shown} has no name: its owner gave it no reverse record, or none could be asked."],
+            [],
+            f"no name for {shown}",
+        )
+    return Found(
+        [f"{shown} is called {redactor.text(name, 253)} by its reverse DNS record."],
+        [],
+        f"the name of {shown}",
+    )
+
+
+# -- the attacks across two devices
+
+
+def attack_chains(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The attacks that crossed two devices: an exploit aimed at a device on the network, and the
+    device calling out soon after. Each says which link is confirmed and which is a guess."""
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    found = list(
+        db.scalars(
+            select(IncidentChain)
+            .where(IncidentChain.last_seen_at >= now - timedelta(days=7))
+            .order_by(IncidentChain.last_seen_at.desc())
+            .limit(limit)
+        )
+    )
+    if not found:
+        return Found(["No attack has been seen crossing two devices lately."], [], "no chains")
+    lines: list[str] = []
+    refs: list[Ref] = []
+    for chain in found:
+        steps = db.scalars(
+            select(Incident).where(Incident.chain_id == chain.id).order_by(Incident.first_seen_at)
+        )
+        device = redactor.address(chain.device)
+        sure = "confirmed" if chain.confirmed else "inferred, which is a guess"
+        lines.append(f"[chain {chain.id}] an attack on {device}, {sure}, {chain.steps} steps:")
+        for step in steps:
+            why = redactor.text(step.chain_reason or "", 200)
+            lines.append(
+                f"- [incident {step.id}] {step.chain_role} ({step.chain_link}): "
+                f"{redactor.text(step.title, 160)}. {why}"
+            )
+            refs.append(Ref("incident", str(step.id), f"Incident {step.id}"))
+    return Found(lines, refs, _plural(len(found), "attack across two devices"))
+
+
 TOOLS: Final[Sequence[Tool]] = (
     Tool(
         "open_incidents",
@@ -694,6 +760,19 @@ TOOLS: Final[Sequence[Tool]] = (
         "What VirusTotal says of one address on the internet: how many security engines flag "
         "it, and who owns it. Uses: name, for the address.",
         reputation,
+    ),
+    Tool(
+        "who_is",
+        "What one address on the internet is called, by its reverse lookup, which shows what "
+        "kind of server it is. Uses: name, for the address.",
+        who_is,
+    ),
+    Tool(
+        "attack_chains",
+        "The attacks that crossed two devices: an exploit aimed at a device on the network and "
+        "the device calling out soon after, with which links are confirmed and which are "
+        "guesses. Uses: limit (1-10, default 5).",
+        attack_chains,
     ),
     Tool(
         "new_devices",

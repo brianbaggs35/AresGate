@@ -27,6 +27,11 @@ export interface LogEvent {
   protocol: string | null
   /** Whether the integration's own record was kept, which the detail has. */
   has_raw: boolean
+  /** The event this one repeats: the same alert, reported by another program, which counts once
+   * with the first. */
+  twin_of: number | null
+  /** For the first report of an alert: the programs that reported it too. */
+  also_reported_by: string[]
 }
 
 /** The incident an event was filed into. */

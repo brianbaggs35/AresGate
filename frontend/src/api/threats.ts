@@ -161,6 +161,8 @@ export interface ChainStep {
   incident_id: number
   title: string
   subject: string
+  /** What the subject is called, by its reverse lookup, where it has a name. */
+  subject_name: string | null
   severity: Severity
   status: IncidentStatus
   first_seen_at: string

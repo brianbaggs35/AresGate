@@ -14,6 +14,16 @@ async function show(
 }
 
 describe('IncidentConversations', () => {
+  it('says what the traffic was for, where that can be told', async () => {
+    const wrapper = await show([conversation(), conversation({ purpose: null })])
+
+    const said = wrapper.findAll('[data-test="conversation-purpose"]')
+    expect(said).toHaveLength(1)
+    expect(said[0]?.text().replace(/\s+/g, ' ')).toBe(
+      'What it was for Looking up a name (DNS): example.com',
+    )
+  })
+
   it('draws the two ends, what it went over and how often it happened', async () => {
     const wrapper = await show()
 

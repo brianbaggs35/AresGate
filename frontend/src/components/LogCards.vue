@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { CopyCheck } from '@lucide/vue'
+
 import type { LogEvent } from '@/api/logs'
 import { formatAgo, formatTimestamp } from '@/format'
-import { routeOf } from '@/logs'
+import { agreement, routeOf } from '@/logs'
 import { SEVERITY } from '@/severity'
 
 /**
@@ -55,6 +57,14 @@ const accent = (event: LogEvent) => `rgb(var(--v-theme-${SEVERITY[event.severity
           data-test="log-card-route"
           >{{ routeOf(event) }}</span
         >
+        <span
+          v-if="agreement(event)"
+          class="log-card__agree text-body-medium"
+          data-test="log-card-agreement"
+        >
+          <v-icon :icon="CopyCheck" size="16" aria-hidden="true" />
+          {{ agreement(event) }}
+        </span>
       </button>
     </li>
   </ul>
@@ -146,5 +156,12 @@ const accent = (event: LogEvent) => `rgb(var(--v-theme-${SEVERITY[event.severity
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
+}
+
+.log-card__agree {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: rgb(var(--v-theme-primary));
 }
 </style>

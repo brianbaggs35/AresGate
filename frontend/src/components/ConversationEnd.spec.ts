@@ -27,6 +27,17 @@ const FLAGGED: Reputation = {
 }
 
 describe('ConversationEnd', () => {
+  it('says where a name came from only where it came from a reverse lookup', async () => {
+    const looked = await show({ name: 'scanner-17.example.net', name_from: 'dns' }, 'server')
+    const told = await show({ name: 'workstation', name_from: 'program' })
+    const none = await show({ name: null, name_from: null })
+
+    expect(looked.find('[data-test="end-dns"]').text()).toBe('Name from DNS')
+    expect(looked.find('[data-test="end-title"]').text()).toBe('scanner-17.example.net')
+    expect(told.find('[data-test="end-dns"]').exists()).toBe(false)
+    expect(none.find('[data-test="end-dns"]').exists()).toBe(false)
+  })
+
   it('names a device on your network by its name, with its address under it', async () => {
     const wrapper = await show({})
 

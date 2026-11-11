@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowUpFromLine,
   Crosshair,
+  Binary,
   Gauge,
   PackageOpen,
   Tag,
@@ -183,6 +184,24 @@ const ends = computed(() => {
       </figcaption>
       <code class="text-body-medium">{{ evidence.payload }}</code>
     </figure>
+    <figure v-if="evidence.dump.length" class="evidence__log" data-test="evidence-dump">
+      <figcaption class="text-label-large text-medium-emphasis">
+        <v-icon :icon="Binary" size="16" aria-hidden="true" /> The first bytes of the packet
+      </figcaption>
+      <div class="evidence__dump" role="table" aria-label="The first bytes of the packet">
+        <div
+          v-for="row in evidence.dump"
+          :key="row.offset"
+          class="evidence__dump-row"
+          role="row"
+          data-test="evidence-dump-row"
+        >
+          <span class="text-medium-emphasis" role="cell">{{ row.offset }}</span>
+          <span role="cell">{{ row.hex }}</span>
+          <span class="evidence__dump-text" role="cell">{{ row.text }}</span>
+        </div>
+      </div>
+    </figure>
     <figure v-if="evidence.excerpt" class="evidence__log" data-test="evidence-excerpt">
       <figcaption class="text-label-large text-medium-emphasis">
         <v-icon :icon="Terminal" size="16" aria-hidden="true" /> The log line
@@ -317,5 +336,26 @@ const ends = computed(() => {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+.evidence__dump {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.evidence__dump-row {
+  display: grid;
+  grid-template-columns: 3rem 24.5rem 1fr;
+  gap: 1rem;
+  width: max-content;
+}
+
+.evidence__dump-text {
+  white-space: pre;
 }
 </style>
