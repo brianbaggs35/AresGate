@@ -256,11 +256,20 @@ class TestLooking:
 
         assert said == ["certificate", "greeting", "headers"]
 
-    def test_a_service_that_does_not_answer_has_nothing_said_of_it(self) -> None:
-        # Nothing listens on these ports of this machine, in the test or anywhere it runs.
-        assert fingerprint.look("127.0.0.1", 22, 0.5) == []
-        assert fingerprint.look("127.0.0.1", 80, 0.5) == []
-        assert fingerprint.look("127.0.0.1", 443, 0.5) == []
+    @pytest.mark.parametrize("kind", ["CERTIFICATES", "GREETINGS", "WEB"])
+    def test_a_service_that_does_not_answer_has_nothing_said_of_it(
+        self, kind: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with socket.socket() as spare:
+            spare.bind(("127.0.0.1", 0))
+            port = spare.getsockname()[1]
+        # A port nothing listens on, read as each kind of service in turn. The ports a machine
+        # really answers on (an SSH server runs on the build machines) are not used.
+        monkeypatch.setattr(fingerprint, kind, frozenset({port}))
+        for other in {"CERTIFICATES", "GREETINGS", "WEB"} - {kind}:
+            monkeypatch.setattr(fingerprint, other, frozenset[int]())
+
+        assert fingerprint.look("127.0.0.1", port, 0.5) == []
 
     def test_a_reply_that_is_not_a_certificate_has_nothing_said_of_it(
         self, monkeypatch: pytest.MonkeyPatch
