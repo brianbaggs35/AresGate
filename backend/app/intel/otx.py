@@ -20,6 +20,7 @@ Only addresses and domains are asked about. A web address would have to go in th
 the API log keeps that path.
 """
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -134,6 +135,33 @@ def _safe(root: dict[str, object]) -> str | None:
     return None
 
 
+@dataclass
+class _Named:
+    """What the pulses of an answer name: the malware families, adversaries and attack techniques,
+    the tags, and how many of the pulses name any of the first three."""
+
+    malware: list[str] = field(default_factory=lambda: list[str]())
+    adversaries: list[str] = field(default_factory=lambda: list[str]())
+    techniques: list[str] = field(default_factory=lambda: list[str]())
+    tags: list[str] = field(default_factory=lambda: list[str]())
+    strong: int = 0
+
+
+def _named_by(pulses: list[dict[str, object]]) -> _Named:
+    """What the pulses name, read through each of them."""
+    found = _Named()
+    for pulse in pulses:
+        families = _names(pulse.get("malware_families"), "display_name", "id")
+        adversary = _text(pulse.get("adversary"), MAX_NAME)
+        attacks = _names(pulse.get("attack_ids"), "id")
+        found.strong += bool(families or adversary or attacks)
+        found.malware += families
+        found.adversaries += [adversary] if adversary else []
+        found.techniques += attacks
+        found.tags += _names(pulse.get("tags"))
+    return found
+
+
 def parse(body: object, now: datetime) -> Report | None:
     """The report in OTX's answer, or None if the answer isn't an indicator's. An indicator that
     no pulse names is a report of none."""
@@ -144,23 +172,10 @@ def parse(body: object, now: datetime) -> Report | None:
     count = _whole(info.get("count"), 0, MAX_COUNT) or 0
     pulses = [_object(item) for item in _list(info.get("pulses"))[:MAX_PULSES]]
     named = [pulse for pulse in pulses if pulse is not None]
-    malware: list[str] = []
-    adversaries: list[str] = []
-    techniques: list[str] = []
-    tags: list[str] = []
-    strong = 0
-    for pulse in named:
-        families = _names(pulse.get("malware_families"), "display_name", "id")
-        adversary = _text(pulse.get("adversary"), MAX_NAME)
-        attacks = _names(pulse.get("attack_ids"), "id")
-        strong += bool(families or adversary or attacks)
-        malware += families
-        adversaries += [adversary] if adversary else []
-        techniques += attacks
-        tags += _names(pulse.get("tags"))
+    found = _named_by(named)
     # The pulses listed are the newest few; the count is all of them, so what is beyond the list is
     # taken as the plainer kind.
-    malicious = min(strong, count)
+    malicious = min(found.strong, count)
     suspicious = max(count - malicious, 0)
     asn, owner = _split_asn(root.get("asn"))
     reputation = _whole(root.get("reputation"), 0, MAX_COUNT) or 0
@@ -172,9 +187,9 @@ def parse(body: object, now: datetime) -> Report | None:
     rows: list[tuple[str, str | None]] = [
         (PULSES, str(count) if count else None),
         (NEWEST, _text(named[0].get("name"), 200) if named else None),
-        (MALWARE, ", ".join(dict.fromkeys(malware))[:200] or None),
-        (ADVERSARY, ", ".join(dict.fromkeys(adversaries))[:200] or None),
-        (TECHNIQUES, ", ".join(dict.fromkeys(techniques))[:200] or None),
+        (MALWARE, ", ".join(dict.fromkeys(found.malware))[:200] or None),
+        (ADVERSARY, ", ".join(dict.fromkeys(found.adversaries))[:200] or None),
+        (TECHNIQUES, ", ".join(dict.fromkeys(found.techniques))[:200] or None),
         (SAFE, _safe(root)),
     ]
     return Report(
@@ -188,7 +203,9 @@ def parse(body: object, now: datetime) -> Report | None:
         country=_text(root.get("country_code"), MAX_COUNTRY),
         owner=owner,
         asn=asn,
-        categories=tuple(dict.fromkeys([*malware, *adversaries, *tags]))[:MAX_CATEGORIES],
+        categories=tuple(dict.fromkeys([*found.malware, *found.adversaries, *found.tags]))[
+            :MAX_CATEGORIES
+        ],
         details=tuple((label, value) for label, value in rows if value),
     )
 
