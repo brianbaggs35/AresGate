@@ -30,9 +30,10 @@ test.describe('integrations', () => {
       'Wazuh',
       'CrowdSec',
       'VirusTotal',
+      'AlienVault OTX',
     ])
-    await expect(integrations.count).toHaveText('0 of 5 set up')
-    for (const key of ['opnsense', 'ntopng', 'wazuh', 'crowdsec', 'virustotal']) {
+    await expect(integrations.count).toHaveText('0 of 6 set up')
+    for (const key of ['opnsense', 'ntopng', 'wazuh', 'crowdsec', 'virustotal', 'otx']) {
       await expect(integrations.status(key)).toHaveText('Not connected')
       await expect(integrations.lastCall(key)).toHaveText('Not set up yet')
     }
@@ -49,7 +50,7 @@ test.describe('integrations', () => {
     await integration.back.click()
 
     await expect(page).toHaveURL('/integrations')
-    await expect(integrations.names).toHaveCount(5)
+    await expect(integrations.names).toHaveCount(6)
   })
 
   test('explains how to get what is needed in a window, and links to the official documentation', async ({
@@ -98,6 +99,7 @@ test.describe('integrations', () => {
       wazuh: ['manager', 'indexer'],
       crowdsec: ['lapi'],
       virustotal: ['api'],
+      otx: ['api'],
     }
     for (const [key, parts] of Object.entries(connections)) {
       await integration.goto(key)
@@ -148,7 +150,7 @@ test.describe('integrations', () => {
     await integrations.retry.click()
 
     await expect(integrations.loadError).toHaveCount(0)
-    await expect(integrations.names).toHaveCount(5)
+    await expect(integrations.names).toHaveCount(6)
   })
 
   test('says so for an integration that does not exist', async ({ page, integration }) => {
@@ -219,7 +221,7 @@ test.describe('integrations', () => {
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
-      await expect(integrations.count).toHaveText('1 of 5 set up')
+      await expect(integrations.count).toHaveText('1 of 6 set up')
     })
 
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
@@ -1430,6 +1432,31 @@ test.describe('integrations', () => {
       await expect(integration.status).toHaveText('Connected')
       await expect(integration.field('api', 'api_key')).toHaveValue('')
       await expect(integration.field('api', 'api_key')).toHaveAttribute('placeholder', 'Saved')
+    })
+  })
+
+  test.describe('AlienVault OTX', () => {
+    test('is threat intelligence on the internet, with its one address fixed and a pace to choose', async ({
+      page,
+      integration,
+      integrations,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.card('otx')).toContainText('Threat intelligence')
+      await integrations.card('otx').click()
+
+      await expect(page).toHaveURL('/integrations/otx')
+      await expect(integration.title).toHaveText('AlienVault OTX')
+      await expect(integration.address('api')).toHaveValue('https://otx.alienvault.com')
+      await expect(integration.address('api')).not.toBeEditable()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+      // The balanced pace is chosen, and what it means is said beside the choice.
+      await expect(integration.connection('api').getByLabel('Balanced')).toBeChecked()
+      await expect(integration.connection('api').getByTestId('caution-pace')).toContainText(
+        'OTX publishes no limit on requests',
+      )
+      await integration.connection('api').getByLabel('Gentle').check()
+      await expect(integration.connection('api').getByLabel('Gentle')).toBeChecked()
     })
   })
 

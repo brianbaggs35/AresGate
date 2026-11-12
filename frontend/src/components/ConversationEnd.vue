@@ -42,7 +42,10 @@ const country = computed(() => (props.end.country ? props.end.country : null))
 const flagged = computed(() =>
   ruling.value === 'safe'
     ? false
-    : props.end.blacklisted === true || ['malicious', 'suspicious'].includes(judgement.value),
+    : props.end.blacklisted === true ||
+      ['malicious', 'suspicious'].includes(judgement.value) ||
+      // A pulse that only lists an address is weak, so only OTX's firmer word draws a warning.
+      props.end.reputation?.otx?.judgement === 'malicious',
 )
 const judgement = computed(() => props.end.reputation?.judgement ?? 'unknown')
 /** What the engines made of an address, in words: what the service said, whatever was ruled. */
@@ -59,6 +62,17 @@ const engines = computed(() => {
   const found = props.end.reputation
   if (!found) return null
   return { look: JUDGEMENT[found.reported], text: engineWords(found) }
+})
+/** What OTX's pulses say of the address, in words, where they say anything. */
+const pulses = computed(() => {
+  const found = props.end.reputation?.otx
+  if (!found) return null
+  const count = `${found.pulses.toString()} ${found.pulses === 1 ? 'pulse' : 'pulses'}`
+  const text =
+    found.judgement === 'clean'
+      ? 'OTX lists it as safe'
+      : `OTX: ${count}${found.names ? `, ${found.names}` : ''}`
+  return { look: JUDGEMENT[found.judgement], text, link: found.link }
 })
 /** What the owner ruled, in words, with the same color a judgement of it would have. */
 const ruled = computed(() => (ruling.value ? RULING[ruling.value] : null))
@@ -139,6 +153,20 @@ const current = computed(() =>
           data-test="end-reputation"
         >
           {{ engines.text }}
+        </v-chip>
+        <v-chip
+          v-if="pulses"
+          size="small"
+          :color="ruled ? undefined : pulses.look.color"
+          :variant="ruled ? 'outlined' : 'tonal'"
+          :prepend-icon="pulses.look.icon"
+          :href="pulses.link"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Read the threat reports on AlienVault OTX"
+          data-test="end-otx"
+        >
+          {{ pulses.text }}
         </v-chip>
       </div>
       <p

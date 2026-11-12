@@ -90,6 +90,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "wazuh",
         "crowdsec",
         "virustotal",
+        "otx",
     ]
     assert listed[0]["name"] == "OPNsense"
     assert "firewall" in listed[0]["provides"]
@@ -99,8 +100,16 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "alerts",
         "threats",
         "threats",
+        "threats",
     ]
-    assert [item["category"] for item in listed] == ["", "", "", "", "Threat intelligence"]
+    assert [item["category"] for item in listed] == [
+        "",
+        "",
+        "",
+        "",
+        "Threat intelligence",
+        "Threat intelligence",
+    ]
     assert all(item["status"] == "not_connected" for item in listed)
     assert all(item["last_success_at"] is None and item["services"] == [] for item in listed)
 
@@ -1257,3 +1266,64 @@ def test_testing_virustotal_within_a_minute_of_too_many_requests_waits_and_sends
         "The limits on this connection hold the test. Try again in "
     )
     assert asked == []
+
+
+def reachable(*_: object, **__: object) -> None:
+    """The sandbox may not reach the internet, and these tests look nothing up."""
+
+
+def test_the_otx_key_is_kept_encrypted_and_never_given_back_and_the_pace_is_kept(
+    client: TestClient, csrf_token: str, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(netguard, "check_reachable", reachable)
+    body = {
+        "connections": {
+            "api": {
+                "url": "https://otx.alienvault.com",
+                "options": {"pace": "gentle"},
+                "secrets": {"api_key": "otx-key-123456"},
+            },
+        }
+    }
+
+    saved = put(client, csrf_token, "otx", body)
+
+    assert saved.status_code == 200
+    assert saved.json()["status"] == "untested"
+    assert "otx-key-123456" not in saved.text
+    [row] = session.scalars(select(IntegrationConnection)).all()
+    assert (row.integration, row.options) == ("otx", {"pace": "gentle"})
+    assert client.get(f"{BASE}/otx").json()["category"] == "Threat intelligence"
+
+
+def test_a_pace_that_is_not_a_choice_is_refused_for_otx(
+    client: TestClient, csrf_token: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(netguard, "check_reachable", reachable)
+    body = {
+        "connections": {
+            "api": {
+                "url": "https://otx.alienvault.com",
+                "options": {"pace": "reckless"},
+                "secrets": {"api_key": "otx-key-123456"},
+            },
+        }
+    }
+
+    assert put(client, csrf_token, "otx", body).status_code == 422
+
+
+def test_the_list_shows_the_five_minute_wait_that_holds_otx_and_leaves_virustotal_alone(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    session.add(
+        IntelLookup(provider="otx", kind="ip", requested_at=utcnow(), outcome=store.THROTTLED)
+    )
+    session.commit()
+
+    items = client.get(BASE).json()
+
+    [pause] = [item["pause"] for item in items if item["key"] == "otx"]
+    assert pause["daily"] is False
+    assert datetime.fromisoformat(pause["until"]) > utcnow()
+    assert all(item["pause"] is None for item in items if item["key"] != "otx")

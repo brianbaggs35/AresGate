@@ -12,6 +12,7 @@ connect it, change its settings, test it or disconnect it.
 | Wazuh | Alerts from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
+| AlienVault OTX | Which threat reports from the OTX community name each internet address an incident names, and what they say it is part of                                                                                                         | An API key, and how fast to look things up            |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
 documentation, and a link to that documentation. The steps below are the same ones.
@@ -726,6 +727,85 @@ Not tried against the live service: the answers, for addresses, domains and web 
 tested against a stand-in built from these pages. An answer that doesn't match is logged as a failed lookup, with the reason, and tried again
 later.
 
+## AlienVault OTX
+
+AlienVault OTX is a community of researchers who share _pulses_: a report of a threat with the
+indicators that belong to it, such as the addresses a botnet used. It is the second
+threat-intelligence integration, beside VirusTotal, in the same **Threat intelligence** group on the
+Integrations page. Its address is fixed at `https://otx.alienvault.com`. Sign in to OTX, copy the
+OTX key from your account's settings, and paste it into the card. The key is encrypted and is never
+shown again. The card's **Lookup pace** sets how often the background loop asks about a new address:
+
+| Pace               | A new address every | At most a day |
+| ------------------ | ------------------- | ------------- |
+| Gentle             | 90 seconds          | 1,500         |
+| Balanced (default) | 30 seconds          | 5,000         |
+| Fast               | 10 seconds          | 10,000        |
+
+OTX publishes no limit on requests, so these are AresGate's own, kept so that a free community
+service isn't asked for more than it can bear. A search by hand is held back only by the few
+seconds between any two lookups and by the day's count. If OTX ever answers 429, nothing is sent for
+five minutes, and the integration's page says so while it holds. That is never a sign the
+connection is broken.
+
+### What is asked about, and what comes back
+
+Only internet addresses and domains are asked about, with `GET /api/v1/indicators/{IPv4|IPv6|domain}/{value}/general`
+and the key in the `X-OTX-API-KEY` header. Web addresses are not sent, since they would go in the
+request path and the API log keeps that. An address inside the home is never sent, the same as for
+VirusTotal. Every address sent is shared with OTX, which is worth knowing before turning this on.
+
+The answer says how many pulses name the address, the newest few of them, who owns the address and
+where it is, and whether OTX lists it as safe. AresGate reads it as a judgement the AI and you can
+overrule:
+
+- An address OTX lists as safe is **clean**, whatever else names it.
+- A pulse that also names a malware family, an adversary or an attack technique says more than one
+  that only lists the address. Two such pulses, or five of any kind, make the address **malicious**.
+- Any pulse makes it **suspicious**.
+- No pulse makes it **unknown**, not clean. New attackers often have no pulse yet, and OTX only knows
+  what researchers have shared, so an address with none is asked about again sooner.
+
+The malware families, adversaries and tags the pulses name are kept as the address's categories,
+and the pulse count, the newest pulse and what it names are kept as its details. OTX's reputation
+score, which rises with bad behaviour, is kept negated so that it reads like VirusTotal's.
+
+### What the AI does with it
+
+The AI reads OTX's answer about each address of an incident beside VirusTotal's, under its own
+heading, and its `reputation` tool shows it too. It is told that a pulse that only lists an address
+is weak evidence, since researchers also list scanners and cloud ranges that did nothing wrong, and
+to keep its confidence modest when OTX alone points at an address. That is what sends the decision
+to the **Review** page (see [Review](ui.md)), where you agree or disagree, while a decision made
+with several sources agreeing is listed as already made. How much waits for you is set under
+**Settings > Review**.
+
+On an incident's conversations, an address OTX has something to say about gets a chip beside
+VirusTotal's, such as *OTX: 3 pulses, Mirai*, that opens the address's page on OTX. It draws the
+address as a warning only when OTX's word is malicious, since a pulse that merely lists an address
+is weak.
+
+### Where this comes from, and what isn't tried
+
+Taken from OTX's [DirectConnect API page](https://otx.alienvault.com/assets/static/external_api.html)
+and its public descriptions: the `X-OTX-API-KEY` header, the indicator paths above, the `pulse_info`
+(`count` and `pulses`), `reputation`, `asn`, `country_code` and `validation` fields of the general
+section, and `GET /api/v1/users/me` for the connection test.
+
+Worked out here, not in the documentation:
+
+- OTX's pages give no rate limit, so the paces above and the five-minute wait after a 429 are
+  AresGate's own.
+- A 404 is taken as no report, the same as a pulse count of none.
+- The `validation` entry whose source is `whitelist` or `false_positive` is read as OTX listing the
+  address as safe, and the pulse fields `malware_families`, `adversary` and `attack_ids` as what a
+  pulse names.
+- The links to OTX's website (`/indicator/ip/` and `/indicator/domain/`) are inferred from its site.
+
+Not tried against the live service: the answers are tested against a stand-in built from these
+descriptions, and any field that isn't what was expected is left out rather than guessed. An answer
+that doesn't hold an indicator is logged as a failed lookup, with the reason, and tried again later.
+
 ## Setup instructions
 
 Each integration's page has a **Setup instructions** button that opens the steps for getting what
@@ -740,6 +820,7 @@ window lists the pages at its end:
 | Wazuh | [API](https://documentation.wazuh.com/current/user-manual/api/getting-started.html), [RBAC](https://documentation.wazuh.com/current/user-manual/api/rbac/configuration.html), [internal users](https://documentation.wazuh.com/current/user-manual/user-administration/rbac.html) and the default roles in Wazuh's source |
 | CrowdSec | [local API authentication](https://docs.crowdsec.net/docs/local_api/authentication/) and [configuration](https://docs.crowdsec.net/docs/configuration/crowdsec_configuration/) |
 | VirusTotal | [Public vs Premium API](https://docs.virustotal.com/reference/public-vs-premium-api), the [overview](https://docs.virustotal.com/reference/overview) for where the key is found, the [IP address report](https://docs.virustotal.com/reference/ip-info) and its [object](https://docs.virustotal.com/reference-link/ip-object), and the [errors](https://docs.virustotal.com/reference/errors) |
+| AlienVault OTX | OTX's [DirectConnect API page](https://otx.alienvault.com/assets/static/external_api.html)                                                                                                                                                                                                                                                                                                                                                       |
 
 A step marked **Not from the documentation** says what was worked out and why. These were
 read, not run against every release, so the connection test is what tells whether a step worked.

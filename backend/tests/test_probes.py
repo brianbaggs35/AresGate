@@ -1189,6 +1189,43 @@ def test_crowdsec_that_does_not_answer_properly_is_explained(
     assert message in result.message
 
 
+def test_otx_accepts_a_key_that_belongs_to_an_account_and_asks_about_no_address(
+    serve: Serve,
+) -> None:
+    result, server, log = verdict(
+        serve,
+        "otx",
+        "api",
+        lambda seen: Answer(body='{"username": "someone"}'),
+        secrets={"api_key": "otx-key"},
+    )
+
+    assert result == Verdict(True, "OTX accepted the key.")
+    [seen] = server.seen
+    assert seen.target == "/api/v1/users/me"
+    assert seen.headers["x-otx-api-key"] == "otx-key"
+    assert log.calls[0].path == "/api/v1/users/me"
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (Answer(status=401), "OTX didn't accept the key."),
+        (Answer(status=403), "OTX didn't accept the key."),
+        (Answer(status=500), "OTX answered HTTP 500."),
+        (Answer(body="<html>"), "doesn't look like OTX's"),
+        (Answer(body='{"id": 1}'), "doesn't look like OTX's"),
+    ],
+)
+def test_otx_that_does_not_answer_properly_is_explained(
+    serve: Serve, answer: Answer, message: str
+) -> None:
+    result, _, _ = verdict(serve, "otx", "api", lambda seen: answer, secrets={"api_key": "k"})
+
+    assert not result.ok
+    assert message in result.message
+
+
 def test_the_state_of_a_service_is_read_from_the_words_it_uses() -> None:
     state = probes.service_state
 

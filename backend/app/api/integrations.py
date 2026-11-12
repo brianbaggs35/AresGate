@@ -27,7 +27,7 @@ from app.integrations.registry import (
     SettingsError,
 )
 from app.integrations.service import Status, Submission
-from app.intel import budget, virustotal
+from app.intel import budget
 from app.intel import connection as intel_connection
 from app.models import IntegrationConnection, utcnow
 from app.security.credential_store import NAME_PATTERN
@@ -283,10 +283,11 @@ def _connection_out(
 
 
 def _pause(db: Session, key: str) -> PauseOut | None:
-    """The limit holding an integration's lookups now, if one does. Only VirusTotal has one."""
-    if key != virustotal.PROVIDER:
+    """The limit holding an integration's lookups now, if one does. Only the threat-intelligence
+    services have one."""
+    if key not in budget.THROTTLES:
         return None
-    held = budget.paused(db, virustotal.PROVIDER, utcnow())
+    held = budget.paused(db, key, utcnow())
     return None if held is None else PauseOut(daily=held.daily, until=held.until)
 
 

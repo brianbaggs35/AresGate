@@ -128,13 +128,13 @@ function liftsAt(until: string): string {
   return `${new Date(until).toISOString().slice(11, 16)} UTC`
 }
 
-/** What is said while VirusTotal's own limit holds its lookups, and when they resume. `resume`
- * names what waits, such as `Searches`. */
-export function limitNotice(pause: Pause, resume: string): string {
+/** What is said while a threat-intelligence service's own limit holds its lookups, and when they
+ * resume. `resume` names what waits, such as `Searches`, and `service` the one that set the limit. */
+export function limitNotice(pause: Pause, resume: string, service = 'VirusTotal'): string {
   const when = liftsAt(pause.until)
   return pause.daily
-    ? `VirusTotal's daily limit is reached. ${resume} resume at ${when}.`
-    : `VirusTotal asked for fewer requests. ${resume} resume at ${when}.`
+    ? `${service}'s daily limit is reached. ${resume} resume at ${when}.`
+    : `${service} asked for fewer requests. ${resume} resume at ${when}.`
 }
 
 export const isPlainHttp = (url: string) => /^\s*http:\/\//i.test(url)

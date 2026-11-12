@@ -684,6 +684,21 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "CrowdSec's local API accepted the key.")
 
 
+async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
+    """Asks OTX who the key belongs to. That is a request about the key's own account, so it
+    sends no address to OTX and counts as no lookup."""
+    reply = await client.request(
+        "GET", "/api/v1/users/me", headers={"X-OTX-API-KEY": target.secrets["api_key"]}
+    )
+    refused = "OTX didn't accept the key. Copy it again from your OTX account's settings."
+    if bad := problem(reply, "OTX", refused=refused, forbidden=refused):
+        return bad
+    account = as_object(reply.json())
+    if account is None or not isinstance(account.get("username"), str):
+        return unexpected("OTX")
+    return Verdict(True, "OTX accepted the key.")
+
+
 LOOKUPS: Mapping[tuple[str, str, str], Lookuper] = {
     ("ntopng", "api", "interface_id"): ntopng_interface_lookup,
 }
@@ -695,6 +710,7 @@ PROBES: Mapping[tuple[str, str], Probe] = {
     ("wazuh", "manager"): wazuh_manager,
     ("wazuh", "indexer"): wazuh_indexer,
     ("crowdsec", "lapi"): crowdsec,
+    ("otx", "api"): alienvault_otx,
 }
 
 # The connections whose test spends one of the lookups their key allows. They are tested by hand,

@@ -38,8 +38,9 @@ test.describe('status page', () => {
       'Wazuh',
       'CrowdSec',
       'VirusTotal',
+      'AlienVault OTX',
     ])
-    await expect(status.partStates).toHaveText(new Array<string>(5).fill('Off'))
+    await expect(status.partStates).toHaveText(new Array<string>(6).fill('Off'))
     await expect(status.part('Wazuh')).toContainText('Not connected.')
 
     await status.part('Wazuh').getByRole('link', { name: 'Open Wazuh' }).click()

@@ -27,7 +27,7 @@ from ipaddress import IPv4Address, IPv6Address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.intel import store, virustotal
+from app.intel import otx, store, virustotal
 from app.models import IntelLookup
 
 # The lock every lookup takes while it checks the limits and keeps its place: a number that stands
@@ -85,9 +85,45 @@ DAY = timedelta(days=1)
 MONTH = timedelta(days=30)
 
 
+# OTX publishes no limit, so AresGate paces itself to what a community service can bear. The pace
+# is the owner's to choose: how often the background loop asks, and how many lookups a day.
+OTX_PACES: Mapping[str, Level] = {
+    "gentle": Level(
+        spacing=timedelta(seconds=5),
+        per_day=1_500,
+        per_month=None,
+        background_spacing=timedelta(seconds=90),
+    ),
+    "balanced": Level(
+        spacing=timedelta(seconds=2),
+        per_day=5_000,
+        per_month=None,
+        background_spacing=timedelta(seconds=30),
+    ),
+    "fast": Level(
+        spacing=timedelta(seconds=1),
+        per_day=10_000,
+        per_month=None,
+        background_spacing=timedelta(seconds=10),
+    ),
+}
+OTX_DEFAULT_PACE = "balanced"
+# How long each service's request to send fewer holds lookups.
+THROTTLES: Mapping[str, timedelta] = {
+    virustotal.PROVIDER: virustotal.THROTTLE,
+    otx.PROVIDER: otx.THROTTLE,
+}
+
+
 def level_of(options: Mapping[str, str | int]) -> Level:
-    """The limits of the access level chosen. Anything but premium is kept to the free limits."""
+    """The limits of VirusTotal's access level chosen. Anything but premium is kept to the free
+    limits."""
     return PREMIUM if options.get("tier") == "premium" else FREE
+
+
+def otx_level_of(options: Mapping[str, str | int]) -> Level:
+    """The limits of the pace chosen for OTX. Anything unknown is the balanced pace."""
+    return OTX_PACES.get(str(options.get("pace")), OTX_PACES[OTX_DEFAULT_PACE])
 
 
 def _requested_since(db: Session, provider: str, since: datetime) -> int:
@@ -138,7 +174,7 @@ def paused(db: Session, provider: str, now: datetime) -> Pause | None:
     if outcome == store.LIMITED:
         held = Pause(until=virustotal.next_reset(requested_at), daily=True)
     else:
-        held = Pause(until=requested_at + virustotal.THROTTLE, daily=False)
+        held = Pause(until=requested_at + THROTTLES[provider], daily=False)
     return held if held.until > now else None
 
 

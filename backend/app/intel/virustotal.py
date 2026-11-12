@@ -7,15 +7,26 @@ reports as a failure. A limit answers 429: a used-up quota holds lookups until t
 midnight UTC, and any other limit holds them for a minute.
 """
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
-from typing import Literal, cast
+from typing import cast
 
 from app import audit
 from app.integrations.client import ApiClient, CallFailed, Recorder, Reply, Target
 from app.integrations.netguard import AddressPolicy
 from app.intel import subjects
+from app.intel.answers import (
+    Answer,
+    Failed,
+    Judgement,
+    Limited,
+    Report,
+    Reported,
+    Throttled,
+    Unknown,
+)
 from app.intel.subjects import Subject
+
+__all__ = ["Answer", "Failed", "Judgement", "Limited", "Report", "Reported", "Throttled", "Unknown"]
 
 PROVIDER = "virustotal"
 KEY_HEADER = "x-apikey"
@@ -31,68 +42,6 @@ MAX_URL = 2048
 MAX_CATEGORIES = 12
 # How long lookups wait after VirusTotal asks for fewer requests. Its page gives no time for that.
 THROTTLE = timedelta(minutes=1)
-
-type Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
-
-
-@dataclass(frozen=True)
-class Report:
-    """What VirusTotal said of one subject."""
-
-    malicious: int
-    suspicious: int
-    harmless: int
-    undetected: int
-    reputation: int
-    analysed_at: datetime
-    country: str | None = None
-    owner: str | None = None
-    asn: int | None = None
-    # The categories the engines gave the subject, each once, in order.
-    categories: tuple[str, ...] = ()
-    # What the answer says beyond the counts, as a label and its text.
-    details: tuple[tuple[str, str], ...] = ()
-
-    @property
-    def engines(self) -> int:
-        """How many engines gave a verdict on the subject."""
-        return self.malicious + self.suspicious + self.harmless + self.undetected
-
-
-@dataclass(frozen=True)
-class Reported:
-    """VirusTotal has a report on the subject."""
-
-    report: Report
-
-
-@dataclass(frozen=True)
-class Unknown:
-    """VirusTotal has no report on the subject."""
-
-
-@dataclass(frozen=True)
-class Failed:
-    """The lookup didn't give a report. The message says why, for the log and for the person."""
-
-    message: str
-
-
-@dataclass(frozen=True)
-class Limited:
-    """VirusTotal's daily quota is used up. Nothing is asked until it resets, at ``until``."""
-
-    until: datetime
-
-
-@dataclass(frozen=True)
-class Throttled:
-    """VirusTotal asked for fewer requests for a minute. Nothing is asked until ``until``."""
-
-    until: datetime
-
-
-Answer = Reported | Unknown | Failed | Limited | Throttled
 
 
 def judge(report: Report | None) -> Judgement:

@@ -11,6 +11,7 @@ import {
   module,
   ntopngApi,
   opnsense,
+  otx,
   virustotal,
 } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -948,5 +949,16 @@ describe('the VirusTotal limit', () => {
     const { find } = await open(virustotal({ status: 'connected' }), { key: 'virustotal' })
 
     expect(find('integration-limit').exists()).toBe(false)
+  })
+
+  it("names the service that asked for fewer requests, such as OTX's five-minute wait", async () => {
+    const { find } = await open(
+      otx({ status: 'connected', pause: { until: '2099-01-01T12:05:00Z', daily: false } }),
+      { key: 'otx' },
+    )
+
+    expect(find('integration-limit').text()).toContain(
+      'AlienVault OTX asked for fewer requests. Tests and searches resume at 12:05 UTC.',
+    )
   })
 })

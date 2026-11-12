@@ -17,7 +17,7 @@ from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.incidents import episode, names, queries, search
-from app.intel import overrides, subjects, virustotal
+from app.intel import otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
 from app.threats import settings as threat_settings
@@ -1397,6 +1397,7 @@ class TestWhatWasSent:
             "country": "NL",
             "ruling": None,
             "ruling_note": None,
+            "otx": None,
         }
         # Only the internet is looked up: the device on the network is not.
         assert conversation["client"]["reputation"] is None
@@ -1454,7 +1455,74 @@ class TestWhatWasSent:
             "country": None,
             "ruling": "suspicious",
             "ruling_note": None,
+            "otx": None,
         }
+
+    def test_what_otx_says_of_an_address_is_told_beside_what_virustotal_said(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        intel_store.keep(
+            session,
+            otx.PROVIDER,
+            subjects.of_address(ip_address(ATTACKER)),
+            otx.Reported(
+                otx.Report(
+                    malicious=2,
+                    suspicious=1,
+                    harmless=0,
+                    undetected=0,
+                    reputation=0,
+                    analysed_at=NOW,
+                    details=(
+                        ("Pulses", "3"),
+                        (otx.MALWARE, "Mirai"),
+                        (otx.ADVERSARY, "Group X"),
+                    ),
+                )
+            ),
+            NOW,
+        )
+        session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        reputation = conversation["server"]["reputation"]
+        assert reputation["otx"] == {
+            "judgement": "malicious",
+            "pulses": 3,
+            "naming": 2,
+            "names": "Mirai; Group X",
+            "link": f"https://otx.alienvault.com/indicator/ip/{ATTACKER}",
+        }
+        # VirusTotal has said nothing, which is not the same as OTX's word.
+        assert (reputation["reported"], reputation["engines"]) == ("unknown", 0)
+
+    def test_an_address_no_pulse_names_has_nothing_of_otx_to_tell(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        intel_store.keep(
+            session,
+            otx.PROVIDER,
+            subjects.of_address(ip_address(ATTACKER)),
+            otx.Reported(
+                otx.Report(
+                    malicious=0,
+                    suspicious=0,
+                    harmless=0,
+                    undetected=0,
+                    reputation=0,
+                    analysed_at=NOW,
+                )
+            ),
+            NOW,
+        )
+        session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["server"]["reputation"] is None
 
     def test_an_incident_about_a_rule_has_no_conversations(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

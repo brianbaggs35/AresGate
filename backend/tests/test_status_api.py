@@ -152,6 +152,7 @@ def test_it_lists_every_integration_even_with_none_connected(
         "wazuh",
         "crowdsec",
         "virustotal",
+        "otx",
     ]
     for part in parts:
         assert part["integration"] == part["key"]
