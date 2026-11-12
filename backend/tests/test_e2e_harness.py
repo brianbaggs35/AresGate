@@ -1130,7 +1130,8 @@ def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
     assert sent["certificates"][0]["self_signed"] is True
     assert sent["requests"][0]["request_headers"][1]["hidden"] is True
     assert sent["lookups"][0]["name"] == "cloud.example.net"
-    assert both["wire"] is None
+    # What the firewall's packet said is there, but it read no certificate or request.
+    assert both["wire"]["certificates"] == []
 
 
 def test_events_can_be_made_to_order_for_the_logs(e2e: TestClient) -> None:
