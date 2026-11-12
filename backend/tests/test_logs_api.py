@@ -439,7 +439,7 @@ class TestSearching:
 
 
 class TestSummary:
-    def test_the_newest_that_match_are_what_it_reads(
+    def test_the_counts_are_of_everything_found_and_only_the_chart_of_the_newest(
         self,
         client: TestClient,
         csrf_token: str,
@@ -453,7 +453,27 @@ class TestSummary:
         summary = listed(client)["summary"]
 
         assert summary["capped"] is True
-        assert summary["matched"] == 2
+        assert summary["matched"] == 4
+        assert sum(summary["facets"]["severity"].values()) == 4
+        assert sum(item["count"] for item in summary["facets"]["sources"]) == 4
+        assert sum(sum(bar) for bar in summary["volume"]["counts"]) == 2
+
+    def test_choosing_a_choice_finds_exactly_the_number_it_showed(
+        self,
+        client: TestClient,
+        csrf_token: str,
+        session: Session,
+        settings: Settings,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        make(session, settings)
+        monkeypatch.setattr(queries, "SUMMARY_WINDOW", 2)
+        shown = {
+            item["key"]: item["count"] for item in listed(client)["summary"]["facets"]["sources"]
+        }
+
+        for key, count in shown.items():
+            assert listed(client, q=f"source:{key}")["summary"]["matched"] == count
 
     def test_the_volume_is_counted_in_bars_of_a_width_that_fits_the_time(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

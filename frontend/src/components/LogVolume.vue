@@ -13,7 +13,7 @@ import { volumeBars } from '@/logs'
  */
 const props = defineProps<{
   volume: LogVolume | null
-  /** How many events it is of, and whether there were more that it did not count. */
+  /** How many events the search found, and whether the chart left out the oldest of them. */
   matched: number
   capped: boolean
   loading?: boolean
@@ -26,8 +26,9 @@ const bars = computed(() =>
 const caption = computed(() => {
   const count = formatCount(props.matched)
   const events = props.matched === 1 ? `${count} event` : `${count} events`
-  const found = props.capped ? `The newest ${events}` : events
-  return `${found} found. Pick a bar to look at just that time.`
+  const drawn = props.volume?.counts.flat().reduce((sum, count) => sum + count, 0) ?? 0
+  const limit = props.capped ? ` The chart is of the newest ${formatCount(drawn)}.` : ''
+  return `${events} found.${limit} Pick a bar to look at just that time.`
 })
 
 function pick(index: number) {

@@ -319,7 +319,6 @@ const matched = computed(() => {
   const found = summary.value
   if (!found) return null
   const count = formatCount(found.matched)
-  if (found.capped) return `The newest ${count} events`
   return `${count} ${found.matched === 1 ? 'event' : 'events'}`
 })
 
@@ -536,8 +535,7 @@ usePolling(() => {
       <div v-if="more && !searchError" class="logs__more" data-test="more">
         <p class="text-body-medium text-medium-emphasis">
           Showing {{ formatCount(items.length)
-          }}{{ summary ? ` of ${formatCount(summary.matched)}` : ''
-          }}{{ summary?.capped ? '+' : '' }}.
+          }}{{ summary ? ` of ${formatCount(summary.matched)}` : '' }}.
         </p>
         <v-btn variant="outlined" :loading="loadingMore" data-test="show-older" @click="loadMore">
           Show older events
