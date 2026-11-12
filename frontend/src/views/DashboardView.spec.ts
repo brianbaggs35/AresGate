@@ -54,6 +54,11 @@ function busy() {
         { address: '203.0.113.9', count: 900 },
         { address: '198.51.100.7', count: 350 },
       ],
+      inbound: 1_200,
+      outbound: 50,
+      inside: 0,
+      top_ports: [{ port: 22, service: 'SSH', count: 700 }],
+      top_devices: [{ address: '192.168.1.20', count: 50, destinations: 3 }],
     },
     traffic: [
       {
@@ -483,6 +488,17 @@ describe('DashboardView', () => {
     it('say so when nothing was blocked', async () => {
       const { text } = await open({ dashboard: dashboard() })
       expect(text('sources-card')).toContain('Nothing was blocked')
+    })
+
+    it('sort the blocks by direction in a card of their own', async () => {
+      const { text } = await open()
+      expect(text('blocked-card')).toContain('Which way the blocks went')
+      expect(text('blocked-card')).toContain('192.168.1.20')
+    })
+
+    it('leave the direction card out when nothing was blocked', async () => {
+      const { find } = await open({ dashboard: dashboard() })
+      expect(find('blocked-card').exists()).toBe(false)
     })
   })
 

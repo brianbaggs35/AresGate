@@ -44,7 +44,17 @@ def test_an_install_with_nothing_stored_still_has_a_dashboard(
         "urgent": 0,
     }
     assert body["recent_alerts"] == []
-    assert body["blocked"] == {"total": 0, "previous": 0, "per_bucket": [0] * 24, "top_sources": []}
+    assert body["blocked"] == {
+        "total": 0,
+        "previous": 0,
+        "per_bucket": [0] * 24,
+        "top_sources": [],
+        "inbound": 0,
+        "outbound": 0,
+        "inside": 0,
+        "top_ports": [],
+        "top_devices": [],
+    }
     assert body["traffic"] == []
     assert body["devices"] == {"total": 0, "new": 0}
     assert body["marks"] == []
@@ -71,7 +81,8 @@ def test_what_was_stored_is_counted(
         settings,
         [
             new_event(severity=Severity.HIGH, occurred_at=now, identity=("a",), summary="Scan"),
-            blocked_event("203.0.113.9", now, "b"),
+            blocked_event("203.0.113.9", now, "b", dst_address="192.168.1.5", dst_port=22),
+            blocked_event("192.168.1.20", now, "c", dst_address="198.51.100.7", dst_port=443),
         ],
         now,
     )
@@ -82,8 +93,16 @@ def test_what_was_stored_is_counted(
     assert body["alerts"]["total"] == 1
     assert body["alerts"]["highest"] == "high"
     assert sum(body["alerts"]["by_severity"]["high"]) == 1
-    assert body["blocked"]["total"] == 1
-    assert body["blocked"]["top_sources"] == [{"address": "203.0.113.9", "count": 1}]
+    assert body["blocked"]["total"] == 2
+    assert body["blocked"]["top_sources"] == [
+        {"address": "192.168.1.20", "count": 1},
+        {"address": "203.0.113.9", "count": 1},
+    ]
+    assert (body["blocked"]["inbound"], body["blocked"]["outbound"]) == (1, 1)
+    assert body["blocked"]["top_ports"] == [{"port": 22, "service": "SSH", "count": 1}]
+    assert body["blocked"]["top_devices"] == [
+        {"address": "192.168.1.20", "count": 1, "destinations": 1}
+    ]
     [latest] = body["recent_alerts"]
     assert latest["summary"] == "Scan"
     assert latest["severity"] == "high"

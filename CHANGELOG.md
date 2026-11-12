@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Blocked connections, by which way they went.** The dashboard has a new card under the charts
+  that sorts what the firewall refused into the internet knocking, your own devices being turned
+  away and one network of yours reaching another. It lists the ports the internet tried most and
+  the devices of yours that were refused most, each with a link to the log lines. A device that is
+  refused again and again is what a program gone wrong, or a taken-over machine, looks like from
+  the firewall.
 - **Trust: tell AresGate that something is fine.** A new **Trust** page lists what you have said
   is safe (or only low priority), with what each decision has kept from raising an alarm, and a
   page for each decision where everything about it can be changed or it can be taken back. A

@@ -394,6 +394,73 @@ class TestBlocked:
         assert len(dashboard.top_blocked_sources(session, win, limit=2)) == 2
 
 
+class TestBlockedSides:
+    def test_a_block_is_the_internets_a_devices_or_between_your_networks(
+        self, session: Session, settings: Settings
+    ) -> None:
+        win = dashboard.window("24h", NOW)
+        at = NOW - timedelta(minutes=5)
+        store(
+            session,
+            settings,
+            blocked_event("203.0.113.9", at, "in1", dst_address="192.168.1.5", dst_port=22),
+            blocked_event("203.0.113.9", at, "in2", dst_address="192.168.1.5", dst_port=22),
+            blocked_event("203.0.113.10", at, "in3", dst_address="192.168.1.6", dst_port=3389),
+            blocked_event("203.0.113.10", at, "in4", dst_address="192.168.1.6", dst_port=8080),
+            blocked_event("2001:db8::1", at, "in5", dst_address="192.168.1.6"),
+            blocked_event("192.168.1.20", at, "out1", dst_address="198.51.100.7", dst_port=443),
+            blocked_event("192.168.1.20", at, "out2", dst_address="198.51.100.8", dst_port=443),
+            blocked_event("192.168.1.20", at, "out3", dst_address="198.51.100.8", dst_port=80),
+            blocked_event("192.168.1.21", at, "out4", dst_port=53),
+            blocked_event("192.168.1.20", at, "lan", dst_address="10.0.0.4", dst_port=445),
+            blocked_event("203.0.113.9", win.start - HOUR, "old", dst_address="192.168.1.5"),
+            blocked_event("192.168.1.20", at, "pass", severity=Severity.INFO),
+        )
+
+        found = dashboard.blocked_sides(session, win)
+
+        assert (found.inbound, found.outbound, found.inside) == (5, 4, 1)
+        assert [(item.port, item.count) for item in found.ports] == [
+            (22, 2),
+            (3389, 1),
+            (8080, 1),
+        ]
+        assert [(str(item.address), item.count, item.destinations) for item in found.devices] == [
+            ("192.168.1.20", 3, 2),
+            ("192.168.1.21", 1, 0),
+        ]
+
+    def test_the_lists_are_cut_to_the_limits(self, session: Session, settings: Settings) -> None:
+        win = dashboard.window("24h", NOW)
+        at = NOW - timedelta(minutes=5)
+        store(
+            session,
+            settings,
+            *[
+                blocked_event(
+                    "203.0.113.9", at, f"p{port}", dst_address="192.168.1.5", dst_port=port
+                )
+                for port in (21, 22, 23)
+            ],
+            *[
+                blocked_event(f"192.168.1.{host}", at, f"d{host}", dst_address="198.51.100.7")
+                for host in (30, 31, 32)
+            ],
+        )
+
+        found = dashboard.blocked_sides(session, win, ports=2, devices=2)
+
+        assert len(found.ports) == 2
+        assert len(found.devices) == 2
+
+    def test_nothing_blocked_is_nothing_on_each_side(self, session: Session) -> None:
+        found = dashboard.blocked_sides(session, dashboard.window("24h", NOW))
+
+        assert (found.inbound, found.outbound, found.inside) == (0, 0, 0)
+        assert found.ports == []
+        assert found.devices == []
+
+
 class TestTraffic:
     SECOND = timedelta(seconds=1)
 
