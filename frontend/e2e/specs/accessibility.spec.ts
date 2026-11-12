@@ -1271,7 +1271,7 @@ for (const theme of ['light', 'dark'] as const) {
       shell,
     }) => {
       await integrations.goto()
-      await expect(integrations.names).toHaveCount(5)
+      await expect(integrations.names).toHaveCount(6)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 
