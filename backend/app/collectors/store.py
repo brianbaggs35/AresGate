@@ -72,6 +72,19 @@ def _find(db: Session, key: JobKey) -> CollectorHealth | None:
     )
 
 
+def _connected(db: Session, item: Wanted) -> bool:
+    """Whether the connection a collector reads from is still saved."""
+    return (
+        db.scalar(
+            select(IntegrationConnection.id).where(
+                IntegrationConnection.integration == item.definition.key,
+                IntegrationConnection.connection == item.connection.key,
+            )
+        )
+        is not None
+    )
+
+
 def sync(db: Session, items: Sequence[Wanted], now: datetime) -> None:
     """Gives every wanted collector a health record, and deletes the records of the ones that
     are not wanted any more, such as those of a connection that was disconnected."""
@@ -114,6 +127,11 @@ def finish(
     """Keeps how a run went and when the next one is due, and returns how many runs in a row
     have failed. ``delay_after`` says how long to wait, given that number."""
     row = _find(db, item.key)
+    if row is None and not _connected(db, item):
+        # The connection was disconnected while it ran, and took its record with it. There is
+        # nothing left for the run to be kept in, and a record made now would be counted as a
+        # collector until the next sync.
+        return 0
     if row is None:
         # Its record was deleted while it ran, and it is wanted again.
         row = _new(item.key, int(item.collector.interval.total_seconds()), finished)

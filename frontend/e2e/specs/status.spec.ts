@@ -105,6 +105,34 @@ test.describe('status page', () => {
     await expect(page).toHaveURL('/integrations/ntopng')
   })
 
+  test('stops listing a connection’s collectors as soon as it is disconnected', async ({
+    harness,
+    integration,
+    status,
+    dashboard,
+  }) => {
+    const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+    await integration.goto('ntopng')
+    await integration.address('api').fill(ntopng.url)
+    await integration.field('api', 'token').fill(TOKEN)
+    await integration.save.click()
+    await expect(integration.status).toHaveText('Connected')
+    await harness.setWorker('running')
+    await harness.runCollectors()
+    await dashboard.goto()
+    await expect(dashboard.collectionTile).toContainText('4 collectors')
+
+    await integration.goto('ntopng')
+    await integration.disconnect.click()
+    await integration.confirmDisconnect.click()
+    await expect(integration.status).toHaveText('Not connected')
+    await status.goto()
+
+    await expect(status.collectorNames).toHaveText(['Collector worker'])
+    await dashboard.goto()
+    await expect(dashboard.collectionTile).not.toContainText('collectors')
+  })
+
   test('says a failing collector once, together with its integration', async ({
     harness,
     integration,

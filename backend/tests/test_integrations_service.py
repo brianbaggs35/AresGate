@@ -13,7 +13,7 @@ from app.integrations.netguard import HOME_NETWORK, HOME_NETWORK_AND_LOOPBACK
 from app.integrations.probes import Verdict
 from app.integrations.registry import ModuleState, SettingsError
 from app.integrations.service import Incomplete, Status, Submission
-from app.models import IntegrationConnection, StoredCredential
+from app.models import CollectorHealth, IntegrationConnection, StoredCredential
 from app.security import credential_store
 from app.security.credential_store import Kind
 from tests.stubs import Answer, Serve, make_certificate
@@ -390,6 +390,48 @@ def test_disconnecting_forgets_the_settings_and_the_secrets(
     assert set(service.rows_for(session, "ntopng")) == {"api"}
     assert service.secrets_set(session, "ntopng", "api") == ["token"]
     assert not service.disconnect(session, OPNSENSE)
+
+
+def test_disconnecting_forgets_what_its_collectors_reported_and_nobody_elses(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    session.add_all(
+        [
+            CollectorHealth(
+                collector="check",
+                integration=integration,
+                connection="api",
+                interval_seconds=60,
+                last_items=3,
+            )
+            for integration in ("opnsense", "ntopng")
+        ]
+    )
+    session.commit()
+
+    assert service.disconnect(session, OPNSENSE)
+    session.commit()
+
+    kept = session.scalars(select(CollectorHealth.integration)).all()
+    assert kept == ["ntopng"]
+
+
+def test_a_connection_that_is_no_longer_used_forgets_its_collectors_too(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    session.add(
+        CollectorHealth(
+            collector="check", integration="opnsense", connection="api", interval_seconds=60
+        )
+    )
+    session.commit()
+
+    service.disconnect(session, OPNSENSE)
+    session.commit()
+
+    assert session.scalars(select(CollectorHealth)).all() == []
 
 
 def test_the_status_is_the_worst_of_the_connections(session: Session, settings: Settings) -> None:

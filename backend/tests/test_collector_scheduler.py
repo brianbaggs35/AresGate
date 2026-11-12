@@ -423,7 +423,7 @@ def test_a_collector_that_takes_too_long_is_stopped(
     assert the_health(session).last_error == "Didn't finish within 0.05 seconds."
 
 
-def test_a_connection_removed_while_a_run_starts_is_reported(
+def test_a_connection_removed_while_a_run_starts_leaves_no_record_of_it(
     session: Session, settings: Settings, engine: Engine, serve: Serve
 ) -> None:
     connect(session, settings, serve(crowdsec(SECRET)).url)
@@ -441,7 +441,8 @@ def test_a_connection_removed_while_a_run_starts_is_reported(
 
     asyncio.run(make(settings, engine, Counting(), new_session=new_session).run_once())
 
-    assert the_health(session).last_error == "The connection was removed."
+    # The run found the connection gone, and there is nothing left to count it against.
+    assert health_rows(session) == []
 
 
 def test_a_record_deleted_while_a_run_is_in_progress_is_made_again(
@@ -605,6 +606,40 @@ def test_a_failure_note_is_cleaned_and_kept_short(session: Session) -> None:
     assert len(record.last_error) <= 500
     assert "\n" not in record.last_error
     assert record.next_run_at == now + timedelta(seconds=1)
+
+
+def test_a_run_that_finishes_after_its_connection_was_disconnected_leaves_no_record(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    connect(session, settings, serve(crowdsec(SECRET)).url)
+    [item] = store.wanted(session, [Counting()])
+    store.sync(session, [item], utcnow())
+    session.commit()
+    service.disconnect(session, registry.INTEGRATIONS["crowdsec"])
+    session.commit()
+    now = utcnow()
+
+    failures = store.finish(
+        session, item, now, now, "The connection was removed.", None, lambda n: timedelta(seconds=n)
+    )
+    session.commit()
+
+    assert failures == 0
+    assert health_rows(session) == []
+
+
+def test_a_record_deleted_while_its_run_was_going_is_made_again_if_still_connected(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    connect(session, settings, serve(crowdsec(SECRET)).url)
+    [item] = store.wanted(session, [Counting()])
+    now = utcnow()
+
+    failures = store.finish(session, item, now, now, None, 4, lambda n: timedelta(seconds=n))
+    session.commit()
+
+    assert failures == 0
+    assert the_health(session).last_items == 4
 
 
 # ---- What the check leaves on the connection ---------------------------------------------------

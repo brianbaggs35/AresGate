@@ -82,6 +82,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **Disconnecting an integration takes its collectors off the Status page and the dashboard at
+  once.** They went on showing as working, and counted on the dashboard, until the worker next
+  looked, or until you opened Status and refreshed it by hand. What the disconnected collectors
+  had reported is now removed in the same step as the connection, so only a disconnect that
+  worked changes the counts, and a run that was in flight when you disconnected no longer leaves a
+  record behind.
 - **Choosing a program on the Logs page no longer changes its number.** The counts under the search
   box were of the newest 50,000 events that matched, so choosing ntopng, say, narrowed the search
   and the number grew to the newest 50,000 of ntopng's own. They are now of everything that
