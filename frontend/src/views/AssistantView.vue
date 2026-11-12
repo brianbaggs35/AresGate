@@ -71,9 +71,7 @@ const canSend = computed(() => draft.value.trim() !== '' && !tooLong.value && !s
 /** The last answer, if it failed and nothing is under way: the one that can be asked again. */
 const retryable = computed(() => {
   const last = messages.value.at(-1)
-  return last !== undefined && last.role === 'assistant' && !last.ok && !sending.value
-    ? last.id
-    : null
+  return last?.role === 'assistant' && !last.ok && !sending.value ? last.id : null
 })
 const confirming = computed({
   get: () => doomed.value !== null,

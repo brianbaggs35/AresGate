@@ -105,7 +105,7 @@ const trusted = computed(
  * when the certificate was looked up. */
 const verdict = computed(() => {
   const was = lookedUpWith.value
-  if (!found.value || !was || was.mode !== mode.value) return null
+  if (!found.value || was?.mode !== mode.value) return null
   if (mode.value === 'ca' && was.authority !== authority.value) return null
   if (mode.value === 'pinned' && was.fingerprint !== fingerprint.value) return null
   return { accepted: found.value.accepted, text: found.value.verdict }

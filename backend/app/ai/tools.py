@@ -507,7 +507,7 @@ def what_changed(db: Session, redactor: Redactor, args: Args, now: datetime) -> 
         f"In the last {_plural(hours, 'hour')} the firewall refused {now_total} connections; "
         f"in a window this long it usually refuses {_usual(usual_total)}."
     ]
-    lines += _changed_ports(db, redactor, window, before, windows, limit)
+    lines += _changed_ports(db, window, before, windows, limit)
     new_sources = db.scalar(
         select(func.count(Event.src_address.distinct())).where(
             refused(window.start, window.end),
@@ -532,7 +532,6 @@ def _usual(count: float) -> str:
 
 def _changed_ports(
     db: Session,
-    redactor: Redactor,
     window: Window,
     before: datetime,
     windows: float,
