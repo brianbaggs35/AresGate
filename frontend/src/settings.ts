@@ -1,4 +1,5 @@
 import {
+  ClipboardCheck,
   Database,
   Funnel,
   Gavel,
@@ -40,6 +41,7 @@ export const settingsSections: readonly SettingsSection[] = [
     title: 'Threat detection',
     icon: ShieldAlert,
   },
+  { key: 'review', route: 'settings-review', title: 'Review', icon: ClipboardCheck },
   { key: 'ai', route: 'settings-ai', title: 'AI', icon: Sparkles },
   { key: 'agents', route: 'settings-agents', title: 'Agents', icon: Workflow },
   { key: 'data', route: 'settings-data', title: 'Data', icon: Database },

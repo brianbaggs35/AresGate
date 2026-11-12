@@ -254,6 +254,29 @@ every look and word lives in `src/threats.ts`.
 - **On a phone** Threats is in the bottom bar between the dashboard and Incidents, and Logs is in
   the sheet behind More. Nothing scrolls sideways.
 
+## Review
+
+The Review page (`ReviewView`) is where the owner agrees or disagrees with what the AI decided,
+and `Settings > Review` (`ReviewSettingsView`) is how much of it waits.
+
+- **The page** has a record of how often the owner has agreed (`standingLine`, a bar, and a button
+  to Settings once the server says the AI has earned trust, `standing.trusted`), three lists
+  (*Waiting*, *Decided for you*, *Answered*, each with its count) and a card for each decision
+  (`ReviewCard`). A card is accented by the kind of call (red for an alarm, amber for a probe,
+  green for harmless), says what the decision does in a line from the server, and has
+  `ReviewAnswer`: **Agree**, **Disagree**, **Add a reason** (up to 300 characters) and, for a kind
+  that was set aside, a box that keeps it so. An answered card shows what was said and **Take it
+  back**. **Agree with all shown** (waiting list, after asking) agrees with what the page lists,
+  at most a hundred.
+- **After an answer** the card leaves its list and the page asks for the lists and counts again,
+  keeping as many as were shown. The lists refresh every minute.
+- **The menu** shows a number for what waits (`NavIcon`, in the side menu and the bottom bar,
+  spoken as well), asked for every minute by `App.vue` while signed in (`useReviewStore`).
+  On a phone Review is in the bar and the Assistant is behind **More** to make room. The
+  dashboard has `ReviewNudge`.
+- **Elsewhere** `ReviewStrip` (on an incident's AI card and on a kind's judgement) says where the
+  review stands and has the same two buttons, so an answer can be given where the call is read.
+
 ## Assets
 
 The Assets page lists every device the connected programs can see (`GET /api/assets`), built from

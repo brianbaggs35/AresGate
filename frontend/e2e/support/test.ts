@@ -14,6 +14,7 @@ import { AssistantPage } from './pages/assistant-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { IncidentPage } from './pages/incident-page'
+import { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
 import { InterfacesPage } from './pages/interfaces-page'
@@ -70,6 +71,9 @@ export interface AresGateFixtures {
   /** The page of one asset: what it is, how it has been listed, and what it did. */
   asset: AssetPage
   status: StatusPage
+  /** What the AI decided, for the owner to agree or disagree with, and how much of it waits. */
+  review: ReviewPage
+  reviewSettings: ReviewSettingsPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
   /** The settings page for what is set aside without a verdict, and how sure it has to be. */
@@ -220,6 +224,14 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   status: async ({ page }, use) => {
     await use(new StatusPage(page))
+  },
+
+  review: async ({ page }, use) => {
+    await use(new ReviewPage(page))
+  },
+
+  reviewSettings: async ({ page }, use) => {
+    await use(new ReviewSettingsPage(page))
   },
 
   verdicts: async ({ page }, use) => {

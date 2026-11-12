@@ -18,8 +18,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.ai import families, run, service
 from app.ai.gateway import Answer, Unavailable
 from app.ai.redaction import Level, Redactor
+from app.ai.triage import LESSON_HEADING
 from app.config import Settings
-from app.models import AiCall, Incident, IncidentFamily
+from app.models import AiCall, Incident, IncidentFamily, ReviewFeedback
+from app.review import service as review
+from app.review import settings as review_settings
 from app.threats import families as grouping
 from tests.stubs import Handler, Seen, Serve
 from tests.test_ai_gateway import Log, anthropic_says, context
@@ -227,6 +230,53 @@ class TestWhatTheAiIsAsked:
         assert "stages of an attack seen: recon" in said
         assert "22 (3), 80 (3)" in said
         assert "45.33.32" not in said.split("example from")[0]
+
+    def test_it_is_reminded_of_what_the_owner_disagreed_with(self, session: Session) -> None:
+        found = kind(session, 3)
+        session.add(
+            ReviewFeedback(
+                subject="family",
+                subject_id=1,
+                title="Printing at night",
+                ai_class="noise",
+                ai_confidence=91,
+                answer="disagree",
+                reason="That printer is mine.",
+            )
+        )
+        session.flush()
+        question, _ = families.question_for(session, [found.id])
+
+        said = question.build(Redactor(session, Level.BALANCED, NOW))
+
+        assert said.startswith(LESSON_HEADING)
+        assert (
+            "- You called Printing at night noise (91% sure) and the owner disagreed: "
+            "That printer is mine." in said
+        )
+        assert "Families to judge:" in said
+
+    def test_it_is_not_reminded_when_the_owner_would_rather_it_did_not_learn(
+        self, session: Session
+    ) -> None:
+        found = kind(session, 3)
+        session.add(
+            ReviewFeedback(
+                subject="family",
+                subject_id=1,
+                title="x",
+                ai_class="noise",
+                ai_confidence=91,
+                answer="disagree",
+            )
+        )
+        review_settings.save(session, review_settings.Policy(learn=False))
+        session.flush()
+        question, _ = families.question_for(session, [found.id])
+
+        said = question.build(Redactor(session, Level.BALANCED, NOW))
+
+        assert LESSON_HEADING not in said
 
     def test_a_kind_with_nothing_to_say_says_none(self, session: Session) -> None:
         found = kind(session, 1, "ET SCAN lonely", sources=[], ports=[], stages=[])
@@ -444,6 +494,7 @@ class TestKeepingWhatItSaid:
     def test_a_judgement_is_kept_with_who_made_it_and_told_to_the_incidents(
         self, session: Session
     ) -> None:
+        review_settings.save(session, review_settings.Policy("auto"))
         family, facts = self.found(session)
 
         said = families.keep(session, facts, self.answer(json.dumps(judgement(1))), NOW)
@@ -460,6 +511,67 @@ class TestKeepingWhatItSaid:
         assert {(each.ai_class, each.ai_confidence, each.ai_basis) for each in members} == {
             ("probe", 93, "family")
         }
+
+    def test_a_judgement_waits_for_the_owner_by_default_and_sets_nothing_aside(
+        self, session: Session
+    ) -> None:
+        family, facts = self.found(session)
+
+        families.keep(session, facts, self.answer(json.dumps(judgement(1))), NOW)
+        session.commit()
+        session.expire_all()
+
+        assert (family.review, family.reviewed_at) == ("pending", None)
+        members = session.scalars(select(Incident).where(Incident.family_id == family.id)).all()
+        assert {each.ai_class for each in members} == {None}
+
+    def test_a_judgement_that_raises_the_alarm_counts_while_it_waits(
+        self, session: Session
+    ) -> None:
+        family, facts = self.found(session)
+
+        families.keep(
+            session, facts, self.answer(json.dumps(judgement(1, classification="attack"))), NOW
+        )
+        session.commit()
+        session.expire_all()
+
+        assert family.review == "pending"
+        members = session.scalars(select(Incident).where(Incident.family_id == family.id)).all()
+        assert {each.ai_class for each in members} == {"attack"}
+
+    def test_only_what_it_is_unsure_of_waits_when_the_owner_asks_for_that(
+        self, session: Session
+    ) -> None:
+        review_settings.save(session, review_settings.Policy("uncertain", 95))
+        family, facts = self.found(session)
+
+        families.keep(session, facts, self.answer(json.dumps(judgement(1, confidence=93))), NOW)
+        assert family.review == "pending"
+        families.keep(session, facts, self.answer(json.dumps(judgement(1, confidence=96))), NOW)
+        assert family.review == "auto"
+
+    def test_what_the_owner_agreed_with_is_not_asked_again_when_it_says_the_same(
+        self, session: Session
+    ) -> None:
+        family, facts = self.found(session)
+        families.keep(session, facts, self.answer(json.dumps(judgement(1))), NOW)
+        review.answer(session, "family", family.id, "agree", now=NOW)
+
+        families.keep(session, facts, self.answer(json.dumps(judgement(1))), NOW)
+
+        assert (family.review, family.reviewed_at) == ("agreed", NOW)
+
+    def test_a_different_judgement_is_looked_at_afresh(self, session: Session) -> None:
+        family, facts = self.found(session)
+        families.keep(session, facts, self.answer(json.dumps(judgement(1))), NOW)
+        review.answer(session, "family", family.id, "agree", now=NOW)
+
+        families.keep(
+            session, facts, self.answer(json.dumps(judgement(1, classification="noise"))), NOW
+        )
+
+        assert (family.review, family.reviewed_at) == ("pending", None)
 
     def test_an_empty_reason_is_not_kept(self, session: Session) -> None:
         family, facts = self.found(session)

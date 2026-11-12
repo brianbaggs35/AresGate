@@ -23,7 +23,7 @@ test.describe('the assistant', () => {
   }) => {
     await page.goto('/')
 
-    await shell.assistantLink.click()
+    await shell.goTo('assistant')
 
     await expect(page).toHaveURL('/assistant')
     await expect(assistant.heading).toHaveText('Assistant')

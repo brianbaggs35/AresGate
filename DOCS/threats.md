@@ -229,6 +229,38 @@ anyone reading it, and why seventy thousand alerts cost a few questions.
   aside, whatever the AI says, and *Never set aside* keeps the AI from ever setting one aside.
   *Take my word back* undoes either.
 
+## Reviewing what the AI decided
+
+The AI may sound an alarm on its own, but setting something aside is a decision you may want to
+make, or at least to look at. The **Review** page (in the menu after Incidents) lists what the AI
+called an incident, or a whole kind of incident, that would change what you see: a *possible
+compromise* or an *active attack* (it raises the alarm) and a *probe* or *harmless* (it sets
+things aside). Each card says what the AI called it and how sure it is, why, what that does if it
+stands, and has **Agree** and **Disagree**, with an optional reason.
+
+- **Where a decision stands.** It is *waiting for you*, *decided for you* (it counted at once, as
+  you allowed) or answered. An agreed decision counts, a disagreed one never does, and
+  **Take it back** sends an answer back to wait. A decision that waits counts only if it raises an
+  alarm: nothing is set aside on the AI's word alone, unless you allow it.
+- **How much waits** is **Settings > Review**. *Everything waits for me* is the default. *Only what
+  the AI is unsure of* lets what it is at least *N*% sure of (50 to 100, 85 by default) count at
+  once and sends the rest to you. *The AI decides on its own* counts everything at once, and the
+  Review page still lists it, so you can disagree later. Decisions made before this existed count
+  as the AI made them. The setting applies to what the AI decides from then on.
+- **The AI learns from you.** The last few decisions you disagreed with, and your reasons, are
+  added to what the AI is asked the next time it reads an incident or judges a kind (with
+  addresses hidden as everywhere else). Turn it off with *Tell the AI what I disagreed with* in
+  the same settings. Your reasons are kept in the database, not in the activity log.
+- **Trust is earned.** Once you have answered 20 decisions and agreed with 95% of them, the page
+  says the AI could be left to decide on its own, and links to the setting. Nothing changes
+  until you change it.
+- **Keep a kind.** Agreeing with a kind that was set aside has a box that keeps it so whatever the
+  AI says next (the same as *Always background* on the kind's page), and disagreeing with it keeps
+  it in front of you (*Never set aside*).
+- **Where it shows.** The menu has a number for what waits, the dashboard says so and links to the
+  page, and the incident and kind pages show where your review of the AI's call stands, with the
+  same two buttons.
+
 ## Tuning it to your network
 
 **Settings > Threat detection** is for fitting this to your setup. Nothing is kept until you press
@@ -269,6 +301,11 @@ The API, all under `/api` and signed in:
 | `POST /threats/families/{id}/judge` | Has the AI judge the kind now. |
 | `GET` and `PUT /threat-settings`, `POST /threat-settings/preview` | The settings, and what saving them would do. |
 | `GET /incidents?lane=…&family=…` | The incident list takes repeatable `lane` and a `family`. |
+| `GET /review?state=waiting\|decided\|answered` | The AI's decisions in one list (`limit`, `offset`), with the counts of all three, how often you agreed (`standing`) and the mode. |
+| `GET /review/summary` | How many decisions wait, for the menu. |
+| `POST /review/{incident\|family}/{id}` | Agree, disagree (with a `reason`, and `keep_kind` for a kind that was set aside) or `undo`. |
+| `POST /review/agree` | Agrees with up to 100 decisions that still wait. |
+| `GET` and `PUT /review/settings` | How much waits (`mode`, `auto_from`, `learn`). |
 | `GET /threats/chains` | The attacks across two devices, the most recent first, narrowed by `confirmed`. |
 | `GET /threats/chains/{id}` | One chain: its steps in order, each with its link (`confirmed` or `inferred`), why, and the evidence. |
 
@@ -283,7 +320,9 @@ every run of the engine), `app/events/twins.py` (the same alert from two program
 (repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
 a kind). The lanes exist twice, as Python (`lane_of`) and as SQL (`lane_clauses`), and a test holds
 them to agreeing. Migration `0028` adds the tables and columns, `0044` the chains and `0045` the names kept of
-addresses.
+addresses. Migration `0047` adds `review` to the AI's readings and kind judgements, and the settings and
+what you said (`app/review/`); a decision counts through `app/threats/calls.py` (`counts`), so the lanes
+themselves did not change.
 
 The Playwright harness can make attacks that are more than scanning (`exploit`, `compromise`), a
 device that calls out instead of being called (`outbound`, which a chain needs on its second

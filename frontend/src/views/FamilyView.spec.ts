@@ -29,6 +29,16 @@ describe('FamilyView', () => {
     expect(fetchIt).toHaveBeenCalledWith(7)
   })
 
+  it('asks for the kind again once your review of its judgement is answered', async () => {
+    const { fetchIt, wrapper } = await open()
+    fetchIt.mockClear()
+
+    wrapper.findComponent({ name: 'ReviewStrip' }).vm.$emit('answered')
+    await flushPromises()
+
+    expect(fetchIt).toHaveBeenCalledWith(7)
+  })
+
   it('shows a skeleton until the answer arrives', async () => {
     vi.spyOn(threatsApi, 'fetchFamily').mockReturnValue(new Promise(() => {}))
     const { wrapper } = await mountWithPlugins(FamilyView, {

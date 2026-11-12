@@ -164,6 +164,8 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "agent_steps": 0,
         "agents": 0,
         "asset_profiles": 0,
+        "review_feedback": 0,
+        "review_settings": 0,
         "ai_aliases": 0,
         "ai_calls": 0,
         "ai_conversations": 0,
@@ -258,6 +260,8 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "threat_intel_lookups",
             "system_info",
             "saved_searches",
+            "review_settings",
+            "review_feedback",
             "noise_settings",
             "metric_series",
             "metric_retention",
@@ -1470,3 +1474,83 @@ def test_it_runs_the_agents_that_wait_and_says_what_answered_without_connecting_
     assert [(item["severity"], item["title"]) for item in done.findings] == [
         ("critical", "Telnet is open on e2e-device-1 (192.168.1.10)")
     ]
+
+
+def test_decisions_of_the_ai_can_be_made_and_count_as_their_review_says(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={
+            "incidents": [{"address": "8.8.8.8"}, {"address": "1.1.1.1"}, {"address": "9.9.9.9"}]
+        },
+    )
+
+    made = e2e.post(
+        "/api/__test__/factories/decisions",
+        json={
+            "decisions": [
+                {"address": "8.8.8.8", "ai_class": "noise", "review": "pending"},
+                {
+                    "address": "1.1.1.1",
+                    "subject": "incident",
+                    "ai_class": "probe",
+                    "confidence": 77,
+                    "review": "agreed",
+                    "headline": "A scan.",
+                },
+                {"address": "203.0.113.99"},
+            ]
+        },
+    )
+
+    assert made.status_code == 201
+    assert made.json() == {"decisions": 2}
+    sign_in(e2e)
+    waiting = e2e.get("/api/review").json()
+    assert [
+        (item["subject"], item["title"] != "", item["review"]) for item in waiting["items"]
+    ] == [("family", True, "pending")]
+    answered = e2e.get("/api/review", params={"state": "answered"}).json()["items"]
+    assert [(item["subject"], item["confidence"], item["why"]) for item in answered] == [
+        ("incident", 77, "A scan.")
+    ]
+    standing = e2e.get("/api/review").json()["standing"]
+    assert (standing["agreed"], standing["disagreed"]) == (1, 0)
+    by_address = {item["subject"]: item["ai"] for item in e2e.get("/api/incidents").json()["items"]}
+    assert by_address["1.1.1.1"] == {"classification": "probe", "confidence": 77}
+    assert by_address["8.8.8.8"] is None
+
+
+def test_a_decision_of_a_kind_that_was_disagreed_with_is_on_record_as_an_answer(
+    e2e: TestClient,
+) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post("/api/__test__/factories/incidents", json={"incidents": [{"address": "8.8.8.8"}]})
+
+    e2e.post(
+        "/api/__test__/factories/decisions",
+        json={"decisions": [{"address": "8.8.8.8", "ai_class": "attack", "review": "disagreed"}]},
+    )
+
+    sign_in(e2e)
+    page = e2e.get("/api/review", params={"state": "answered"}).json()
+    assert [(item["subject"], item["review"]) for item in page["items"]] == [
+        ("family", "disagreed")
+    ]
+    assert (page["standing"]["agreed"], page["standing"]["disagreed"]) == (0, 1)
+
+
+def test_how_much_of_what_the_ai_decides_waits_can_be_set(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+
+    made = e2e.post(
+        "/api/__test__/factories/review-settings",
+        json={"mode": "uncertain", "auto_from": 90, "learn": False},
+    )
+    again = e2e.post("/api/__test__/factories/review-settings", json={"mode": "auto"})
+
+    assert made.status_code == 201
+    assert made.json() == {"mode": "uncertain", "auto_from": 90, "learn": False}
+    assert again.json() == {"mode": "auto", "auto_from": 85, "learn": True}
+    sign_in(e2e)
+    assert e2e.get("/api/review/settings").json()["mode"] == "auto"

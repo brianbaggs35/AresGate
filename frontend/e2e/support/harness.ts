@@ -273,6 +273,30 @@ export interface VerdictsRecord {
   verdicts: number
 }
 
+/** What an AI decided of an incident that is there (or the kind it is of), and where the owner's
+ * review of it stands. */
+export interface DecisionRequest {
+  /** The address of the incident it is about. */
+  address: string
+  subject?: 'incident' | 'family'
+  ai_class?: 'compromise' | 'attack' | 'probe' | 'noise' | 'unclear'
+  confidence?: number
+  review?: 'pending' | 'auto' | 'agreed' | 'disagreed'
+  headline?: string
+}
+
+/** How many decisions `createDecisions()` made. */
+export interface DecisionsRecord {
+  decisions: number
+}
+
+/** How much of what the AI decides waits for the owner. */
+export interface ReviewSettingsRequest {
+  mode?: 'all' | 'uncertain' | 'auto'
+  auto_from?: number
+  learn?: boolean
+}
+
 /** A request to an AI provider as the gateway would have recorded it. Whatever is left out is
  * made up. */
 export interface AiCallRequest {
@@ -510,6 +534,20 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/verdicts', { data: { verdicts } })
       .then((response) => readJson<VerdictsRecord>(response, 'Giving verdicts'))
+  }
+
+  /** Records what an AI decided of incidents that are there, for the Review page to show. */
+  createDecisions(decisions: DecisionRequest[]): Promise<DecisionsRecord> {
+    return this.api
+      .post('/api/__test__/factories/decisions', { data: { decisions } })
+      .then((response) => readJson<DecisionsRecord>(response, 'Recording decisions'))
+  }
+
+  /** Sets how much of what the AI decides waits for the owner, as Settings > Review does. */
+  setReview(settings: ReviewSettingsRequest): Promise<ReviewSettingsRequest> {
+    return this.api
+      .post('/api/__test__/factories/review-settings', { data: settings })
+      .then((response) => readJson<ReviewSettingsRequest>(response, 'Setting review'))
   }
 
   /** Records requests to AI providers as of now, for the usage page to show. */

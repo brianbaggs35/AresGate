@@ -39,9 +39,13 @@ export const AI_KEY = 'sk-a-key-for-the-stand-in'
 
 /**
  * Sets up Anthropic against a stand-in that answers like it, through the page for AI, and turns AI
- * on, as a person would: pick it, type the key, test it, and use it.
+ * on, as a person would: pick it, type the key, test it, and use it. What the AI decides counts
+ * at once, as if the owner had told it to decide on its own.
  */
 export async function turnOnAi(harness: Harness, aiSettings: AiSettingsPage): Promise<void> {
+  // What the AI decides counts at once: the specs that use it are about what it does, and the
+  // Review specs choose how much waits for the owner for themselves.
+  await harness.setReview({ mode: 'auto' })
   await harness.standIn({
     kind: 'anthropic',
     api_key: AI_KEY,

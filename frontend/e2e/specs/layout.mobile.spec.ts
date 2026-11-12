@@ -367,11 +367,12 @@ test.describe('layout on a phone', () => {
       shell.dashboardLink,
       shell.threatsLink,
       shell.incidentsLink,
-      shell.assistantLink,
+      shell.reviewLink,
       shell.moreButton,
     ]) {
       expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)
     }
+    await expect(shell.assistantLink).toHaveCount(0)
     await expect(shell.logsLink).toHaveCount(0)
     await expect(shell.assetsLink).toHaveCount(0)
     await expect(shell.integrationsLink).toHaveCount(0)
@@ -382,6 +383,7 @@ test.describe('layout on a phone', () => {
 
     await expect(shell.moreSheet).toBeVisible()
     await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(shell.assistantLink).toBeVisible()
     await expect(shell.logsLink).toBeVisible()
     await expect(shell.assetsLink).toBeVisible()
     await expect(shell.integrationsLink).toBeVisible()
@@ -417,7 +419,7 @@ test.describe('layout on a phone', () => {
         shell.dashboardLink,
         shell.threatsLink,
         shell.incidentsLink,
-        shell.assistantLink,
+        shell.reviewLink,
         shell.moreButton,
       ]) {
         expect((await link.boundingBox())?.width).toBeGreaterThanOrEqual(48)

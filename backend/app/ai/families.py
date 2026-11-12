@@ -18,7 +18,7 @@ the owner's setup, ``brief.py``) is the same every time and is cached.
 import json
 import re
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, cast
@@ -31,12 +31,14 @@ from app import audit
 from app.ai import brief, gateway, service
 from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
-from app.ai.triage import POLICIES, Policy, signal_line
+from app.ai.triage import LESSON_HEADING, POLICIES, Policy, signal_line
 from app.events.event import Severity
 from app.incidents import occurrences, queries
 from app.incidents.attention import ACTIVE
 from app.models import CLASSES, AiCall, Incident, IncidentFamily
 from app.models.base import utcnow
+from app.review import service as review
+from app.review import settings as review_settings
 from app.threats import calls, families, settings
 
 PURPOSE: Final = "families"
@@ -270,10 +272,14 @@ _WHERE = {
 }
 
 
-def prompt_for(facts: list[Facts], redactor: Redactor) -> str:
+def prompt_for(facts: list[Facts], redactor: Redactor, taught: Sequence[str] = ()) -> str:
     """Everything the AI is told about the families, every address and name through the
-    redactor. The ids are only for this request."""
-    lines = ["Families to judge:"]
+    redactor. The ids are only for this request. ``taught`` is what the owner has disagreed with
+    before, if they let it learn from that."""
+    lines: list[str] = []
+    if taught:
+        lines += [LESSON_HEADING, *taught, ""]
+    lines.append("Families to judge:")
     for number, item in enumerate(facts, start=1):
         family = item.family
         port_text = ", ".join(f"{port} ({count})" for port, count in item.ports) or "none"
@@ -305,7 +311,9 @@ def question_for(db: Session, ids: list[int]) -> tuple[Question, list[Facts]]:
         Question(
             purpose=PURPOSE,
             system=SYSTEM,
-            build=lambda redactor: prompt_for(found, redactor),
+            build=lambda redactor: prompt_for(
+                found, redactor, review.lessons(db, redactor, review_settings.load(db))
+            ),
             about=about(len(found)),
             schema=SCHEMA,
             max_tokens=120 * len(found) + 200,
@@ -377,9 +385,16 @@ def keep(db: Session, found: list[Facts], answered: Answer | Unavailable, now: d
         )
         return NotJudged(f"The AI answered, but not in a form AresGate could read.{cut} Try again.")
     incidents = 0
+    policy = review_settings.load(db)
     for number, judgement in judged.items():
         item = found[number - 1]
         family = item.family
+        starts = review.starts(policy, judgement.classification, judgement.confidence)
+        family.review = review.carried(
+            family.review, family.ai_class, judgement.classification, starts
+        )
+        if family.review not in review.ANSWERED:
+            family.reviewed_at = None
         family.ai_class = judgement.classification
         family.ai_confidence = judgement.confidence
         family.ai_reason = judgement.reason or None

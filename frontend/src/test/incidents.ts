@@ -158,6 +158,7 @@ export function familyBrief(changes: Partial<FamilyBrief> = {}): FamilyBrief {
     confidence: null,
     reason: null,
     judged_at: null,
+    review: 'auto',
     incidents: 1,
     ...changes,
   }
@@ -415,6 +416,7 @@ export function reading(changes: Partial<Reading> = {}): Reading {
     provider: 'Anthropic',
     model: 'claude-haiku-5-5',
     signals_read: 3,
+    review: 'auto',
     ...changes,
   }
 }

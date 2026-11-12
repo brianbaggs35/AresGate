@@ -9,6 +9,7 @@ import {
   Workflow,
   Plug,
   ScanSearch,
+  ClipboardCheck,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -40,6 +41,12 @@ export const navItems: readonly NavItem[] = [
     keywords: 'attacks real noise background suspects kinds families lanes',
   },
   { route: 'incidents', title: 'Incidents', icon: Siren },
+  {
+    route: 'review',
+    title: 'Review',
+    icon: ClipboardCheck,
+    keywords: 'ai decisions agree disagree approve reason trust auto decide waiting',
+  },
   { route: 'assistant', title: 'Assistant', icon: Bot },
   {
     route: 'agents',

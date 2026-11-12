@@ -116,6 +116,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         :failure="failure"
         @call="call"
         @ask="ask"
+        @answered="load(true)"
       />
 
       <SectionCard

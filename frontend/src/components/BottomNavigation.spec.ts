@@ -18,10 +18,15 @@ describe('BottomNavigation', () => {
     expect(dashboard.classes()).toContain('v-btn--active')
   })
 
-  it('keeps Assistant marked on the page of one of its conversations', async () => {
+  it('keeps More marked on the page of one of a conversation, which is behind it', async () => {
     const { wrapper } = await open('/assistant/5')
-    expect(wrapper.find('[data-test="nav-assistant"]').classes()).toContain('v-btn--active')
+    expect(wrapper.find('[data-test="nav-more"]').classes()).toContain('v-btn--active')
     expect(wrapper.find('[data-test="nav-home"]').classes()).not.toContain('v-btn--active')
+  })
+
+  it('marks Review when it is open', async () => {
+    const { wrapper } = await open('/review')
+    expect(wrapper.find('[data-test="nav-review"]').classes()).toContain('v-btn--active')
   })
 
   it('keeps Incidents marked on the page of one of them', async () => {
@@ -40,7 +45,7 @@ describe('BottomNavigation', () => {
 
     expect(
       wrapper.findAll('.v-bottom-navigation .v-btn').map((place) => place.attributes('data-test')),
-    ).toEqual(['nav-home', 'nav-threats', 'nav-incidents', 'nav-assistant', 'nav-more'])
+    ).toEqual(['nav-home', 'nav-threats', 'nav-incidents', 'nav-review', 'nav-more'])
     expect(wrapper.find('[data-test="nav-more"]').text()).toBe('More')
     expect(wrapper.find('[data-test="nav-status"]').exists()).toBe(false)
   })
@@ -82,6 +87,7 @@ describe('BottomNavigation', () => {
           place.textContent.trim(),
         ),
       ).toEqual([
+        'Assistant',
         'Agents',
         'Logs',
         'Assets',

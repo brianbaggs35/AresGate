@@ -27,17 +27,21 @@ from app.metrics.sample import NewSample
 from app.metrics.store import record as record_samples
 from app.models import (
     AiCall,
+    AiTriage,
     CollectorHealth,
     Incident,
+    IncidentFamily,
     Interface,
     InterfaceFeed,
+    ReviewFeedback,
+    ReviewSettings,
     SystemInfo,
     User,
     VerdictRule,
 )
 from app.security import passwords
 from app.security.accounts import normalize_username
-from app.threats import chains, families
+from app.threats import calls, chains, families
 
 DEFAULT_VALUE = "an e2e value"
 DEFAULT_PASSWORD = "an e2e password for testing"  # nosec B105: made up, for test accounts
@@ -676,6 +680,90 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
     session.flush()
     incident_engine.reapply(session)
     return len(specs)
+
+
+class DecisionSpec(NamedTuple):
+    """A decision of the AI for `decisions` to make, about the incident of an address (or the kind
+    it is of), and where the owner's review of it stands."""
+
+    address: str
+    # What it is about: the one incident, or the kind of incident (family) it is of.
+    subject: Literal["incident", "family"] = "family"
+    ai_class: Literal["compromise", "attack", "probe", "noise", "unclear"] = "probe"
+    confidence: int = 90
+    review: Literal["pending", "auto", "agreed", "disagreed"] = "pending"
+    # What the AI said of it, in a line.
+    headline: str = "Routine scanning from the internet."
+
+
+def decisions(session: Session, now: datetime, specs: Sequence[DecisionSpec]) -> int:
+    """Records what an AI decided of incidents that are there, as it would have, and tells the
+    incidents what they come to, so that a decision counts only as its review says."""
+    made = 0
+    for spec in specs:
+        found = session.scalars(
+            select(Incident).where(Incident.subject == spec.address).limit(1)
+        ).first()
+        if found is None:
+            continue
+        if spec.subject == "family":
+            family = session.scalars(
+                select(IncidentFamily).where(IncidentFamily.id == found.family_id)
+            ).one()
+            family.ai_class = spec.ai_class
+            family.ai_confidence = spec.confidence
+            family.ai_reason = spec.headline
+            family.judged_at = now
+            family.provider = "anthropic"
+            family.model = "claude-haiku-5-5"
+            family.review = spec.review
+            family.reviewed_at = now if spec.review in ("agreed", "disagreed") else None
+        else:
+            session.merge(
+                AiTriage(
+                    incident_id=found.id,
+                    read_at=now,
+                    signals_read=found.signal_count,
+                    classification=spec.ai_class,
+                    confidence=spec.confidence,
+                    headline=spec.headline,
+                    story=f"{spec.headline} Nothing else stands out in what was sent.",
+                    checks=[],
+                    observations=[],
+                    provider="anthropic",
+                    model="claude-haiku-5-5",
+                    review=spec.review,
+                    reviewed_at=now if spec.review in ("agreed", "disagreed") else None,
+                )
+            )
+        if spec.review in ("agreed", "disagreed"):
+            # An answer was given, so it is on record as one, for how often the owner agrees.
+            session.add(
+                ReviewFeedback(
+                    created_at=now,
+                    subject=spec.subject,
+                    subject_id=found.family_id if spec.subject == "family" else found.id,
+                    title=spec.headline[:200],
+                    ai_class=spec.ai_class,
+                    ai_confidence=spec.confidence,
+                    answer="agree" if spec.review == "agreed" else "disagree",
+                )
+            )
+        made += 1
+    session.flush()
+    calls.sync(session)
+    return made
+
+
+def review_settings(session: Session, mode: str, auto_from: int, learn: bool) -> None:
+    """Sets how much of what the AI decides waits for the owner, as the Review settings page
+    does."""
+    row = session.get(ReviewSettings, 1) or ReviewSettings(id=1)
+    row.mode = mode
+    row.auto_from = auto_from
+    row.learn = learn
+    session.merge(row)
+    session.flush()
 
 
 class CallSpec(NamedTuple):

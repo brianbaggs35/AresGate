@@ -18,6 +18,7 @@ import NeedsYouLane from '@/components/NeedsYouLane.vue'
 import NoiseCard from '@/components/NoiseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RecentAlerts from '@/components/RecentAlerts.vue'
+import ReviewNudge from '@/components/ReviewNudge.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import StatTile from '@/components/StatTile.vue'
 import StatusHero from '@/components/StatusHero.vue'
@@ -324,6 +325,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="tile-collection"
         />
       </StatusHero>
+
+      <ReviewNudge />
 
       <FilteredNote
         v-if="data.attention.incidents > 0"

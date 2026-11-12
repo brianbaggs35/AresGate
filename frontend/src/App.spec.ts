@@ -2,9 +2,11 @@ import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
 import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
+import * as reviewApi from '@/api/review'
 import App from '@/App.vue'
 import { guardRoutes } from '@/router/guard'
 import { usePaletteStore } from '@/stores/palette'
+import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
 import { report } from '@/test/collectors'
@@ -84,6 +86,51 @@ describe('App', () => {
     session.expired = false
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('sign-in')
+  })
+
+  describe('the decisions waiting for review', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('asks how many wait, and shows it on the menu', async () => {
+      const waiting = vi.spyOn(reviewApi, 'fetchWaiting').mockResolvedValue({ waiting: 3 })
+      const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+
+      expect(waiting).toHaveBeenCalled()
+      expect(wrapper.find('[data-test="nav-badge-spoken"]').text()).toBe(', 3 waiting')
+    })
+
+    it('forgets the count when the sign-in ends', async () => {
+      vi.spyOn(reviewApi, 'fetchWaiting').mockResolvedValue({ waiting: 3 })
+      await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const review = useReviewStore()
+      expect(review.waiting).toBe(3)
+
+      useSessionStore().$patch({ username: null })
+      await flushPromises()
+
+      expect(review.waiting).toBe(0)
+    })
+
+    it('asks again every minute while signed in, and not on the sign-in page', async () => {
+      const waiting = vi.spyOn(reviewApi, 'fetchWaiting').mockResolvedValue({ waiting: 1 })
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      const first = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const asked = waiting.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(waiting.mock.calls).toHaveLength(asked + 1)
+
+      first.wrapper.unmount()
+      waiting.mockClear()
+      await mountWithPlugins(App, { route: '/sign-in', width: 1280 })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(waiting).not.toHaveBeenCalled()
+    })
   })
 
   describe('the shortcut for the command palette', () => {

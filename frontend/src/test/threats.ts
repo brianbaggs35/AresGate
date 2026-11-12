@@ -52,6 +52,7 @@ export function family(changes: Partial<Family> = {}): Family {
     confidence: 92,
     reason: 'Internet scanners probing ssh, with nothing open.',
     judged_at: new Date(NOW - 3 * HOUR).toISOString(),
+    review: 'auto',
     incidents: 41,
     alerts: 3_200,
     actors: 41,
