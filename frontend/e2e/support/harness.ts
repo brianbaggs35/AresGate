@@ -129,6 +129,9 @@ export interface IncidentRequest {
   /** Whether each program says what it knows besides the basics (the rule's groups and its
    * technique, the machine, the traffic), as the real ones do. */
   detailed?: boolean
+  /** Whether the firewall's record also says what was said on the wire: a certificate a camera
+   * signed itself, a plain web request with a login in it, a name looked up. Needs `detailed`. */
+  wire?: boolean
 }
 
 /** How much `createIncidents()` stored. */

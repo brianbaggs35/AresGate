@@ -178,6 +178,24 @@ An incident's page says more about the traffic than who and when:
   address that no asset has says so. An incident about a rule with no address has nothing to list.
   What the owner said also goes to the analyst, which reads a camera calling a stranger differently
   from a laptop browsing.
+- **What was said on the wire.** Under what it travelled through, a section of panels shows what
+  Suricata read of the connections, where the firewall's intrusion detection is connected and the
+  alert had it: the **certificate** a server showed (who it is for, who vouched for it, the dates,
+  the way the connection was encrypted, and *Self-signed* or *Ran out* where that is so), a
+  **web request** sent without encryption (method, host, address, software, the headers), the
+  **names looked up** and what came back, the **banners of an ssh login**, and the start of the
+  **packet** that set the alert off. What stands out is said first in plain words: a certificate
+  that signed itself, one that has run out, a way of encrypting that is out of date (SSL 3, TLS 1.0
+  or 1.1), a login or key sent as plain web traffic. The same certificate or request seen by many
+  alerts is one, with how many alerts saw it. The section is left out when no program read any of
+  it, and the analyst is told the same lines. A device such as a camera or a doorbell often shows a
+  certificate it signed itself to the service it talks to, so the analyst is told that one on its
+  own says little and is read beside what the device is for (see *What it travelled through*).
+  Nothing that can be a secret is kept: the value of an `Authorization`, `Cookie` or API key
+  header is replaced with *hidden* when the alert is read, and the start of a packet that has a
+  password, a token or a key in it is not kept at all. Only the first 128 bytes and 400 characters
+  of a packet are. `ARESGATE_KEEP_PACKETS=false` keeps no part of a packet at all (certificates,
+  requests and lookups are still read).
 - **What an address is called.** Where no program gave an address a name, AresGate asks the
   resolver the machine already uses for its reverse record (the name the address's owner gave it:
   `scanner-17.example.net` is a scanner, an `…compute.amazonaws.com` name is a rented server), and

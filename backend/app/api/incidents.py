@@ -19,12 +19,14 @@ from sqlalchemy import ColumnElement, func, or_, select
 from app.ai import catalog, triage
 from app.api import asking
 from app.api import conversations as conversation_api
+from app.api import wire as wire_api
 from app.api.ai import AiContext
 from app.api.assets import AssetOut, asset_out
 from app.api.conversations import ConversationsOut
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
+from app.api.wire import WireOut
 from app.assets import inventory
 from app.audit import Action, Outcome
 from app.events.event import Severity
@@ -46,6 +48,7 @@ from app.incidents import (
     rules,
     search,
     through,
+    wire,
 )
 from app.incidents.attention import Lane
 from app.incidents.queries import Order
@@ -492,6 +495,9 @@ class IncidentDetail(IncidentOut):
     insights: InsightsOut | None
     # Who talked to whom, what over and how much, as the programs between them describe it.
     conversations: ConversationsOut | None
+    # What was said on the wire (a certificate, a web request, a lookup, the start of a packet),
+    # where the programs read any of it.
+    wire: WireOut | None
     # The integrations that are not connected, and what each would add to an incident.
     missing: list[MissingOut]
     # How it travelled: the internet, each program that saw it in the order it sits, the device.
@@ -978,6 +984,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         family=_family(db, incident),
         insights=_insights(insights.of(grouped)),
         conversations=conversation_api.out(db, conversations.of(grouped)),
+        wire=wire_api.out(wire.of(grouped, utcnow())),
         missing=[
             MissingOut(source=each.source, source_name=rules.name_of(each.source), adds=each.adds)
             for each in coverage.missing(db)

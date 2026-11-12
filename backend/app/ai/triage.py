@@ -30,7 +30,7 @@ from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
 from app.assets import profile
 from app.events.event import Severity
-from app.incidents import attention, conversations, filters, insights, occurrences, queries
+from app.incidents import attention, conversations, filters, insights, occurrences, queries, wire
 from app.incidents.verdicts import MUTING
 from app.intel import overrides, virustotal
 from app.intel import store as intel_store
@@ -94,6 +94,12 @@ Where the owner has ruled an address safe or suspicious, that is a fact about th
 stands over what a reputation service said of it. Say what is ordinary as well as what is not, and \
 never a guess. If the programs said nothing beyond \
 the basics, it may be empty.
+
+Where "What was said on the wire" is given (a certificate, a web request, a name looked up), use \
+it in the observations. A self-signed certificate says little on its own: many cameras, doorbells \
+and smart-home devices show one to the service they talk to, so judge it by what asked for it \
+(the kind and purpose the owner gave the device, and the name it asked for) and say which it looks \
+like. A login or key sent as plain web traffic is worth saying.
 
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
 "story" is two to four sentences: what happened in order, what it means for the home, and what \
@@ -248,6 +254,8 @@ def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
     lines.append(redactor.evidence("signals, oldest first", _timeline(found)))
     if told := _told_lines(found):
         lines.append(redactor.evidence("What the programs said of the traffic", told))
+    if said := wire.prompt_lines(wire.of(found, utcnow())):
+        lines.append(redactor.evidence("What was said on the wire", said))
     return "\n".join(lines)
 
 

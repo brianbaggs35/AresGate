@@ -534,6 +534,7 @@ Set these in `.env` (see `.env.example`):
 | --- | --- | --- |
 | `ARESGATE_LOG_FORMAT` | `json` | `json`, or `text` for plain lines that are easier to read |
 | `ARESGATE_LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error` |
+| `ARESGATE_KEEP_PACKETS` | `true` | Whether the start of the packet that set a Suricata alert off (the first 128 bytes and 400 characters of its text) is kept, to show what was sent (see [Threats](threats.md#how-it-travelled-and-what-it-was)). A packet that looks like it carries a password, a token or a key is never kept. Set `false` to keep no part of a packet |
 | `ARESGATE_REVERSE_DNS` | `true` | Whether AresGate asks the machine's resolver what an address on the internet is called, to name it on incidents (see [Threats](threats.md#how-it-travelled-and-what-it-was)). It asks only about addresses on the internet and keeps answers for a week. Set `false` to never ask |
 
 Secrets are blanked out before anything is written (see

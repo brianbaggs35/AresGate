@@ -15,6 +15,7 @@ import {
   reading,
   signal,
   through,
+  wire,
   travelPath,
   triage,
 } from '@/test/incidents'
@@ -668,6 +669,15 @@ describe('IncidentView', () => {
       const some = await open({ found: detail({ through: [through()] }) })
       expect(some.find('through-card').exists()).toBe(true)
       expect(some.text('through-role')).toBe('The device it was about')
+    })
+
+    it('shows what was said on the wire only when a program read any of it', async () => {
+      const none = await open()
+      expect(none.find('wire-card').exists()).toBe(false)
+
+      const some = await open({ found: detail({ wire: wire() }) })
+      expect(some.find('wire-card').exists()).toBe(true)
+      expect(some.text('wire-certificate-name')).toBe('cloud.example.net')
     })
 
     it('reads the incident again when an address in it is ruled on', async () => {

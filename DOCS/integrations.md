@@ -71,7 +71,12 @@ that is all AresGate can go by.
 - **What it reads.** The newest 500 alerts of `/api/ids/service/query_alerts` each time, which
   is a search that changes nothing. Alerts the next read finds again are stored once. The record
   is kept as OPNsense gave it, except for the packet that set the alert off and the stream
-  around it (`payload`, `packet` and the like), which stay on the firewall.
+  around it (`packet`, `stream` and the like), which stay on the firewall. Only the start of the
+  packet's data is kept (the first 128 bytes and 400 characters), unless it looks like it carries a
+  password, a token or a key, so an incident can show what was sent; set
+  `ARESGATE_KEEP_PACKETS=false` to keep none of it. The certificate, request, lookup and ssh
+  banners Suricata read are shown on the incident too (see
+  [What was said on the wire](threats.md#how-it-travelled-and-what-it-was)).
 - **What the user needs.** **Services: Intrusion Detection** in OPNsense. It covers all of
   `/api/ids/`, so unlike most of what AresGate reads it also allows changing the rules; AresGate
   only searches the alerts, but make the user for AresGate with only the privileges it needs.

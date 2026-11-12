@@ -1689,3 +1689,69 @@ class TestHowItTravelled:
             "text": "GET /admin HTTP/",
         }
         assert len(occurrence["evidence"]["dump"]) == 2
+
+
+class TestWhatWasSaidOnTheWire:
+    TLS: ClassVar[dict[str, Any]] = {
+        "alert_sid": 1,
+        "tls": {
+            "subject": "CN=cam.example.net",
+            "issuerdn": "CN=cam.example.net",
+            "sni": "cam.example.net",
+            "version": "TLSv1.2",
+            "notafter": "2035-01-01T00:00:00",
+        },
+        "http": {
+            "hostname": "api.example.net",
+            "url": "/login",
+            "request_headers": [
+                {"name": "Host", "value": "api.example.net"},
+                {"name": "Authorization", "value": "Basic c2VjcmV0"},
+            ],
+        },
+        "dns": {"rrname": "cam.example.net", "rrtype": "A", "answers": [{"rdata": "192.0.2.4"}]},
+        "ssh": {"client": {"software_version": "OpenSSH_9"}},
+        "payload": "R0VUIC8=",
+        "payload_printable": "GET /",
+    }
+
+    def detail(self, client: TestClient) -> dict[str, Any]:
+        [only] = listed(client)
+        return client.get(f"{BASE}/{only['id']}").json()  # type: ignore[no-any-return]
+
+    def test_what_the_alerts_read_of_the_connection_is_on_the_incident(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, source="opnsense", connection="api", raw=self.TLS),
+            alert(NOW + MINUTE, n=2, source="opnsense", connection="api", raw=self.TLS),
+        )
+        run(session)
+
+        sent = self.detail(client)["wire"]
+
+        [certificate] = sent["certificates"]
+        assert (certificate["sni"], certificate["version"]) == ("cam.example.net", "TLS 1.2")
+        assert (certificate["self_signed"], certificate["expired"]) == (True, False)
+        assert certificate["alerts"] == 2
+        [request] = sent["requests"]
+        assert request["request_headers"] == [
+            {"name": "Host", "value": "api.example.net", "hidden": False},
+            {"name": "Authorization", "value": "(hidden)", "hidden": True},
+        ]
+        assert sent["lookups"][0]["answers"] == ["192.0.2.4"]
+        assert sent["banners"][0]["client"] == "OpenSSH_9"
+        assert sent["payload"] == "GET /"
+        assert sent["dump"][0]["offset"] == "0000"
+        assert any("self-signed" in note for note in sent["notes"])
+        assert "c2VjcmV0" not in str(sent)
+
+    def test_an_incident_with_nothing_on_the_wire_has_no_section(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1), alert(NOW + MINUTE, n=2))
+        run(session)
+
+        assert self.detail(client)["wire"] is None

@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Whether an address on the internet that no program named is looked up (its PTR record, by the
     # resolver this machine already uses) so that an incident can say who it is.
     reverse_dns: bool = True
+    # Whether the first bytes of the packet that set a Suricata alert off are kept with it, so an
+    # incident can show what was sent. A packet that looks like it carries a login or a key is
+    # never kept.
+    keep_packets: bool = True
     # The version a release image was built as, which the release workflow stamps in from
     # the release's tag. Builds from source report the version in app/__init__.py.
     release: str | None = None

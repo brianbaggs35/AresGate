@@ -1099,7 +1099,13 @@ def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
                     "detailed": True,
                     "twin": "opnsense",
                 },
-                {"address": "1.1.1.1", "signals": 1, "programs": ["opnsense"], "detailed": True},
+                {
+                    "address": "1.1.1.1",
+                    "signals": 1,
+                    "programs": ["opnsense"],
+                    "detailed": True,
+                    "wire": True,
+                },
                 {"address": "20.20.20.5", "signals": 1},
             ]
         },
@@ -1120,6 +1126,11 @@ def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
         == "ssh"
     )
     assert e2e.get(f"/api/incidents/{listed['20.20.20.5']}").json()["insights"] is None
+    sent = e2e.get(f"/api/incidents/{listed['1.1.1.1']}").json()["wire"]
+    assert sent["certificates"][0]["self_signed"] is True
+    assert sent["requests"][0]["request_headers"][1]["hidden"] is True
+    assert sent["lookups"][0]["name"] == "cloud.example.net"
+    assert both["wire"] is None
 
 
 def test_events_can_be_made_to_order_for_the_logs(e2e: TestClient) -> None:

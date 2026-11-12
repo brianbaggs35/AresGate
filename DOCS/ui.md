@@ -57,7 +57,11 @@ what was done about it (`ResponseDetails`: a sentence, the bans, what else turne
 order and what cannot be told; the chip on a card is `ResponseChip`, and like a status it is always an icon and a word,
 with the wording and looks in `src/response.ts`), who is involved (`IncidentAddresses`), when (`BarChart`, a stacked bar by program), why the
 signals are one incident (`IncidentGrouping`: a line to a fact, the waves and the ports a sweep
-touched, with the well-known ones named) and then every signal (`IncidentTimeline`). A card says
+touched, with the well-known ones named) and then every signal (`IncidentTimeline`). What the intrusion
+detection read of the connections is `IncidentWire`: what stands out as plain notes in a tonal alert, then
+an accordion with a panel each for certificates, web requests, names looked up, ssh banners and the packet
+(the first panel is open, and a panel with nothing in it is not drawn), where a header the API marks
+`hidden` is a chip, never a value; the page leaves the whole card out when `wire` is null. A card says
 what a bot was doing in the same way: a chip for scanning or brute force and, only when they
 apply, facts for its waves, ports and neighbouring addresses. The status is always an icon and a word
 (`IncidentStatusChip`), and the changes are named by what they do (*Resolve*, not *Done*). The
