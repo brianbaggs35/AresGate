@@ -395,5 +395,12 @@ class TestWhatTheAiIsTold:
             "Certificate shown for a server by 192.0.2.10:443; issued by CN=CA; 1 alerts"
         )
 
+    def test_a_certificate_with_only_a_name_and_no_known_server_is_told_by_the_name(self) -> None:
+        asked = {"alert_sid": 1, "tls": {"sni": "cam.example.net"}}
+
+        [line] = wire.prompt_lines(wire.of([occurrence(asked, dst_address=None)], NOW))
+
+        assert line == "Certificate shown for cam.example.net; 1 alerts"
+
     def test_a_certificate_with_nothing_to_call_it_by_is_a_server(self) -> None:
         assert wire.called({"issuer": "CN=CA"}) == "a server"
