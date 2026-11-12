@@ -2,9 +2,11 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import IntegrationConnection, Interface, User, utcnow
+from app.audit import Action
+from app.models import AuditEvent, IntegrationConnection, Interface, User, utcnow
 from e2e import factories
 from e2e.factories import AssetSpec, HostSpec, Listed
 
@@ -203,3 +205,144 @@ def test_a_request_it_cannot_make_sense_of_is_refused(
     client: TestClient, csrf_token: str, query: str
 ) -> None:
     assert get(client, query).status_code == 422
+
+
+def key_of(client: TestClient, name: str) -> str:
+    return next(item["key"] for item in get(client).json()["items"] if item["name"] == name)
+
+
+def headers(token: str) -> dict[str, str]:
+    return {"X-CSRF-Token": token}
+
+
+class TestKinds:
+    def test_the_kinds_to_pick_from_come_in_groups(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        groups = client.get(f"{BASE}/kinds").json()
+
+        assert [group["key"] for group in groups] == [
+            "network",
+            "computers",
+            "phones",
+            "home",
+            "other",
+        ]
+        network = groups[0]["kinds"]
+        assert network[0] == {
+            "key": "router",
+            "label": "Router",
+            "group": "network",
+            "carries": True,
+        }
+        assert groups[-1]["kinds"][0]["key"] == "other"
+
+    def test_it_is_for_someone_signed_in(self, client: TestClient, account: User) -> None:
+        assert client.get(f"{BASE}/kinds").status_code == 401
+
+
+class TestClassifying:
+    def test_what_the_owner_says_is_kept_and_listed_with_the_asset(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "laptop")
+
+        response = client.put(
+            f"{BASE}/{key}/profile",
+            json={"kind": "laptop", "purpose": "Dad's work laptop"},
+            headers=headers(csrf_token),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["kind_label"] == "Laptop"
+        listed = next(item for item in get(client).json()["items"] if item["key"] == key)
+        assert listed["profile"]["purpose"] == "Dad's work laptop"
+        assert listed["profile"]["carries"] is False
+        detail = client.get(f"{BASE}/{key}").json()["asset"]
+        assert detail["profile"]["kind"] == "laptop"
+
+    def test_a_name_can_suggest_what_it_is_without_saying_it_is(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+
+        listed = {item["name"]: item for item in get(client).json()["items"]}
+
+        assert listed["laptop"]["profile"] is None
+        assert (listed["laptop"]["suggested_kind"], listed["laptop"]["suggested_label"]) == (
+            "laptop",
+            "Laptop",
+        )
+        assert listed["phone"]["suggested_label"] == "Phone"
+        assert listed["laptop"]["own"] is False
+
+    def test_it_is_said_in_the_audit_log_and_can_be_taken_back(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "phone")
+        client.put(f"{BASE}/{key}/profile", json={"kind": "phone"}, headers=headers(csrf_token))
+        said = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
+
+        gone = client.delete(f"{BASE}/{key}/profile", headers=headers(csrf_token))
+        taken = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
+        again = client.delete(f"{BASE}/{key}/profile", headers=headers(csrf_token))
+
+        assert said is not None and said.action == Action.ASSET_CLASSIFIED
+        assert gone.status_code == 204
+        assert taken is not None and taken.action == Action.ASSET_CLASSIFICATION_CLEARED
+        assert again.status_code == 404
+        assert (
+            next(item for item in get(client).json()["items"] if item["key"] == key)["profile"]
+            is None
+        )
+
+    def test_an_asset_that_is_not_there_is_not_classified(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+
+        response = client.put(
+            f"{BASE}/device-9999/profile", json={"kind": "tv"}, headers=headers(csrf_token)
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize(
+        "body",
+        [{"kind": "toaster"}, {}, {"kind": "tv", "purpose": "x" * 201}],
+    )
+    def test_a_kind_it_does_not_know_or_too_many_words_is_refused(
+        self, client: TestClient, csrf_token: str, session: Session, body: dict[str, str]
+    ) -> None:
+        stock(session)
+        key = key_of(client, "phone")
+
+        response = client.put(f"{BASE}/{key}/profile", json=body, headers=headers(csrf_token))
+
+        assert response.status_code == 422
+
+    def test_it_needs_a_token_to_change_anything(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "phone")
+
+        assert client.put(f"{BASE}/{key}/profile", json={"kind": "phone"}).status_code == 403
+
+    def test_the_list_can_be_narrowed_to_a_kind_and_counts_each(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "phone")
+        client.put(f"{BASE}/{key}/profile", json={"kind": "phone"}, headers=headers(csrf_token))
+
+        body = get(client, "kind=phone").json()
+        rest = get(client, "kind=unclassified").json()
+
+        assert [item["name"] for item in body["items"]] == ["phone"]
+        assert [item["name"] for item in rest["items"]] == ["laptop"]
+        assert body["kinds"] == [{"key": "phone", "label": "Phone", "count": 1}]
+        assert body["unclassified"] == 1
+        assert get(client, "kind=toaster").status_code == 422

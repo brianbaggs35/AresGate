@@ -6,7 +6,9 @@ import { fetchAsset, type AssetDetail } from '@/api/assets'
 import { ApiError, errorMessage } from '@/api/client'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AppPage from '@/components/AppPage.vue'
+import AssetClassify from '@/components/AssetClassify.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
+import AssetKindChip from '@/components/AssetKindChip.vue'
 import AssetPeers from '@/components/AssetPeers.vue'
 import AssetSources from '@/components/AssetSources.vue'
 import AssetStatusChip from '@/components/AssetStatusChip.vue'
@@ -100,8 +102,19 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       >
         <template #badge>
           <AssetStatusChip :status="data.asset.status" />
+          <AssetKindChip
+            v-if="data.asset.profile"
+            :kind="data.asset.profile.kind"
+            :label="data.asset.profile.kind_label"
+          />
         </template>
       </PageHeader>
+
+      <p v-if="data.asset.profile?.purpose" class="text-body-large" data-test="asset-purpose-line">
+        {{ data.asset.profile.purpose }}
+      </p>
+
+      <AssetClassify :asset="data.asset" @changed="load(true)" />
 
       <div class="tiles">
         <StatTile

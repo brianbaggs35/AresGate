@@ -14,6 +14,7 @@ import {
   occurrence,
   reading,
   signal,
+  through,
   travelPath,
   triage,
 } from '@/test/incidents'
@@ -658,6 +659,15 @@ describe('IncidentView', () => {
       const some = await open({ found: detail({ path: travelPath() }) })
       expect(some.find('path-card').exists()).toBe(true)
       expect(some.text('path-lead')).toContain('It came in from the internet')
+    })
+
+    it('lists the devices it went through only when it went through any', async () => {
+      const none = await open()
+      expect(none.find('through-card').exists()).toBe(false)
+
+      const some = await open({ found: detail({ through: [through()] }) })
+      expect(some.find('through-card').exists()).toBe(true)
+      expect(some.text('through-role')).toBe('The device it was about')
     })
 
     it('reads the incident again when an address in it is ruled on', async () => {

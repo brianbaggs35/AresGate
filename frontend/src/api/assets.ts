@@ -1,4 +1,4 @@
-import { apiGet } from '@/api/client'
+import { apiDelete, apiGet, apiPut } from '@/api/client'
 import type { IncidentStatus } from '@/api/incidents'
 import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
@@ -50,6 +50,45 @@ export interface Asset {
   listings: Listing[]
   /** The ids of the interfaces whose networks hold one of its current addresses. */
   interfaces: number[]
+  /** One of the firewall's own addresses, which all the traffic to and from the Internet crosses. */
+  own: boolean
+  /** What the owner said it is, if they did. */
+  profile: AssetProfile | null
+  /** What its name and maker suggest it is, which is only offered and never applied. */
+  suggested_kind: string | null
+  suggested_label: string | null
+}
+
+/** What the owner said an asset is, and what it is for. */
+export interface AssetProfile {
+  kind: string
+  kind_label: string
+  /** Whether it is a piece of the network itself, which carries other things' traffic. */
+  carries: boolean
+  purpose: string | null
+  updated_at: string
+}
+
+/** One kind of asset the owner can pick. */
+export interface AssetKind {
+  key: string
+  label: string
+  group: string
+  carries: boolean
+}
+
+/** The kinds that go together, such as the pieces of the network. */
+export interface AssetKindGroup {
+  key: string
+  label: string
+  kinds: AssetKind[]
+}
+
+/** How many assets the owner classified as one kind. */
+export interface KindCount {
+  key: string
+  label: string
+  count: number
 }
 
 /** A program that can list devices. */
@@ -92,6 +131,9 @@ export interface AssetPage {
   watching_since: string | null
   /** How many are on the Internet side (the provider's equipment, say), so not in the list. */
   outside: number
+  /** How many of all of them the owner classified as each kind, and how many they did not. */
+  kinds: KindCount[]
+  unclassified: number
 }
 
 /** What to ask for; what is left out is not narrowed. */
@@ -102,6 +144,8 @@ export interface AssetQuery {
   interface?: number
   new?: boolean
   unidentified?: boolean
+  /** A kind the owner said, or `unclassified` for those they have not classified. */
+  kind?: string
   sort?: AssetSort
   limit?: number
   offset?: number
@@ -116,6 +160,7 @@ export function fetchAssets(query: AssetQuery = {}): Promise<AssetPage> {
   if (query.interface) params.set('interface', query.interface.toString())
   if (query.new) params.set('new', 'true')
   if (query.unidentified) params.set('unidentified', 'true')
+  if (query.kind) params.set('kind', query.kind)
   if (query.sort) params.set('sort', query.sort)
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
@@ -263,4 +308,28 @@ export interface AssetDetail {
 /** One asset's page, by its key: device-12 or host-3, as the Assets page links to it. */
 export function fetchAsset(key: string): Promise<AssetDetail> {
   return apiGet<AssetDetail>(`/assets/${encodeURIComponent(key)}`)
+}
+
+/** The kinds of asset the owner can pick from, in groups. */
+export function fetchKinds(): Promise<AssetKindGroup[]> {
+  return apiGet<AssetKindGroup[]>('/assets/kinds')
+}
+
+/** Says what an asset is and what it is for, in place of what was said before. */
+export function classifyAsset(
+  key: string,
+  kind: string,
+  purpose: string | null,
+  csrfToken: string,
+): Promise<AssetProfile> {
+  return apiPut<AssetProfile>(
+    `/assets/${encodeURIComponent(key)}/profile`,
+    { kind, purpose },
+    csrfToken,
+  )
+}
+
+/** Takes back what was said of an asset. */
+export function unclassifyAsset(key: string, csrfToken: string): Promise<undefined> {
+  return apiDelete(`/assets/${encodeURIComponent(key)}/profile`, csrfToken)
 }

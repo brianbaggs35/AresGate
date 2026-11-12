@@ -32,6 +32,7 @@ import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentConversations from '@/components/IncidentConversations.vue'
 import IncidentPath from '@/components/IncidentPath.vue'
+import IncidentThrough from '@/components/IncidentThrough.vue'
 import TrustButton from '@/components/TrustButton.vue'
 import IncidentCoverage from '@/components/IncidentCoverage.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
@@ -419,6 +420,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         data-test="path-card"
       >
         <IncidentPath :path="shown.path" />
+      </SectionCard>
+
+      <SectionCard
+        v-if="shown.through.length"
+        title="What it travelled through"
+        description="The devices of your network it went through or touched, as the Assets page lists them. What you have said each one is goes to the analyst."
+        data-test="through-card"
+      >
+        <IncidentThrough :through="shown.through" />
       </SectionCard>
 
       <IncidentInsights v-if="shown.insights" :insights="shown.insights" />

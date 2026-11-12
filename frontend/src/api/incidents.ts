@@ -1,3 +1,4 @@
+import type { Asset } from '@/api/assets'
 import { apiGet, apiPatch, apiPost } from '@/api/client'
 import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
@@ -503,6 +504,21 @@ export interface IncidentDetail extends Incident {
   missing: MissingProgram[]
   /** How it travelled, or null where there is no path to draw. */
   path: TravelPath | null
+  /** The devices it went through or touched, in the order it met them. */
+  through: Through[]
+}
+
+/** Why a device is among the ones an incident went through. */
+export type ThroughRole = 'gateway' | 'target' | 'also'
+
+/** A device (or an address no device has) that an incident went through or touched. */
+export interface Through {
+  role: ThroughRole
+  address: string
+  /** The asset as the Assets page lists it, or null for an address that no asset has. */
+  asset: Asset | null
+  /** How many of the incident's signals name the address. */
+  signals: number
 }
 
 /** One term of a search as AresGate understood it: what it is about and how to read it back. */

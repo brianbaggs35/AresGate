@@ -23,6 +23,7 @@ from typing import Final, Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.assets import profile as profiles
 from app.devices import ways
 from app.incidents.filters import inside
 from app.integrations import registry
@@ -102,6 +103,11 @@ class Asset:
     interfaces: tuple[int, ...]
     # On the Internet side of the network, which is not the home's: left out of the list.
     outside: bool = False
+    # One of the firewall's own addresses: every path to or from the Internet crosses it.
+    own: bool = False
+    # What the owner said it is, and what its name and maker suggest it is where they do.
+    profile: profiles.Profile | None = None
+    suggested: str | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +299,7 @@ def _device(
     networks: list[tuple[Network, Blocks]],
     since: datetime,
     now: datetime,
+    said: dict[str, profiles.Profile],
 ) -> Asset:
     rows = sorted(
         parts.addresses.get(device.id, []),
@@ -341,11 +348,18 @@ def _device(
         listings=tuple(sorted(listings, key=lambda item: (item.source, item.via))),
         interfaces=_on(current, networks),
         outside=_on_internet(own, current, networks),
+        own=own,
+        profile=said.get(f"device-{device.id}"),
+        suggested=profiles.suggest(hostname, device.vendor),
     )
 
 
 def _host(
-    host: HostListing, networks: list[tuple[Network, Blocks]], since: datetime, now: datetime
+    host: HostListing,
+    networks: list[tuple[Network, Blocks]],
+    since: datetime,
+    now: datetime,
+    said: dict[str, profiles.Profile],
 ) -> Asset:
     where = (host.address,) if host.address is not None else ()
     listing = _host_listing(host, None)
@@ -368,6 +382,8 @@ def _host(
         listings=(listing,),
         interfaces=_on(where, networks),
         outside=_on_internet(False, where, networks),
+        profile=said.get(f"host-{host.id}"),
+        suggested=profiles.suggest(host.hostname, None),
     )
 
 
@@ -400,8 +416,9 @@ def load(db: Session, now: datetime) -> Inventory:
     firsts = [item.first_seen_at for item in (*devices, *machines)]
     networks = _networks(db)
     since = min(firsts) if firsts else now
-    found = [_device(device, parts, networks, since, now) for device in devices]
-    found += [_host(host, networks, since, now) for host in alone]
+    said = profiles.load(db)
+    found = [_device(device, parts, networks, since, now, said) for device in devices]
+    found += [_host(host, networks, since, now, said) for host in alone]
     return Inventory(
         assets=[asset for asset in found if not asset.outside],
         suppliers=_suppliers(db),

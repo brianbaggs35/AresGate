@@ -65,6 +65,8 @@ const TITLES: Readonly<Record<string, string>> = {
   'agent.proposal_applied': 'A suggestion of the noise cleaner was applied',
   'agent.proposal_dismissed': 'A suggestion of the noise cleaner was turned down',
   'agent.proposal_undone': 'A suggestion of the noise cleaner was taken back',
+  'asset.classified': 'A device was classified',
+  'asset.classification_cleared': 'What a device is was taken back',
 }
 
 const title = (event: AuditEvent) => TITLES[event.action] ?? event.action

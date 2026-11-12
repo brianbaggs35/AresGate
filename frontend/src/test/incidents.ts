@@ -19,9 +19,12 @@ import type {
   Reason,
   Signal,
   SourceCount,
+  Through,
   TravelPath,
   Triage,
 } from '@/api/incidents'
+
+import { asset } from '@/test/assets'
 
 const NOW = Date.now()
 const MINUTE = 60_000
@@ -339,6 +342,10 @@ export function insights(changes: Partial<Insights> = {}): Insights {
 }
 
 /** One incident with all it knows: why it is as sure as it is, its signals and its devices. */
+export function through(changes: Partial<Through> = {}): Through {
+  return { role: 'target', address: '192.168.1.20', asset: asset(), signals: 3, ...changes }
+}
+
 export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
   return {
     ...incident(),
@@ -388,6 +395,7 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     conversations: null,
     missing: [],
     path: null,
+    through: [],
     ...changes,
   }
 }

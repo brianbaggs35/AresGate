@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Say what each device is, and see what an attack went through.** The page of every asset has a
+  new *What is it?* card where you pick a kind (a router, a camera, a laptop, a smart-home
+  device and so on, from a list that is grouped into the pieces of the network and the things
+  around the home) and say in your own words what it is for. It shows on the Assets list with its
+  own icon, you can filter the list by kind or by what you have not classified, and where a device's
+  name or maker suggests a kind it is offered, never applied. An incident has a new section under
+  *How it travelled*, *What it travelled through*, that lists the devices the attack went through or
+  touched, in the order it met them, as the Assets page lists them: the firewall it crossed, the
+  device it was about and any other device that turned up. A device you have not classified asks
+  for it. What you said goes to the AI analyst too, so it reads a camera that calls a stranger
+  differently from a laptop that browses. See [Assets](DOCS/ui.md#assets).
 - **Blocked connections, by which way they went.** The dashboard has a new card under the charts
   that sorts what the firewall refused into the internet knocking, your own devices being turned
   away and one network of yours reaching another. It lists the ports the internet tried most and

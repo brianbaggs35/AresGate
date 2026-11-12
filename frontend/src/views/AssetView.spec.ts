@@ -4,7 +4,7 @@ import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
 import AssetPeers from '@/components/AssetPeers.vue'
 import { formatBytes } from '@/format'
-import { asset } from '@/test/assets'
+import { asset, kindGroups, profile } from '@/test/assets'
 import {
   address,
   detail,
@@ -26,6 +26,7 @@ interface Options {
 }
 
 async function open({ route = '/assets/device-1', answer = detail() }: Options = {}) {
+  vi.spyOn(assetsApi, 'fetchKinds').mockResolvedValue(kindGroups())
   const fetchAsset = vi.spyOn(assetsApi, 'fetchAsset')
   if (answer instanceof Error) fetchAsset.mockRejectedValue(answer)
   else fetchAsset.mockResolvedValue(answer)
@@ -62,6 +63,45 @@ describe('AssetView', () => {
     expect(wrapper.text()).toContain('Laptop')
     expect(wrapper.text()).toContain('Device · Example Devices Inc. · 00:11:22:0a:0b:0c')
     expect(text('asset-tile-listed')).toContain('Online')
+  })
+
+  it('says what the owner said it is, and what it is for', async () => {
+    const { find, text } = await open({
+      answer: detail({ asset: asset({ profile: profile() }) }),
+    })
+
+    expect(text('asset-kind')).toBe('Camera or doorbell')
+    expect(text('asset-purpose-line')).toBe('Watches the front door')
+    expect(find('asset-classify').exists()).toBe(true)
+  })
+
+  it('offers to classify it when nothing was said, without a line about what it is for', async () => {
+    const { find } = await open()
+
+    expect(find('asset-kind').exists()).toBe(false)
+    expect(find('asset-purpose-line').exists()).toBe(false)
+    expect(find('asset-classify').exists()).toBe(true)
+  })
+
+  it('shows the kind without a purpose line when none was said', async () => {
+    const { find } = await open({
+      answer: detail({ asset: asset({ profile: profile({ purpose: null }) }) }),
+    })
+
+    expect(find('asset-kind').exists()).toBe(true)
+    expect(find('asset-purpose-line').exists()).toBe(false)
+  })
+
+  it('reads the page again when what the owner says is saved', async () => {
+    vi.spyOn(assetsApi, 'classifyAsset').mockResolvedValue(profile())
+    const { fetchAsset, find, wrapper } = await open()
+    const calls = fetchAsset.mock.calls.length
+
+    await wrapper.find('[data-test="asset-kind-choice"]').trigger('click')
+    await find('asset-classify-save').trigger('click')
+    await flushPromises()
+
+    expect(fetchAsset.mock.calls.length).toBe(calls + 1)
   })
 
   it('says what the traffic was, once ntopng has measured it', async () => {

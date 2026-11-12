@@ -20,10 +20,12 @@ from app.ai import catalog, triage
 from app.api import asking
 from app.api import conversations as conversation_api
 from app.api.ai import AiContext
+from app.api.assets import AssetOut, asset_out
 from app.api.conversations import ConversationsOut
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.api.verdicts import Note
+from app.assets import inventory
 from app.audit import Action, Outcome
 from app.events.event import Severity
 from app.incidents import (
@@ -43,6 +45,7 @@ from app.incidents import (
     response,
     rules,
     search,
+    through,
 )
 from app.incidents.attention import Lane
 from app.incidents.queries import Order
@@ -447,6 +450,20 @@ class PathOut(BaseModel):
     hops: list[HopOut]
 
 
+class ThroughOut(BaseModel):
+    """A device (or an address that no device has) that the incident went through or touched."""
+
+    # The firewall that the Internet's traffic crosses, the device it was for or came from, or
+    # another device that turned up in it.
+    role: Literal["gateway", "target", "also"]
+    address: str
+    # The asset as the Assets page lists it, with what the owner said it is. None for an address
+    # that no asset has.
+    asset: AssetOut | None
+    # How many of the incident's signals name the address.
+    signals: int
+
+
 class IncidentDetail(IncidentOut):
     # Why AresGate is as sure as it is: the reasons and their points add up to the confidence.
     reasons: list[ReasonOut]
@@ -474,6 +491,8 @@ class IncidentDetail(IncidentOut):
     missing: list[MissingOut]
     # How it travelled: the internet, each program that saw it in the order it sits, the device.
     path: PathOut | None
+    # What it travelled through: the devices of the network it touched, in the order it met them.
+    through: list[ThroughOut]
 
 
 class TermOut(BaseModel):
@@ -919,6 +938,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     seen = queries.signals(db, incident)
     grouped = occurrences.group(seen)
     devices = queries.devices(db, incident)
+    drawn = _path(db, incident, seen, done, devices)
     return IncidentDetail(
         **_incident(incident, done, judging, read).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
@@ -955,7 +975,8 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             MissingOut(source=each.source, source_name=rules.name_of(each.source), adds=each.adds)
             for each in coverage.missing(db)
         ],
-        path=_path(db, incident, seen, done, devices),
+        path=drawn,
+        through=_through(db, incident, seen, drawn),
     )
 
 
@@ -994,6 +1015,26 @@ def _path(
             for each in drawn.hops
         ],
     )
+
+
+def _through(
+    db: Db, incident: Incident, seen: list[IncidentSignal], drawn: PathOut | None
+) -> list[ThroughOut]:
+    stops = through.build(
+        incident,
+        seen,
+        inventory.load(db, utcnow()).assets,
+        outbound=drawn is not None and drawn.direction == "outbound",
+    )
+    return [
+        ThroughOut(
+            role=stop.role,
+            address=stop.address,
+            asset=None if stop.asset is None else asset_out(stop.asset),
+            signals=stop.signals,
+        )
+        for stop in stops
+    ]
 
 
 def _found(db: Db, incident_id: int) -> Incident:

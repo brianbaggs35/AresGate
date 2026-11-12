@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
-from app.assets import inventory
+from app.assets import inventory, profile
 from app.assets.inventory import Inventory
 from app.assets.search import Counts, Query, search
 from app.models import Interface
@@ -219,3 +219,53 @@ class TestWhatEachChoiceWouldFind:
         assert page.facets.sources == {"opnsense": 4, "ntopng": 1, "wazuh": 1}
         assert page.facets.interfaces == {home: 2, iot: 1}
         assert (page.facets.new, page.facets.unidentified) == (1, 1)
+
+
+class TestWhatTheOwnerSaid:
+    def classified(self, session: Session, found: Inventory) -> Inventory:
+        keys = {asset.name: asset.key for asset in found.assets}
+        profile.save(session, keys["camera"], "camera", "Watches the front door", NOW)
+        profile.save(session, keys["phone"], "phone", None, NOW)
+        session.flush()
+        return inventory.load(session, NOW)
+
+    def test_an_asset_says_what_the_owner_said_and_what_its_name_suggests(
+        self, session: Session, found: Inventory
+    ) -> None:
+        again = self.classified(session, found)
+        by_name = {asset.name: asset for asset in again.assets}
+
+        camera = by_name["camera"]
+        assert camera.profile is not None
+        assert (camera.profile.kind, camera.profile.purpose) == ("camera", "Watches the front door")
+        assert camera.suggested == "camera"
+        assert by_name["Laptop"].profile is None
+        assert by_name["Laptop"].suggested == "laptop"
+
+    def test_the_words_find_the_kind_and_the_purpose(
+        self, session: Session, found: Inventory
+    ) -> None:
+        again = self.classified(session, found)
+
+        assert find(again, text="front door") == ["camera"]
+        assert find(again, text="doorbell") == ["camera"]
+
+    def test_the_kind_is_a_choice_and_so_is_none_of_them(
+        self, session: Session, found: Inventory
+    ) -> None:
+        again = self.classified(session, found)
+
+        assert find(again, kind="camera") == ["camera"]
+        assert find(again, kind="phone") == ["phone"]
+        assert find(again, kind="router") == []
+        assert sorted(find(again, kind="unclassified")) == ["00:11:22:0a:0b:0e", "Laptop"]
+
+    def test_each_choice_says_how_many_it_would_find(
+        self, session: Session, found: Inventory
+    ) -> None:
+        again = self.classified(session, found)
+
+        facets = search(again, Query(kind="camera"), limit=50).facets
+
+        assert facets.kinds == {"camera": 1, "phone": 1}
+        assert facets.unclassified == 2

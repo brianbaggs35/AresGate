@@ -3,8 +3,10 @@ import { Fingerprint, MonitorSmartphone, Network, Server, Sparkles } from '@luci
 import { computed } from 'vue'
 
 import type { Asset } from '@/api/assets'
+import AssetKindChip from '@/components/AssetKindChip.vue'
 import AssetSources from '@/components/AssetSources.vue'
 import AssetStatusChip from '@/components/AssetStatusChip.vue'
+import { kindIcon } from '@/assetKinds'
 import { addressesOf } from '@/inventory'
 import { formatAgo, formatDateTime } from '@/format'
 
@@ -38,7 +40,12 @@ const kind = computed(() =>
   <v-card class="asset" :class="`asset--${asset.status}`" data-test="asset-card">
     <div class="asset__main">
       <span class="asset__icon" aria-hidden="true">
-        <v-icon :icon="machine ? Server : MonitorSmartphone" size="24" />
+        <v-icon
+          :icon="
+            asset.profile ? kindIcon(asset.profile.kind) : machine ? Server : MonitorSmartphone
+          "
+          size="24"
+        />
       </span>
       <div class="asset__who">
         <h3 class="asset__name text-title-large" data-test="asset-name">
@@ -50,6 +57,13 @@ const kind = computed(() =>
             {{ asset.name }}
           </router-link>
         </h3>
+        <p
+          v-if="asset.profile?.purpose"
+          class="asset__purpose text-body-medium"
+          data-test="asset-purpose"
+        >
+          {{ asset.profile.purpose }}
+        </p>
         <p
           v-if="machine || vendor || mac"
           class="asset__identity text-body-medium text-medium-emphasis"
@@ -74,7 +88,15 @@ const kind = computed(() =>
       </div>
     </div>
 
-    <div v-if="asset.is_new || asset.private_mac || !asset.identified" class="asset__flags">
+    <div
+      v-if="asset.profile || asset.is_new || asset.private_mac || !asset.identified"
+      class="asset__flags"
+    >
+      <AssetKindChip
+        v-if="asset.profile"
+        :kind="asset.profile.kind"
+        :label="asset.profile.kind_label"
+      />
       <v-chip
         v-if="asset.is_new"
         :prepend-icon="Sparkles"

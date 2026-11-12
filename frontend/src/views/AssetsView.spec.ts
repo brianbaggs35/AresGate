@@ -406,6 +406,45 @@ describe('AssetsView', () => {
       expect(router.currentRoute.value.query).toEqual({})
     })
 
+    it('narrow the list to what the owner said it is, once they have said anything', async () => {
+      const { wrapper, router, fetchAssets, choose } = await open({
+        answer: page([asset()], {
+          kinds: [{ key: 'camera', label: 'Camera or doorbell', count: 2 }],
+          unclassified: 5,
+        }),
+      })
+      const select = () =>
+        wrapper.findAllComponents(VSelect).find((each) => each.props('label') === 'What it is')!
+      expect(select().props('items')).toEqual([
+        { value: '', title: 'Any kind' },
+        { value: 'unclassified', title: 'Not classified (5)' },
+        { value: 'camera', title: 'Camera or doorbell (2)' },
+      ])
+      expect(select().props('modelValue')).toBe('')
+
+      await choose(() => {
+        select().vm.$emit('update:modelValue', 'camera')
+      })
+
+      expect(last(fetchAssets).kind).toBe('camera')
+      expect(router.currentRoute.value.query).toEqual({ kind: 'camera' })
+
+      await choose(() => {
+        select().vm.$emit('update:modelValue', '')
+      })
+
+      expect(last(fetchAssets).kind).toBeUndefined()
+      expect(router.currentRoute.value.query).toEqual({})
+    })
+
+    it('keep the kind choice in view while it is chosen, so it can be taken off', async () => {
+      const { wrapper } = await open({ route: '/assets?kind=unclassified' })
+
+      expect(wrapper.findAllComponents(VSelect).map((select) => select.props('label'))).toContain(
+        'What it is',
+      )
+    })
+
     it('have no interface to choose when none has networks', async () => {
       const { wrapper } = await open({ answer: page([asset()]) })
 

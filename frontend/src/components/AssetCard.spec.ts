@@ -1,7 +1,7 @@
 import AssetCard from '@/components/AssetCard.vue'
 import AssetSources from '@/components/AssetSources.vue'
 import AssetStatusChip from '@/components/AssetStatusChip.vue'
-import { asset, listed, machine } from '@/test/assets'
+import { asset, listed, machine, profile } from '@/test/assets'
 import { mountWithPlugins } from '@/test/mount'
 
 async function open(item = asset(), interfaces: string[] = []) {
@@ -95,6 +95,30 @@ describe('AssetCard', () => {
       expect(text('asset-private')).toBe('Private hardware address')
       expect(text('asset-unidentified')).toBe('Nothing says what it is')
       expect(has('asset-new')).toBe(true)
+    })
+  })
+
+  describe('what the owner said it is', () => {
+    it('shows the kind and what it is for', async () => {
+      const { has, text } = await open(asset({ profile: profile() }))
+
+      expect(text('asset-kind')).toBe('Camera or doorbell')
+      expect(text('asset-purpose')).toBe('Watches the front door')
+      expect(has('asset-unidentified')).toBe(false)
+    })
+
+    it('shows the kind alone when no purpose was said', async () => {
+      const { has, text } = await open(asset({ profile: profile({ purpose: null }) }))
+
+      expect(text('asset-kind')).toBe('Camera or doorbell')
+      expect(has('asset-purpose')).toBe(false)
+    })
+
+    it('says nothing when the owner has said nothing', async () => {
+      const { has } = await open()
+
+      expect(has('asset-kind')).toBe(false)
+      expect(has('asset-purpose')).toBe(false)
     })
   })
 
