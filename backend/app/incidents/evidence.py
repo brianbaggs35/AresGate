@@ -107,6 +107,69 @@ class Flow(TypedDict, total=False):
     duration: int
 
 
+class Certificate(TypedDict, total=False):
+    """The certificate a server showed in a TLS handshake, as Suricata read it: who it says it is
+    (``subject``), who vouched for that (``issuer``), what the client asked for (``sni``) and when
+    it is good. ``self_signed`` is whether the one who vouched is the one it is for."""
+
+    subject: str
+    issuer: str
+    serial: str
+    fingerprint: str
+    # How the connection was encrypted, such as ``TLS 1.2``.
+    version: str
+    sni: str
+    not_before: str
+    not_after: str
+    self_signed: bool
+    # The fingerprints of the client's and the server's hello, which tell what software was talking.
+    ja3: str
+    ja3s: str
+
+
+class Request(TypedDict, total=False):
+    """A web request sent without encryption, as Suricata read it, with its headers where it was
+    set to keep them. The value of a header that can carry a password or a key is never kept."""
+
+    method: str
+    host: str
+    url: str
+    user_agent: str
+    referer: str
+    content_type: str
+    status: int
+    size: int
+    request_headers: list[list[str]]
+    response_headers: list[list[str]]
+
+
+class Lookup(TypedDict):
+    """A name that was looked up, and what came back."""
+
+    name: str
+    type: NotRequired[str]
+    # What the resolver answered, such as ``NOERROR`` or ``NXDOMAIN``.
+    rcode: NotRequired[str]
+    answers: NotRequired[list[str]]
+
+
+class Banner(TypedDict, total=False):
+    """What the two ends of an ssh connection said they run."""
+
+    client: str
+    server: str
+
+
+class Wire(TypedDict, total=False):
+    """What was said on the wire, where the program read it: the certificate of a TLS handshake,
+    a web request, a name lookup or the banners of ssh. Each member is there only when it was."""
+
+    certificate: Certificate
+    request: Request
+    lookup: Lookup
+    ssh: Banner
+
+
 class Evidence(TypedDict):
     """What is worth showing of what one program reported of one alert. Every member is there
     only when the program said something for it."""
@@ -135,6 +198,8 @@ class Evidence(TypedDict):
     # The first bytes of that data as a dump, a line each of [offset, hexadecimal, text]: what is
     # in it, where the text of it is not enough to tell (a binary protocol, an encrypted blob).
     dump: NotRequired[list[list[str]]]
+    # What was said on the wire (a certificate, a request, a lookup), where the program read it.
+    wire: NotRequired[Wire]
 
 
 Raw = Mapping[str, object]
@@ -261,6 +326,7 @@ def _finish(
     flow: Flow | None = None,
     payload: str = "",
     dump: list[list[str]] | None = None,
+    wire: Wire | None = None,
 ) -> Evidence | None:
     """The evidence, or nothing if there is none."""
     found = Evidence(
@@ -287,8 +353,10 @@ def _finish(
         found["payload"] = payload
     if dump:
         found["dump"] = dump
+    if wire:
+        found["wire"] = wire
     empty = not (facts or found["tags"] or mitre or found["indicators"] or traffic)
-    more = host or app or excerpt or summary or score is not None or flow or payload or dump
+    more = host or app or excerpt or summary or score is not None or flow or payload or dump or wire
     return None if empty and not more else found
 
 
@@ -366,7 +434,149 @@ def _suricata(raw: Raw) -> Evidence | None:
         app=_text(_pick(raw, "app_proto"), 32).lower(),
         payload=_text(_pick(raw, "payload_printable"), MAX_EXCERPT),
         dump=_dump(raw.get("payload")),
+        wire=_wire(raw),
     )
+
+
+# How many headers of a request or a response are kept, and the headers whose values never are,
+# because they carry a password, a key or a session.
+MAX_HEADERS: Final = 20
+SECRET_HEADERS: Final = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+        "x-csrf-token",
+        "x-amz-security-token",
+    }
+)
+HIDDEN: Final = "(hidden)"
+MAX_ANSWERS: Final = 5
+
+
+def _headers(value: object) -> list[list[str]]:
+    """Headers as [name, value], from the list of ``{"name", "value"}`` Suricata writes when it is
+    set to keep them. What a secret header held is replaced, so it is never stored."""
+    found: list[list[str]] = []
+    for item in (probes.as_array(value) or [])[:MAX_HEADERS]:
+        header = probes.as_object(item)
+        name = _text(header.get("name"), 60) if header is not None else ""
+        if header is None or not name:
+            continue
+        shown = HIDDEN if name.lower() in SECRET_HEADERS else _text(header.get("value"))
+        found.append([name, shown])
+    return found
+
+
+def _same_name(subject: str, issuer: str) -> bool:
+    """Whether a certificate's subject and its issuer are the same name, however the commas and the
+    capitals were written."""
+
+    def plain(name: str) -> str:
+        return ",".join(part.strip() for part in name.lower().split(","))
+
+    return bool(subject) and plain(subject) == plain(issuer)
+
+
+def _tls_version(value: object) -> str:
+    """``TLS 1.2`` for what Suricata gives as ``TLSv1.2``, and what it gave for the rest."""
+    text = _text(value, 20)
+    return text.replace("TLSv", "TLS ") if text.startswith("TLSv") else text
+
+
+def _certificate(raw: Raw) -> Certificate | None:
+    subject = _text(_pick(raw, "tls.subject"))
+    issuer = _text(_pick(raw, "tls.issuerdn"))
+    names = {
+        "subject": subject,
+        "issuer": issuer,
+        "serial": _text(_pick(raw, "tls.serial"), 80),
+        "fingerprint": _text(_pick(raw, "tls.fingerprint"), 120),
+        "version": _tls_version(_pick(raw, "tls.version")),
+        "sni": _text(_pick(raw, "tls.sni")),
+        "not_before": _text(_pick(raw, "tls.notbefore"), 40),
+        "not_after": _text(_pick(raw, "tls.notafter"), 40),
+        "ja3": _text(_pick(raw, "tls.ja3.hash"), 64),
+        "ja3s": _text(_pick(raw, "tls.ja3s.hash"), 64),
+    }
+    found = Certificate(**{key: value for key, value in names.items() if value})  # type: ignore[typeddict-item]
+    if not (subject or issuer or names["sni"]):
+        return None
+    if _same_name(subject, issuer):
+        found["self_signed"] = True
+    return found
+
+
+def _request(raw: Raw) -> Request | None:
+    names = {
+        "method": _text(_pick(raw, "http.http_method", "http.method"), 16),
+        "host": _text(_pick(raw, "http.hostname")),
+        "url": _text(_pick(raw, "http.url")),
+        "user_agent": _text(_pick(raw, "http.http_user_agent", "http.user_agent")),
+        "referer": _text(_pick(raw, "http.http_refer", "http.referer")),
+        "content_type": _text(_pick(raw, "http.http_content_type", "http.content_type"), 80),
+    }
+    found = Request(**{key: value for key, value in names.items() if value})  # type: ignore[typeddict-item]
+    if (status := _number(_pick(raw, "http.status"))) is not None:
+        found["status"] = status
+    if (size := _number(_pick(raw, "http.length"))) is not None:
+        found["size"] = size
+    if request := _headers(_pick(raw, "http.request_headers")):
+        found["request_headers"] = request
+    if response := _headers(_pick(raw, "http.response_headers")):
+        found["response_headers"] = response
+    return found or None
+
+
+def _lookup(raw: Raw) -> Lookup | None:
+    name = _text(_pick(raw, "dns.rrname"))
+    if not name:
+        return None
+    found = Lookup(name=name)
+    if kind := _text(_pick(raw, "dns.rrtype"), 16):
+        found["type"] = kind
+    if rcode := _text(_pick(raw, "dns.rcode"), 16):
+        found["rcode"] = rcode
+    given = probes.as_array(_pick(raw, "dns.answers")) or []
+    answers = [
+        _text(entry.get("rdata"), 100)
+        for item in given[:MAX_ANSWERS]
+        if (entry := probes.as_object(item))
+    ]
+    if shown := [answer for answer in answers if answer]:
+        found["answers"] = shown
+    return found
+
+
+def _banner(raw: Raw) -> Banner | None:
+    client = _text(_pick(raw, "ssh.client.software_version"), 100)
+    server = _text(_pick(raw, "ssh.server.software_version"), 100)
+    if not (client or server):
+        return None
+    found = Banner()
+    if client:
+        found["client"] = client
+    if server:
+        found["server"] = server
+    return found
+
+
+def _wire(raw: Raw) -> Wire | None:
+    """What was said on the wire, as Suricata read it: the certificate of a TLS handshake, a web
+    request, a lookup, the banners of ssh. Nothing where it read none of them."""
+    found = Wire()
+    if certificate := _certificate(raw):
+        found["certificate"] = certificate
+    if request := _request(raw):
+        found["request"] = request
+    if lookup := _lookup(raw):
+        found["lookup"] = lookup
+    if banner := _banner(raw):
+        found["ssh"] = banner
+    return found or None
 
 
 # How much of a packet's data is dumped: eight lines of sixteen bytes.

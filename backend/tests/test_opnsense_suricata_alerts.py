@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -86,6 +87,53 @@ class TestReadingAlerts:
             event.raw
         )
         assert not {"filepos", "fileid"} & set(event.raw)
+
+    def test_the_start_of_the_packet_is_kept_when_asked_for(self) -> None:
+        [event] = parse([alert()], keep_packets=True)
+
+        assert event.raw is not None
+        assert event.raw["payload"] == "c2VjcmV0IGJ5dGVz"
+        assert event.raw["payload_printable"] == "secret bytes"
+        assert not {"packet", "packet_info", "stream", "filepos"} & set(event.raw)
+
+    def test_only_the_first_bytes_and_characters_of_a_long_packet_are_kept(self) -> None:
+        data = bytes(range(256))
+        [event] = parse(
+            [alert(payload=base64.b64encode(data).decode(), payload_printable="x" * 900)],
+            keep_packets=True,
+        )
+
+        assert event.raw is not None
+        assert base64.b64decode(event.raw["payload"]) == data[:128]
+        assert len(event.raw["payload_printable"]) == 400
+
+    @pytest.mark.parametrize(
+        "text",
+        ["GET / HTTP/1.1\r\nAuthorization: Basic abc", "user=a&password=b", "Cookie: id=1"],
+    )
+    def test_a_packet_that_looks_like_a_login_is_not_kept(self, text: str) -> None:
+        encoded = base64.b64encode(text.encode()).decode()
+        [event] = parse([alert(payload=encoded, payload_printable="")], keep_packets=True)
+        [printed] = parse([alert(payload="", payload_printable=text)], keep_packets=True)
+
+        for kept in (event, printed):
+            assert kept.raw is not None
+            assert not {"payload", "payload_printable"} & set(kept.raw)
+
+    def test_a_packet_with_data_that_is_not_base64_keeps_only_its_text(self) -> None:
+        [event] = parse(
+            [alert(payload="not base64!", payload_printable="hello")], keep_packets=True
+        )
+
+        assert event.raw is not None
+        assert "payload" not in event.raw
+        assert event.raw["payload_printable"] == "hello"
+
+    def test_a_packet_with_nothing_in_it_keeps_nothing(self) -> None:
+        [event] = parse([alert(payload=None, payload_printable="")], keep_packets=True)
+
+        assert event.raw is not None
+        assert not {"payload", "payload_printable"} & set(event.raw)
 
     @pytest.mark.parametrize(
         ("stamp", "expected"),
@@ -270,12 +318,28 @@ class TestRunningAgainstTheFirewall:
             now - timedelta(seconds=10),
         ]
         assert [(item.kind, item.severity) for item in stored] == [("alert", 2), ("alert", 1)]
-        assert all(item.raw and "payload" not in item.raw for item in stored)
+        assert all(item.raw and "packet" not in item.raw for item in stored)
+        assert all(item.raw and item.raw["payload_printable"] == "secret bytes" for item in stored)
 
         collect(settings, engine)
 
         assert health(session).last_items == 0
         assert len(stored_events(session)) == 2
+
+    def test_it_keeps_no_packet_when_the_setting_says_not_to(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        settings.keep_packets = False
+        alerts = [alert(utcnow().replace(microsecond=0) - timedelta(seconds=10))]
+        certificate = make_certificate()
+        handler = opnsense(KEY, SECRET, {"suricata"}, suricata_alerts=alerts)
+        connect(session, settings, serve(handler, certificate).url, certificate)
+
+        collect(settings, engine)
+
+        [stored] = stored_events(session)
+        assert stored.raw is not None
+        assert not {"payload", "payload_printable"} & set(stored.raw)
 
     def test_it_asks_with_a_post_for_the_newest_five_hundred(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve

@@ -222,6 +222,8 @@ class IncidentRequest(BaseModel):
     outbound: bool = False
     # Whether each program gives what it knows besides the basics.
     detailed: bool = False
+    # Whether the firewall's record also holds what was said on the wire (needs `detailed`).
+    wire: bool = False
 
 
 class IncidentsRequest(BaseModel):
@@ -266,6 +268,7 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 compromise=item.compromise,
                 twin=item.twin,
                 detailed=item.detailed,
+                wire=item.wire,
             )
             for item in body.incidents
         ],

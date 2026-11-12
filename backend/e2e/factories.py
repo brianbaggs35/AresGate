@@ -303,6 +303,10 @@ class IncidentSpec(NamedTuple):
     # Whether each program gives what it knows besides the basics (the rule's groups and its
     # MITRE technique, the host an alert was about, the traffic), as the real ones do.
     detailed: bool = False
+    # Whether the firewall's record also holds what was said on the wire: a certificate a camera
+    # signed itself, a plain web request with a login in its headers, a name looked up. Needs
+    # ``detailed``.
+    wire: bool = False
 
 
 class IncidentsRecorded(NamedTuple):
@@ -395,7 +399,7 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             dst_address=target,
             dst_port=port,
             protocol="tcp",
-            raw=_record(program, target, port, sender) if spec.detailed else None,
+            raw=_record(program, target, port, sender, wire=spec.wire) if spec.detailed else None,
         )
         events.append(reported)
         if spec.twin:
@@ -465,9 +469,45 @@ def _twin(event: NewEvent, program: str, identity: str) -> NewEvent:
     )
 
 
-def _record(program: str, device: str, port: int, sender: str) -> dict[str, object]:
+_WIRE: dict[str, object] = {
+    "tls": {
+        "subject": "CN=cloud.example.net",
+        "issuerdn": "CN=cloud.example.net",
+        "sni": "cloud.example.net",
+        "version": "TLSv1.2",
+        "serial": "00:AB:12",
+        "fingerprint": "5d:41:0e:7a",
+        "notbefore": "2025-01-01T00:00:00",
+        "notafter": "2035-01-01T00:00:00",
+        "ja3": {"hash": "e7d705a3286e19ea42f587b344ee6865"},
+    },
+    "http": {
+        "http_method": "POST",
+        "hostname": "api.example.net",
+        "url": "/v1/login",
+        "http_user_agent": "camera-firmware/2.1",
+        "http_content_type": "application/json",
+        "status": 200,
+        "request_headers": [
+            {"name": "Host", "value": "api.example.net"},
+            {"name": "Authorization", "value": "Basic Y2FtZXJhOnNlY3JldA=="},
+        ],
+    },
+    "dns": {
+        "rrname": "cloud.example.net",
+        "rrtype": "A",
+        "rcode": "NOERROR",
+        "answers": [{"rdata": "192.0.2.80"}],
+    },
+}
+
+
+def _record(
+    program: str, device: str, port: int, sender: str, *, wire: bool = False
+) -> dict[str, object]:
     """What a program's own record of an ssh alert holds, in the shape that program gives it
-    (see app/incidents/evidence.py). ``sender`` is the address the flow came from."""
+    (see app/incidents/evidence.py). ``sender`` is the address the flow came from. With ``wire``
+    the firewall's also holds what Suricata read of the connection (a certificate, a request)."""
     if program == "wazuh":
         return {
             "rule": {
@@ -505,6 +545,7 @@ def _record(program: str, device: str, port: int, sender: str) -> dict[str, obje
                 "bytes_toclient": 1320,
             },
             "payload_printable": "SSH-2.0-libssh_0.9.6",
+            **(_WIRE if wire else {}),
         }
     return {
         "alert_id": {"value": 12, "label": "Scan attacker"},

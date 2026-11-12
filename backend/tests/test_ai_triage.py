@@ -451,6 +451,43 @@ class TestWhatTheAiIsAsked:
         assert re.search(r"Machine it was about: web1 \(HOST_\d+\)", said)
         assert "hostname named: scanner.example.net (1 alerts)" in said
 
+    def test_it_is_told_what_was_said_on_the_wire_and_that_cameras_often_sign_their_own(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        certificate = {
+            "subject": "CN=cam.example.net",
+            "issuer": "CN=cam.example.net",
+            "sni": "cam.example.net",
+            "version": "TLS 1.2",
+            "self_signed": True,
+        }
+        signals(
+            session,
+            found,
+            2,
+            evidence={
+                "facts": [],
+                "tags": [],
+                "mitre": [],
+                "indicators": [],
+                "wire": {"certificate": certificate},
+            },
+        )
+
+        said = self.prompt(session, found)
+
+        assert "What was said on the wire" in said
+        assert "Certificate shown for cam.example.net" in said
+        assert "self-signed" in said
+        assert "cameras" in triage.SYSTEM
+
+    def test_a_quiet_wire_adds_no_section(self, session: Session) -> None:
+        found = incident(session)
+        signals(session, found, 2)
+
+        assert "What was said on the wire" not in self.prompt(session, found)
+
     def test_the_traffic_is_told_in_stand_ins_where_the_level_hides_addresses(
         self, session: Session
     ) -> None:

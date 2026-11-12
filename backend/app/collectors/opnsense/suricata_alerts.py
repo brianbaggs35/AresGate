@@ -7,8 +7,11 @@ rest is the record as Suricata wrote it, including its time with the zone it was
 OPNsense leaves out Suricata's own severity and category, so an alert is as serious as what was
 done about it."""
 
+import base64
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta
+from typing import Final
 
 from app.collectors import traffic
 from app.collectors.base import Collector, CollectorFailed, Context, Outcome
@@ -35,9 +38,17 @@ _IDENTITY = (
 )
 # What the record has that is the traffic itself, which stays on the firewall: the packet that
 # set the alert off, and the stream around it. And where it sits in OPNsense's file, which means
-# nothing once the file is rotated.
+# nothing once the file is rotated. Only the start of the packet is kept (see ``_packet_start``),
+# when the settings say so.
 _LEFT_OUT = frozenset(
     {"payload", "payload_printable", "packet", "packet_info", "stream", "filepos", "fileid"}
+)
+# How much of the packet's data is kept: the first bytes, and the first characters of its text.
+PACKET_BYTES: Final = 128
+PACKET_TEXT: Final = 400
+# What a login or a key looks like in the data of a packet. A packet that has any is not kept.
+_SECRET: Final = re.compile(
+    r"(?i)(authorization|cookie|passw(or)?d|pwd|secret|token|api[_-]?key|bearer)\s*[:=]"
 )
 
 
@@ -56,7 +67,7 @@ class SuricataAlerts(Collector):
 
     async def collect(self, context: Context) -> Outcome:
         rows = await _rows(context)
-        events = parse(rows)
+        events = parse(rows, keep_packets=context.settings.keep_packets)
         if rows and not events:
             raise CollectorFailed("It answered, but the alerts aren't in a form AresGate reads.")
         return Outcome(items=await context.record(events))
@@ -77,9 +88,10 @@ async def _rows(context: Context) -> list[object]:
     return rows
 
 
-def parse(rows: list[object]) -> list[NewEvent]:
+def parse(rows: list[object], *, keep_packets: bool = False) -> list[NewEvent]:
     """The alerts that can be read as events, in the order given. A row that isn't an object or
-    has no time with a zone is left out."""
+    has no time with a zone is left out. With ``keep_packets`` the start of the packet that set
+    each alert off is kept too."""
     occurrences = traffic.Occurrences()
     events: list[NewEvent] = []
     for row in rows:
@@ -88,7 +100,7 @@ def parse(rows: list[object]) -> list[NewEvent]:
         if entry is None or occurred_at is None:
             continue
         facts = tuple(traffic.text(entry, key) for key in _IDENTITY)
-        events.append(_event(entry, occurred_at, occurrences.identity(facts)))
+        events.append(_event(entry, occurred_at, occurrences.identity(facts), keep_packets))
     return events
 
 
@@ -102,8 +114,33 @@ def _moment(stamp: str) -> datetime | None:
     return parsed if parsed.tzinfo is not None else None
 
 
+def _packet_start(entry: Mapping[str, object]) -> dict[str, object]:
+    """The first bytes of the packet that set an alert off (Suricata gives them in base64) and the
+    start of its text, to show what was sent. Nothing of a packet that looks like it carries a login
+    or a key, or that has no data."""
+    printable = traffic.text(entry, "payload_printable")[:PACKET_TEXT]
+    encoded = entry.get("payload")
+    data = b""
+    if isinstance(encoded, str) and encoded:
+        try:
+            data = base64.b64decode(encoded, validate=True)[:PACKET_BYTES]
+        except ValueError:
+            data = b""
+    if _SECRET.search(printable) or _SECRET.search(data.decode("latin-1")):
+        return {}
+    kept: dict[str, object] = {}
+    if data:
+        kept["payload"] = base64.b64encode(data).decode("ascii")
+    if printable:
+        kept["payload_printable"] = printable
+    return kept
+
+
 def _event(
-    entry: Mapping[str, object], occurred_at: datetime, identity: tuple[str | int, ...]
+    entry: Mapping[str, object],
+    occurred_at: datetime,
+    identity: tuple[str | int, ...],
+    keep_packets: bool,
 ) -> NewEvent:
     action = traffic.text(entry, "alert_action")
     signature = traffic.text(entry, "alert")
@@ -133,7 +170,10 @@ def _event(
         dst_port=destination_port,
         protocol=protocol or None,
         iface=traffic.text(entry, "in_iface") or None,
-        raw={key: value for key, value in entry.items() if key not in _LEFT_OUT},
+        raw={
+            **{key: value for key, value in entry.items() if key not in _LEFT_OUT},
+            **(_packet_start(entry) if keep_packets else {}),
+        },
     )
 
 

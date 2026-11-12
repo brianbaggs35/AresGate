@@ -514,6 +514,85 @@ export interface IncidentDetail extends Incident {
   path: TravelPath | null
   /** The devices it went through or touched, in the order it met them. */
   through: Through[]
+  /** What was said on the wire (certificates, requests, lookups, the packet), or null where no
+   * program read any of it. */
+  wire: Wire | null
+}
+
+/** A certificate a server showed in a TLS handshake. */
+export interface WireCertificate {
+  subject: string | null
+  issuer: string | null
+  serial: string | null
+  fingerprint: string | null
+  /** How the connection was encrypted, such as `TLS 1.2`. */
+  version: string | null
+  /** The name the client asked for. */
+  sni: string | null
+  not_before: string | null
+  not_after: string | null
+  /** Whether the one who vouched for it is the one it is for. */
+  self_signed: boolean
+  /** Whether it had run out when it was seen, or null where its dates are not known. */
+  expired: boolean | null
+  ja3: string | null
+  ja3s: string | null
+  /** The server's address and port. */
+  server: string | null
+  alerts: number
+}
+
+export interface WireHeader {
+  name: string
+  value: string
+  /** Whether the value is held back because it can carry a password or a key. */
+  hidden: boolean
+}
+
+/** A web request sent without encryption. */
+export interface WireRequest {
+  method: string | null
+  host: string | null
+  url: string | null
+  user_agent: string | null
+  referer: string | null
+  content_type: string | null
+  status: number | null
+  size: number | null
+  request_headers: WireHeader[]
+  response_headers: WireHeader[]
+  server: string | null
+  alerts: number
+}
+
+/** A name that was looked up, and what came back. */
+export interface WireLookup {
+  name: string
+  type: string | null
+  rcode: string | null
+  answers: string[]
+  alerts: number
+}
+
+/** What the two ends of an ssh connection said they run. */
+export interface WireBanner {
+  client: string | null
+  server_software: string | null
+  server: string | null
+  alerts: number
+}
+
+/** What was said on the wire in an incident's alerts, and what stands out in it. */
+export interface Wire {
+  certificates: WireCertificate[]
+  requests: WireRequest[]
+  lookups: WireLookup[]
+  banners: WireBanner[]
+  /** The start of the packet that set an alert off, as text. */
+  payload: string | null
+  dump: DumpRow[]
+  /** What stands out, in plain words. */
+  notes: string[]
 }
 
 /** Why a device is among the ones an incident went through. */

@@ -33,6 +33,7 @@ import IncidentAddresses from '@/components/IncidentAddresses.vue'
 import IncidentConversations from '@/components/IncidentConversations.vue'
 import IncidentPath from '@/components/IncidentPath.vue'
 import IncidentThrough from '@/components/IncidentThrough.vue'
+import IncidentWire from '@/components/IncidentWire.vue'
 import TrustButton from '@/components/TrustButton.vue'
 import IncidentCoverage from '@/components/IncidentCoverage.vue'
 import IncidentGrouping from '@/components/IncidentGrouping.vue'
@@ -411,6 +412,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         data-test="conversations-card"
       >
         <IncidentConversations :conversations="shown.conversations" @ruled="load(true)" />
+      </SectionCard>
+
+      <SectionCard
+        v-if="shown.wire"
+        title="What was said on the wire"
+        description="What the firewall's intrusion detection read of the connections: the certificate a server showed, a web request sent in the clear, a name looked up, the start of the packet that set an alert off. A password or a key in a request is never kept."
+        data-test="wire-card"
+      >
+        <IncidentWire :wire="shown.wire" />
       </SectionCard>
 
       <SectionCard

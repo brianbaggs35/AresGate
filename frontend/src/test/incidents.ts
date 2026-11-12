@@ -20,6 +20,9 @@ import type {
   Signal,
   SourceCount,
   Through,
+  Wire,
+  WireCertificate,
+  WireRequest,
   TravelPath,
   Triage,
 } from '@/api/incidents'
@@ -347,6 +350,65 @@ export function through(changes: Partial<Through> = {}): Through {
   return { role: 'target', address: '192.168.1.20', asset: asset(), signals: 3, ...changes }
 }
 
+/** A certificate a camera signed itself, shown to the service it talks to. */
+export function wireCertificate(changes: Partial<WireCertificate> = {}): WireCertificate {
+  return {
+    subject: 'CN=cloud.example.net',
+    issuer: 'CN=cloud.example.net',
+    serial: '00:AB:12',
+    fingerprint: '5d:41:0e:7a',
+    version: 'TLS 1.2',
+    sni: 'cloud.example.net',
+    not_before: '2025-01-01T00:00:00',
+    not_after: '2035-01-01T00:00:00',
+    self_signed: true,
+    expired: false,
+    ja3: 'e7d705a3286e19ea42f587b344ee6865',
+    ja3s: null,
+    server: '203.0.113.9:443',
+    alerts: 4,
+    ...changes,
+  }
+}
+
+/** A web request sent in the clear, with a login in its headers that was not kept. */
+export function wireRequest(changes: Partial<WireRequest> = {}): WireRequest {
+  return {
+    method: 'POST',
+    host: 'api.example.net',
+    url: '/v1/login',
+    user_agent: 'camera-firmware/2.1',
+    referer: null,
+    content_type: 'application/json',
+    status: 200,
+    size: 120,
+    request_headers: [
+      { name: 'Host', value: 'api.example.net', hidden: false },
+      { name: 'Authorization', value: '(hidden)', hidden: true },
+    ],
+    response_headers: [],
+    server: '203.0.113.9:80',
+    alerts: 2,
+    ...changes,
+  }
+}
+
+/** What was said on the wire: only a self-signed certificate, with the note that says so. */
+export function wire(changes: Partial<Wire> = {}): Wire {
+  return {
+    certificates: [wireCertificate()],
+    requests: [],
+    lookups: [],
+    banners: [],
+    payload: null,
+    dump: [],
+    notes: [
+      'The certificate for cloud.example.net is self-signed: nobody else vouches for it. Cameras, doorbells and other home devices often show one to the service they talk to, so look at what asked for it before you worry.',
+    ],
+    ...changes,
+  }
+}
+
 export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
   return {
     ...incident(),
@@ -397,6 +459,7 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     missing: [],
     path: null,
     through: [],
+    wire: null,
     ...changes,
   }
 }

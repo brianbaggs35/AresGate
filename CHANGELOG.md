@@ -8,6 +8,20 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **See what was said on the wire.** An incident has a new section, *What was said on the wire*,
+  that shows what the firewall's intrusion detection read of the connections: the certificate a
+  server showed (who it is for, who vouched for it, whether it signed itself or has run out, how
+  the connection was encrypted), a web request sent without encryption with its headers, the names
+  that were looked up and what came back, the banners of an ssh login and the start of the packet
+  that set an alert off, as text and as bytes. It sits in panels, so a page is not long until you
+  open one, and is left out when nothing was read. A few plain words at the top say what stands
+  out, such as a login that went over plain web traffic, a certificate that has run out or a way
+  of encrypting that is out of date. The analyst is told the same, and that many cameras, doorbells
+  and other home devices sign their own certificates, so one that is only a camera calling its
+  service is not read as an attack. A password, a cookie or a key is never kept: the value of such
+  a header is replaced, and the start of a packet that looks like it carries a login is not kept at
+  all. `ARESGATE_KEEP_PACKETS=false` keeps no part of a packet. See
+  [What was said on the wire](DOCS/threats.md#how-it-travelled-and-what-it-was).
 - **Review what the AI decided.** A new **Review** page in the menu lists what the AI called an
   incident, or a whole kind of incident, that would change what you see, with how sure it is, why
   and what it would do, and you click **Agree** or **Disagree**, with a reason if you like. A
