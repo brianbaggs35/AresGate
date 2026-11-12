@@ -282,7 +282,10 @@ def agree_all(
     return AgreedOut(agreed=agreed)
 
 
-@router.post("/{subject}/{subject_id}")
+@router.post(
+    "/{subject}/{subject_id}",
+    responses={404: {"description": "That decision is not there."}},
+)
 def answer(
     subject: Subject,
     subject_id: int,
