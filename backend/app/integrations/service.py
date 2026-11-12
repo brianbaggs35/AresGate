@@ -20,7 +20,7 @@ from app.integrations.client import ApiClient, Recorder, Target
 from app.integrations.netguard import AddressPolicy, Origin, Refused
 from app.integrations.probes import Verdict
 from app.integrations.registry import ConnectionDef, FieldKind, IntegrationDef, SettingsError
-from app.models import IntegrationConnection
+from app.models import CollectorHealth, IntegrationConnection
 from app.security import credential_store
 from app.security.credential_store import Kind
 from app.security.vault import VaultError
@@ -322,6 +322,14 @@ def _forget(db: Session, definition: IntegrationDef, connection: ConnectionDef) 
     name = registry.credential_name(definition.key, connection.key)
     for field in secrets_set(db, definition.key, connection.key):
         found |= credential_store.remove(db, Kind.INTEGRATION, name, field)
+    # What its collectors had reported goes with it, in the same transaction, so the status page
+    # and the dashboard stop counting them as soon as the connection is gone.
+    db.connection().execute(
+        delete(CollectorHealth).where(
+            CollectorHealth.integration == definition.key,
+            CollectorHealth.connection == connection.key,
+        )
+    )
     return found
 
 

@@ -13,7 +13,15 @@ from app.config import Settings, get_settings
 from app.integrations import netguard, service
 from app.integrations.client import Target
 from app.intel import connection, store, subjects, virustotal
-from app.models import ApiCall, AuditEvent, IntegrationConnection, IntelLookup, IntelSubject, User
+from app.models import (
+    ApiCall,
+    AuditEvent,
+    CollectorHealth,
+    IntegrationConnection,
+    IntelLookup,
+    IntelSubject,
+    User,
+)
 from app.models.base import utcnow
 from app.security import credential_store
 from app.security.credential_store import Kind
@@ -256,6 +264,51 @@ def test_disconnecting_forgets_it_and_says_so_in_the_audit_log(
     assert event is not None
     assert event.action == Action.INTEGRATION_DISCONNECTED
     assert again.status_code == 404
+
+
+def test_disconnecting_takes_its_collectors_off_the_collectors_and_status_pages_at_once(
+    client: TestClient, csrf_token: str, serve: Serve, session: Session
+) -> None:
+    server = serve(lambda seen: Answer())
+    put(client, csrf_token, "crowdsec", crowdsec_body(server))
+    session.add(
+        CollectorHealth(
+            collector="crowdsec-decisions",
+            integration="crowdsec",
+            connection="lapi",
+            interval_seconds=60,
+        )
+    )
+    session.commit()
+    before = client.get("/api/collectors").json()["collectors"]
+    status_before = [part["key"] for part in client.get("/api/status").json()["parts"]]
+
+    client.delete(f"{BASE}/crowdsec", headers=headers(csrf_token))
+
+    assert [item["integration"] for item in before] == ["crowdsec"]
+    assert any(key.endswith("/crowdsec/lapi") for key in status_before)
+    assert client.get("/api/collectors").json()["collectors"] == []
+    status_after = [part["key"] for part in client.get("/api/status").json()["parts"]]
+    assert not any(key.endswith("/crowdsec/lapi") for key in status_after)
+
+
+def test_a_failed_disconnect_leaves_its_collectors_alone(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    session.add(
+        CollectorHealth(
+            collector="crowdsec-decisions",
+            integration="crowdsec",
+            connection="lapi",
+            interval_seconds=60,
+        )
+    )
+    session.commit()
+
+    response = client.delete(f"{BASE}/crowdsec", headers=headers(csrf_token))
+
+    assert response.status_code == 404
+    assert len(session.scalars(select(CollectorHealth)).all()) == 1
 
 
 def test_a_test_needs_the_integration_to_be_connected_first(
