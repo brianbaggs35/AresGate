@@ -32,7 +32,7 @@ import base64
 import html
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Final, NotRequired, TypedDict
+from typing import Any, Final, NamedTuple, NotRequired, TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -311,6 +311,18 @@ def _traffic(
     return found or None
 
 
+class Packet(NamedTuple):
+    """What a program read of a packet: its printable start, the same as a hex dump, and what
+    Suricata read out of the connection (a certificate, a web request, a name looked up)."""
+
+    payload: str = ""
+    dump: list[list[str]] | None = None
+    wire: Wire | None = None
+
+
+NO_PACKET: Final = Packet()
+
+
 def _finish(
     *,
     facts: list[list[str]],
@@ -324,9 +336,7 @@ def _finish(
     summary: str = "",
     score: int | None = None,
     flow: Flow | None = None,
-    payload: str = "",
-    dump: list[list[str]] | None = None,
-    wire: Wire | None = None,
+    packet: Packet = NO_PACKET,
 ) -> Evidence | None:
     """The evidence, or nothing if there is none."""
     found = Evidence(
@@ -349,14 +359,14 @@ def _finish(
         found["score"] = score
     if flow:
         found["flow"] = flow
-    if payload:
-        found["payload"] = payload
-    if dump:
-        found["dump"] = dump
-    if wire:
-        found["wire"] = wire
+    if packet.payload:
+        found["payload"] = packet.payload
+    if packet.dump:
+        found["dump"] = packet.dump
+    if packet.wire:
+        found["wire"] = packet.wire
     empty = not (facts or found["tags"] or mitre or found["indicators"] or traffic)
-    more = host or app or excerpt or summary or score is not None or flow or payload or dump or wire
+    more = host or app or excerpt or summary or score is not None or flow or any(packet)
     return None if empty and not more else found
 
 
@@ -432,9 +442,11 @@ def _suricata(raw: Raw) -> Evidence | None:
             _pick(raw, "flow.bytes_toclient"),
         ),
         app=_text(_pick(raw, "app_proto"), 32).lower(),
-        payload=_text(_pick(raw, "payload_printable"), MAX_EXCERPT),
-        dump=_dump(raw.get("payload")),
-        wire=_wire(raw),
+        packet=Packet(
+            payload=_text(_pick(raw, "payload_printable"), MAX_EXCERPT),
+            dump=_dump(raw.get("payload")),
+            wire=_wire(raw),
+        ),
     )
 
 

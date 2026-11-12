@@ -279,6 +279,13 @@ function headerGroups(request: WireRequest): { title: string; rows: WireHeader[]
                 <v-icon :icon="Binary" size="16" aria-hidden="true" /> As bytes
               </p>
               <table class="wire__dump" aria-label="The first bytes of the packet">
+                <thead class="wire__sr">
+                  <tr>
+                    <th scope="col">Offset</th>
+                    <th scope="col">Bytes</th>
+                    <th scope="col">As text</th>
+                  </tr>
+                </thead>
                 <tbody>
                   <tr v-for="row in wire.dump" :key="row.offset" data-test="wire-dump-row">
                     <td class="text-medium-emphasis">{{ row.offset }}</td>
@@ -403,6 +410,16 @@ function headerGroups(request: WireRequest): { title: string; rows: WireHeader[]
 
 .wire__dump td {
   white-space: pre;
+}
+
+/* Read aloud, not drawn: the columns of the dump are plain enough to see. */
+.wire__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .wire__code {
