@@ -25,6 +25,11 @@ Every release's notes are here, newest first. The format follows
   list is easy to narrow as more are added. Every card now says what kind it is, including the
   ones that watch the network.
 
+### Changed
+
+- **Python 3.14.10.** The project's own pin, used when you work on it without the container, moves
+  from 3.14.8 to 3.14.10. The container is unchanged: it installs the 3.14 that Wolfi ships.
+
 ## 0.1.4
 
 ### Added
