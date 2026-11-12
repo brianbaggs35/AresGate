@@ -275,8 +275,9 @@ def test_the_loop_asks_every_service_and_one_failing_does_not_stop_the_other(
             timeout=0.1,
         )
 
+    looped = looping()
     with caplog.at_level(logging.ERROR), pytest.raises(TimeoutError):
-        asyncio.run(looping())
+        asyncio.run(looped)
 
     assert "VirusTotal" in asked
     assert "AlienVault OTX" in asked

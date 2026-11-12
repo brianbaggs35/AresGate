@@ -68,10 +68,8 @@ const pulses = computed(() => {
   const found = props.end.reputation?.otx
   if (!found) return null
   const count = `${found.pulses.toString()} ${found.pulses === 1 ? 'pulse' : 'pulses'}`
-  const text =
-    found.judgement === 'clean'
-      ? 'OTX lists it as safe'
-      : `OTX: ${count}${found.names ? `, ${found.names}` : ''}`
+  const names = found.names ? `, ${found.names}` : ''
+  const text = found.judgement === 'clean' ? 'OTX lists it as safe' : `OTX: ${count}${names}`
   return { look: JUDGEMENT[found.judgement], text, link: found.link }
 })
 /** What the owner ruled, in words, with the same color a judgement of it would have. */

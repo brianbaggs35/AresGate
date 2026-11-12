@@ -1,5 +1,6 @@
 import type { Asset } from '@/api/assets'
 import { apiGet, apiPatch, apiPost } from '@/api/client'
+import type { Judgement } from '@/api/threatIntel'
 import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
@@ -356,7 +357,7 @@ export interface Insights {
 
 /** What AlienVault OTX's community threat reports (pulses) say of an address. */
 export interface OtxReputation {
-  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  judgement: Judgement
   /** How many pulses name the address, and how many of them also name malware, an adversary or
    * an attack technique. */
   pulses: number
