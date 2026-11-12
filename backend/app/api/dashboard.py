@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel
 
 from app import dashboard
+from app.agents import probe
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
 from app.incidents import filters, verdicts
@@ -80,8 +81,30 @@ class SourceOut(BaseModel):
     count: int
 
 
+class PortOut(BaseModel):
+    port: int
+    # What the port is usually for (SSH, Remote Desktop...), where AresGate knows.
+    service: str | None
+    count: int
+
+
+class TurnedAwayOut(BaseModel):
+    """One of your own devices that the firewall refused to let connect out."""
+
+    address: str
+    count: int
+    destinations: int
+
+
 class BlockedOut(CountOut):
     top_sources: list[SourceOut]
+    # The same blocks by which way they were going: from the internet, from one of your devices
+    # out, or between your own networks.
+    inbound: int
+    outbound: int
+    inside: int
+    top_ports: list[PortOut]
+    top_devices: list[TurnedAwayOut]
 
 
 class InterfaceOut(BaseModel):
@@ -252,10 +275,16 @@ def _noise(db: Db, win: dashboard.Window) -> NoiseOut:
     )
 
 
+def _service(port: int) -> str | None:
+    known = probe.PORTS.get(port)
+    return known.name if known else None
+
+
 def build(db: Db, key: str, now: datetime) -> DashboardOut:
     win = dashboard.window(key, now)
     found = dashboard.alerts(db, win)
     refused = dashboard.blocked(db, win)
+    sides = dashboard.blocked_sides(db, win)
     people = dashboard.devices(db, win)
     floor = filters.load(db).confidence_floor
     tuning = threat_settings.load(db)
@@ -297,6 +326,19 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             top_sources=[
                 SourceOut(address=str(source.address), count=source.count)
                 for source in dashboard.top_blocked_sources(db, win)
+            ],
+            inbound=sides.inbound,
+            outbound=sides.outbound,
+            inside=sides.inside,
+            top_ports=[
+                PortOut(port=item.port, service=_service(item.port), count=item.count)
+                for item in sides.ports
+            ],
+            top_devices=[
+                TurnedAwayOut(
+                    address=str(item.address), count=item.count, destinations=item.destinations
+                )
+                for item in sides.devices
             ],
         ),
         traffic=[

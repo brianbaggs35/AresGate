@@ -11,7 +11,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 
-from sqlalchemy import ColumnElement, Interval, and_, distinct, func, literal, or_, select, tuple_
+from sqlalchemy import (
+    ColumnElement,
+    Interval,
+    and_,
+    case,
+    distinct,
+    func,
+    literal,
+    or_,
+    select,
+    tuple_,
+)
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.events.event import Severity
@@ -304,6 +315,90 @@ def top_blocked_sources(db: Session, win: Window, limit: int = TOP_SOURCES) -> l
         .limit(limit)
     ).all()
     return [Source(address, total) for address, total in rows if address is not None]
+
+
+# Which way a refused connection was going, by where its two ends are: the internet knocking
+# (``inbound``), one of your own devices reaching out (``outbound``) or one network of yours
+# reaching another (``inside``). A line that names no source counts as the internet's.
+_SIDE = case(
+    (
+        inside_clause(Event.src_address),
+        case((inside_clause(Event.dst_address), "inside"), else_="outbound"),
+    ),
+    else_="inbound",
+)
+SIDES = ("inbound", "outbound", "inside")
+TOP_PORTS = 6
+TOP_DEVICES = 6
+
+
+@dataclass(frozen=True)
+class Port:
+    """A port the internet tried and the firewall refused."""
+
+    port: int
+    count: int
+
+
+@dataclass(frozen=True)
+class TurnedAway:
+    """One of your own devices that the firewall stopped from connecting out."""
+
+    address: IPv4Address | IPv6Address
+    count: int
+    # How many different addresses it tried to reach.
+    destinations: int
+
+
+@dataclass(frozen=True)
+class Sides:
+    """The connections the firewall refused in a window, by which way they were going, the ports
+    the internet tried most, and the devices of yours that were turned away most. The ones the
+    internet tried are the firewall doing its job. A device of yours that is refused again and
+    again is worth knowing: it is what a program that has gone wrong, or a compromised one that
+    is reaching for its controller, looks like from the firewall."""
+
+    inbound: int
+    outbound: int
+    inside: int
+    ports: list[Port]
+    devices: list[TurnedAway]
+
+
+def blocked_sides(
+    db: Session, win: Window, ports: int = TOP_PORTS, devices: int = TOP_DEVICES
+) -> Sides:
+    """How the refused connections of a window split by direction, and the ports and devices."""
+    within = (Event.occurred_at >= win.start, Event.occurred_at < win.end)
+    rows = db.execute(select(_SIDE, func.count()).where(IS_BLOCK, *within).group_by(_SIDE))
+    totals = {side: total for side, total in rows.all()}
+    count = func.count().label("count")
+    tried = db.execute(
+        select(Event.dst_port, count)
+        .where(IS_BLOCK, _SIDE == "inbound", Event.dst_port.is_not(None), *within)
+        .group_by(Event.dst_port)
+        .order_by(count.desc(), Event.dst_port)
+        .limit(ports)
+    ).all()
+    reaching = func.count(distinct(Event.dst_address)).label("destinations")
+    turned_away = db.execute(
+        select(Event.src_address, count, reaching)
+        .where(IS_BLOCK, _SIDE == "outbound", Event.src_address.is_not(None), *within)
+        .group_by(Event.src_address)
+        .order_by(count.desc(), Event.src_address)
+        .limit(devices)
+    ).all()
+    return Sides(
+        inbound=totals.get("inbound", 0),
+        outbound=totals.get("outbound", 0),
+        inside=totals.get("inside", 0),
+        ports=[Port(port, total) for port, total in tried if port is not None],
+        devices=[
+            TurnedAway(address, total, destinations)
+            for address, total, destinations in turned_away
+            if address is not None
+        ],
+    )
 
 
 def recent_alerts(db: Session, win: Window, limit: int = RECENT_ALERTS) -> list[Event]:

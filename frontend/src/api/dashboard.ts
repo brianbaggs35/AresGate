@@ -62,8 +62,30 @@ export interface BlockedSource {
   count: number
 }
 
+/** A port the internet tried and the firewall refused, and what it is usually for. */
+export interface BlockedPort {
+  port: number
+  service: string | null
+  count: number
+}
+
+/** One of your own devices that the firewall refused to let connect out. */
+export interface BlockedDevice {
+  address: string
+  count: number
+  /** How many different addresses it tried to reach. */
+  destinations: number
+}
+
 export interface BlockedCounts extends Counted {
   top_sources: BlockedSource[]
+  /** The same blocks by the way they were going: from the internet, out from one of your
+   * devices, or between your own networks. */
+  inbound: number
+  outbound: number
+  inside: number
+  top_ports: BlockedPort[]
+  top_devices: BlockedDevice[]
 }
 
 /** How fast one interface went in each bucket, in bits a second; null where it can't be told. */

@@ -9,6 +9,7 @@ import { fetchIncidents, type IncidentPage } from '@/api/incidents'
 import BarChart from '@/charts/BarChart.vue'
 import { severityColor } from '@/charts/palette'
 import AppPage from '@/components/AppPage.vue'
+import BlockedCard from '@/components/BlockedCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FilteredNote from '@/components/FilteredNote.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
@@ -363,6 +364,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           />
         </v-card>
       </div>
+
+      <BlockedCard
+        v-if="data.blocked.total > 0"
+        :blocked="data.blocked"
+        :window="data.window.key"
+        :last-words="lastWords"
+      />
 
       <NoiseCard
         v-if="data.noise.signatures.length"
