@@ -197,12 +197,11 @@ async function clear() {
       >
         Take it back
       </v-btn>
-      <span
+      <output
         v-if="saved && !dirty"
         class="text-body-medium text-medium-emphasis"
-        role="status"
         data-test="asset-classify-saved"
-        >Saved.</span
+        >Saved.</output
       >
     </div>
   </SectionCard>

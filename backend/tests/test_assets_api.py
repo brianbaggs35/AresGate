@@ -289,9 +289,11 @@ class TestClassifying:
         taken = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
         again = client.delete(f"{BASE}/{key}/profile", headers=headers(csrf_token))
 
-        assert said is not None and said.action == Action.ASSET_CLASSIFIED
+        assert said is not None
+        assert said.action == Action.ASSET_CLASSIFIED
         assert gone.status_code == 204
-        assert taken is not None and taken.action == Action.ASSET_CLASSIFICATION_CLEARED
+        assert taken is not None
+        assert taken.action == Action.ASSET_CLASSIFICATION_CLEARED
         assert again.status_code == 404
         assert (
             next(item for item in get(client).json()["items"] if item["key"] == key)["profile"]
