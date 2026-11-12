@@ -42,7 +42,7 @@ every command (`make` lists them).
   asked: the maintainer publishes releases ([DOCS/releasing.md](DOCS/releasing.md)).
 - **Dependencies.** The newest version unless there's a reason, preferring maintained packages.
   Python wheels only and npm without install scripts, so installing never runs a dependency's
-  code. Python 3.14.8 and PostgreSQL 18 and TypeScript 6.0.3 are the maintainer's pins.
+  code. Python 3.14.10 and PostgreSQL 18 and TypeScript 6.0.3 are the maintainer's pins.
 
 ## Design notes
 

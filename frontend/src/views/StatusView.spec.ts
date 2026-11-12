@@ -19,7 +19,7 @@ function healthy(): statusApi.StatusReport {
       uptime_seconds: 2 * 86400 + 5 * 3600 + 7 * 60,
     },
     stack: {
-      python: '3.14.8',
+      python: '3.14.10',
       nginx: '1.29.2',
       database: {
         status: 'ok',
@@ -172,7 +172,7 @@ describe('StatusView', () => {
     it('tells what it runs on, down to the database', async () => {
       const { facts } = await open()
       expect(facts('status-software')).toEqual({
-        Python: '3.14.8',
+        Python: '3.14.10',
         nginx: '1.29.2',
         PostgreSQL: '18.1',
         'Database size': '12.0 MB',
@@ -255,7 +255,7 @@ describe('StatusView', () => {
         Built: 'Not recorded',
       })
       expect(facts('status-software')).toEqual({
-        Python: '3.14.8',
+        Python: '3.14.10',
         nginx: 'Not found',
         PostgreSQL: 'Unknown',
         Migration: 'none (up to date)',
@@ -298,7 +298,7 @@ describe('StatusView', () => {
       expect(find('status-attention').text()).toContain('One thing needs a look')
       expect(await items(report)).toEqual(["The database isn't answering."])
       expect(facts('status-software')).toEqual({
-        Python: '3.14.8',
+        Python: '3.14.10',
         nginx: '1.29.2',
         PostgreSQL: 'Not answering',
       })

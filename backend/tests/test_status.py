@@ -396,7 +396,7 @@ def a_report(**changes: Any) -> status.StatusReport:
             uptime_seconds=3 * 3600 + 12 * 60,
         ),
         "stack": status.StackInfo(
-            python="3.14.8",
+            python="3.14.10",
             nginx="1.29.1",
             database=status.DatabaseInfo(
                 status="ok",
@@ -461,7 +461,7 @@ def test_the_text_for_a_bug_report_has_the_facts_and_no_addresses() -> None:
         "Version: 1.2.3 (commit 0123456789ab, built 2026-10-22 08:30 UTC)",
         "Environment: production",
         "Up for: 3h 12m",
-        "Python 3.14.8, nginx 1.29.1",
+        "Python 3.14.10, nginx 1.29.1",
         database,
         "Certificate: issued by CN=R11,O=Let's Encrypt, 2 names, 30 days left",
         "Memory: 312.0 MB of 2.0 GB",
@@ -481,7 +481,7 @@ def test_the_text_says_what_it_does_not_know() -> None:
         update={
             "aresgate": report.aresgate.model_copy(update={"commit": None, "built_at": None}),
             "stack": status.StackInfo(
-                python="3.14.8",
+                python="3.14.10",
                 nginx=None,
                 database=status.DatabaseInfo(
                     status="unavailable",
@@ -506,7 +506,7 @@ def test_the_text_says_what_it_does_not_know() -> None:
         "Version: 1.2.3",
         "Environment: production",
         "Up for: 3h 12m",
-        "Python 3.14.8, nginx unknown",
+        "Python 3.14.10, nginx unknown",
         "Database: unavailable",
         "Certificate: not served here",
         "Parts:",

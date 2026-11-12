@@ -7,7 +7,7 @@ describe('FactList', () => {
       props: {
         facts: [
           { id: 'version', label: 'Version', value: '0.0.1' },
-          { id: 'python', label: 'Python', value: '3.14.8' },
+          { id: 'python', label: 'Python', value: '3.14.10' },
         ],
       },
     })
@@ -18,7 +18,7 @@ describe('FactList', () => {
     expect(rows.map((row) => row.attributes('data-test'))).toEqual(['fact-version', 'fact-python'])
     expect(wrapper.find('[data-test="fact-version"] dt').text()).toBe('Version')
     expect(wrapper.find('[data-test="fact-version"] dd').text()).toBe('0.0.1')
-    expect(wrapper.find('[data-test="fact-python"] dd').text()).toBe('3.14.8')
+    expect(wrapper.find('[data-test="fact-python"] dd').text()).toBe('3.14.10')
   })
 
   it('is empty without facts', async () => {
