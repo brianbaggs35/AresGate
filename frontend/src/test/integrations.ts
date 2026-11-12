@@ -325,6 +325,42 @@ export function otx(overrides: Partial<Integration> = {}): Integration {
   })
 }
 
+/** Fingerbank, whose one address cannot be changed and which asks whose devices to identify. */
+export function fingerbank(overrides: Partial<Integration> = {}): Integration {
+  return integration({
+    key: 'fingerbank',
+    name: 'Fingerbank',
+    provides: 'What each device on the network is, from its hardware address.',
+    icon: 'devices',
+    category: 'Device intelligence',
+    docs_url: 'https://api.fingerbank.org/api_doc/2.html',
+    connections: [
+      connection({
+        key: 'api',
+        label: 'Fingerbank API',
+        url_example: 'https://api.fingerbank.org',
+        address: 'https://api.fingerbank.org',
+        internet: true,
+        fields: [
+          field({ key: 'api_key', label: 'API key', kind: 'secret' }),
+          field({
+            key: 'incident_devices',
+            label: 'Devices in incidents and threats',
+            kind: 'choice',
+            default: 'no',
+            choices: [
+              { value: 'no', label: 'Only my own devices' },
+              { value: 'yes', label: 'Also devices in incidents and threats' },
+            ],
+            caution: 'Fingerbank is asked about a device’s hardware address and nothing else.',
+          }),
+        ],
+      }),
+    ],
+    ...overrides,
+  })
+}
+
 export function call(overrides: Partial<Call> = {}): Call {
   return {
     id: 1,

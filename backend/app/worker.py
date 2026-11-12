@@ -15,6 +15,7 @@ from app.alerts import notify
 from app.collectors.scheduler import Scheduler
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
+from app.fingerbank import run as fingerbank
 from app.incidents import run as incidents
 from app.integrations import netguard
 from app.integrations.apilog import ApiLogRecorder
@@ -52,6 +53,9 @@ async def serve(settings: Settings) -> None:
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
         work.create_task(agents.run(new_session, context, enabled=collecting(settings)))
         work.create_task(intel.run(new_session, settings, recorder, enabled=collecting(settings)))
+        work.create_task(
+            fingerbank.run(new_session, settings, recorder, enabled=collecting(settings))
+        )
         work.create_task(
             notify.run(
                 settings,

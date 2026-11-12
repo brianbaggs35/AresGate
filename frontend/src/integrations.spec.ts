@@ -7,6 +7,7 @@ import {
   STATUS,
   WHOLE,
   activeFields,
+  categoriesOf,
   chosenValues,
   connectionLabels,
   draftFrom,
@@ -15,18 +16,19 @@ import {
   isPlainHttp,
   joinValues,
   lookupItems,
+  narrowIntegrations,
   settingsFrom,
   sameFingerprint,
   sortProblems,
   suggestedEntries,
   usesTls,
 } from '@/integrations'
-import { module, ntopngApi, opnsense, virustotal } from '@/test/integrations'
+import { fingerbank, module, ntopngApi, opnsense, summary, virustotal } from '@/test/integrations'
 
 describe('integrationIcon', () => {
   it('has a picture for each kind', () => {
-    const icons = ['firewall', 'traffic', 'alerts', 'threats'].map(integrationIcon)
-    expect(new Set(icons).size).toBe(4)
+    const icons = ['firewall', 'traffic', 'alerts', 'threats', 'devices'].map(integrationIcon)
+    expect(new Set(icons).size).toBe(5)
     expect(icons).not.toContain(Plug)
   })
 
@@ -350,5 +352,82 @@ describe('suggestedEntries', () => {
   it('suggests nothing when nothing is listed', () => {
     expect(suggestedEntries([], true, 16)).toEqual([])
     expect(suggestedEntries([], false, 16)).toEqual([])
+  })
+})
+
+describe('categoriesOf', () => {
+  it('lists each kind once, in the order it first appears, with how many belong to it', () => {
+    const found = categoriesOf([
+      summary({ category: 'Threat intelligence' }),
+      summary({ category: 'Device intelligence' }),
+      summary({ category: 'Threat intelligence' }),
+    ])
+
+    expect(found).toEqual([
+      { name: 'Threat intelligence', count: 2 },
+      { name: 'Device intelligence', count: 1 },
+    ])
+  })
+
+  it('leaves out an integration that belongs to no kind', () => {
+    expect(categoriesOf([summary({ category: '' })])).toEqual([])
+    expect(categoriesOf([])).toEqual([])
+  })
+})
+
+describe('narrowIntegrations', () => {
+  const all = [
+    summary({
+      key: 'opnsense',
+      name: 'OPNsense',
+      provides: 'The firewall’s health',
+      category: 'Network monitoring',
+    }),
+    summary({
+      key: 'virustotal',
+      name: 'VirusTotal',
+      provides: 'How many vendors flag each address',
+      category: 'Threat intelligence',
+    }),
+    summary({
+      key: 'fingerbank',
+      name: 'Fingerbank',
+      provides: 'What each device is, from its hardware address',
+      category: 'Device intelligence',
+    }),
+  ]
+  const keys = (items: { key: string }[]) => items.map((item) => item.key)
+
+  it('keeps them all for an empty search and no kind', () => {
+    expect(keys(narrowIntegrations(all, '', ''))).toEqual(['opnsense', 'virustotal', 'fingerbank'])
+    expect(keys(narrowIntegrations(all, '   ', ''))).toEqual([
+      'opnsense',
+      'virustotal',
+      'fingerbank',
+    ])
+  })
+
+  it('keeps those of a kind', () => {
+    expect(keys(narrowIntegrations(all, '', 'Device intelligence'))).toEqual(['fingerbank'])
+  })
+
+  it('finds a name, what it provides or its kind, whatever the case', () => {
+    expect(keys(narrowIntegrations(all, 'VIRUSTOTAL', ''))).toEqual(['virustotal'])
+    expect(keys(narrowIntegrations(all, 'firewall', ''))).toEqual(['opnsense'])
+    expect(keys(narrowIntegrations(all, 'device intel', ''))).toEqual(['fingerbank'])
+  })
+
+  it('needs every word, in any order', () => {
+    expect(keys(narrowIntegrations(all, 'address vendors', ''))).toEqual(['virustotal'])
+    expect(keys(narrowIntegrations(all, 'address nothing', ''))).toEqual([])
+  })
+
+  it('needs the search and the kind together', () => {
+    expect(keys(narrowIntegrations(all, 'address', 'Device intelligence'))).toEqual(['fingerbank'])
+    expect(keys(narrowIntegrations(all, 'firewall', 'Device intelligence'))).toEqual([])
+  })
+
+  it('has a Fingerbank page whose kind is a kind of its own', () => {
+    expect(fingerbank().category).toBe('Device intelligence')
   })
 })

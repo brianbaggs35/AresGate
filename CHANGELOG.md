@@ -4,6 +4,27 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Know what each device is with Fingerbank.** A new **Fingerbank** card in a new **Device
+  intelligence** group of the Integrations page takes the API key from your Fingerbank account
+  (encrypted and never shown again). AresGate then asks Fingerbank, in the background, what each
+  device on your network is from its hardware address, your own devices first and the newest on
+  the network first, and keeps the answer with the device: its make and model, its operating
+  system and how sure Fingerbank is. Every later connection from the same hardware address carries
+  it, and a device is only asked about again once what was said has gone stale. It shows on the
+  asset's page under *What it is* and as a flag on its card. Only the hardware address is sent,
+  and never one a device made up for itself. The card's *Devices in incidents and threats*
+  setting, off until you turn it on, identifies the devices that incidents name as well. The free
+  key's limit of 600 requests an hour is kept to, and reaching it is never an error. See
+  [Fingerbank](DOCS/integrations.md#fingerbank).
+- **Search and filter the integrations.** The Integrations page has a search for what an
+  integration is called or what it provides, and a button for each kind of integration, so the
+  list is easy to narrow as more are added. Every card now says what kind it is, including the
+  ones that watch the network.
+
 ## 0.1.4
 
 ### Added

@@ -699,6 +699,35 @@ async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "OTX accepted the key.")
 
 
+# A hardware address that belongs to no device: the example RFC 7042 gives for documentation.
+DOCUMENTATION_MAC = "00:00:5e:00:53:00"
+
+
+async def fingerbank(client: ApiClient, target: Target) -> Verdict:
+    """Asks Fingerbank about a hardware address that belongs to no device, with the key. Fingerbank
+    answers 200 with a device, or 404 when it has none for the address: either way it accepted the
+    key. A 429 means it asked for fewer requests, which says nothing against the key either. The
+    request sends no real device, and costs one of the requests the key allows an hour."""
+    reply = await client.request(
+        "GET",
+        "/api/v2/combinations/interrogate",
+        json_body={"mac": DOCUMENTATION_MAC},
+        headers={"Authorization": f"Bearer {target.secrets['api_key']}"},
+    )
+    if reply.status == 429:
+        return Verdict(
+            True, "Fingerbank accepted the key, but asked for fewer requests for a moment."
+        )
+    if reply.status != 404:
+        refused = "Fingerbank didn't accept the key. Copy it again from your Fingerbank account."
+        blocked = "Fingerbank has blocked this key. Its fair usage policy allows one key for each."
+        if bad := problem(reply, "Fingerbank", refused=refused, forbidden=blocked):
+            return bad
+        if as_object(reply.json()) is None:
+            return unexpected("Fingerbank")
+    return Verdict(True, "Fingerbank accepted the key.")
+
+
 LOOKUPS: Mapping[tuple[str, str, str], Lookuper] = {
     ("ntopng", "api", "interface_id"): ntopng_interface_lookup,
 }
@@ -711,6 +740,7 @@ PROBES: Mapping[tuple[str, str], Probe] = {
     ("wazuh", "indexer"): wazuh_indexer,
     ("crowdsec", "lapi"): crowdsec,
     ("otx", "api"): alienvault_otx,
+    ("fingerbank", "api"): fingerbank,
 }
 
 # The connections whose test spends one of the lookups their key allows. They are tested by hand,

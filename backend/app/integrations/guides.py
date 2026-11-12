@@ -823,3 +823,70 @@ OTX = Guide(
         ),
     ),
 )
+
+
+FINGERBANK = Guide(
+    parts=(
+        Part(
+            title="Get a Fingerbank key",
+            connection="api",
+            intro=(
+                "AresGate asks Fingerbank what each device on your network is, with the API key "
+                "from your Fingerbank account. The free key is enough."
+            ),
+            steps=(
+                Step(
+                    title="Copy the API key",
+                    detail=(
+                        "Create a free account on Fingerbank's website, or sign in. Your API key "
+                        "is on your account page."
+                    ),
+                    menu=("My Account",),
+                    result="Paste it into API key on the card.",
+                    watch=(
+                        "Use one key for AresGate alone. Fingerbank blocks a client that uses "
+                        "more than one key from the same internet address."
+                    ),
+                ),
+                Step(
+                    title="Choose whose devices are identified",
+                    detail=(
+                        "Your own devices are always identified, the ones that connected "
+                        "most recently first. Choose whether the devices in incidents and "
+                        "threats are identified too."
+                    ),
+                    result="Set Devices in incidents and threats on the card.",
+                    watch=(
+                        "What is sent is the device's hardware address and nothing else, and "
+                        "never one the device made up for itself. Fingerbank keeps what it is "
+                        "sent to improve its matching."
+                    ),
+                    inferred=(
+                        "The Fingerbank pages this was written from give no figure for the free "
+                        "key's requests an hour. AresGate keeps to 600 an hour, which the free "
+                        "plan is understood to allow, and treats a 429 as a request to wait, not "
+                        "as an error. The API's own cap is 250 requests a minute for every key."
+                    ),
+                ),
+            ),
+        ),
+    ),
+    sources=(
+        Source(
+            title="Fingerbank API v2: interrogate",
+            url="https://api.fingerbank.org/api_doc/2/combinations/interrogate.html",
+        ),
+        Source(
+            title="Fingerbank: how to use the API",
+            url="https://www.fingerbank.org/usage/",
+        ),
+        Source(
+            title="Fingerbank: fair usage policy",
+            url="https://www.fingerbank.org/fair-usage-policy",
+        ),
+        Source(
+            title="Fingerbank: terms and privacy",
+            url="https://www.fingerbank.org/privacy",
+        ),
+    ),
+)

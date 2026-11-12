@@ -1226,6 +1226,63 @@ def test_otx_that_does_not_answer_properly_is_explained(
     assert message in result.message
 
 
+def test_fingerbank_accepts_a_key_when_it_answers_with_a_device_for_an_address_no_device_has(
+    serve: Serve,
+) -> None:
+    result, server, log = verdict(
+        serve,
+        "fingerbank",
+        "api",
+        lambda seen: Answer(body='{"device": {"id": 1}}'),
+        secrets={"api_key": "fb-key"},
+    )
+
+    assert result == Verdict(True, "Fingerbank accepted the key.")
+    [seen] = server.seen
+    assert seen.target == "/api/v2/combinations/interrogate"
+    assert seen.headers["authorization"] == "Bearer fb-key"
+    assert json.loads(seen.body) == {"mac": probes.DOCUMENTATION_MAC}
+    # The key goes in a header, so it is in no address and no log entry.
+    assert log.calls[0].path == "/api/v2/combinations/interrogate"
+
+
+def test_fingerbank_having_no_match_for_the_address_is_a_key_it_accepted(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve, "fingerbank", "api", lambda seen: Answer(status=404), secrets={"api_key": "k"}
+    )
+
+    assert result == Verdict(True, "Fingerbank accepted the key.")
+
+
+def test_fingerbank_asking_for_fewer_requests_is_no_sign_against_the_key(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve, "fingerbank", "api", lambda seen: Answer(status=429), secrets={"api_key": "k"}
+    )
+
+    assert result.ok
+    assert "asked for fewer requests" in result.message
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (Answer(status=401), "Fingerbank didn't accept the key."),
+        (Answer(status=403), "Fingerbank has blocked this key."),
+        (Answer(status=502), "Fingerbank answered HTTP 502."),
+        (Answer(body="<html>"), "doesn't look like Fingerbank's"),
+    ],
+)
+def test_fingerbank_that_does_not_answer_properly_is_explained(
+    serve: Serve, answer: Answer, message: str
+) -> None:
+    result, _, _ = verdict(
+        serve, "fingerbank", "api", lambda seen: answer, secrets={"api_key": "k"}
+    )
+
+    assert not result.ok
+    assert message in result.message
+
+
 def test_the_state_of_a_service_is_read_from_the_words_it_uses() -> None:
     state = probes.service_state
 

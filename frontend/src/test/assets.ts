@@ -1,5 +1,6 @@
 import type {
   Asset,
+  AssetIdentity,
   AssetKindGroup,
   AssetPage,
   AssetProfile,
@@ -19,6 +20,21 @@ export const listed = (overrides: Partial<Listing> = {}): Listing => ({
   presence: true,
   matched_by: null,
   state: null,
+  ...overrides,
+})
+
+/** What Fingerbank says a phone is. */
+export const identity = (overrides: Partial<AssetIdentity> = {}): AssetIdentity => ({
+  source: 'fingerbank',
+  source_name: 'Fingerbank',
+  state: 'identified',
+  reason: 'asset',
+  name: 'Apple iPhone 16',
+  path: 'Phone, Tablet, or Wearable/Apple iOS, macOS, and tvOS/Apple iPhone/Apple iPhone 16',
+  manufacturer: 'Apple, Inc.',
+  operating_system: 'Apple iOS',
+  score: 72,
+  checked_at: '2026-11-01T11:00:00Z',
   ...overrides,
 })
 
@@ -43,6 +59,7 @@ export const asset = (overrides: Partial<Asset> = {}): Asset => ({
   profile: null,
   suggested_kind: null,
   suggested_label: null,
+  identity: null,
   ...overrides,
 })
 

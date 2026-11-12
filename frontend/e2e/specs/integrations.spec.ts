@@ -31,9 +31,18 @@ test.describe('integrations', () => {
       'CrowdSec',
       'VirusTotal',
       'AlienVault OTX',
+      'Fingerbank',
     ])
-    await expect(integrations.count).toHaveText('0 of 6 set up')
-    for (const key of ['opnsense', 'ntopng', 'wazuh', 'crowdsec', 'virustotal', 'otx']) {
+    await expect(integrations.count).toHaveText('0 of 7 set up')
+    for (const key of [
+      'opnsense',
+      'ntopng',
+      'wazuh',
+      'crowdsec',
+      'virustotal',
+      'otx',
+      'fingerbank',
+    ]) {
       await expect(integrations.status(key)).toHaveText('Not connected')
       await expect(integrations.lastCall(key)).toHaveText('Not set up yet')
     }
@@ -50,7 +59,7 @@ test.describe('integrations', () => {
     await integration.back.click()
 
     await expect(page).toHaveURL('/integrations')
-    await expect(integrations.names).toHaveCount(6)
+    await expect(integrations.names).toHaveCount(7)
   })
 
   test('explains how to get what is needed in a window, and links to the official documentation', async ({
@@ -100,6 +109,7 @@ test.describe('integrations', () => {
       crowdsec: ['lapi'],
       virustotal: ['api'],
       otx: ['api'],
+      fingerbank: ['api'],
     }
     for (const [key, parts] of Object.entries(connections)) {
       await integration.goto(key)
@@ -150,7 +160,7 @@ test.describe('integrations', () => {
     await integrations.retry.click()
 
     await expect(integrations.loadError).toHaveCount(0)
-    await expect(integrations.names).toHaveCount(6)
+    await expect(integrations.names).toHaveCount(7)
   })
 
   test('says so for an integration that does not exist', async ({ page, integration }) => {
@@ -221,7 +231,7 @@ test.describe('integrations', () => {
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
-      await expect(integrations.count).toHaveText('1 of 6 set up')
+      await expect(integrations.count).toHaveText('1 of 7 set up')
     })
 
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
@@ -1457,6 +1467,71 @@ test.describe('integrations', () => {
       )
       await integration.connection('api').getByLabel('Gentle').check()
       await expect(integration.connection('api').getByLabel('Gentle')).toBeChecked()
+    })
+  })
+
+  test.describe('Fingerbank', () => {
+    test('is device intelligence on the internet, with its one address fixed and a setting for incident devices', async ({
+      page,
+      integration,
+      integrations,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.card('fingerbank')).toContainText('Device intelligence')
+      await integrations.card('fingerbank').click()
+
+      await expect(page).toHaveURL('/integrations/fingerbank')
+      await expect(integration.title).toHaveText('Fingerbank')
+      await expect(integration.address('api')).toHaveValue('https://api.fingerbank.org')
+      await expect(integration.address('api')).not.toBeEditable()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+      // Only the owner's own devices are identified until they allow more, and what that sends is
+      // said beside the choice.
+      await expect(integration.connection('api').getByLabel('Only my own devices')).toBeChecked()
+      await expect(
+        integration.connection('api').getByTestId('caution-incident_devices'),
+      ).toContainText('hardware address and nothing else')
+      await integration.connection('api').getByLabel('Also devices in incidents').check()
+      await expect(
+        integration.connection('api').getByLabel('Also devices in incidents'),
+      ).toBeChecked()
+    })
+  })
+
+  test.describe('finding an integration', () => {
+    test('narrows the list by what is typed, and says when nothing matches', async ({
+      integrations,
+    }) => {
+      await integrations.goto()
+
+      await integrations.search.fill('fingerbank')
+      await expect(integrations.names).toHaveText(['Fingerbank'])
+
+      await integrations.search.fill('flags each')
+      await expect(integrations.names).toHaveText(['VirusTotal'])
+
+      await integrations.search.fill('no such integration')
+      await expect(integrations.none).toBeVisible()
+      await expect(integrations.names).toHaveCount(0)
+
+      await integrations.clear.click()
+      await expect(integrations.names).toHaveCount(7)
+      await expect(integrations.search).toHaveValue('')
+    })
+
+    test('narrows the list by kind, and the count of what is set up stays whole', async ({
+      integrations,
+    }) => {
+      await integrations.goto()
+
+      await integrations.kind('Threat intelligence').click()
+      await expect(integrations.names).toHaveText(['VirusTotal', 'AlienVault OTX'])
+      await integrations.kind('Device intelligence').click()
+      await expect(integrations.names).toHaveText(['Fingerbank'])
+      await expect(integrations.count).toHaveText('0 of 7 set up')
+
+      await integrations.kind('All').click()
+      await expect(integrations.names).toHaveCount(7)
     })
   })
 

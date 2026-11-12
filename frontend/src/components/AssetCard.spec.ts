@@ -1,7 +1,7 @@
 import AssetCard from '@/components/AssetCard.vue'
 import AssetSources from '@/components/AssetSources.vue'
 import AssetStatusChip from '@/components/AssetStatusChip.vue'
-import { asset, listed, machine, profile } from '@/test/assets'
+import { asset, identity, listed, machine, profile } from '@/test/assets'
 import { mountWithPlugins } from '@/test/mount'
 
 async function open(item = asset(), interfaces: string[] = []) {
@@ -95,6 +95,26 @@ describe('AssetCard', () => {
       expect(text('asset-private')).toBe('Private hardware address')
       expect(text('asset-unidentified')).toBe('Nothing says what it is')
       expect(has('asset-new')).toBe(true)
+    })
+  })
+
+  describe('what Fingerbank says it is', () => {
+    it('shows its name as a flag when Fingerbank placed it', async () => {
+      const { text } = await open(asset({ identity: identity() }))
+
+      expect(text('asset-identified')).toBe('Apple iPhone 16')
+    })
+
+    it('falls back to the maker when Fingerbank gave no model', async () => {
+      const { text } = await open(asset({ identity: identity({ name: null }) }))
+
+      expect(text('asset-identified')).toBe('Apple, Inc.')
+    })
+
+    it('shows nothing when Fingerbank had no match', async () => {
+      const { has } = await open(asset({ identity: identity({ state: 'unknown', name: null }) }))
+
+      expect(has('asset-identified')).toBe(false)
     })
   })
 

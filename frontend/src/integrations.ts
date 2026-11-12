@@ -5,6 +5,7 @@ import {
   CircleCheck,
   CircleDashed,
   Clock,
+  Fingerprint,
   Plug,
   ScanSearch,
   ShieldBan,
@@ -20,6 +21,7 @@ import type {
   ConnectionSettings,
   Field,
   Integration,
+  IntegrationSummary,
   LookupEntry,
   ModuleState,
   Pause,
@@ -35,6 +37,7 @@ const KINDS: Readonly<Record<string, Icon>> = {
   traffic: Activity,
   alerts: ScanSearch,
   threats: ShieldBan,
+  devices: Fingerprint,
 }
 
 /** The picture for a kind of integration. One that this version of the app doesn't know gets a
@@ -270,4 +273,32 @@ export function suggestedEntries(
   if (multiple) return pool.slice(0, most)
   const chosen = pool.find((entry) => !entry.quiet) ?? pool[0]
   return chosen ? [chosen] : []
+}
+
+/** The families of integration in a list, in the order each first appears, with how many belong
+ * to each. One that belongs to none is counted under no name, so it is left out. */
+export function categoriesOf(
+  items: readonly Pick<IntegrationSummary, 'category'>[],
+): { name: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const { category } of items) {
+    if (category) counts.set(category, (counts.get(category) ?? 0) + 1)
+  }
+  return [...counts].map(([name, count]) => ({ name, count }))
+}
+
+/** The integrations that match a search and a family. Every word typed has to be in the name, in
+ * what it provides or in its family, in any order and whatever the case; an empty search and no
+ * family match them all. */
+export function narrowIntegrations<T extends IntegrationSummary>(
+  items: readonly T[],
+  query: string,
+  category: string,
+): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return items.filter((item) => {
+    if (category && item.category !== category) return false
+    const text = `${item.name} ${item.provides} ${item.category}`.toLowerCase()
+    return words.every((word) => text.includes(word))
+  })
 }

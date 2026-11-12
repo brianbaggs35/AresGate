@@ -89,7 +89,13 @@ const kind = computed(() =>
     </div>
 
     <div
-      v-if="asset.profile || asset.is_new || asset.private_mac || !asset.identified"
+      v-if="
+        asset.profile ||
+        asset.is_new ||
+        asset.private_mac ||
+        !asset.identified ||
+        asset.identity?.state === 'identified'
+      "
       class="asset__flags"
     >
       <AssetKindChip
@@ -115,6 +121,15 @@ const kind = computed(() =>
         data-test="asset-private"
       >
         Private hardware address
+      </v-chip>
+      <v-chip
+        v-if="asset.identity?.state === 'identified'"
+        :prepend-icon="Fingerprint"
+        variant="tonal"
+        size="small"
+        data-test="asset-identified"
+      >
+        {{ asset.identity.name ?? asset.identity.manufacturer }}
       </v-chip>
       <v-chip v-if="!asset.identified" variant="tonal" size="small" data-test="asset-unidentified">
         Nothing says what it is

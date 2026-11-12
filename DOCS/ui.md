@@ -298,6 +298,13 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   state is always an icon and its words (`AssetStatusChip`: online, seen recently, not seen for
   a while), and the bar on the card's side repeats it in color. A card lays itself out by its own
   width (a container query): in columns on a computer, one thing under another on a phone.
+- **What Fingerbank says it is.** Once Fingerbank has been asked about a device (see
+  [Fingerbank](integrations.md#fingerbank)) the asset's `identity` says what it found, and the
+  card shows it as a flag with the model's name. The asset's page has a *What it is* section
+  (`AssetIdentity`): the model's name, the steps from the widest kind to it as chips, the maker, the
+  operating system and how sure Fingerbank is as a bar with its words and number (`identityConfidence`
+  in `src/inventory.ts`, in the bands Fingerbank gives), and when and why it was asked. A device it
+  had no match for says so and that it is asked again after a week, rather than showing nothing.
 - **The choices.** The states are a row of toggle buttons with how many each holds (counts
   respect the other choices) that scrolls sideways on a phone instead of wrapping. The programs,
   *New this week* and *Not identified* are buttons with `aria-pressed` and their counts over the
@@ -320,6 +327,16 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   not an asset: the page says how many were left out (`outside` in `GET /api/assets`). A network of
   the owner's on the Internet interface leaves out what is on it, and one on a home interface keeps
   what is on it. The Internet is not offered as an *Interface* choice.
+
+## Integrations
+
+The Integrations page (`IntegrationsView`) has one `IntegrationCard` for each integration, with a
+search above them and a row of toggle buttons for each kind of integration (Network monitoring,
+Threat intelligence, Device intelligence) with how many each holds. The search needs every word to
+be in an integration's name, what it provides or its kind, in any order; the kind and the search
+narrow the list together, and *No integration matches* offers to clear them. The set-up count
+("2 of 7 set up") is always of every integration. Both live in the page, since there are few
+enough integrations that they filter at once (`narrowIntegrations` in `src/integrations.ts`).
 
 ## States
 

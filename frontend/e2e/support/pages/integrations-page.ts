@@ -9,6 +9,11 @@ export class IntegrationsPage {
   readonly names: Locator
   readonly loadError: Locator
   readonly retry: Locator
+  /** The search above the cards. */
+  readonly search: Locator
+  /** What the list says when nothing matches the search and the kind. */
+  readonly none: Locator
+  readonly clear: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { level: 1, name: 'Integrations' })
@@ -16,10 +21,18 @@ export class IntegrationsPage {
     this.names = page.getByTestId('integration-name')
     this.loadError = page.getByTestId('integrations-error')
     this.retry = page.getByTestId('integrations-retry')
+    this.search = page.getByTestId('integrations-search').getByRole('searchbox')
+    this.none = page.getByTestId('integrations-none')
+    this.clear = page.getByTestId('integrations-clear')
   }
 
   async goto(): Promise<void> {
     await this.page.goto('/integrations')
+  }
+
+  /** The button that shows the integrations of one kind, or all of them ("All"). */
+  kind(name: string): Locator {
+    return this.page.getByTestId('integrations-kinds').getByRole('button', { name })
   }
 
   /** An integration's card, which is a link to its page. */

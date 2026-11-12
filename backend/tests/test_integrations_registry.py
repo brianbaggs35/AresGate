@@ -39,6 +39,7 @@ def test_the_integrations_are_listed_in_order() -> None:
         "crowdsec",
         "virustotal",
         "otx",
+        "fingerbank",
     ]
 
 
@@ -74,9 +75,36 @@ def test_otx_is_threat_intelligence_on_the_internet_with_a_pace_to_choose() -> N
     assert pace.caution == registry.PACE_NOTE
 
 
+def test_fingerbank_is_device_intelligence_with_a_setting_for_incident_devices() -> None:
+    definition = INTEGRATIONS["fingerbank"]
+    connection = definition.connection("api")
+
+    assert definition.category == "Device intelligence"
+    assert connection is not None
+    assert connection.internet
+    assert connection.address == "https://api.fingerbank.org"
+    key = next(item for item in connection.fields if item.key == "api_key")
+    assert key.kind is FieldKind.SECRET
+    setting = next(item for item in connection.fields if item.key == "incident_devices")
+    assert setting.kind is FieldKind.CHOICE
+    # Off until the owner allows it: it sends more hardware addresses to Fingerbank.
+    assert setting.default == "no"
+    assert [choice.value for choice in setting.choices] == ["no", "yes"]
+    assert setting.caution == registry.FINGERBANK_NOTE
+
+
+def test_every_integration_belongs_to_a_kind() -> None:
+    assert {item.category for item in INTEGRATIONS.values()} == {
+        "Network monitoring",
+        "Threat intelligence",
+        "Device intelligence",
+    }
+
+
 def test_an_integration_is_internet_only_when_every_connection_is_on_the_internet() -> None:
     assert INTEGRATIONS["virustotal"].internet_only
     assert INTEGRATIONS["otx"].internet_only
+    assert INTEGRATIONS["fingerbank"].internet_only
     assert not INTEGRATIONS["wazuh"].internet_only
 
 

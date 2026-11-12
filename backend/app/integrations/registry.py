@@ -18,6 +18,7 @@ from app.integrations import guides
 from app.integrations.guides import Guide
 
 MAX_TEXT = 128
+NETWORK_MONITORING = "Network monitoring"
 API_KEY = "API key"
 # The most a lookup that allows several can have chosen: more than any home has interfaces.
 MAX_CHOSEN = 16
@@ -262,6 +263,7 @@ OPNSENSE = IntegrationDef(
         "tables, and the services that run on it: Suricata, CrowdSec, OpenVPN, Zenarmor and more."
     ),
     icon="firewall",
+    category=NETWORK_MONITORING,
     docs_url="https://docs.opnsense.org/development/how-tos/api.html",
     guide=guides.OPNSENSE,
     connections=(
@@ -308,6 +310,7 @@ NTOPNG = IntegrationDef(
         "devices it sees and its alerts."
     ),
     icon="traffic",
+    category=NETWORK_MONITORING,
     docs_url="https://www.ntop.org/guides/ntopng/api/rest/api_v2.html",
     guide=guides.NTOPNG,
     connections=(
@@ -388,6 +391,7 @@ WAZUH = IntegrationDef(
     name="Wazuh",
     provides=("Security alerts from the indexer, and the health of the agents from the manager."),
     icon="alerts",
+    category=NETWORK_MONITORING,
     docs_url="https://documentation.wazuh.com/current/user-manual/api/getting-started.html",
     guide=guides.WAZUH,
     connections=(
@@ -423,6 +427,7 @@ CROWDSEC = IntegrationDef(
     name="CrowdSec",
     provides="The ban decisions CrowdSec has made, from its local API.",
     icon="threats",
+    category=NETWORK_MONITORING,
     docs_url="https://docs.crowdsec.net/docs/local_api/authentication/",
     guide=guides.CROWDSEC,
     connections=(
@@ -531,8 +536,67 @@ ALIENVAULT_OTX = IntegrationDef(
     ),
 )
 
+DEVICE_INTELLIGENCE = "Device intelligence"
+# Fingerbank's free key is understood to allow 600 requests an hour (the maintainer's figure; the
+# pages read give none), and AresGate stays inside that. The API
+# itself caps every key at 250 a minute and answers 429 above it. Fingerbank also keeps what it is
+# sent to improve its matching, which is why what is sent is only a hardware address.
+FINGERBANK_NOTE = (
+    "Fingerbank is asked about a device's hardware address and nothing else: not its name, its "
+    "traffic or its IP address. Devices that made up their own hardware address are never sent. "
+    "Fingerbank keeps what it is sent to improve its matching, and says it never makes it public "
+    "or shares it. The free key is understood to allow 600 requests an hour, and AresGate stays "
+    "inside that, waiting when the limit is reached rather than counting it as an error."
+)
+INCIDENT_DEVICES_NOTE = (
+    "Your own devices are always identified. Turn this on to identify devices that appear in "
+    "incidents and threats as well, such as the machines on the internet side of the firewall. "
+    "It sends their hardware addresses to Fingerbank too."
+)
+
+FINGERBANK = IntegrationDef(
+    key="fingerbank",
+    name="Fingerbank",
+    provides=(
+        "What each device on the network is, from its hardware address: its make and model, its "
+        "operating system and how sure Fingerbank is. It is kept with the device, so every later "
+        "connection from the same hardware carries it."
+    ),
+    icon="devices",
+    category=DEVICE_INTELLIGENCE,
+    docs_url="https://api.fingerbank.org/api_doc/2.html",
+    guide=guides.FINGERBANK,
+    connections=(
+        ConnectionDef(
+            key="api",
+            label="Fingerbank API",
+            summary="Fingerbank's API, with the key from your account. Its address is fixed.",
+            url_example="https://api.fingerbank.org",
+            address="https://api.fingerbank.org",
+            allow_http=False,
+            internet=True,
+            fields=(
+                FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),
+                FieldDef(
+                    key="incident_devices",
+                    label="Devices in incidents and threats",
+                    kind=FieldKind.CHOICE,
+                    default="no",
+                    choices=(
+                        Choice(value="no", label="Only my own devices"),
+                        Choice(value="yes", label="Also devices in incidents and threats"),
+                    ),
+                    help=INCIDENT_DEVICES_NOTE,
+                    caution=FINGERBANK_NOTE,
+                ),
+            ),
+        ),
+    ),
+)
+
 INTEGRATIONS: Mapping[str, IntegrationDef] = {
-    item.key: item for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL, ALIENVAULT_OTX)
+    item.key: item
+    for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL, ALIENVAULT_OTX, FINGERBANK)
 }
 
 

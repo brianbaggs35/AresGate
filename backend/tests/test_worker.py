@@ -166,7 +166,19 @@ class TestServing:
             assert callable(recorder)
             started.append(f"VirusTotal, enabled: {enabled}")
 
+        async def identify_devices(
+            new_session: Callable[[], Session],
+            settings: Settings,
+            recorder: object,
+            *,
+            enabled: bool,
+        ) -> None:
+            assert callable(new_session)
+            assert callable(recorder)
+            started.append(f"Fingerbank, enabled: {enabled}")
+
         monkeypatch.setattr(worker, "build", collecting)
+        monkeypatch.setattr(worker.fingerbank, "run", identify_devices)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
         monkeypatch.setattr(worker.ai, "run", read_incidents)
         monkeypatch.setattr(worker.agents, "run", run_agents)
@@ -178,6 +190,7 @@ class TestServing:
 
         assert sorted(started) == [
             "AI, enabled: True",
+            "Fingerbank, enabled: True",
             "VirusTotal, enabled: True",
             "agents, enabled: True",
             "alerts, enabled: True",
@@ -208,6 +221,7 @@ class TestServing:
             return Failing()
 
         monkeypatch.setattr(worker, "build", failing)
+        monkeypatch.setattr(worker.fingerbank, "run", waiting("Fingerbank"))
         monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
         monkeypatch.setattr(worker.ai, "run", waiting("AI"))
         monkeypatch.setattr(worker.agents, "run", waiting("agents"))
@@ -220,7 +234,14 @@ class TestServing:
             asyncio.run(serving)
 
         assert raised.group_contains(RuntimeError, match="fell over")
-        assert sorted(cancelled) == ["AI", "VirusTotal", "agents", "alerts", "incidents"]
+        assert sorted(cancelled) == [
+            "AI",
+            "Fingerbank",
+            "VirusTotal",
+            "agents",
+            "alerts",
+            "incidents",
+        ]
 
 
 @pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")

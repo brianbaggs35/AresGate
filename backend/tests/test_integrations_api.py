@@ -91,6 +91,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "crowdsec",
         "virustotal",
         "otx",
+        "fingerbank",
     ]
     assert listed[0]["name"] == "OPNsense"
     assert "firewall" in listed[0]["provides"]
@@ -101,14 +102,16 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "threats",
         "threats",
         "threats",
+        "devices",
     ]
     assert [item["category"] for item in listed] == [
-        "",
-        "",
-        "",
-        "",
+        "Network monitoring",
+        "Network monitoring",
+        "Network monitoring",
+        "Network monitoring",
         "Threat intelligence",
         "Threat intelligence",
+        "Device intelligence",
     ]
     assert all(item["status"] == "not_connected" for item in listed)
     assert all(item["last_success_at"] is None and item["services"] == [] for item in listed)

@@ -30,6 +30,7 @@ from app.integrations import registry
 from app.models import (
     Device,
     DeviceAddress,
+    DeviceIdentity,
     DeviceSource,
     HostListing,
     IntegrationConnection,
@@ -75,6 +76,24 @@ class Listing:
 
 
 @dataclass(frozen=True)
+class Identity:
+    """What a device-fingerprinting service (Fingerbank) says a device is, kept with the device."""
+
+    source: str
+    # ``identified``, or ``unknown`` when the service had no match.
+    state: str
+    # Why it was asked: it is one of the owner's assets, or it is in an incident or threat.
+    reason: str
+    name: str | None
+    path: str | None
+    manufacturer: str | None
+    operating_system: str | None
+    score: int | None
+    external_id: int | None
+    checked_at: datetime
+
+
+@dataclass(frozen=True)
 class Asset:
     """A device, or a machine that no device matched, as the integrations together tell it."""
 
@@ -108,6 +127,8 @@ class Asset:
     # What the owner said it is, and what its name and maker suggest it is where they do.
     profile: profiles.Profile | None = None
     suggested: str | None = None
+    # What Fingerbank says it is, once it has been asked and had a match or none.
+    identity: Identity | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +314,26 @@ class _Parts:
     )
 
 
+def identities(db: Session) -> dict[int, Identity]:
+    """What the fingerprinting service said of each device, by the device's id. A device it was
+    never asked about, or that made up its own hardware address, has none."""
+    return {
+        row.device_id: Identity(
+            row.source,
+            row.state,
+            row.reason,
+            row.name,
+            row.path,
+            row.manufacturer,
+            row.operating_system,
+            row.score,
+            row.external_id,
+            row.checked_at,
+        )
+        for row in db.scalars(select(DeviceIdentity).where(DeviceIdentity.state != "private"))
+    }
+
+
 def _device(
     device: Device,
     parts: _Parts,
@@ -300,6 +341,7 @@ def _device(
     since: datetime,
     now: datetime,
     said: dict[str, profiles.Profile],
+    named: Identity | None,
 ) -> Asset:
     rows = sorted(
         parts.addresses.get(device.id, []),
@@ -344,13 +386,14 @@ def _device(
         first_seen_at=first_seen_at,
         last_seen_at=last_seen_at,
         is_new=_new(first_seen_at, since, now),
-        identified=bool(hostname or device.vendor),
+        identified=bool(hostname or device.vendor or (named and named.state == "identified")),
         listings=tuple(sorted(listings, key=lambda item: (item.source, item.via))),
         interfaces=_on(current, networks),
         outside=_on_internet(own, current, networks),
         own=own,
         profile=said.get(f"device-{device.id}"),
         suggested=profiles.suggest(hostname, device.vendor),
+        identity=named,
     )
 
 
@@ -417,7 +460,11 @@ def load(db: Session, now: datetime) -> Inventory:
     networks = _networks(db)
     since = min(firsts) if firsts else now
     said = profiles.load(db)
-    found = [_device(device, parts, networks, since, now, said) for device in devices]
+    named = identities(db)
+    found = [
+        _device(device, parts, networks, since, now, said, named.get(device.id))
+        for device in devices
+    ]
     found += [_host(host, networks, since, now, said) for host in alone]
     return Inventory(
         assets=[asset for asset in found if not asset.outside],

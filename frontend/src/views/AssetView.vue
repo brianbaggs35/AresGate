@@ -8,6 +8,7 @@ import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AppPage from '@/components/AppPage.vue'
 import AssetClassify from '@/components/AssetClassify.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
+import AssetIdentity from '@/components/AssetIdentity.vue'
 import AssetKindChip from '@/components/AssetKindChip.vue'
 import AssetPeers from '@/components/AssetPeers.vue'
 import AssetSources from '@/components/AssetSources.vue'
@@ -216,6 +217,16 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
             </span>
           </div>
         </v-card>
+      </section>
+
+      <section
+        v-if="data.asset.identity"
+        class="section"
+        aria-labelledby="identity-title"
+        data-test="asset-identity-section"
+      >
+        <h2 id="identity-title" class="text-title-large">What it is</h2>
+        <AssetIdentity :identity="data.asset.identity" />
       </section>
 
       <section class="section" aria-labelledby="sources-title" data-test="asset-listed-by">
