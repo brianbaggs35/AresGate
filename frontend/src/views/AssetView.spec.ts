@@ -101,7 +101,7 @@ describe('AssetView', () => {
     await find('asset-classify-save').trigger('click')
     await flushPromises()
 
-    expect(fetchAsset.mock.calls.length).toBe(calls + 1)
+    expect(fetchAsset.mock.calls).toHaveLength(calls + 1)
   })
 
   it('says what the traffic was, once ntopng has measured it', async () => {

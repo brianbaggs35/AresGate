@@ -76,7 +76,8 @@ class TestTheWayIn:
         stops = through.build(incident(), [signal()], assets(session), outbound=False)
 
         assert roles(stops) == [("gateway", FIREWALL), ("target", LAPTOP)]
-        assert stops[1].asset is not None and stops[1].asset.name == "laptop"
+        assert stops[1].asset is not None
+        assert stops[1].asset.name == "laptop"
         assert stops[1].signals == 1
 
     def test_outbound_traffic_meets_the_device_first_and_the_firewall_last(
@@ -127,7 +128,8 @@ class TestTheWayIn:
 
         stops = through.build(found, [signal(dst="192.168.1.99")], assets(session), outbound=False)
 
-        assert stops[-1].asset is not None and stops[-1].asset.name == "camera"
+        assert stops[-1].asset is not None
+        assert stops[-1].asset.name == "camera"
 
     def test_the_firewall_that_is_the_target_is_listed_once(self, session: Session) -> None:
         found = incident(addresses=[ip_address(OUTSIDE), ip_address(FIREWALL)])
