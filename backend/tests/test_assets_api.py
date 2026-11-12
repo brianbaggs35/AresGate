@@ -6,7 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import Action
-from app.models import AuditEvent, IntegrationConnection, Interface, User, utcnow
+from app.models import (
+    AuditEvent,
+    Device,
+    DeviceIdentity,
+    IntegrationConnection,
+    Interface,
+    User,
+    utcnow,
+)
 from e2e import factories
 from e2e.factories import AssetSpec, HostSpec, Listed
 
@@ -348,3 +356,51 @@ class TestClassifying:
         assert body["kinds"] == [{"key": "phone", "label": "Phone", "count": 1}]
         assert body["unclassified"] == 1
         assert get(client, "kind=toaster").status_code == 422
+
+
+def test_what_fingerbank_says_a_device_is_listed_with_it(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    stock(session)
+    laptop, phone = session.scalars(select(Device).order_by(Device.id)).all()
+    session.add_all(
+        [
+            DeviceIdentity(
+                device_id=laptop.id,
+                source="fingerbank",
+                state="identified",
+                reason="incident",
+                name="Dell Laptop",
+                path="Windows/Windows 11",
+                manufacturer="Dell",
+                operating_system="Windows 11",
+                score=80,
+                checked_at=utcnow(),
+            ),
+            DeviceIdentity(
+                device_id=phone.id,
+                source="fingerbank",
+                state="unknown",
+                reason="asset",
+                checked_at=utcnow(),
+            ),
+        ]
+    )
+    session.commit()
+
+    items = {item["name"]: item for item in get(client).json()["items"]}
+
+    assert items["laptop"]["identity"] == {
+        "source": "fingerbank",
+        "source_name": "Fingerbank",
+        "state": "identified",
+        "reason": "incident",
+        "name": "Dell Laptop",
+        "path": "Windows/Windows 11",
+        "manufacturer": "Dell",
+        "operating_system": "Windows 11",
+        "score": 80,
+        "checked_at": items["laptop"]["identity"]["checked_at"],
+    }
+    assert items["phone"]["identity"]["state"] == "unknown"
+    assert items["phone"]["identity"]["reason"] == "asset"

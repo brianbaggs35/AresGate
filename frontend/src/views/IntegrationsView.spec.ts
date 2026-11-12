@@ -88,3 +88,91 @@ describe('IntegrationsView', () => {
     expect(useSessionStore(pinia).expired).toBe(true)
   })
 })
+
+describe('IntegrationsView search and kinds', () => {
+  const MIXED: IntegrationSummary[] = [
+    summary({
+      key: 'opnsense',
+      name: 'OPNsense',
+      provides: 'The firewall',
+      category: 'Network monitoring',
+    }),
+    summary({
+      key: 'virustotal',
+      name: 'VirusTotal',
+      provides: 'Flags each address',
+      category: 'Threat intelligence',
+    }),
+    summary({
+      key: 'fingerbank',
+      name: 'Fingerbank',
+      provides: 'What each device is',
+      category: 'Device intelligence',
+    }),
+  ]
+  const names = (wrapper: { findAll: (selector: string) => { text: () => string }[] }) =>
+    wrapper.findAll('[data-test="integration-name"]').map((card) => card.text())
+
+  it('has a button for every kind, with how many are in it', async () => {
+    const { find } = await open(MIXED)
+
+    expect(find('kind-all').text()).toBe('All 3')
+    expect(find('kind-Threat intelligence').text()).toBe('Threat intelligence 1')
+    expect(find('kind-Device intelligence').text()).toBe('Device intelligence 1')
+  })
+
+  it('has no buttons when no integration has a kind', async () => {
+    const { find } = await open()
+
+    expect(find('integrations-kinds').exists()).toBe(false)
+  })
+
+  it('shows only the integrations of the kind chosen, and all again with All', async () => {
+    const { find, wrapper } = await open(MIXED)
+
+    await find('kind-Device intelligence').trigger('click')
+    expect(names(wrapper)).toEqual(['Fingerbank'])
+
+    await find('kind-all').trigger('click')
+    expect(names(wrapper)).toEqual(['OPNsense', 'VirusTotal', 'Fingerbank'])
+  })
+
+  it('searches by name and by what an integration provides', async () => {
+    const { find, wrapper } = await open(MIXED)
+    const box = wrapper.find('[data-test="integrations-search"] input')
+
+    await box.setValue('flags')
+    expect(names(wrapper)).toEqual(['VirusTotal'])
+
+    await box.setValue('fingerbank')
+    expect(names(wrapper)).toEqual(['Fingerbank'])
+    expect(find('integrations-count').text()).toBe('0 of 3 set up')
+  })
+
+  it('says when nothing matches, and clears the search and the kind', async () => {
+    const { find, wrapper } = await open(MIXED)
+    await find('kind-Threat intelligence').trigger('click')
+    await wrapper.find('[data-test="integrations-search"] input').setValue('fingerbank')
+
+    expect(find('integrations-none').text()).toContain('No integration matches')
+    expect(find('integrations-list').exists()).toBe(false)
+
+    await find('integrations-clear').trigger('click')
+
+    expect(names(wrapper)).toEqual(['OPNsense', 'VirusTotal', 'Fingerbank'])
+    expect(find('integrations-none').exists()).toBe(false)
+  })
+
+  it('shows every integration again when the search is cleared with its button', async () => {
+    const { wrapper } = await open(MIXED)
+    const box = wrapper.find('[data-test="integrations-search"] input')
+    await box.setValue('fingerbank')
+    expect(names(wrapper)).toEqual(['Fingerbank'])
+
+    // Vuetify leaves null in a cleared field.
+    wrapper.findComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', null)
+    await flushPromises()
+
+    expect(names(wrapper)).toEqual(['OPNsense', 'VirusTotal', 'Fingerbank'])
+  })
+})

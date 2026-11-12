@@ -11,6 +11,8 @@ import {
   eventFlow,
   eventsNoteOf,
   filtersOf,
+  identityConfidence,
+  identitySteps,
   queryOf,
   routeQuery,
   scopeOfVerdict,
@@ -292,5 +294,36 @@ describe('what an asset page says', () => {
   it('says how many events there were in the week, or that there were none', () => {
     expect(eventsNoteOf(0)).toBe('Nothing in the last week.')
     expect(eventsNoteOf(4)).toBe('4 in the last week, newest first.')
+  })
+})
+
+describe('what Fingerbank says a device is', () => {
+  it('splits the path into its steps, widest first', () => {
+    expect(identitySteps({ name: 'iPhone', path: 'Phone/Apple iOS / Apple iPhone/' })).toEqual([
+      'Phone',
+      'Apple iOS',
+      'Apple iPhone',
+    ])
+  })
+
+  it('has the name as the one step when there is no path', () => {
+    expect(identitySteps({ name: 'iPhone', path: null })).toEqual(['iPhone'])
+  })
+
+  it('has no steps when there is neither', () => {
+    expect(identitySteps({ name: null, path: null })).toEqual([])
+  })
+
+  it('puts the score in the bands Fingerbank gives', () => {
+    expect([0, 30, 31, 50, 51, 75, 76, 100].map(identityConfidence)).toEqual([
+      'Low',
+      'Low',
+      'Moderate',
+      'Moderate',
+      'High',
+      'High',
+      'Very high',
+      'Very high',
+    ])
   })
 })

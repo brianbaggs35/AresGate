@@ -7,6 +7,7 @@ import {
   ASSET_STATUSES,
   type Asset,
   type AssetEvent,
+  type AssetIdentity,
   type AssetQuery,
   type AssetSort,
   type AssetStatus,
@@ -251,4 +252,23 @@ export function addressesOf(
   const current = Math.max(asset.current_addresses, Math.min(1, asset.addresses.length))
   const shown = asset.addresses.slice(0, Math.min(current, limit))
   return { shown, more: asset.addresses.length - shown.length }
+}
+
+/** The steps of what Fingerbank says a device is, from the widest to the most specific:
+ * `Phone, Tablet, or Wearable/Apple iOS/Apple iPhone` is three. A name with no path is one step. */
+export function identitySteps(identity: Pick<AssetIdentity, 'name' | 'path'>): string[] {
+  const steps = (identity.path ?? '')
+    .split('/')
+    .map((step) => step.trim())
+    .filter(Boolean)
+  return steps.length ? steps : identity.name ? [identity.name] : []
+}
+
+/** How sure Fingerbank is, in words, by the bands its documentation gives its score: below 30 very
+ * little, to 50 moderate, to 75 high and above that very high. */
+export function identityConfidence(score: number): string {
+  if (score < 31) return 'Low'
+  if (score < 51) return 'Moderate'
+  if (score < 76) return 'High'
+  return 'Very high'
 }

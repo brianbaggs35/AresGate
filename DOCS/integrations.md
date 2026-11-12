@@ -13,6 +13,7 @@ connect it, change its settings, test it or disconnect it.
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
 | AlienVault OTX | Which threat reports from the OTX community name each internet address an incident names, and what they say it is part of                                                                                                         | An API key, and how fast to look things up            |
+| Fingerbank | What each device on the network is, from its hardware address: its make and model, its operating system and how sure Fingerbank is | An API key, and whether the devices in incidents and threats are identified too |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
 documentation, and a link to that documentation. The steps below are the same ones.
@@ -805,6 +806,82 @@ Worked out here, not in the documentation:
 Not tried against the live service: the answers are tested against a stand-in built from these
 descriptions, and any field that isn't what was expected is left out rather than guessed. An answer
 that doesn't hold an indicator is logged as a failed lookup, with the reason, and tried again later.
+
+## Fingerbank
+
+Fingerbank fingerprints devices. Asked about a hardware (MAC) address it answers with the make and
+model the address most likely belongs to, the operating system and a score for how sure it is. It
+is the first integration in the **Device intelligence** group of the Integrations page, and its
+address is fixed at `https://api.fingerbank.org`. Create a free account on Fingerbank's website,
+copy the API key from **My Account** and paste it into the card. The key is encrypted and is never
+shown again, and is sent in the `Authorization` header, so it is in no address and no API log entry.
+
+The Integrations page has a search at the top and a button for each kind of integration (Network
+monitoring, Threat intelligence, Device intelligence), so a long list can be narrowed by what an
+integration is called, what it provides or its kind.
+
+### What is asked about, and what is kept
+
+A device is asked about with `GET /api/v2/combinations/interrogate` and the hardware address as the
+only thing in the body. Not its name, its traffic or its IP address. A device that made up its own
+hardware address, as a phone does on Wi-Fi so it can't be followed from network to network, is
+never asked about, since the address says nothing of what it is. Fingerbank says it keeps what it is
+sent to improve its matching, and that it is never made public or shared.
+
+The answer is kept with the device, so every later connection from the same hardware address
+carries it and the device is not asked about again until what was said has gone stale: thirty days
+for a device Fingerbank named, a week for one it had no match for, since its database grows. What is
+kept is the most specific name ("Apple iPhone 16"), the path to it ("Phone, Tablet, or
+Wearable/Apple iOS, macOS, and tvOS/Apple iPhone/Apple iPhone 16"), the maker, the operating
+system, the score, when it was asked and why. It shows on the asset's page under **What it is**,
+with the score in the bands Fingerbank gives (below 31 low, to 50 moderate, to 75 high, above that
+very high), and as a flag on the asset's card in the list.
+
+### Whose devices, and in what order
+
+Your own devices are asked about first: the devices on your network, the newest first, since a new
+device is the one worth knowing about. The card's **Devices in incidents and threats** setting is
+**Only my own devices** until you change it. When it is on, the devices that a recent incident names
+are identified as well, which includes machines on the internet side of the firewall, and comes
+after your own. It sends their hardware addresses to Fingerbank too, so it is off until you allow it.
+
+### The limit
+
+The free key is limited to 600 requests an hour. AresGate keeps its own lookups to 550 an hour, at
+least ten seconds apart, which leaves the rest for the connection check and for tests made by hand.
+Reaching the limit is never an error: if Fingerbank answers 429, nothing is sent for five minutes
+and AresGate carries on, and a device it has no match for is a 404, which is an answer, not a
+failure. A key Fingerbank turns down (401) or has blocked (403) is shown on the card as a problem.
+Fingerbank also blocks a client that uses more than one key from the same internet address, so use
+one key for AresGate.
+
+### Where this comes from, and what isn't tried
+
+Taken from Fingerbank's [API v2 reference](https://api.fingerbank.org/api_doc/2.html), its page on
+[how to use the API](https://www.fingerbank.org/usage/), its
+[fair usage policy](https://www.fingerbank.org/fair-usage-policy) and its
+[terms and privacy](https://www.fingerbank.org/privacy) page: the `interrogate` request with its
+`mac` parameter, the Bearer `Authorization` header, the fields of the answer (`device`,
+`device_name`, `manufacturer`, `operating_system`, `score`), the 401, 403, 404, 429 and 502 answers,
+the score bands, the 250 requests a minute that every key is capped at, and that what is sent may
+be kept.
+
+Worked out here, not in the documentation:
+
+- The reference lists the answer's fields but not whether `manufacturer` and `operating_system` can
+  be null, so each is read as optional, and anything that isn't the expected shape is left out.
+- The reference doesn't give the free key's hourly figure. The 600 an hour comes from the
+  maintainer's own notes; the pages above say only 250 a minute.
+- Fingerbank's usage page sends the request as `GET` with a JSON body, and the reference lists
+  `GET` and `POST`, so `GET` is used, which keeps every request one that changes nothing here.
+- The connection test asks about a hardware address that belongs to no device (the one RFC 7042
+  gives for documentation) and takes either an answer or a 404 as the key being accepted.
+- Only the hardware address is sent. Fingerbank can use a DHCP fingerprint, a host name and more
+  for a surer answer; AresGate doesn't collect the DHCP fingerprint, and a host name is a personal
+  detail, so the score of an answer from a hardware address alone is often low.
+
+Not tried against the live service: the answers are tested against a stand-in built from the
+reference.
 
 ## Setup instructions
 

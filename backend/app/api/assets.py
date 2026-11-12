@@ -80,6 +80,26 @@ class KindCount(BaseModel):
     count: int
 
 
+class IdentityOut(BaseModel):
+    """What a device-fingerprinting service says a device is."""
+
+    # The integration that said so (fingerbank), and its name.
+    source: str
+    source_name: str
+    # ``identified``, or ``unknown`` when the service had no match.
+    state: Literal["identified", "unknown"]
+    # Why it was asked about: it is one of the owner's assets, or it is in an incident or threat.
+    reason: Literal["asset", "incident"]
+    # The most specific thing it is, and the whole path to it ("Phone, Tablet, or Wearable/...").
+    name: str | None
+    path: str | None
+    manufacturer: str | None
+    operating_system: str | None
+    # How sure the service is, from 0 to 100.
+    score: int | None
+    checked_at: AwareDatetime
+
+
 class AssetOut(BaseModel):
     # What a page links to: device-12 or host-3.
     key: str
@@ -108,6 +128,8 @@ class AssetOut(BaseModel):
     profile: ProfileOut | None
     suggested_kind: str | None
     suggested_label: str | None
+    # What the fingerprinting service says it is, once it has been asked.
+    identity: IdentityOut | None
 
 
 class SupplierOut(BaseModel):
@@ -195,6 +217,24 @@ def asset_out(asset: Asset) -> AssetOut:
         profile=_profile(asset.profile),
         suggested_kind=asset.suggested,
         suggested_label=profiles.BY_KEY[asset.suggested].label if asset.suggested else None,
+        identity=_identity(asset.identity),
+    )
+
+
+def _identity(named: inventory.Identity | None) -> IdentityOut | None:
+    if named is None:
+        return None
+    return IdentityOut(
+        source=named.source,
+        source_name=inventory.name_of(named.source),
+        state="identified" if named.state == "identified" else "unknown",
+        reason="incident" if named.reason == "incident" else "asset",
+        name=named.name,
+        path=named.path,
+        manufacturer=named.manufacturer,
+        operating_system=named.operating_system,
+        score=named.score,
+        checked_at=named.checked_at,
     )
 
 

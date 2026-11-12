@@ -881,7 +881,7 @@ for (const theme of ['light', 'dark'] as const) {
       shell,
     }) => {
       await data.goto()
-      await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(6)
+      await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(7)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       // Once the theme menu has closed, bring the last row up: on a phone it starts under the
@@ -1271,7 +1271,7 @@ for (const theme of ['light', 'dark'] as const) {
       shell,
     }) => {
       await integrations.goto()
-      await expect(integrations.names).toHaveCount(6)
+      await expect(integrations.names).toHaveCount(7)
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
 

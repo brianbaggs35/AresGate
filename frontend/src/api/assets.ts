@@ -57,6 +57,27 @@ export interface Asset {
   /** What its name and maker suggest it is, which is only offered and never applied. */
   suggested_kind: string | null
   suggested_label: string | null
+  /** What the device-fingerprinting service (Fingerbank) says it is, once it has been asked. */
+  identity: AssetIdentity | null
+}
+
+/** What a device-fingerprinting service says a device is. */
+export interface AssetIdentity {
+  /** The integration that said so, and its name. */
+  source: string
+  source_name: string
+  /** `unknown` when the service had no match for the hardware address. */
+  state: 'identified' | 'unknown'
+  /** Why it was asked: it is one of the owner's assets, or it is in an incident or threat. */
+  reason: 'asset' | 'incident'
+  /** The most specific thing it is, and the whole path to it, "Phone/Apple/iPhone". */
+  name: string | null
+  path: string | null
+  manufacturer: string | null
+  operating_system: string | null
+  /** How sure the service is, from 0 to 100. */
+  score: number | null
+  checked_at: string
 }
 
 /** What the owner said an asset is, and what it is for. */

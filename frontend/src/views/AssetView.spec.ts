@@ -4,7 +4,7 @@ import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
 import AssetPeers from '@/components/AssetPeers.vue'
 import { formatBytes } from '@/format'
-import { asset, kindGroups, profile } from '@/test/assets'
+import { asset, identity, kindGroups, profile } from '@/test/assets'
 import {
   address,
   detail,
@@ -51,6 +51,19 @@ const days = Array.from({ length: 7 }, (_, index) =>
 )
 
 describe('AssetView', () => {
+  it('says what Fingerbank thinks it is, when it was asked', async () => {
+    const { find } = await open({ answer: detail({ asset: asset({ identity: identity() }) }) })
+
+    expect(find('asset-identity-section').exists()).toBe(true)
+    expect(find('identity-name').text()).toBe('Apple iPhone 16')
+  })
+
+  it('has no section about it before Fingerbank has been asked', async () => {
+    const { find } = await open()
+
+    expect(find('asset-identity-section').exists()).toBe(false)
+  })
+
   it('asks for the page of the asset the address names', async () => {
     const { fetchAsset } = await open()
 

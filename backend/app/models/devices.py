@@ -7,10 +7,12 @@ from ipaddress import IPv4Address, IPv6Address
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Identity,
     Index,
     PrimaryKeyConstraint,
+    SmallInteger,
     String,
     UniqueConstraint,
 )
@@ -40,6 +42,44 @@ class Device(Base):
     # The last time an integration listed it: in the firewall's ARP table or among its DHCP
     # leases. A lease is listed until it runs out, so this is not always the moment it left.
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class DeviceIdentity(Base):
+    """What a device is, as a service that fingerprints devices says (Fingerbank): its make and
+    model, its operating system and how sure the service is. It is kept by the device, so every
+    later connection from the same hardware address carries it, and it is looked up again only
+    when it has gone stale. A device that made up its own hardware address (a phone on Wi-Fi) is
+    kept as ``private`` and never sent, since the address says nothing of what it is."""
+
+    __tablename__ = "device_identities"
+    __table_args__ = (
+        CheckConstraint("state IN ('identified', 'unknown', 'private')", name="state"),
+        CheckConstraint("reason IN ('asset', 'incident')", name="reason"),
+        CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100", name="score"),
+    )
+
+    device_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    # The integration that said so (``fingerbank``).
+    source: Mapped[str] = mapped_column(String(32))
+    # ``identified``: the service named it. ``unknown``: it asked and had no match. ``private``:
+    # the hardware address is the device's own invention, so nobody was asked.
+    state: Mapped[str] = mapped_column(String(10))
+    # Why it was looked up: it is one of the owner's assets, or it is in an incident or threat.
+    reason: Mapped[str] = mapped_column(String(10))
+    # The most specific thing it is, in the service's words ("Apple iPhone 16"), and the whole
+    # path to it ("Phone, Tablet, or Wearable/Apple iOS, macOS, and tvOS/Apple iPhone/Apple
+    # iPhone 16"), which says what kind of device it is.
+    name: Mapped[str | None] = mapped_column(String(200), default=None)
+    path: Mapped[str | None] = mapped_column(String(600), default=None)
+    manufacturer: Mapped[str | None] = mapped_column(String(128), default=None)
+    operating_system: Mapped[str | None] = mapped_column(String(128), default=None)
+    # How sure the service is, from 0 to 100.
+    score: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    # The service's own number for what it is, for linking to its page about it.
+    external_id: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    checked_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class DeviceAddress(Base):
