@@ -140,7 +140,7 @@ def of(found: Sequence[Occurrence], now: datetime) -> Wire:
     """The wire of an incident's occurrences: what each alert read, folded into one of each, the
     most often seen first."""
     certificates: dict[tuple[str, ...], CertificateSeen] = {}
-    requests: dict[tuple[str, ...], RequestSeen] = {}
+    asked: dict[tuple[str, ...], RequestSeen] = {}
     lookups: dict[tuple[str, ...], LookupSeen] = {}
     banners: dict[tuple[str, ...], BannerSeen] = {}
     dump: list[list[str]] = []
@@ -173,8 +173,8 @@ def of(found: Sequence[Occurrence], now: datetime) -> Wire:
                     request.get("url", ""),
                     str(request.get("status", "")),
                 )
-                known_request = requests.get(key)
-                requests[key] = RequestSeen(
+                known_request = asked.get(key)
+                asked[key] = RequestSeen(
                     request,
                     server if known_request is None else known_request.server,
                     count + (known_request.alerts if known_request else 0),
@@ -192,7 +192,7 @@ def of(found: Sequence[Occurrence], now: datetime) -> Wire:
                     count + (banners[key].alerts if key in banners else 0),
                 )
     seen_certificates = sorted(certificates.values(), key=lambda each: -each.alerts)
-    seen_requests = sorted(requests.values(), key=lambda each: -each.alerts)
+    seen_requests = sorted(asked.values(), key=lambda each: -each.alerts)
     return Wire(
         certificates=seen_certificates[:MAX_CERTIFICATES],
         requests=seen_requests[:MAX_REQUESTS],
