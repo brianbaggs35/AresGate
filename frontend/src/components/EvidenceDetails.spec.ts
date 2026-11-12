@@ -145,6 +145,11 @@ describe('EvidenceDetails', () => {
       ],
     })
 
+    expect(wrapper.findAll('th').map((cell) => cell.text())).toEqual([
+      'Offset',
+      'Bytes in hexadecimal',
+      'As text',
+    ])
     const rows = wrapper.findAll('[data-test="evidence-dump-row"]')
     expect(rows).toHaveLength(2)
     expect(rows[0]?.findAll('td').map((cell) => cell.text())).toEqual([

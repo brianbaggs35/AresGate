@@ -190,6 +190,13 @@ const ends = computed(() => {
       </figcaption>
       <div class="evidence__dump-scroll">
         <table class="evidence__dump" aria-label="The first bytes of the packet">
+          <thead class="sr-only">
+            <tr>
+              <th scope="col">Offset</th>
+              <th scope="col">Bytes in hexadecimal</th>
+              <th scope="col">As text</th>
+            </tr>
+          </thead>
           <tbody>
             <tr v-for="row in evidence.dump" :key="row.offset" data-test="evidence-dump-row">
               <td class="text-medium-emphasis">{{ row.offset }}</td>
