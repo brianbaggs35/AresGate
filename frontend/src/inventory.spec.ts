@@ -33,6 +33,7 @@ describe('what the address of the page says', () => {
       interface: '4',
       new: '1',
       unidentified: '1',
+      kind: 'camera',
       sort: 'name',
     }
 
@@ -43,6 +44,7 @@ describe('what the address of the page says', () => {
       interface: 4,
       new: true,
       unidentified: true,
+      kind: 'camera',
       sort: 'name',
     })
   })
@@ -76,6 +78,7 @@ describe('what the address of the page says', () => {
         interface: 2,
         new: true,
         unidentified: true,
+        kind: 'unclassified',
         sort: 'address',
       }),
     ).toEqual({
@@ -85,6 +88,7 @@ describe('what the address of the page says', () => {
       interface: '2',
       new: '1',
       unidentified: '1',
+      kind: 'unclassified',
       sort: 'address',
     })
   })
@@ -111,7 +115,15 @@ describe('what to ask for', () => {
   it('has every choice, with the words trimmed, and where to start', () => {
     expect(
       queryOf(
-        { ...NO_FILTERS, status: 'online', q: ' tv ', sources: ['wazuh'], interface: 3, new: true },
+        {
+          ...NO_FILTERS,
+          status: 'online',
+          q: ' tv ',
+          sources: ['wazuh'],
+          interface: 3,
+          new: true,
+          kind: 'tv',
+        },
         10,
         20,
       ),
@@ -121,6 +133,7 @@ describe('what to ask for', () => {
       sources: ['wazuh'],
       interface: 3,
       new: true,
+      kind: 'tv',
       limit: 10,
       offset: 20,
     })
@@ -138,8 +151,9 @@ describe('how many choices narrow the list', () => {
         interface: 1,
         new: true,
         unidentified: true,
+        kind: 'tv',
       }),
-    ).toBe(5)
+    ).toBe(6)
     expect(activeFilters({ ...NO_FILTERS, q: 'x' })).toBe(1)
   })
 })

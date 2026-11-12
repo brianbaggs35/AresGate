@@ -170,6 +170,14 @@ An incident's page says more about the traffic than who and when:
   times, stopped *n* alerts, banned the address). A program that did not report it is not on the
   path, so the path is only ever what was read. An attack that a device sent out is drawn the other
   way round. It runs across on a wide screen and down on a phone.
+- **What it travelled through.** Under the path, the devices of the network it went through or
+  touched, in the order it met them: the firewall that the internet's traffic crosses (first for an
+  attack that came in, last for one that went out), the device it was about, then any other of your
+  devices that turned up in it. Each is listed as the Assets page lists it, with what the owner said
+  it is (a router, a camera) and what it is for. A device nobody has classified asks to be, and an
+  address that no asset has says so. An incident about a rule with no address has nothing to list.
+  What the owner said also goes to the analyst, which reads a camera calling a stranger differently
+  from a laptop browsing.
 - **What an address is called.** Where no program gave an address a name, AresGate asks the
   resolver the machine already uses for its reverse record (the name the address's owner gave it:
   `scanner-17.example.net` is a scanner, an `…compute.amazonaws.com` name is a rented server), and

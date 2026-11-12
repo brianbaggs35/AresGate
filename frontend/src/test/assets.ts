@@ -1,4 +1,12 @@
-import type { Asset, AssetPage, Counts, Listing, Supplier } from '@/api/assets'
+import type {
+  Asset,
+  AssetKindGroup,
+  AssetPage,
+  AssetProfile,
+  Counts,
+  Listing,
+  Supplier,
+} from '@/api/assets'
 
 /** Assets as the API describes them, for tests of pages that show them. */
 
@@ -31,6 +39,10 @@ export const asset = (overrides: Partial<Asset> = {}): Asset => ({
   identified: true,
   listings: [listed()],
   interfaces: [],
+  own: false,
+  profile: null,
+  suggested_kind: null,
+  suggested_label: null,
   ...overrides,
 })
 
@@ -86,5 +98,33 @@ export const page = (
   unidentified: 0,
   watching_since: '2026-09-01T10:00:00Z',
   outside: 0,
+  kinds: [],
+  unclassified: items.length,
   ...overrides,
 })
+
+export const profile = (overrides: Partial<AssetProfile> = {}): AssetProfile => ({
+  kind: 'camera',
+  kind_label: 'Camera or doorbell',
+  carries: false,
+  purpose: 'Watches the front door',
+  updated_at: '2026-11-12T10:00:00Z',
+  ...overrides,
+})
+
+/** The kinds the owner can pick from, as a short list in two groups. */
+export const kindGroups = (): AssetKindGroup[] => [
+  {
+    key: 'network',
+    label: 'The network',
+    kinds: [
+      { key: 'router', label: 'Router', group: 'network', carries: true },
+      { key: 'switch', label: 'Network switch', group: 'network', carries: true },
+    ],
+  },
+  {
+    key: 'home',
+    label: 'Around the home',
+    kinds: [{ key: 'camera', label: 'Camera or doorbell', group: 'home', carries: false }],
+  },
+]

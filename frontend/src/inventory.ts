@@ -67,6 +67,8 @@ export interface Filters {
   interface: number | null
   new: boolean
   unidentified: boolean
+  /** A kind the owner said, `unclassified`, or null for every kind. */
+  kind: string | null
   sort: AssetSort
 }
 
@@ -77,6 +79,7 @@ export const NO_FILTERS: Readonly<Filters> = {
   interface: null,
   new: false,
   unidentified: false,
+  kind: null,
   sort: DEFAULT_SORT,
 }
 
@@ -100,6 +103,7 @@ export function filtersOf(query: LocationQuery): Filters {
     interface: Number.isSafeInteger(interfaceId) && interfaceId > 0 ? interfaceId : null,
     new: one('new') === '1',
     unidentified: one('unidentified') === '1',
+    kind: one('kind') || null,
     sort: ASSET_SORTS.find((each) => each === one('sort')) ?? DEFAULT_SORT,
   }
 }
@@ -113,6 +117,7 @@ export function routeQuery(filters: Filters): Record<string, string | string[]> 
   if (filters.interface) query.interface = filters.interface.toString()
   if (filters.new) query.new = '1'
   if (filters.unidentified) query.unidentified = '1'
+  if (filters.kind) query.kind = filters.kind
   if (filters.sort !== DEFAULT_SORT) query.sort = filters.sort
   return query
 }
@@ -127,6 +132,7 @@ export function queryOf(filters: Filters, limit: number, offset = 0): AssetQuery
     ...(filters.interface ? { interface: filters.interface } : {}),
     new: filters.new,
     unidentified: filters.unidentified,
+    ...(filters.kind ? { kind: filters.kind } : {}),
     sort: filters.sort,
     limit,
     offset,
@@ -140,7 +146,8 @@ export function activeFilters(filters: Filters): number {
     filters.sources.length +
     Number(filters.interface !== null) +
     Number(filters.new) +
-    Number(filters.unidentified)
+    Number(filters.unidentified) +
+    Number(filters.kind !== null)
   )
 }
 

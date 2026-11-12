@@ -1,4 +1,4 @@
-import { fetchAsset, fetchAssets } from '@/api/assets'
+import { classifyAsset, fetchAsset, fetchAssets, fetchKinds, unclassifyAsset } from '@/api/assets'
 import * as client from '@/api/client'
 
 describe('fetchAsset', () => {
@@ -38,6 +38,7 @@ describe('fetchAssets', () => {
       interface: 4,
       new: true,
       unidentified: true,
+      kind: 'camera',
       sort: 'name',
       limit: 30,
       offset: 60,
@@ -52,6 +53,7 @@ describe('fetchAssets', () => {
     expect(params.get('interface')).toBe('4')
     expect(params.get('new')).toBe('true')
     expect(params.get('unidentified')).toBe('true')
+    expect(params.get('kind')).toBe('camera')
     expect(params.get('sort')).toBe('name')
     expect(params.get('limit')).toBe('30')
     expect(params.get('offset')).toBe('60')
@@ -63,5 +65,39 @@ describe('fetchAssets', () => {
     await fetchAssets({ q: '', new: false, unidentified: false, offset: 0, limit: 10 })
 
     expect(get).toHaveBeenCalledWith('/assets?limit=10')
+  })
+})
+
+describe('fetchKinds', () => {
+  it('asks for the kinds an owner can pick', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue([])
+
+    await fetchKinds()
+
+    expect(get).toHaveBeenCalledWith('/assets/kinds')
+  })
+})
+
+describe('classifyAsset', () => {
+  it('says what the asset is and what it is for, with the security token', async () => {
+    const put = vi.spyOn(client, 'apiPut').mockResolvedValue({})
+
+    await classifyAsset('device/1', 'camera', 'Watches the door', 'token')
+
+    expect(put).toHaveBeenCalledWith(
+      '/assets/device%2F1/profile',
+      { kind: 'camera', purpose: 'Watches the door' },
+      'token',
+    )
+  })
+})
+
+describe('unclassifyAsset', () => {
+  it('takes back what was said', async () => {
+    const del = vi.spyOn(client, 'apiDelete').mockResolvedValue(undefined)
+
+    await unclassifyAsset('device-1', 'token')
+
+    expect(del).toHaveBeenCalledWith('/assets/device-1/profile', 'token')
   })
 })

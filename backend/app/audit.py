@@ -78,6 +78,8 @@ class Action(StrEnum):
     AGENT_PROPOSAL_DISMISSED = "agent.proposal_dismissed"
     AGENT_PROPOSAL_UNDONE = "agent.proposal_undone"
     NOISE_FILTERS_CHANGED = "noise.filters_changed"
+    ASSET_CLASSIFIED = "asset.classified"
+    ASSET_CLASSIFICATION_CLEARED = "asset.classification_cleared"
     THREATS_SETTINGS_CHANGED = "threats.settings_changed"
     THREATS_FAMILY_CALLED = "threats.family_called"
     THREATS_FAMILY_JUDGED = "threats.family_judged"

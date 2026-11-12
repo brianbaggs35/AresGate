@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api import asking
 from app.api import incidents as incidents_api
+from app.assets import profile
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
@@ -21,6 +22,8 @@ from app.intel import store as intel_store
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
+from e2e import factories
+from e2e.factories import AssetSpec, Listed
 from tests.helpers import OTHER_ORIGIN, new_event
 from tests.test_incidents_engine import (
     ATTACKER,
@@ -1547,6 +1550,50 @@ class TestHowItTravelled:
         self.seen_by_two(session, settings)
 
         assert self.detail(client)["path"]["hops"][-1]["subject"] == "workstation"
+
+    def test_the_devices_it_went_through_are_named_as_the_assets_page_lists_them(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        factories.assets(
+            session,
+            NOW,
+            [
+                AssetSpec(
+                    hostname="router",
+                    mac="00:11:22:00:00:01",
+                    addresses=("192.168.1.1",),
+                    listed=(Listed("opnsense", "arp", 1, own=True),),
+                ),
+                AssetSpec(
+                    hostname="workstation",
+                    mac="00:11:22:00:00:02",
+                    addresses=(DEVICE,),
+                    listed=(Listed("opnsense", "arp", 1),),
+                ),
+            ],
+            [],
+        )
+        profile.save(session, "device-1", "router", "The way out", NOW)
+        self.seen_by_two(session, settings)
+
+        through = self.detail(client)["through"]
+
+        assert [(stop["role"], stop["address"]) for stop in through] == [
+            ("gateway", "192.168.1.1"),
+            ("target", DEVICE),
+        ]
+        assert through[1]["asset"]["name"] == "workstation"
+        assert through[1]["signals"] == 2
+        assert through[1]["asset"]["suggested_kind"] == "computer"
+
+    def test_an_address_no_device_has_is_still_named(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.seen_by_two(session, settings)
+
+        [stop] = self.detail(client)["through"]
+
+        assert (stop["role"], stop["address"], stop["asset"]) == ("target", DEVICE, None)
 
     def test_an_incident_about_a_rule_has_no_path(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

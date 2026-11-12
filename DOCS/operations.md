@@ -316,6 +316,13 @@ first and last time), and `host_listings` has a row for each machine a program l
 hardware address, such as a Wazuh [agent](integrations.md#agents). The Assets page reads all of
 them.
 
+- **What the owner said they are.** `asset_profiles` has a row for each asset the owner classified,
+  by the asset's key (`device-N` or `host-N`, which is how the Assets page names it): its kind
+  (router, firewall, camera and so on), what it is for (up to 200 characters, optional) and when it
+  was said. It is the owner's word, so it is kept until they take it back, and it is the one thing
+  about a device that no program can overwrite. The analyst is told it in the words "which the owner
+  says is a camera (watches the front door)", with the purpose passed through the same redaction as
+  any free text.
 - **How long they're kept.** Until you remove them: there is no retention period for devices yet.
   The machines of `host_listings` are the exception: a program that lists everything it has
   forgets the ones that are gone, so an agent you remove from Wazuh leaves the page.

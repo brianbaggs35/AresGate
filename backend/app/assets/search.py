@@ -8,6 +8,7 @@ from app.assets.inventory import Address, Asset, Inventory, Status, name_of
 
 Sort = Literal["recent", "name", "address", "first"]
 STATUSES: Final[tuple[Status, ...]] = ("online", "recent", "away")
+UNCLASSIFIED: Final = "unclassified"
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,8 @@ class Query:
     interface: int | None = None
     new: bool = False
     unidentified: bool = False
+    # The kind the owner said it is, or ``UNCLASSIFIED`` for those they have not classified.
+    kind: str | None = None
     sort: Sort = "recent"
 
 
@@ -46,6 +49,9 @@ class Facets:
     interfaces: dict[int, int]
     new: int
     unidentified: int
+    # How many the owner has classified as each kind, and how many they have not classified.
+    kinds: dict[str, int]
+    unclassified: int
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,8 @@ def _text(asset: Asset) -> str:
     """Everything a word is looked for in, in lowercase: the name, the maker, the addresses (the
     hardware one with and without its colons) and the integrations that list it."""
     parts = [asset.name, asset.hostname or "", asset.vendor or "", *map(str, asset.addresses)]
+    if asset.profile is not None:
+        parts += [asset.profile.label, asset.profile.purpose or ""]
     if asset.mac:
         parts += [asset.mac, asset.mac.replace(":", "")]
     parts += [name_of(item.source) for item in asset.listings]
@@ -85,10 +93,17 @@ def _matches(asset: Asset, query: Query, words: list[str]) -> bool:
         return False
     if query.unidentified and asset.identified:
         return False
+    if query.kind is not None and _kind_of(asset) != query.kind:
+        return False
     if words:
         haystack = _text(asset)
         return all(word in haystack for word in words)
     return True
+
+
+def _kind_of(asset: Asset) -> str:
+    """The kind the owner said an asset is, or ``UNCLASSIFIED``."""
+    return asset.profile.kind if asset.profile else UNCLASSIFIED
 
 
 def _order(sort: Sort, asset: Asset) -> tuple[object, ...]:
@@ -108,7 +123,9 @@ def facets(inventory: Inventory) -> Facets:
     """What each choice would find in the inventory as a whole."""
     sources: dict[str, int] = {}
     interfaces: dict[int, int] = {}
+    kinds: dict[str, int] = {}
     for asset in inventory.assets:
+        kinds[_kind_of(asset)] = kinds.get(_kind_of(asset), 0) + 1
         for source in {item.source for item in asset.listings}:
             sources[source] = sources.get(source, 0) + 1
         for interface in asset.interfaces:
@@ -118,6 +135,8 @@ def facets(inventory: Inventory) -> Facets:
         interfaces=interfaces,
         new=sum(asset.is_new for asset in inventory.assets),
         unidentified=sum(not asset.identified for asset in inventory.assets),
+        kinds={kind: count for kind, count in kinds.items() if kind != UNCLASSIFIED},
+        unclassified=kinds.get(UNCLASSIFIED, 0),
     )
 
 

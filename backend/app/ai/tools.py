@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import triage
 from app.ai.redaction import Redactor, read_address, read_mac
+from app.assets import profile
 from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
 from app.incidents import cleanup, queries, verdicts
@@ -268,6 +269,7 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     if not devices:
         return Found(["No device on the home network matches that."], [], "no such device")
     lines: list[str] = []
+    said = profile.for_devices(db, (found.id for found in devices))
     for found in devices:
         addresses = db.scalars(
             select(DeviceAddress.address)
@@ -277,9 +279,10 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
         ).all()
         name = redactor.name(found.hostname) if found.hostname else "unnamed"
         maker = f", made by {redactor.text(found.vendor, 60)}" if found.vendor else ""
+        what = profile.describe(said.get(found.id), redactor.text)
         where = ", ".join(redactor.address(str(address)) for address in addresses) or "none known"
         lines.append(
-            f"{name} ({redactor.mac(str(found.mac))}){maker}; addresses: {where}; first seen "
+            f"{name} ({redactor.mac(str(found.mac))}){maker}{what}; addresses: {where}; first seen "
             f"{_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
         )
     return Found(lines, [], _plural(len(devices), "device"))

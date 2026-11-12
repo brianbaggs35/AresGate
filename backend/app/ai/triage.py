@@ -28,6 +28,7 @@ from app import audit
 from app.ai import brief, gateway, service
 from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
+from app.assets import profile
 from app.events.event import Severity
 from app.incidents import attention, conversations, filters, insights, occurrences, queries
 from app.incidents.verdicts import MUTING
@@ -310,10 +311,12 @@ def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[s
     if not devices:
         return []
     lines = ["Devices on the home network involved:"]
+    said = profile.for_devices(db, (device.id for _, device in devices))
     for address, device in devices:
         name = redactor.name(device.hostname) if device.hostname else "unnamed"
         vendor = f", made by {redactor.text(device.vendor, 60)}" if device.vendor else ""
-        lines.append(f"- {redactor.address(str(address))}: {name}{vendor}")
+        what = profile.describe(said.get(device.id), redactor.text)
+        lines.append(f"- {redactor.address(str(address))}: {name}{vendor}{what}")
     return lines
 
 

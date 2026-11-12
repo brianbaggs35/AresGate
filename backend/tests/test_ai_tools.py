@@ -6,11 +6,13 @@ from datetime import timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import tools
 from app.ai.redaction import Level, Redactor
 from app.ai.tools import Args
+from app.assets import profile
 from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
@@ -343,6 +345,19 @@ class TestDevice:
         ]
         assert by_name.summary == "1 device"
         assert by_maker.lines[0].startswith("unnamed (aa:bb:cc:00:00:02), made by Brother;")
+
+    def test_what_the_owner_said_it_is_goes_with_it(self, session: Session) -> None:
+        self.devices(session)
+        nas = session.scalars(select(Device).where(Device.hostname == "nas")).one()
+        profile.save(session, f"device-{nas.id}", "nas", "Holds the family photos", NOW)
+        session.commit()
+
+        found = run(session, "device", Args(name="NA"))
+
+        assert (
+            ", made by Synology, which the owner says is a storage (nas) (Holds the family"
+            in (found.lines[0])
+        )
 
     def test_it_is_found_by_an_address_or_a_hardware_address(self, session: Session) -> None:
         self.devices(session)

@@ -181,6 +181,16 @@ const empty = computed(() => {
   }
 })
 
+/** What the owner said the assets are, to filter by; offered once they have said anything. */
+const kindChoices = computed(() => [
+  { value: '', title: 'Any kind' },
+  { value: 'unclassified', title: `Not classified (${formatCount(page.value.unclassified)})` },
+  ...page.value.kinds.map((item) => ({
+    value: item.key,
+    title: `${item.label} (${formatCount(item.count)})`,
+  })),
+])
+
 const updated = computed(() =>
   new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(updatedAt.value as Date),
 )
@@ -298,6 +308,16 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           hide-details
           data-test="filter-interface"
           @update:model-value="show({ interface: $event || null })"
+        />
+        <v-select
+          v-if="page.kinds.length || filters.kind"
+          label="What it is"
+          :items="kindChoices"
+          :model-value="filters.kind ?? ''"
+          density="comfortable"
+          hide-details
+          data-test="filter-kind"
+          @update:model-value="show({ kind: $event || null })"
         />
         <v-select
           label="Order"

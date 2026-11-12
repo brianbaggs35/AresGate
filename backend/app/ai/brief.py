@@ -38,7 +38,10 @@ Direction matters. Traffic from the internet in is what the network is for being
 Traffic from a device on the home network out to the internet is the network doing something, \
 so the same words are more serious. Alerts between two devices on the home network are usually \
 discovery, backups, printers, media servers and misconfigured rules, and are noise unless they \
-name malware or an exploit.
+name malware or an exploit. The owner may have said what a device is and what it is for (a \
+camera, a laptop, "streams the news in the kitchen"): use it. A camera or a smart plug that \
+suddenly talks to a host it never has is more worrying than a laptop that browses, and a router \
+or a server is expected to talk to many.
 
 Be honest about what you can't see. Alerts rarely say whether an attack worked. Give a high \
 confidence only when the evidence is plain, say "unclear" when it is too thin to tell, and never \

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.ai import catalog, gateway, run, service, triage
 from app.ai.gateway import Answer, Unavailable
 from app.ai.redaction import Level, Redactor
+from app.assets import profile
 from app.config import Settings
 from app.incidents import queries
 from app.intel import overrides, subjects, virustotal
@@ -281,6 +282,28 @@ class TestWhatTheAiIsAsked:
         assert ", made by Synology" in said
         assert ": unnamed" in said
         assert ATTACKER in said
+
+    def test_what_the_owner_said_a_device_is_goes_in_its_line(self, session: Session) -> None:
+        found = incident(session)
+        nas = Device(mac="aa:bb:cc:00:00:01", hostname="nas", first_seen_at=NOW, last_seen_at=NOW)
+        session.add(nas)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=nas.id,
+                address=ip_address(DEVICE),
+                first_seen_at=NOW,
+                last_seen_at=NOW,
+            )
+        )
+        found.addresses = [ip_address(ATTACKER), ip_address(DEVICE)]
+        profile.save(session, f"device-{nas.id}", "camera", "Watches the front door", NOW)
+        session.flush()
+        signals(session, found, 1)
+
+        said = self.prompt(session, found)
+
+        assert "which the owner says is a camera or doorbell (Watches the front door)" in said
 
     def test_strict_hides_the_attacker_too(self, session: Session) -> None:
         found = incident(session)

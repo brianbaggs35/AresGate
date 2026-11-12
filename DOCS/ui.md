@@ -260,7 +260,7 @@ The Assets page lists every device the connected programs can see (`GET /api/ass
 the parts above: a `PageHeader`, the search (`AssetSearch`), the choices, a list of `AssetCard`s,
 and at the end `AssetSuppliers`, which says where the assets come from and why a device may be
 missing. What the list is narrowed to lives in the route's query (`status`, `q`, repeated `source`,
-`interface`, `new`, `unidentified`, `sort`), never in component state, so a link or the back
+`interface`, `new`, `unidentified`, `kind`, `sort`), never in component state, so a link or the back
 button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
 
 - **A card** says who it is (the name, then the maker and hardware address, or for a machine with
@@ -277,6 +277,13 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   whole inventory, so each says what it would find; *Interface* is a select that appears only
   when an interface has networks to tell which assets are on it. *Clear filters* leaves the state
   and the order alone. Slash goes to the search from anywhere but a field.
+- **What it is.** The owner says what each device is and what it is for (`AssetClassify`, a card
+  on the asset's page: a kind from `GET /api/assets/kinds`, grouped, and a purpose of up to 200
+  characters; saved with `PUT /api/assets/{key}/profile`, taken back with `DELETE`). The kind shows as
+  an `AssetKindChip` (a picture and its words) and the purpose under the name on the card; a *What it
+  is* select filters the list (`kind`, or `unclassified`) once anything is said. Where the name or the
+  maker suggests a kind it is offered with *Use that*, never applied. What is said goes to the
+  analyst: see [Assets](operations.md#assets).
 - **Nothing to show** says why and what to do: nothing narrowed matches (*Clear filters*); no
   asset is in that state; no program that lists devices is connected (leads to Integrations); one
   is connected but has listed nothing yet (leads to Status). More assets than a page are asked for

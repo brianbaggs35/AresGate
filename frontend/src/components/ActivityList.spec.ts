@@ -98,6 +98,8 @@ describe('ActivityList', () => {
       'agent.proposal_applied',
       'agent.proposal_dismissed',
       'agent.proposal_undone',
+      'asset.classified',
+      'asset.classification_cleared',
     ]
     const wrapper = await show(
       ...actions.map((action, id) => event({ id, action, username: null })),
@@ -156,6 +158,8 @@ describe('ActivityList', () => {
       'A suggestion of the noise cleaner was applied',
       'A suggestion of the noise cleaner was turned down',
       'A suggestion of the noise cleaner was taken back',
+      'A device was classified',
+      'What a device is was taken back',
     ])
   })
 

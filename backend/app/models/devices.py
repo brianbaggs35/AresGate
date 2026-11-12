@@ -105,3 +105,18 @@ class HostListing(Base):
     first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
     # The last time the integration heard from it: the run's time for one in touch.
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class AssetProfile(Base):
+    """What the owner says an asset is: what kind of thing it is and what it is for. It is kept by
+    the asset's key (``device-12`` or ``host-3``), which is what the Assets pages link to, and is
+    the owner's word: nothing a program lists changes it."""
+
+    __tablename__ = "asset_profiles"
+
+    key: Mapped[str] = mapped_column(String(24), primary_key=True)
+    # A key of ``app.assets.profile.KINDS``.
+    kind: Mapped[str] = mapped_column(String(24))
+    # In the owner's words: "Dad's work laptop", "Streams the news in the kitchen".
+    purpose: Mapped[str | None] = mapped_column(String(200), default=None)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

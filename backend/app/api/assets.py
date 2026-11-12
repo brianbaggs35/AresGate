@@ -5,15 +5,17 @@ from collections.abc import Sequence
 from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import AwareDatetime, BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from pydantic import AwareDatetime, BaseModel, Field
 
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
-from app.api.deps import Db, signed_in
+from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.assets import detail, inventory, search
+from app.assets import profile as profiles
 from app.assets.detail import Reading
 from app.assets.inventory import Asset, Inventory, Listing
 from app.assets.search import Sort
+from app.audit import Action, Outcome
 from app.devices import ways
 from app.events.event import Severity
 from app.models import utcnow
@@ -26,6 +28,7 @@ Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
 # The longest words a search takes in: more than any address or name.
 MAX_SEARCH = 200
 MAX_SOURCES = 8
+KIND_PATTERN = "^(" + "|".join([search.UNCLASSIFIED, *(kind.key for kind in profiles.KINDS)]) + ")$"
 
 
 class ListingOut(BaseModel):
@@ -43,6 +46,38 @@ class ListingOut(BaseModel):
     matched_by: Literal["address", "hostname"] | None
     # For a machine, the integration's word for how it is doing, such as active.
     state: str | None
+
+
+class ProfileOut(BaseModel):
+    """What the owner said an asset is."""
+
+    kind: str
+    kind_label: str
+    # Whether it is a piece of the network itself, which carries other things' traffic.
+    carries: bool
+    purpose: str | None
+    updated_at: AwareDatetime
+
+
+class KindOut(BaseModel):
+    """One kind of asset the owner can pick."""
+
+    key: str
+    label: str
+    group: str
+    carries: bool
+
+
+class KindGroupOut(BaseModel):
+    key: str
+    label: str
+    kinds: list[KindOut]
+
+
+class KindCount(BaseModel):
+    key: str
+    label: str
+    count: int
 
 
 class AssetOut(BaseModel):
@@ -67,6 +102,12 @@ class AssetOut(BaseModel):
     listings: list[ListingOut]
     # The ids of the interfaces whose networks hold one of its current addresses.
     interfaces: list[int]
+    # One of the firewall's own addresses, which all the traffic to and from the Internet crosses.
+    own: bool
+    # What the owner said it is, if they did, and what its name and maker suggest it is.
+    profile: ProfileOut | None
+    suggested_kind: str | None
+    suggested_label: str | None
 
 
 class SupplierOut(BaseModel):
@@ -111,6 +152,10 @@ class AssetsOut(BaseModel):
     watching_since: AwareDatetime | None
     # How many are on the Internet side (the provider's equipment, say) and so not in the list.
     outside: int
+    # How many of the whole inventory the owner has classified as each kind, and how many they
+    # have not classified.
+    kinds: list[KindCount]
+    unclassified: int
 
 
 def _listing(item: Listing) -> ListingOut:
@@ -146,6 +191,24 @@ def asset_out(asset: Asset) -> AssetOut:
         identified=asset.identified,
         listings=[_listing(item) for item in asset.listings],
         interfaces=list(asset.interfaces),
+        own=asset.own,
+        profile=_profile(asset.profile),
+        suggested_kind=asset.suggested,
+        suggested_label=profiles.BY_KEY[asset.suggested].label if asset.suggested else None,
+    )
+
+
+def _profile(said: profiles.Profile | None) -> ProfileOut | None:
+    return None if said is None else _said(said)
+
+
+def _said(said: profiles.Profile) -> ProfileOut:
+    return ProfileOut(
+        kind=said.kind,
+        kind_label=said.label,
+        carries=said.carries,
+        purpose=said.purpose,
+        updated_at=said.updated_at,
     )
 
 
@@ -179,6 +242,12 @@ def _out(found: inventory.Inventory, page: search.Page) -> AssetsOut:
         unidentified=page.facets.unidentified,
         watching_since=found.watching_since,
         outside=found.outside,
+        kinds=[
+            KindCount(key=kind.key, label=kind.label, count=page.facets.kinds[kind.key])
+            for kind in profiles.KINDS
+            if kind.key in page.facets.kinds
+        ],
+        unclassified=page.facets.unclassified,
     )
 
 
@@ -206,6 +275,14 @@ def list_assets(
     ] = None,
     new: Annotated[bool, Query(description="Only those first listed in the last week.")] = False,
     unidentified: Annotated[bool, Query(description="Only those with no name or maker.")] = False,
+    kind: Annotated[
+        str | None,
+        Query(
+            pattern=KIND_PATTERN,
+            description="Only those the owner said are this kind of thing, or `unclassified` for "
+            "those they have not classified.",
+        ),
+    ] = None,
     sort: Annotated[Sort, Query()] = "recent",
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -220,6 +297,7 @@ def list_assets(
         interface=interface,
         new=new,
         unidentified=unidentified,
+        kind=kind,
         sort=sort,
     )
     return _out(found, search.search(found, query, limit=limit, offset=offset))
@@ -496,6 +574,89 @@ def _detail_out(found: detail.Detail) -> AssetDetailOut:
             for item in found.verdicts
         ],
     )
+
+
+@router.get("/kinds")
+def list_kinds() -> list[KindGroupOut]:
+    """The kinds of asset the owner can pick from, in groups."""
+    return [
+        KindGroupOut(
+            key=key,
+            label=label,
+            kinds=[
+                KindOut(key=kind.key, label=kind.label, group=kind.group, carries=kind.carries)
+                for kind in profiles.KINDS
+                if kind.group == key
+            ],
+        )
+        for key, label in profiles.GROUPS
+    ]
+
+
+class ProfileIn(BaseModel):
+    kind: Annotated[str, Field(pattern="^(" + "|".join(kind.key for kind in profiles.KINDS) + ")$")]
+    purpose: Annotated[
+        str | None,
+        Field(
+            max_length=profiles.MAX_PURPOSE,
+            description="What it is for, in the owner's words: Dad's work laptop.",
+        ),
+    ] = None
+
+
+def _listed(db: Db, key: str) -> Asset:
+    """The asset with that key, or a 404: an asset on the Internet side is not on the list."""
+    found = next((item for item in inventory.load(db, utcnow()).assets if item.key == key), None)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no asset with that key.")
+    return found
+
+
+@router.put("/{key}/profile", responses={404: {"description": "There is no asset with that key."}})
+def classify_asset(
+    key: AssetKey,
+    body: ProfileIn,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> ProfileOut:
+    """Says what an asset is and what it is for. It is the owner's word and replaces what was
+    said before."""
+    _listed(db, key)
+    kept = profiles.save(db, key, body.kind, body.purpose, utcnow())
+    record_audit(
+        db,
+        request,
+        Action.ASSET_CLASSIFIED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"asset": key, "kind": body.kind},
+    )
+    db.commit()
+    return _said(kept)
+
+
+@router.delete(
+    "/{key}/profile",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "Nothing was said of that asset."}},
+)
+def unclassify_asset(
+    key: AssetKey, auth: Annotated[SignedIn, Depends(signed_in)], request: Request, db: Db
+) -> Response:
+    """Takes back what was said of an asset."""
+    if not profiles.clear(db, key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing was said of that asset.")
+    record_audit(
+        db,
+        request,
+        Action.ASSET_CLASSIFICATION_CLEARED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"asset": key},
+    )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{key}", responses={404: {"description": "There is no asset with that key."}})
