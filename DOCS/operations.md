@@ -760,8 +760,9 @@ it. Not to be confused with [the container's own logs](#reading-the-logs).
   (on a phone, tap it twice: the first reads it) to look at just that time, which puts a `since`
   and a `before` in the search. Searching inside the records (`raw:`) reads far more than the
   other terms, so it is slower; add a time (`since:1h`) to keep it quick. The database stops any
-  search after 5 seconds, as it does for incidents. The counts and the chart are of the newest
-  50,000 events that match, and say so when there were more.
+  search after 5 seconds, as it does for incidents. The counts under the box and the number of
+  events found are of everything that matches, so choosing one finds exactly the number it showed.
+  The chart is of the newest 50,000 events that match, and says so when there were more.
 - **One event.** Open an event for a sheet at the side (the whole screen on a phone) with its
   severity, where it was reported, every field it has with buttons to copy it or to *show
   events with* it, a link to all the events with each address it names, the incident AresGate

@@ -121,7 +121,7 @@ describe('LogsView', () => {
       expect(text('matched')).toBe('3 events')
     })
 
-    it('says "event" for one, and that it is the newest when there were more', async () => {
+    it('says "event" for one, and counts all of them when there were more than the chart reads', async () => {
       const one = await open({ answer: logPage([logEvent()]) })
       expect(one.text('matched')).toBe('1 event')
 
@@ -130,7 +130,7 @@ describe('LogsView', () => {
       const many = await open({
         answer: { ...capped, summary: summary && { ...summary, matched: 50_000, capped: true } },
       })
-      expect(many.text('matched')).toMatch(/^The newest 50,000 events$/)
+      expect(many.text('matched')).toBe('50,000 events')
     })
 
     it('draws how the events are spread over time', async () => {
@@ -306,7 +306,7 @@ describe('LogsView', () => {
           summary: found.summary && { ...found.summary, matched: 50_000, capped: true },
         },
       })
-      expect(capped.text('more')).toContain('Showing 3 of 50,000+.')
+      expect(capped.text('more')).toContain('Showing 3 of 50,000.')
     })
 
     it('say so when they could not be asked for, and are asked for again', async () => {

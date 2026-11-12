@@ -10,23 +10,17 @@ the thousandth page costs what the first does.
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, NamedTuple
+from typing import Final, NamedTuple
 
 from sqlalchemy import (
     ColumnElement,
-    DateTime,
     Interval,
-    SmallInteger,
-    String,
     and_,
-    cast,
     desc,
     func,
     literal,
-    null,
     or_,
     select,
-    union_all,
 )
 from sqlalchemy.orm import Session, defer
 
@@ -162,10 +156,13 @@ class Volume:
 
 @dataclass(frozen=True)
 class Summary:
-    """How the newest events that match are spread, whichever page of them is on screen."""
+    """How the events that match are spread, whichever page of them is on screen. The counts by
+    severity, integration and kind are of every event that matches, so that choosing one of them
+    narrows the search to exactly the number it showed. The volume over time is of the newest
+    ``SUMMARY_WINDOW`` of them, and ``capped`` says there were more than that."""
 
     matched: int
-    # Whether there were more than were read, which are the oldest.
+    # Whether the volume left out the oldest events because there were more than it reads.
     capped: bool
     severity: dict[int, int] = field(default_factory=dict[int, int])
     sources: dict[str, int] = field(default_factory=dict[str, int])
@@ -182,80 +179,67 @@ def bar_width(span: timedelta) -> int:
 
 
 def summary(db: Session, *, where: Sequence[ColumnElement[bool]]) -> Summary:
-    """The spread of the newest ``SUMMARY_WINDOW`` events that match: by severity, integration
-    and kind, and over time."""
-    window = (
-        select(Event.occurred_at, Event.severity, Event.source, Event.kind)
+    """The spread of the events that match: by severity, integration and kind (all of them) and
+    over time (the newest ``SUMMARY_WINDOW``)."""
+    # One pass over the matching events: the groups are few, so the three counts come from one
+    # grouping, and the same event is counted once whichever of them is chosen next.
+    spread = db.execute(
+        select(Event.severity, Event.source, Event.kind, func.count())
         .where(*where)
-        .order_by(desc(Event.occurred_at), desc(Event.id))
-        .limit(SUMMARY_WINDOW + 1)
-        .cte("window")
-    )
-    total, first, last = db.execute(
-        select(func.count(), func.min(window.c.occurred_at), func.max(window.c.occurred_at))
-    ).one()
+        .group_by(Event.severity, Event.source, Event.kind)
+    ).all()
+    total = sum(count for _, _, _, count in spread)
     if not total:
         return Summary(matched=0, capped=False)
-    seconds = bar_width(last - first)
-    bar = func.date_bin(
-        literal(timedelta(seconds=seconds), Interval), window.c.occurred_at, _ORIGIN
-    )
-    nothing = cast(null(), String)
-    no_time = cast(null(), DateTime(timezone=True))
-    no_level = cast(null(), SmallInteger)
-    count = func.count()
-    rows = db.execute(
-        union_all(
-            select(literal("severity"), nothing, window.c.severity, no_time, count).group_by(
-                window.c.severity
-            ),
-            select(literal("source"), window.c.source, no_level, no_time, count).group_by(
-                window.c.source
-            ),
-            select(literal("kind"), window.c.kind, no_level, no_time, count).group_by(
-                window.c.kind
-            ),
-            select(literal("bar"), nothing, window.c.severity, bar, count).group_by(
-                bar, window.c.severity
-            ),
-        )
-    )
-    found = [(part, key, level, when, count) for part, key, level, when, count in rows]
-    return _spread(found, total=total, seconds=seconds)
-
-
-def _spread(
-    found: Sequence[tuple[str, Any, Any, Any, int]],
-    *,
-    total: int,
-    seconds: int,
-) -> Summary:
     severity: dict[int, int] = {}
     sources: dict[str, int] = {}
     kinds: dict[str, int] = {}
-    bars: dict[datetime, list[int]] = {}
-    for part, key, level, when, count in found:
-        if part == "bar":
-            bars.setdefault(when, [0] * LEVELS)[level] = count
-        elif part == "severity":
-            severity[level] = count
-        elif part == "source":
-            sources[key] = count
-        else:
-            kinds[key] = count
-    start = min(bars)
-    stretch = int((max(bars) - start).total_seconds() // seconds) + 1
-    counts = [
-        bars.get(start + timedelta(seconds=seconds * index), [0] * LEVELS)
-        for index in range(stretch)
-    ]
+    for level, source, kind, count in spread:
+        severity[level] = severity.get(level, 0) + count
+        sources[source] = sources.get(source, 0) + count
+        kinds[kind] = kinds.get(kind, 0) + count
     return Summary(
-        matched=min(total, SUMMARY_WINDOW),
+        matched=total,
         capped=total > SUMMARY_WINDOW,
         severity=severity,
         sources=sources,
         kinds=kinds,
-        volume=Volume(start=start, seconds=seconds, counts=counts),
+        volume=_volume(db, where),
+    )
+
+
+def _volume(db: Session, where: Sequence[ColumnElement[bool]]) -> Volume:
+    """How many of the newest ``SUMMARY_WINDOW`` events that match there were in each stretch of
+    time, by severity."""
+    window = (
+        select(Event.occurred_at, Event.severity)
+        .where(*where)
+        .order_by(desc(Event.occurred_at), desc(Event.id))
+        .limit(SUMMARY_WINDOW)
+        .cte("window")
+    )
+    first, last = db.execute(
+        select(func.min(window.c.occurred_at), func.max(window.c.occurred_at))
+    ).one()
+    seconds = bar_width(last - first)
+    bar = func.date_bin(
+        literal(timedelta(seconds=seconds), Interval), window.c.occurred_at, _ORIGIN
+    )
+    rows = db.execute(
+        select(bar, window.c.severity, func.count()).group_by(bar, window.c.severity)
+    ).all()
+    bars: dict[datetime, list[int]] = {}
+    for when, level, count in rows:
+        bars.setdefault(when, [0] * LEVELS)[level] = count
+    start = min(bars)
+    stretch = int((max(bars) - start).total_seconds() // seconds) + 1
+    return Volume(
+        start=start,
+        seconds=seconds,
+        counts=[
+            bars.get(start + timedelta(seconds=seconds * index), [0] * LEVELS)
+            for index in range(stretch)
+        ],
     )
 
 

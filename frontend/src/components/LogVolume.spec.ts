@@ -25,7 +25,7 @@ describe('LogVolume', () => {
     expect(wrapper.findAll('[data-test="bar-slot"]')).toHaveLength(2)
   })
 
-  it('says how many events it is of, and that it is the newest when there were more', async () => {
+  it('says how many events were found, and that the chart is of the newest when there were more', async () => {
     const { wrapper } = await open()
     expect(wrapper.text()).toContain('6 events found. Pick a bar')
 
@@ -33,7 +33,7 @@ describe('LogVolume', () => {
     expect(wrapper.text()).toContain('1 event found')
 
     await wrapper.setProps({ matched: 50_000, capped: true })
-    expect(wrapper.text()).toMatch(/The newest 50,000 events found/)
+    expect(wrapper.text()).toMatch(/50,000 events found\. The chart is of the newest 6\./)
   })
 
   it('says which stretch of time was picked, as a search can say it', async () => {

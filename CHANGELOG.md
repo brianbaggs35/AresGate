@@ -46,6 +46,10 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **Choosing a program on the Logs page no longer changes its number.** The counts under the search
+  box were of the newest 50,000 events that matched, so choosing ntopng, say, narrowed the search
+  and the number grew to the newest 50,000 of ntopng's own. They are now of everything that
+  matches, and only the chart is of the newest 50,000.
 - **The readout of a day on the AI usage chart no longer hangs below the chart.** Pointing at a day
   that took very little put the readout half below the chart's foot, where it was cut off or under
   what comes next. Every chart's readout now moves up or down just enough to stay inside the chart.

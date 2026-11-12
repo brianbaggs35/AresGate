@@ -71,9 +71,9 @@ export interface LogVolume {
 }
 
 export interface LogSummary {
-  /** How many events the spread is of: the newest that match, up to a limit. */
+  /** How many events match, which the counts by severity, program and kind are of. */
   matched: number
-  /** Whether there were more, the oldest ones, that it did not read. */
+  /** Whether there were more than the chart reads: it is of the newest ones. */
   capped: boolean
   facets: LogFacets
   volume: LogVolume | null
