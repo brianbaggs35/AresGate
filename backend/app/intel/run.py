@@ -54,7 +54,7 @@ VIRUSTOTAL = Feed(
     definition=registry.VIRUSTOTAL,
     ask=virustotal.ask,
     level_of=budget.level_of,
-    remember=lambda row, answer, now: connection.remember(row, answer, now),
+    remember=connection.remember,
 )
 ALIENVAULT_OTX = Feed(
     name="AlienVault OTX",
