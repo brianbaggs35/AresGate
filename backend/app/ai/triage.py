@@ -32,7 +32,7 @@ from app.assets import profile
 from app.events.event import Severity
 from app.incidents import attention, conversations, filters, insights, occurrences, queries, wire
 from app.incidents.verdicts import MUTING
-from app.intel import overrides, virustotal
+from app.intel import otx, overrides, virustotal
 from app.intel import store as intel_store
 from app.models import CLASSES, AiCall, AiTriage, Incident, IntelOverride, IntelSubject
 from app.models.base import utcnow
@@ -100,6 +100,14 @@ it in the observations. A self-signed certificate says little on its own: many c
 and smart-home devices show one to the service they talk to, so judge it by what asked for it \
 (the kind and purpose the owner gave the device, and the name it asked for) and say which it looks \
 like. A login or key sent as plain web traffic is worth saying.
+
+Where AlienVault OTX is given, its pulses are community threat reports. A pulse that names an \
+address, with a malware family, an adversary or an attack technique, is a real lead; an address \
+only listed in a pulse is weak evidence (researchers also list scanners and services that did \
+nothing wrong), and an address no pulse names says little, because new attackers often have none \
+yet. Weigh it with what the owner said the device is, and with what VirusTotal says. When OTX is \
+the only thing that points at an address, keep your confidence modest, so the owner is asked to \
+review it; when OTX, VirusTotal and the traffic agree, say so and be sure.
 
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
 "story" is two to four sentences: what happened in order, what it means for the home, and what \
@@ -347,12 +355,15 @@ def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> li
     anything about any of them, and what the owner has ruled of them, which stands over it. A report
     is only kept for an address that was asked about; a ruling may be of any."""
     reports = intel_store.reports_for(db, virustotal.PROVIDER, incident.addresses)
+    pulses = intel_store.answers_for(db, otx.PROVIDER, incident.addresses)
     rulings = overrides.for_addresses(db, incident.addresses)
     lines: list[str] = []
     if reports:
         lines += ["What VirusTotal says of the internet addresses involved:"] + [
             f"- {_reputation(report, redactor)}" for report in reports
         ]
+    if pulses:
+        lines += [OTX_HEADING] + [f"- {_pulses(report, redactor)}" for report in pulses.values()]
     if rulings:
         lines += ["What the owner of the network has ruled of the internet addresses involved:"] + [
             f"- {_ruling(ruling, redactor)}" for ruling in rulings.values()
@@ -360,10 +371,37 @@ def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> li
     return lines
 
 
+OTX_HEADING = (
+    "What AlienVault OTX says of the internet addresses involved (community threat reports, "
+    "called pulses; a pulse naming an address is a lead, not a verdict):"
+)
+
+
 def _ruling(ruling: IntelOverride, redactor: Redactor) -> str:
     """One address's ruling, as the AI reads it: what the owner made of it, and why."""
     why = f": {redactor.text(ruling.note, 200)}" if ruling.note else ""
     return f"{redactor.address(ruling.subject)} is ruled {ruling.verdict} by the owner{why}"
+
+
+def _pulses(report: IntelSubject, redactor: Redactor) -> str:
+    """One address's answer from AlienVault OTX, as the AI reads it: how many community threat
+    reports name it, what they name it part of, and what OTX makes of that. An address no report
+    names is said so, which is not the same as clean."""
+    shown = redactor.address(report.subject)
+    if report.outcome != "reported" or report.malicious + report.suspicious == 0:
+        return f"{shown}: no OTX pulse names it (that says little: OTX knows only what is shared)"
+    said = {item["label"]: item["value"] for item in report.details}
+    named = "; ".join(
+        f"{label.lower()} {redactor.text(said[label], 120)}"
+        for label in (otx.MALWARE, otx.ADVERSARY, otx.TECHNIQUES)
+        if label in said
+    )
+    return (
+        f"{shown}: named by {report.malicious + report.suspicious} pulses, "
+        f"{report.malicious} of them naming malware, an adversary or an attack technique"
+        f"{'; ' + named if named else ''}; OTX makes it {report.judgement}; "
+        f"newest pulse {report.analysed_at:%Y-%m-%d}"
+    )
 
 
 def _reputation(report: IntelSubject, redactor: Redactor) -> str:

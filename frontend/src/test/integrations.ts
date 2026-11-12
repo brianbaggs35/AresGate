@@ -288,6 +288,43 @@ export function virustotal(overrides: Partial<Integration> = {}): Integration {
   })
 }
 
+/** AlienVault OTX, whose one address cannot be changed and which asks how fast to look up. */
+export function otx(overrides: Partial<Integration> = {}): Integration {
+  return integration({
+    key: 'otx',
+    name: 'AlienVault OTX',
+    provides: 'Which threat reports from the OTX community name each internet address.',
+    icon: 'threats',
+    category: 'Threat intelligence',
+    docs_url: 'https://otx.alienvault.com/assets/static/external_api.html',
+    connections: [
+      connection({
+        key: 'api',
+        label: 'OTX API',
+        url_example: 'https://otx.alienvault.com',
+        address: 'https://otx.alienvault.com',
+        internet: true,
+        fields: [
+          field({ key: 'api_key', label: 'API key', kind: 'secret' }),
+          field({
+            key: 'pace',
+            label: 'Lookup pace',
+            kind: 'choice',
+            default: 'balanced',
+            choices: [
+              { value: 'gentle', label: 'Gentle' },
+              { value: 'balanced', label: 'Balanced' },
+              { value: 'fast', label: 'Fast' },
+            ],
+            caution: 'OTX publishes no limit on requests, so AresGate paces itself.',
+          }),
+        ],
+      }),
+    ],
+    ...overrides,
+  })
+}
+
 export function call(overrides: Partial<Call> = {}): Call {
   return {
     id: 1,

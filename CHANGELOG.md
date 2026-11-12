@@ -8,6 +8,18 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Ask AlienVault OTX about the addresses in an incident.** A new **AlienVault OTX** card in the
+  Threat intelligence group of the Integrations page takes the OTX key from your account (encrypted
+  and never shown again) and a lookup pace, gentle, balanced or fast. AresGate then asks OTX, in the
+  background and at that pace, which community threat reports name each internet address or domain
+  an incident involves, and what they say it is part of: a malware family, an adversary or an attack
+  technique. The AI reads that beside VirusTotal's answer, and is told that a bare listing is weak
+  evidence and to keep its confidence modest when OTX alone points at an address, so that call
+  waits on the Review page while one several sources agree on is listed as already made. OTX
+  publishes no rate limit, so AresGate paces itself and stops for five minutes if OTX answers that
+  it is asked too much. Each address on an incident shows what OTX says of it, with a link to read
+  the reports. Only addresses on the internet and domains are sent, never your own. See
+  [AlienVault OTX](DOCS/integrations.md#alienvault-otx).
 - **See what was said on the wire.** An incident has a new section, *What was said on the wire*,
   that shows what the firewall's intrusion detection read of the connections: the certificate a
   server showed (who it is for, who vouched for it, whether it signed itself or has run out, how

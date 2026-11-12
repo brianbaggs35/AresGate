@@ -772,3 +772,54 @@ VIRUSTOTAL = Guide(
         ),
     ),
 )
+
+
+OTX = Guide(
+    parts=(
+        Part(
+            title="Get an OTX key",
+            connection="api",
+            intro=(
+                "AresGate asks AlienVault OTX which threat reports from its community name the "
+                "internet addresses in an incident, with the OTX key from your account. The key "
+                "is free."
+            ),
+            steps=(
+                Step(
+                    title="Copy the OTX key",
+                    detail=(
+                        "Sign in to AlienVault OTX, or create a free account. Your OTX key is on "
+                        "your account's settings page."
+                    ),
+                    menu=("Settings",),
+                    result="Paste it into API key on the card.",
+                    watch=(
+                        "Keep the key to AresGate alone. Anyone who holds it can act as your "
+                        "account there."
+                    ),
+                ),
+                Step(
+                    title="Choose the lookup pace",
+                    detail=(
+                        "Gentle, balanced or fast sets how often AresGate asks about a new address."
+                    ),
+                    result="Set Lookup pace on the card.",
+                    watch=(
+                        "Every address asked about is shared with OTX, so only addresses on the "
+                        "internet are sent, never your own."
+                    ),
+                    inferred=(
+                        "OTX's pages don't give a limit on requests, so AresGate chose the pace "
+                        "for each setting itself, and stops for five minutes if OTX answers 429."
+                    ),
+                ),
+            ),
+        ),
+    ),
+    sources=(
+        Source(
+            title="OTX API: DirectConnect",
+            url="https://otx.alienvault.com/assets/static/external_api.html",
+        ),
+    ),
+)

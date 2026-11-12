@@ -20,7 +20,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.intel import virustotal
+from app.intel import otx, virustotal
 from app.intel.subjects import Subject
 from app.models import IntelLookup, IntelSubject
 
@@ -134,6 +134,11 @@ def keep(db: Session, provider: str, subject: Subject, answer: Answered, now: da
     )
 
 
+def judge_for(provider: str, report: virustotal.Report | None) -> virustotal.Judgement:
+    """What a service's report comes to, by that service's own rules."""
+    return otx.judge(report) if provider == otx.PROVIDER else virustotal.judge(report)
+
+
 def _values(provider: str, subject: Subject, answer: Answered, now: datetime) -> dict[str, object]:
     """The columns of a subject's answer. A subject with no report keeps no counts."""
     values: dict[str, object] = {
@@ -164,7 +169,7 @@ def _values(provider: str, subject: Subject, answer: Answered, now: datetime) ->
         report = answer.report
         values.update(
             outcome=REPORTED,
-            judgement=virustotal.judge(report),
+            judgement=judge_for(provider, report),
             analysed_at=report.analysed_at,
             malicious=report.malicious,
             suspicious=report.suspicious,

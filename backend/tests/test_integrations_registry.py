@@ -32,7 +32,14 @@ def test_every_connection_has_a_probe_and_every_probe_a_connection() -> None:
 
 
 def test_the_integrations_are_listed_in_order() -> None:
-    assert list(INTEGRATIONS) == ["opnsense", "ntopng", "wazuh", "crowdsec", "virustotal"]
+    assert list(INTEGRATIONS) == [
+        "opnsense",
+        "ntopng",
+        "wazuh",
+        "crowdsec",
+        "virustotal",
+        "otx",
+    ]
 
 
 def test_virustotal_is_threat_intelligence_on_the_internet_with_a_warned_tier() -> None:
@@ -50,8 +57,26 @@ def test_virustotal_is_threat_intelligence_on_the_internet_with_a_warned_tier() 
     assert tier.caution.startswith("Free and premium differ.")
 
 
+def test_otx_is_threat_intelligence_on_the_internet_with_a_pace_to_choose() -> None:
+    definition = INTEGRATIONS["otx"]
+    connection = definition.connection("api")
+
+    assert definition.category == "Threat intelligence"
+    assert connection is not None
+    assert connection.internet
+    assert connection.address == "https://otx.alienvault.com"
+    key = next(item for item in connection.fields if item.key == "api_key")
+    assert key.kind is FieldKind.SECRET
+    pace = next(item for item in connection.fields if item.key == "pace")
+    assert pace.kind is FieldKind.CHOICE
+    assert pace.default == "balanced"
+    assert [choice.value for choice in pace.choices] == ["gentle", "balanced", "fast"]
+    assert pace.caution == registry.PACE_NOTE
+
+
 def test_an_integration_is_internet_only_when_every_connection_is_on_the_internet() -> None:
     assert INTEGRATIONS["virustotal"].internet_only
+    assert INTEGRATIONS["otx"].internet_only
     assert not INTEGRATIONS["wazuh"].internet_only
 
 

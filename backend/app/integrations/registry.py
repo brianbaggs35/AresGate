@@ -486,8 +486,53 @@ VIRUSTOTAL = IntegrationDef(
     ),
 )
 
+PACE_NOTE = (
+    "OTX publishes no limit on requests, so AresGate paces itself. Gentle asks about one new "
+    "address every 90 seconds, balanced every 30 and fast every 10, each with a cap on a day's "
+    "lookups. If OTX ever answers that it is being asked too much, lookups stop for five minutes."
+)
+
+ALIENVAULT_OTX = IntegrationDef(
+    key="otx",
+    name="AlienVault OTX",
+    provides=(
+        "Which threat reports from the OTX community name each internet address in an incident, "
+        "and what they say it is part of, so that the AI weighs that when it classifies."
+    ),
+    icon="threats",
+    category=THREAT_INTELLIGENCE,
+    docs_url="https://otx.alienvault.com/assets/static/external_api.html",
+    guide=guides.OTX,
+    connections=(
+        ConnectionDef(
+            key="api",
+            label="OTX API",
+            summary="AlienVault OTX's API, with the key from your account. Its address is fixed.",
+            url_example="https://otx.alienvault.com",
+            address="https://otx.alienvault.com",
+            allow_http=False,
+            internet=True,
+            fields=(
+                FieldDef(key="api_key", label=API_KEY, kind=FieldKind.SECRET),
+                FieldDef(
+                    key="pace",
+                    label="Lookup pace",
+                    kind=FieldKind.CHOICE,
+                    default="balanced",
+                    choices=(
+                        Choice(value="gentle", label="Gentle"),
+                        Choice(value="balanced", label="Balanced"),
+                        Choice(value="fast", label="Fast"),
+                    ),
+                    caution=PACE_NOTE,
+                ),
+            ),
+        ),
+    ),
+)
+
 INTEGRATIONS: Mapping[str, IntegrationDef] = {
-    item.key: item for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL)
+    item.key: item for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL, ALIENVAULT_OTX)
 }
 
 

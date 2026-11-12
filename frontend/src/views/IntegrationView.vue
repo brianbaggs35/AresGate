@@ -318,7 +318,8 @@ onMounted(load)
       </v-alert>
 
       <v-alert v-if="integration.pause" type="info" variant="tonal" data-test="integration-limit">
-        {{ limitNotice(integration.pause, 'Tests and searches') }} The connection is still set up.
+        {{ limitNotice(integration.pause, 'Tests and searches', integration.name) }} The connection
+        is still set up.
       </v-alert>
 
       <SetupGuideDialog v-model="guideOpen" :name="integration.name" :guide="integration.guide" />

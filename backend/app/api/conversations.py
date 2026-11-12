@@ -11,9 +11,23 @@ from sqlalchemy.orm import Session
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.events.event import Severity
 from app.incidents import conversations, names, purpose, rules
-from app.intel import overrides, virustotal
+from app.intel import otx, overrides, virustotal
 from app.intel import store as intel_store
 from app.models import IntelOverride, IntelSubject, utcnow
+
+
+class OtxOut(BaseModel):
+    """What AlienVault OTX's community threat reports (pulses) say of an address."""
+
+    judgement: Literal["malicious", "suspicious", "clean", "unknown"]
+    # How many pulses name the address, and how many of them also name malware, an adversary or an
+    # attack technique.
+    pulses: int
+    naming: int
+    # The malware and adversaries those pulses name, if they do.
+    names: str | None
+    # Its page on OTX's website, for reading the pulses in full.
+    link: str
 
 
 class ReputationOut(BaseModel):
@@ -32,6 +46,8 @@ class ReputationOut(BaseModel):
     # What the owner of the network ruled of the address, and why, if they did.
     ruling: Literal["safe", "suspicious"] | None
     ruling_note: str | None
+    # What AlienVault OTX said of it, if that is connected and has something to say.
+    otx: OtxOut | None = None
 
 
 class EndOut(BaseModel):
@@ -100,15 +116,36 @@ def _reputations(db: Session, found: conversations.Conversations) -> dict[str, R
     reports = {
         row.subject: row for row in intel_store.reports_for(db, virustotal.PROVIDER, addresses)
     }
+    pulses = {
+        row.subject: _otx(row)
+        for row in intel_store.reports_for(db, otx.PROVIDER, addresses)
+        if row.judgement != "unknown"
+    }
     rulings = overrides.for_addresses(db, addresses)
     return {
-        address: _reputation(reports.get(address), rulings.get(address))
-        for address in reports.keys() | rulings.keys()
+        address: _reputation(reports.get(address), rulings.get(address), pulses.get(address))
+        for address in reports.keys() | rulings.keys() | pulses.keys()
     }
 
 
-def _reputation(row: IntelSubject | None, ruling: IntelOverride | None) -> ReputationOut:
-    """What is known against one address: the service's report, if it gave one, and the ruling."""
+def _otx(row: IntelSubject) -> OtxOut:
+    """What OTX's pulses say of one address, with what they name and where to read them."""
+    said = {item["label"]: item["value"] for item in row.details}
+    names = [said[label] for label in (otx.MALWARE, otx.ADVERSARY) if label in said]
+    return OtxOut(
+        judgement=row.judgement,  # type: ignore[arg-type]
+        pulses=row.malicious + row.suspicious,
+        naming=row.malicious,
+        names="; ".join(names) or None,
+        link=f"{otx.SITE}/indicator/ip/{row.subject}",
+    )
+
+
+def _reputation(
+    row: IntelSubject | None, ruling: IntelOverride | None, pulses: OtxOut | None = None
+) -> ReputationOut:
+    """What is known against one address: the service's report, if it gave one, the pulses OTX
+    names it in, and the ruling."""
     reported = row.judgement if row else "unknown"
     verdict = ruling.verdict if ruling else None
     return ReputationOut(
@@ -121,6 +158,7 @@ def _reputation(row: IntelSubject | None, ruling: IntelOverride | None) -> Reput
         country=row.country if row else None,
         ruling=verdict,  # type: ignore[arg-type]
         ruling_note=ruling.note if ruling else None,
+        otx=pulses,
     )
 
 

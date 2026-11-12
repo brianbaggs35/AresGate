@@ -354,6 +354,19 @@ export interface Insights {
   programs: Contribution[]
 }
 
+/** What AlienVault OTX's community threat reports (pulses) say of an address. */
+export interface OtxReputation {
+  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  /** How many pulses name the address, and how many of them also name malware, an adversary or
+   * an attack technique. */
+  pulses: number
+  naming: number
+  /** The malware and adversaries those pulses name. */
+  names: string | null
+  /** Its page on OTX's website, for reading the pulses in full. */
+  link: string
+}
+
 /** What the threat-intelligence service said of an address it was asked about. */
 export interface Reputation {
   /** What it comes to: the owner's ruling where there is one, else what the service made of it. */
@@ -369,6 +382,8 @@ export interface Reputation {
   engines: number
   owner: string | null
   country: string | null
+  /** What AlienVault OTX said of it, when that is connected and has something to say. */
+  otx?: OtxReputation | null
 }
 
 /** One end of a conversation: the address and what the programs said of it. */

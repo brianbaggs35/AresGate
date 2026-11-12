@@ -119,6 +119,73 @@ describe('ConversationEnd', () => {
     expect(suspicious.find('[data-test="end-owner"]').exists()).toBe(false)
   })
 
+  it('says what the pulses of AlienVault OTX name it in, with a link to read them', async () => {
+    const named = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'unknown',
+        reported: 'unknown',
+        malicious: 0,
+        suspicious: 0,
+        engines: 0,
+        otx: {
+          judgement: 'malicious',
+          pulses: 3,
+          naming: 2,
+          names: 'Mirai; Group X',
+          link: 'https://otx.alienvault.com/indicator/ip/203.0.113.7',
+        },
+      },
+    })
+    const bare = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'unknown',
+        reported: 'unknown',
+        malicious: 0,
+        suspicious: 0,
+        engines: 0,
+        otx: {
+          judgement: 'suspicious',
+          pulses: 1,
+          naming: 0,
+          names: null,
+          link: 'https://otx.alienvault.com/indicator/ip/203.0.113.7',
+        },
+      },
+    })
+
+    expect(named.find('[data-test="end-otx"]').text()).toBe('OTX: 3 pulses, Mirai; Group X')
+    expect(named.find('[data-test="end-otx"]').attributes('href')).toBe(
+      'https://otx.alienvault.com/indicator/ip/203.0.113.7',
+    )
+    expect(named.find('[data-test="end-client"]').classes()).toContain('end--flagged')
+    expect(bare.find('[data-test="end-otx"]').text()).toBe('OTX: 1 pulse')
+    expect(bare.find('[data-test="end-client"]').classes()).not.toContain('end--flagged')
+  })
+
+  it('says when OTX lists the address as safe, and shows nothing of OTX when it said nothing', async () => {
+    const safe = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        otx: {
+          judgement: 'clean',
+          pulses: 4,
+          naming: 0,
+          names: null,
+          link: 'https://otx.alienvault.com/indicator/ip/203.0.113.7',
+        },
+      },
+    })
+    const silent = await show({ location: 'remote', reputation: FLAGGED })
+
+    expect(safe.find('[data-test="end-otx"]').text()).toBe('OTX lists it as safe')
+    expect(silent.find('[data-test="end-otx"]').exists()).toBe(false)
+  })
+
   it('is drawn quietly when the service has nothing against it', async () => {
     const clean = await show({
       reputation: {

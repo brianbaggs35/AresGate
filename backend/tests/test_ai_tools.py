@@ -17,7 +17,7 @@ from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.incidents import names
-from app.intel import overrides, subjects, virustotal
+from app.intel import otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.intel.virustotal import Report
 from app.models import (
@@ -48,6 +48,28 @@ def save_report(session: Session, address: IPv4Address | IPv6Address, report: Re
         subjects.of_address(address),
         virustotal.Reported(report),
         report.analysed_at,
+    )
+
+
+def save_pulses(
+    session: Session, address: IPv4Address | IPv6Address, *, malicious: int, suspicious: int
+) -> None:
+    """Keeps what AlienVault OTX reported of an address, as the address's answer."""
+    intel_store.keep(
+        session,
+        otx.PROVIDER,
+        subjects.of_address(address),
+        otx.Reported(
+            otx.Report(
+                malicious=malicious,
+                suspicious=suspicious,
+                harmless=0,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+            )
+        ),
+        NOW,
     )
 
 
@@ -562,6 +584,34 @@ class TestReputation:
             f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report."
         ]
         assert found.summary == f"no VirusTotal report on {PUBLIC}"
+
+    def test_what_otx_says_comes_before_what_virustotal_says(self, session: Session) -> None:
+        save_pulses(session, PUBLIC, malicious=2, suspicious=1)
+        save_report(session, PUBLIC, REPORT)
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines[0] == (
+            f"AlienVault OTX: {PUBLIC} is named by 3 pulses, 2 of them naming malware, an "
+            "adversary or an attack technique; OTX makes it malicious."
+        )
+        assert f"{PUBLIC}: 3 of 84 engines flag it as malicious" in found.lines[1]
+        assert found.summary == f"VirusTotal's report on {PUBLIC}"
+
+    def test_an_address_otx_alone_has_reported_on_says_what_otx_found_and_that_virustotal_has_not(
+        self, session: Session
+    ) -> None:
+        save_pulses(session, PUBLIC, malicious=0, suspicious=0)
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"AlienVault OTX: no pulse names {PUBLIC}, which says little about it.",
+            f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report.",
+        ]
+        assert found.summary == f"AlienVault OTX's report on {PUBLIC}, none from VirusTotal"
 
     def test_an_address_on_the_home_network_is_not_looked_for(self, session: Session) -> None:
         found = run(session, "reputation", Args(name=str(HOME)))

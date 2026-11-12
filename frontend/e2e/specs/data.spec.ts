@@ -29,9 +29,10 @@ test.describe('data page', () => {
         'Wazuh',
         'CrowdSec',
         'VirusTotal',
+        'AlienVault OTX',
       ])
       await expect(card.getByTestId('retention-kept')).toHaveText(
-        new Array<string>(5).fill('Kept for 30 days (the default)'),
+        new Array<string>(6).fill('Kept for 30 days (the default)'),
       )
     }
     await expect(data.eventsCard.getByTestId('retention-holds').first()).toHaveText(
@@ -75,7 +76,7 @@ test.describe('data page', () => {
 
   test('has no chart until something is stored', async ({ data }) => {
     await data.goto()
-    await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(5)
+    await expect(data.eventsCard.getByTestId('retention-source')).toHaveCount(6)
 
     await expect(data.eventsChart).toBeHidden()
     await expect(data.metricsChart).toBeHidden()
@@ -104,6 +105,7 @@ test.describe('data page', () => {
       'Wazuh',
       'CrowdSec',
       'VirusTotal',
+      'AlienVault OTX',
     ])
     await expect(chart.getByTestId('bar-value')).toHaveText(['3'])
     await expect(chart.getByTestId('chart-tooltip')).toBeHidden()
@@ -119,7 +121,7 @@ test.describe('data page', () => {
     await expect(chart.getByRole('status')).toHaveText('OPNsense: 3 Events')
     await expect(chart.getByTestId('chart-tooltip')).toBeVisible()
     await page.keyboard.press('End')
-    await expect(chart.getByRole('status')).toHaveText('VirusTotal: 0 Events')
+    await expect(chart.getByRole('status')).toHaveText('AlienVault OTX: 0 Events')
     await page.keyboard.press('Escape')
     await expect(chart.getByTestId('chart-tooltip')).toBeHidden()
 
@@ -142,7 +144,7 @@ test.describe('data page', () => {
 
     await expect(chart.getByTestId('bar-chart')).toBeHidden()
     await expect(chart.getByRole('columnheader')).toHaveText(['Integration', 'Events'])
-    await expect(chart.getByTestId('chart-table-row')).toHaveCount(5)
+    await expect(chart.getByTestId('chart-table-row')).toHaveCount(6)
     await expect(chart.getByTestId('chart-table-row').first()).toContainText('OPNsense')
     await expect(chart.getByTestId('chart-table-row').first()).toContainText('3')
 

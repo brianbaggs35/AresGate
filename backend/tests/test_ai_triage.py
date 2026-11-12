@@ -24,7 +24,7 @@ from app.ai.redaction import Level, Redactor
 from app.assets import profile
 from app.config import Settings
 from app.incidents import queries
-from app.intel import overrides, subjects, virustotal
+from app.intel import otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import (
     CLASSES,
@@ -49,6 +49,11 @@ ATTACKER = "203.0.113.5"
 DEVICE = "192.168.1.20"
 MINUTE = timedelta(minutes=1)
 events = itertools.count(1)
+
+
+def save_pulses(session: Session, address: IPv4Address | IPv6Address, report: otx.Report) -> None:
+    """Keeps what AlienVault OTX reported of an address, as the address's answer."""
+    intel_store.keep(session, otx.PROVIDER, subjects.of_address(address), otx.Reported(report), NOW)
 
 
 def save_report(
@@ -1322,6 +1327,74 @@ class TestReputationInThePrompt:
         said = self.prompt(session, found)
 
         assert "What VirusTotal says" not in said
+
+    def test_what_otx_says_is_given_under_its_own_heading_with_what_the_pulses_name(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        save_pulses(
+            session,
+            ip_address(ATTACKER),
+            otx.Report(
+                malicious=2,
+                suspicious=1,
+                harmless=0,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+                details=(
+                    ("Pulses", "3"),
+                    (otx.MALWARE, "Mirai"),
+                    (otx.ADVERSARY, "Group X"),
+                    (otx.TECHNIQUES, "T1071"),
+                ),
+            ),
+        )
+
+        said = self.prompt(session, found)
+
+        assert triage.OTX_HEADING in said
+        assert (
+            f"- {ATTACKER}: named by 3 pulses, 2 of them naming malware, an adversary or an "
+            "attack technique; malware Mirai; adversary Group X; attack techniques T1071; "
+            f"OTX makes it malicious; newest pulse {NOW:%Y-%m-%d}"
+        ) in said
+        assert "What VirusTotal says" not in said
+        assert "OTX" in triage.SYSTEM
+
+    def test_a_pulse_that_names_nothing_but_the_address_says_only_how_many(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        save_pulses(
+            session,
+            ip_address(ATTACKER),
+            otx.Report(
+                malicious=0, suspicious=1, harmless=0, undetected=0, reputation=0, analysed_at=NOW
+            ),
+        )
+
+        said = self.prompt(session, found)
+
+        assert (
+            f"- {ATTACKER}: named by 1 pulses, 0 of them naming malware, an adversary or an "
+            f"attack technique; OTX makes it suspicious; newest pulse {NOW:%Y-%m-%d}"
+        ) in said
+
+    def test_an_address_no_pulse_names_is_said_to_tell_little_and_is_not_called_clean(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        intel_store.keep(
+            session, otx.PROVIDER, subjects.of_address(ip_address(ATTACKER)), otx.Unknown(), NOW
+        )
+
+        said = self.prompt(session, found)
+
+        assert (
+            f"- {ATTACKER}: no OTX pulse names it (that says little: OTX knows only what is shared)"
+        ) in said
+        assert "clean" not in said.split(triage.OTX_HEADING)[1].split("\n")[1]
 
     def test_at_the_strictest_level_the_address_is_a_stand_in(self, session: Session) -> None:
         found = incident(session)
