@@ -295,11 +295,11 @@ def _row(db: Session, subject: Subject, subject_id: int) -> AiTriage | IncidentF
         if subject == "incident"
         else db.get(IncidentFamily, subject_id)
     )
-    kind = (
-        row.classification
-        if isinstance(row, AiTriage)
-        else (row.ai_class if row is not None and row.judged_at is not None else None)
-    )
+    kind: str | None = None
+    if isinstance(row, AiTriage):
+        kind = row.classification
+    elif row is not None and row.judged_at is not None:
+        kind = row.ai_class
     if row is None or kind not in REVIEWED:
         raise NotFound
     return row
