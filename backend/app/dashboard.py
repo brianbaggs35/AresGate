@@ -333,7 +333,7 @@ TOP_DEVICES = 6
 
 
 @dataclass(frozen=True)
-class Port:
+class TriedPort:
     """A port the internet tried and the firewall refused."""
 
     port: int
@@ -361,7 +361,7 @@ class Sides:
     inbound: int
     outbound: int
     inside: int
-    ports: list[Port]
+    ports: list[TriedPort]
     devices: list[TurnedAway]
 
 
@@ -371,7 +371,7 @@ def blocked_sides(
     """How the refused connections of a window split by direction, and the ports and devices."""
     within = (Event.occurred_at >= win.start, Event.occurred_at < win.end)
     rows = db.execute(select(_SIDE, func.count()).where(IS_BLOCK, *within).group_by(_SIDE))
-    totals = {side: total for side, total in rows.all()}
+    totals = dict(rows.all())
     count = func.count().label("count")
     tried = db.execute(
         select(Event.dst_port, count)
@@ -392,7 +392,7 @@ def blocked_sides(
         inbound=totals.get("inbound", 0),
         outbound=totals.get("outbound", 0),
         inside=totals.get("inside", 0),
-        ports=[Port(port, total) for port, total in tried if port is not None],
+        ports=[TriedPort(port, total) for port, total in tried if port is not None],
         devices=[
             TurnedAway(address, total, destinations)
             for address, total, destinations in turned_away
