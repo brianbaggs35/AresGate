@@ -156,7 +156,7 @@ const top = computed(() => TOP + (empty.value || !props.marks.length ? 0 : FLAG_
 const rise = computed(() => props.height - top.value - BOTTOM)
 
 const first = computed(() => props.times[0] as number)
-const last = computed(() => props.times[props.times.length - 1] as number)
+const last = computed(() => props.times.at(-1) as number)
 const x = computed(() => linear([first.value, last.value], [0, length.value]))
 const y = computed(() => linear([0, axis.value.top], [rise.value, 0]))
 
