@@ -136,13 +136,69 @@ def notes_of(certificates: Sequence[CertificateSeen], requests: Sequence[Request
     return list(dict.fromkeys(notes))[:MAX_NOTES]
 
 
+class _Fold:
+    """What the alerts of an incident read, folded into one of each. The same certificate or request
+    seen by many alerts is one, with how many alerts saw it."""
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+        self.certificates: dict[tuple[str, ...], CertificateSeen] = {}
+        self.asked: dict[tuple[str, ...], RequestSeen] = {}
+        self.lookups: dict[tuple[str, ...], LookupSeen] = {}
+        self.banners: dict[tuple[str, ...], BannerSeen] = {}
+
+    def add(self, server: str | None, count: int, wire: evidence.Wire) -> None:
+        """Takes in what one report read, as many alerts as ``count`` made it."""
+        if certificate := wire.get("certificate"):
+            self._certificate(server, count, certificate)
+        if request := wire.get("request"):
+            self._request(server, count, request)
+        if lookup := wire.get("lookup"):
+            self._lookup(count, lookup)
+        if banner := wire.get("ssh"):
+            self._banner(server, count, banner)
+
+    def _certificate(
+        self, server: str | None, count: int, certificate: evidence.Certificate
+    ) -> None:
+        key = tuple(certificate.get(name, "") for name in ("subject", "issuer", "sni", "serial"))
+        known = self.certificates.get(key)
+        self.certificates[key] = CertificateSeen(
+            certificate,
+            server if known is None else known.server,
+            count + (known.alerts if known else 0),
+            expired(certificate.get("not_after"), self.now),
+        )
+
+    def _request(self, server: str | None, count: int, request: evidence.Request) -> None:
+        key = (
+            request.get("method", ""),
+            request.get("host", ""),
+            request.get("url", ""),
+            str(request.get("status", "")),
+        )
+        known = self.asked.get(key)
+        self.asked[key] = RequestSeen(
+            request,
+            server if known is None else known.server,
+            count + (known.alerts if known else 0),
+        )
+
+    def _lookup(self, count: int, lookup: evidence.Lookup) -> None:
+        key = (lookup["name"], lookup.get("type", ""), lookup.get("rcode", ""))
+        known = self.lookups.get(key)
+        self.lookups[key] = LookupSeen(lookup, count + (known.alerts if known else 0))
+
+    def _banner(self, server: str | None, count: int, banner: evidence.Banner) -> None:
+        key = (banner.get("client", ""), banner.get("server", ""))
+        known = self.banners.get(key)
+        self.banners[key] = BannerSeen(banner, server, count + (known.alerts if known else 0))
+
+
 def of(found: Sequence[Occurrence], now: datetime) -> Wire:
     """The wire of an incident's occurrences: what each alert read, folded into one of each, the
     most often seen first."""
-    certificates: dict[tuple[str, ...], CertificateSeen] = {}
-    asked: dict[tuple[str, ...], RequestSeen] = {}
-    lookups: dict[tuple[str, ...], LookupSeen] = {}
-    banners: dict[tuple[str, ...], BannerSeen] = {}
+    fold = _Fold(now)
     dump: list[list[str]] = []
     payload = ""
     for occurrence in found:
@@ -152,52 +208,15 @@ def of(found: Sequence[Occurrence], now: datetime) -> Wire:
                 continue
             dump = dump or said.get("dump", [])
             payload = payload or said.get("payload", "")
-            wire = said.get("wire")
-            if wire is None:
-                continue
-            if certificate := wire.get("certificate"):
-                key = tuple(
-                    certificate.get(name, "") for name in ("subject", "issuer", "sni", "serial")
-                )
-                known = certificates.get(key)
-                certificates[key] = CertificateSeen(
-                    certificate,
-                    server if known is None else known.server,
-                    count + (known.alerts if known else 0),
-                    expired(certificate.get("not_after"), now),
-                )
-            if request := wire.get("request"):
-                key = (
-                    request.get("method", ""),
-                    request.get("host", ""),
-                    request.get("url", ""),
-                    str(request.get("status", "")),
-                )
-                known_request = asked.get(key)
-                asked[key] = RequestSeen(
-                    request,
-                    server if known_request is None else known_request.server,
-                    count + (known_request.alerts if known_request else 0),
-                )
-            if lookup := wire.get("lookup"):
-                key = (lookup["name"], lookup.get("type", ""), lookup.get("rcode", ""))
-                lookups[key] = LookupSeen(
-                    lookup, count + (lookups[key].alerts if key in lookups else 0)
-                )
-            if banner := wire.get("ssh"):
-                key = (banner.get("client", ""), banner.get("server", ""))
-                banners[key] = BannerSeen(
-                    banner,
-                    server,
-                    count + (banners[key].alerts if key in banners else 0),
-                )
-    seen_certificates = sorted(certificates.values(), key=lambda each: -each.alerts)
-    seen_requests = sorted(asked.values(), key=lambda each: -each.alerts)
+            if (wire := said.get("wire")) is not None:
+                fold.add(server, count, wire)
+    seen_certificates = sorted(fold.certificates.values(), key=lambda each: -each.alerts)
+    seen_requests = sorted(fold.asked.values(), key=lambda each: -each.alerts)
     return Wire(
         certificates=seen_certificates[:MAX_CERTIFICATES],
         requests=seen_requests[:MAX_REQUESTS],
-        lookups=sorted(lookups.values(), key=lambda each: -each.alerts)[:MAX_LOOKUPS],
-        banners=sorted(banners.values(), key=lambda each: -each.alerts)[:MAX_BANNERS],
+        lookups=sorted(fold.lookups.values(), key=lambda each: -each.alerts)[:MAX_LOOKUPS],
+        banners=sorted(fold.banners.values(), key=lambda each: -each.alerts)[:MAX_BANNERS],
         dump=dump,
         payload=payload,
         notes=notes_of(seen_certificates, seen_requests),
@@ -221,7 +240,8 @@ def _certificate_line(seen: CertificateSeen) -> str:
 
 def _request_line(seen: RequestSeen) -> str:
     request = seen.request
-    target = f"{request.get('host', '')}{request.get('url', '')}" or (seen.server or "")
+    address = request.get("host", "") + request.get("url", "")
+    target = address or seen.server or ""
     line = f"Plain web request: {request.get('method', 'request')} {target}".rstrip()
     extras = [
         f"user agent {request['user_agent']}" if "user_agent" in request else "",
