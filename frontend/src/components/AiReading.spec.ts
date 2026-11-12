@@ -35,6 +35,17 @@ describe('AiReading', () => {
       expect(text('ai-story')).toContain('Nothing got in')
     })
 
+    it('shows where your review of the reading stands, and passes on an answer', async () => {
+      const { find, emitted, wrapper } = await show(
+        detail({ reading: reading({ review: 'pending' }) }),
+      )
+
+      expect(find('strip-state').text()).toContain('Waiting for you.')
+
+      wrapper.findComponent({ name: 'ReviewStrip' }).vm.$emit('answered')
+      expect(emitted('changed')).toHaveLength(1)
+    })
+
     it('lists what to check, when there is something', async () => {
       const { wrapper } = await show()
 

@@ -9,6 +9,7 @@ export type Place =
   | 'home'
   | 'threats'
   | 'incidents'
+  | 'review'
   | 'assistant'
   | 'agents'
   | 'logs'
@@ -23,6 +24,7 @@ export type Place =
 
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
 const BEHIND_MORE: readonly Place[] = [
+  'assistant',
   'agents',
   'logs',
   'assets',
@@ -46,6 +48,7 @@ export class AppShell {
   readonly dashboardLink: Locator
   readonly threatsLink: Locator
   readonly incidentsLink: Locator
+  readonly reviewLink: Locator
   readonly logsLink: Locator
   readonly assetsLink: Locator
   readonly integrationsLink: Locator
@@ -89,6 +92,7 @@ export class AppShell {
     this.dashboardLink = page.getByTestId('nav-home')
     this.threatsLink = page.getByTestId('nav-threats')
     this.incidentsLink = page.getByTestId('nav-incidents')
+    this.reviewLink = page.getByTestId('nav-review')
     this.logsLink = page.getByTestId('nav-logs')
     this.assetsLink = page.getByTestId('nav-assets')
     this.integrationsLink = page.getByTestId('nav-integrations')

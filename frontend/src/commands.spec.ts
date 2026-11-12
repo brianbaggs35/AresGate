@@ -71,8 +71,13 @@ describe('commandsFor', () => {
       'incidents-dismissed',
       'incidents-all',
     ])
-    // A word in the keywords only comes after one in a title.
-    expect(commandsFor('view').every(({ group }) => group === 'Incidents')).toBe(true)
+    // A word in the keywords only comes after one in a title: Review has it in its title, and the
+    // incidents lists only in their keywords.
+    const view = commandsFor('view')
+    expect(view[0]?.id).toBe('go-review')
+    expect(
+      view.filter(({ title }) => !title.toLowerCase().includes('view')).map(({ group }) => group),
+    ).toEqual(Array.from({ length: 6 }, () => 'Incidents'))
     expect(ids('theme dark')[0]).toBe('theme-dark')
   })
 

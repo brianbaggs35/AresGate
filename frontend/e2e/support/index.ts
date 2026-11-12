@@ -12,12 +12,15 @@ export {
   type AssetsRequest,
   type ApiCoverage,
   type BaselineData,
+  type DecisionRequest,
+  type DecisionsRecord,
   type EventRequest,
   type EventsRecord,
   type FixtureName,
   type IncidentRequest,
   type IncidentsRecord,
   type Loaded,
+  type ReviewSettingsRequest,
   type StandIn,
   type StandInRequest,
   type SystemInfoRecord,
@@ -38,6 +41,7 @@ export { AssistantPage } from './pages/assistant-page'
 export { DataPage } from './pages/data-page'
 export { AppShell, type Place, type ThemeChoice } from './pages/app-shell'
 export { IncidentPage } from './pages/incident-page'
+export { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 export { AlertsPage } from './pages/alerts-page'
 export { IncidentsPage } from './pages/incidents-page'
 export { IntegrationPage } from './pages/integration-page'

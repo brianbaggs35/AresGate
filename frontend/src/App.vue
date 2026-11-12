@@ -8,7 +8,9 @@ import AppDrawer from '@/components/AppDrawer.vue'
 import BottomNavigation from '@/components/BottomNavigation.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import StartupError from '@/components/StartupError.vue'
+import { usePolling } from '@/polling'
 import { usePaletteStore } from '@/stores/palette'
+import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
 
@@ -16,6 +18,7 @@ const theme = useTheme()
 const themeStore = useThemeStore()
 const session = useSessionStore()
 const palette = usePaletteStore()
+const review = useReviewStore()
 const route = useRoute()
 const router = useRouter()
 const { xs: phone } = useDisplay()
@@ -33,6 +36,19 @@ const chrome = computed(() => session.signedIn && !route.meta.public)
 watch(chrome, (shown) => {
   if (!shown) palette.open = false
 })
+
+// How many decisions wait for the owner is asked for when the menu appears and every minute.
+watch(
+  chrome,
+  (shown) => {
+    if (shown) void review.refresh()
+    else review.set(0)
+  },
+  { immediate: true },
+)
+usePolling(() => {
+  if (chrome.value) void review.refresh()
+}, 60_000)
 
 /** Ctrl or ⌘ and K opens the palette from anywhere, and closes it again. */
 function paletteShortcut(event: KeyboardEvent) {

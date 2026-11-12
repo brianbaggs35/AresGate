@@ -23,6 +23,21 @@ describe('FamilyJudgement', () => {
     expect(find('judge').text()).toBe('Ask the AI again')
   })
 
+  it('shows where your review of the judgement stands, and passes on an answer', async () => {
+    const { find, wrapper } = await show(familyDetail({ review: 'pending' }))
+
+    expect(find('strip-state').text()).toContain('Waiting for you.')
+
+    wrapper.findComponent({ name: 'ReviewStrip' }).vm.$emit('answered')
+    expect(wrapper.emitted('answered')).toHaveLength(1)
+  })
+
+  it('has nothing to review before the AI has judged it', async () => {
+    const { find } = await show(familyDetail({ classification: null, confidence: null }))
+
+    expect(find('review-strip').exists()).toBe(false)
+  })
+
   it('says how it was judged when the record has no names', async () => {
     const { find } = await show(familyDetail({ provider: null, model: null }))
 

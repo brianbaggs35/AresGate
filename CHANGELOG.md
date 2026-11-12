@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Review what the AI decided.** A new **Review** page in the menu lists what the AI called an
+  incident, or a whole kind of incident, that would change what you see, with how sure it is, why
+  and what it would do, and you click **Agree** or **Disagree**, with a reason if you like. A
+  decision that waits for you counts only if it raises an alarm, so nothing is set aside on the
+  AI's word alone. **Settings > Review** chooses how much waits: everything (the default), only
+  what the AI is unsure of (with how sure it has to be), or nothing, when the AI decides on its own
+  and the page still lists it. The AI is told what you disagreed with, and why, the next time it
+  decides (and that can be turned off), and once you have agreed with 95% of 20 answers the page
+  says it could be left to decide alone. The menu has a number for what waits, the dashboard says
+  so, and an incident or kind shows where your review stands. See
+  [Reviewing what the AI decided](DOCS/threats.md#reviewing-what-the-ai-decided).
 - **Say what each device is, and see what an attack went through.** The page of every asset has a
   new *What is it?* card where you pick a kind (a router, a camera, a laptop, a smart-home
   device and so on, from a list that is grouped into the pieces of the network and the things

@@ -3,6 +3,7 @@ import { Ellipsis } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import NavIcon from '@/components/NavIcon.vue'
 import { bottomBar, navItems, type NavItem } from '@/navigation'
 
 /**
@@ -30,7 +31,7 @@ const inMore = computed(() =>
       :to="{ name: item.route }"
       :data-test="`nav-${item.route}`"
     >
-      <v-icon :icon="item.icon" />
+      <NavIcon :item="item" />
       <span>{{ item.title }}</span>
     </v-btn>
     <v-btn
@@ -54,13 +55,16 @@ const inMore = computed(() =>
           v-for="item in more"
           :key="item.route"
           :to="{ name: item.route }"
-          :prepend-icon="item.icon"
           :title="item.title"
           rounded="lg"
           color="primary"
           :data-test="`nav-${item.route}`"
           @click="sheet = false"
-        />
+        >
+          <template #prepend>
+            <NavIcon :item="item" />
+          </template>
+        </v-list-item>
       </v-list>
     </v-card>
   </v-bottom-sheet>

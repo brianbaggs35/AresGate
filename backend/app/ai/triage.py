@@ -37,6 +37,8 @@ from app.intel import store as intel_store
 from app.models import CLASSES, AiCall, AiTriage, Incident, IntelOverride, IntelSubject
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
+from app.review import service as review
+from app.review import settings as review_settings
 from app.threats import calls, settings
 
 PURPOSE: Final = "triage"
@@ -206,6 +208,11 @@ def _timeline(found: list[occurrences.Occurrence]) -> list[str]:
     ]
 
 
+LESSON_HEADING: Final = (
+    "Decisions of yours that the owner disagreed with, newest first (learn from them):"
+)
+
+
 def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
     """Everything the AI is told about one incident, every address and name through the redactor."""
     severity = Severity(incident.severity).name.lower()
@@ -236,6 +243,7 @@ def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
         ]
     lines += _device_lines(db, incident, redactor)
     lines += _reputation_lines(db, incident, redactor)
+    lines += _lesson_lines(db, redactor)
     found = occurrences.group(queries.signals(db, incident))
     lines.append(redactor.evidence("signals, oldest first", _timeline(found)))
     if told := _told_lines(found):
@@ -318,6 +326,12 @@ def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[s
         what = profile.describe(said.get(device.id), redactor.text)
         lines.append(f"- {redactor.address(str(address))}: {name}{vendor}{what}")
     return lines
+
+
+def _lesson_lines(db: Session, redactor: Redactor) -> list[str]:
+    """What the owner has disagreed with before, for the AI to decide as they would."""
+    taught = review.lessons(db, redactor, review_settings.load(db))
+    return [LESSON_HEADING, *taught] if taught else []
 
 
 def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> list[str]:
@@ -445,6 +459,17 @@ def parse(text: str) -> Reading | None:
     )
 
 
+def _review_of(db: Session, incident_id: int, reading: Reading) -> tuple[str, datetime | None]:
+    """Where a new reading starts in the owner's review, and when they answered it, if they had
+    answered an earlier one that said the same."""
+    earlier = db.get(AiTriage, incident_id)
+    starts = review.starts(review_settings.load(db), reading.classification, reading.confidence)
+    if earlier is None:
+        return starts, None
+    kept = review.carried(earlier.review, earlier.classification, reading.classification, starts)
+    return kept, earlier.reviewed_at if kept in review.ANSWERED else None
+
+
 def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: datetime) -> Outcome:
     """Keeps what an answer says of an incident, or says why it can't. The caller commits."""
     if isinstance(answered, Unavailable):
@@ -459,6 +484,7 @@ def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: d
             else ""
         )
         return NotRead(f"The AI answered, but not in a form AresGate could read.{cut} Try again.")
+    state, reviewed_at = _review_of(db, incident.id, reading)
     values: dict[str, object] = {
         "call_id": answered.call_id,
         "read_at": now,
@@ -473,6 +499,8 @@ def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: d
         "verdict_reason": reading.verdict_reason,
         "provider": answered.provider,
         "model": answered.model,
+        "review": state,
+        "reviewed_at": reviewed_at,
     }
     # An owner who asks while the worker is reading the same incident must not fail on the other's
     # row: whichever finishes last is the one kept.

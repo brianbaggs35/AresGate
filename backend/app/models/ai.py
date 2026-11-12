@@ -156,6 +156,7 @@ class AiTriage(Base):
             "verdict IS NULL OR verdict IN ('not_suspicious', 'low_priority', 'threat')",
             name="verdict",
         ),
+        CheckConstraint("review IN ('pending', 'auto', 'agreed', 'disagreed')", name="review"),
     )
 
     incident_id: Mapped[int] = mapped_column(
@@ -180,6 +181,11 @@ class AiTriage(Base):
     verdict_reason: Mapped[str | None] = mapped_column(String(300), default=None)
     provider: Mapped[str] = mapped_column(String(32))
     model: Mapped[str] = mapped_column(String(128))
+    # Whether the owner has to look at this decision before it counts (``pending``), it counted
+    # at once and is listed to look at later (``auto``), or the owner agreed or disagreed with it
+    # (app/review).
+    review: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto")
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
 
 
 class AiConversation(Base):

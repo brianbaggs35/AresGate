@@ -254,6 +254,9 @@ class ReadingOut(BaseModel):
     model: str
     # How many signals the incident had when it was read, so a page can say that more came since.
     signals_read: int
+    # Where the owner's review of it stands: waiting for them, counted at once (``auto``), or
+    # answered. It is ``auto`` for a reading that changes nothing, which has nothing to review.
+    review: Literal["pending", "auto", "agreed", "disagreed"]
 
 
 class FactOut(BaseModel):
@@ -422,6 +425,8 @@ class FamilyBrief(BaseModel):
     confidence: int | None
     reason: str | None
     judged_at: AwareDatetime | None
+    # Where the owner's review of the AI's judgement stands (see ``ReadingOut.review``).
+    review: Literal["pending", "auto", "agreed", "disagreed"]
     # How many incidents of the family are going on.
     incidents: int
 
@@ -686,6 +691,7 @@ def _reading(read: AiTriage | None) -> ReadingOut | None:
         provider=known.label if known else read.provider,
         model=read.model,
         signals_read=read.signals_read,
+        review=cast(Literal["pending", "auto", "agreed", "disagreed"], read.review),
     )
 
 
@@ -927,6 +933,7 @@ def brief_of(family: IncidentFamily, incidents: int) -> FamilyBrief:
         confidence=family.ai_confidence,
         reason=family.ai_reason,
         judged_at=family.judged_at,
+        review=cast(Literal["pending", "auto", "agreed", "disagreed"], family.review),
         incidents=incidents,
     )
 

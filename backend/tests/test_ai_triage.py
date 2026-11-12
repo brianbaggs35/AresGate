@@ -35,7 +35,10 @@ from app.models import (
     DeviceAddress,
     Incident,
     IncidentSignal,
+    ReviewFeedback,
 )
+from app.review import service as review_service
+from app.review import settings as review_settings
 from tests.stubs import Handler, Seen, Serve
 from tests.test_ai_gateway import Log, anthropic_says, context, turned_on
 from tests.test_ai_service import NOW, saved
@@ -185,6 +188,36 @@ class TestWhatTheAiIsAsked:
         names = [device.hostname for _, device in queries.devices(session, found)]
         redactor = Redactor(session, level, NOW, names=[name for name in names if name])
         return redactor.finish(triage.prompt_for(session, found, redactor))
+
+    def test_it_is_reminded_of_what_the_owner_disagreed_with(self, session: Session) -> None:
+        found = incident(session)
+        session.add(
+            ReviewFeedback(
+                subject="incident",
+                subject_id=found.id + 1,
+                title="Printing at night",
+                ai_class="noise",
+                ai_confidence=91,
+                answer="disagree",
+                reason="That printer is mine.",
+            )
+        )
+        session.flush()
+
+        said = self.prompt(session, found)
+
+        assert triage.LESSON_HEADING in said
+        assert (
+            "- You called Printing at night noise (91% sure) and the owner disagreed: "
+            "That printer is mine." in said
+        )
+
+    def test_it_is_told_nothing_of_the_kind_when_the_owner_never_disagreed(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+
+        assert triage.LESSON_HEADING not in self.prompt(session, found)
 
     def test_it_is_told_what_the_incident_is(self, session: Session) -> None:
         found = incident(session, banned=True, verdict_counts={"low_priority": 1})
@@ -698,6 +731,68 @@ class TestKeepingWhatItSaid:
         assert [(row.classification, row.verdict, row.signals_read) for row in rows] == [
             ("attack", "threat", 3)
         ]
+
+    def test_a_reading_waits_for_the_owner_by_default_and_sets_nothing_aside(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+
+        triage.keep(session, found, self.answered(session), NOW)
+
+        row = session.get(AiTriage, found.id)
+        assert row is not None
+        assert (row.review, row.reviewed_at) == ("pending", None)
+        session.refresh(found)
+        assert found.ai_class is None
+
+    def test_a_reading_counts_at_once_when_the_owner_lets_the_ai_decide(
+        self, session: Session
+    ) -> None:
+        review_settings.save(session, review_settings.Policy("auto"))
+        found = incident(session)
+
+        triage.keep(session, found, self.answered(session), NOW)
+
+        row = session.get(AiTriage, found.id)
+        assert row is not None
+        assert row.review == "auto"
+        session.refresh(found)
+        assert (found.ai_class, found.ai_basis) == ("probe", "reading")
+
+    def test_a_reading_that_raises_the_alarm_counts_while_it_waits(self, session: Session) -> None:
+        found = incident(session)
+
+        triage.keep(session, found, self.answered(session, classification="attack"), NOW)
+
+        row = session.get(AiTriage, found.id)
+        assert row is not None
+        assert row.review == "pending"
+        session.refresh(found)
+        assert found.ai_class == "attack"
+
+    def test_a_reading_that_says_what_the_owner_agreed_with_is_not_asked_again(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        triage.keep(session, found, self.answered(session), NOW)
+        review_service.answer(session, "incident", found.id, "agree", now=NOW)
+
+        triage.keep(session, found, self.answered(session), NOW)
+
+        row = session.get(AiTriage, found.id)
+        assert row is not None
+        assert (row.review, row.reviewed_at) == ("agreed", NOW)
+
+    def test_a_reading_that_says_something_else_is_looked_at_afresh(self, session: Session) -> None:
+        found = incident(session)
+        triage.keep(session, found, self.answered(session), NOW)
+        review_service.answer(session, "incident", found.id, "disagree", now=NOW)
+
+        triage.keep(session, found, self.answered(session, classification="noise"), NOW)
+
+        row = session.get(AiTriage, found.id)
+        assert row is not None
+        assert (row.review, row.reviewed_at) == ("pending", None)
 
     def test_the_numbers_of_the_classes_are_the_ones_the_database_allows(self) -> None:
         assert CLASSES == ("compromise", "attack", "probe", "noise", "unclear")

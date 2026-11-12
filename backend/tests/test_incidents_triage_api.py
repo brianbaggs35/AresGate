@@ -115,6 +115,7 @@ def test_the_ai_reads_it_and_the_page_gets_the_reading_with_the_real_names(
     assert reading["verdict_reason"] == "Routine background scanning."
     assert (reading["provider"], reading["model"]) == ("Anthropic", "claude-haiku-5-5")
     assert reading["signals_read"] == 3
+    assert reading["review"] == "pending"
     assert body["incident"]["ai"] == {"classification": "probe", "confidence": 91}
     assert KEY not in response.text
     [event] = audited(session)

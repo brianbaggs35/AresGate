@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.models import AuditEvent, Incident, IncidentFamily, User, utcnow
+from app.review import settings as review_settings
 from e2e import factories
 from tests.stubs import Serve
 from tests.test_ai_families import judges
@@ -375,6 +376,8 @@ class TestAskingTheAi:
         server = serve(judges(1))
         app.state.ai_origins["anthropic"] = server.url
         ready(session, settings)
+        review_settings.save(session, review_settings.Policy("auto"))
+        session.commit()
         found = kind(session, 3, "ET SCAN big", confidence=80)
 
         body = self.judge(client, csrf_token, found.id).json()

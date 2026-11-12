@@ -7,6 +7,11 @@ Three voices can say what kind of thing an incident is, and the owner's comes fi
 2. The AI's reading of this one incident (app/ai/triage.py).
 3. The AI's judgement of its family (app/ai/families.py), which is one answer for all of it.
 
+An AI's opinion counts only while it is in effect (``counts``): one that the owner disagreed with
+never does, and one that is waiting for their review counts only if it raises the alarm, because
+the AI may sound an alarm on its own but sets something aside only with the owner's agreement, or
+as they allowed (``app/review``).
+
 The result is kept on the incident (``ai_class``, ``ai_confidence``, ``ai_basis``) so that
 counting and listing need only its columns. ``resolve`` is the whole rule; ``sync`` applies it.
 """
@@ -40,6 +45,14 @@ class Call:
 
 
 NONE: Final = Call(None, None, None)
+
+
+def counts(review: str | None, kind: str | None) -> bool:
+    """Whether an AI's opinion of ``kind`` is in effect given where its review stands: it counts
+    when the owner agreed or it counted at once, and a waiting one counts only if it is loud."""
+    if review == "disagreed":
+        return False
+    return review != "pending" or kind in LOUD
 
 
 def resolve(
@@ -79,6 +92,8 @@ def sync(
             IncidentFamily.ai_confidence,
             AiTriage.classification,
             AiTriage.confidence,
+            IncidentFamily.review,
+            AiTriage.review,
         )
         .outerjoin(IncidentFamily, IncidentFamily.id == Incident.family_id)
         .outerjoin(AiTriage, AiTriage.incident_id == Incident.id)
@@ -89,11 +104,22 @@ def sync(
         query = query.where(Incident.family_id == family_id)
     changes: dict[Call, list[int]] = defaultdict(list)
     for row in db.execute(query):
-        (incident_id, kind, sure, basis, owner, family_kind, family_sure, read_kind, read_sure) = (
-            row
-        )
-        reading = (read_kind, read_sure) if read_kind else None
-        call = resolve(owner, reading, (family_kind, family_sure))
+        (
+            incident_id,
+            kind,
+            sure,
+            basis,
+            owner,
+            family_kind,
+            family_sure,
+            read_kind,
+            read_sure,
+            family_review,
+            read_review,
+        ) = row
+        reading = (read_kind, read_sure) if read_kind and counts(read_review, read_kind) else None
+        family = (family_kind, family_sure) if counts(family_review, family_kind) else (None, None)
+        call = resolve(owner, reading, family)
         if call != Call(kind, sure, basis):
             changes[call].append(incident_id)
     for call, ids in changes.items():

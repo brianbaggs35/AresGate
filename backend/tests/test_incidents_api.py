@@ -1049,6 +1049,7 @@ class TestLanes:
         assert body["family"]["incidents"] == 1
         assert body["family"]["label"] == "ET EXPLOIT threat from <address>"
         assert body["family"]["owner_call"] is None
+        assert body["family"]["review"] == "auto"
         assert body["occurrences"] == []
 
     def test_an_incident_with_no_family_has_none(

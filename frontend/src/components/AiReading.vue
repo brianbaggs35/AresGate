@@ -6,6 +6,7 @@ import { RouterLink } from 'vue-router'
 import { errorMessage } from '@/api/client'
 import type { IncidentDetail } from '@/api/incidents'
 import { giveVerdict } from '@/api/verdicts'
+import ReviewStrip from '@/components/ReviewStrip.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { useSessionStore } from '@/stores/session'
@@ -185,6 +186,14 @@ async function accept() {
         {{ readBy(reading) }}
         <span v-if="fresh > 0" data-test="ai-new">{{ newSignals(fresh) }}</span>
       </p>
+
+      <ReviewStrip
+        :id="incident.id"
+        subject="incident"
+        :kind="reading.classification"
+        :review="reading.review"
+        @answered="emit('changed')"
+      />
     </div>
 
     <div v-else-if="!asking" class="ai-reading__unread" data-test="ai-unread">

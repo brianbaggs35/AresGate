@@ -62,6 +62,8 @@ export interface Reading extends Glance {
   model: string
   /** How many signals it had when it was read. */
   signals_read: number
+  /** Where your review of the reading stands. */
+  review: ReviewState
 }
 
 /** What was done about an incident, in a word: an address CrowdSec banned (`banned`, or `partly`
@@ -424,6 +426,10 @@ export interface MissingProgram {
 /** Your word on a whole kind of incident: set all of it aside, or never set any of it aside. */
 export type OwnerCall = 'background' | 'watch'
 
+/** Where the owner's review of something the AI decided stands: it waits for them (`pending`),
+ * it counted at once (`auto`), or they agreed or disagreed with it. */
+export type ReviewState = 'pending' | 'auto' | 'agreed' | 'disagreed'
+
 /** A kind of incident: the ones that a program reported in the same words about the same sort of
  * place, and what is thought of all of them. */
 export interface FamilyBrief {
@@ -441,6 +447,8 @@ export interface FamilyBrief {
   confidence: number | null
   reason: string | null
   judged_at: string | null
+  /** Where your review of the AI's judgement stands. */
+  review: ReviewState
   /** How many incidents of it are going on. */
   incidents: number
 }

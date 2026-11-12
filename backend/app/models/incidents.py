@@ -266,6 +266,7 @@ class IncidentFamily(Base):
         CheckConstraint(
             "ai_confidence IS NULL OR ai_confidence BETWEEN 0 AND 100", name="ai_confidence"
         ),
+        CheckConstraint("review IN ('pending', 'auto', 'agreed', 'disagreed')", name="review"),
         UniqueConstraint("key", name="uq_incident_families_key"),
     )
 
@@ -293,6 +294,11 @@ class IncidentFamily(Base):
     )
     provider: Mapped[str | None] = mapped_column(String(32), default=None)
     model: Mapped[str | None] = mapped_column(String(128), default=None)
+    # Whether the owner has to look at the AI's judgement before it counts (``pending``), it
+    # counted at once and is listed to look at later (``auto``), or the owner agreed or disagreed
+    # with it (app/review).
+    review: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto")
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
 
 
 class ThreatSettings(Base):

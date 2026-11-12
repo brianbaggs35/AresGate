@@ -3,6 +3,7 @@ import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
+import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
 import {
@@ -124,6 +125,16 @@ describe('DashboardView', () => {
     const { fetchDashboard, fetchCollectors } = await open()
     expect(fetchDashboard).toHaveBeenCalledWith('24h')
     expect(fetchCollectors).toHaveBeenCalledTimes(1)
+  })
+
+  it('says when the AI has decisions that wait for review, and not otherwise', async () => {
+    const { find, pinia } = await open()
+    expect(find('review-nudge').exists()).toBe(false)
+
+    useReviewStore(pinia).set(2)
+    await flushPromises()
+
+    expect(find('review-nudge-open').attributes('href')).toBe('/review')
   })
 
   it('shows a skeleton until the first answer arrives', async () => {

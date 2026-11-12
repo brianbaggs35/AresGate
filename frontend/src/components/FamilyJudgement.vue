@@ -4,6 +4,7 @@ import { computed } from 'vue'
 
 import type { OwnerCall } from '@/api/incidents'
 import type { FamilyDetail } from '@/api/threats'
+import ReviewStrip from '@/components/ReviewStrip.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import { formatAgo } from '@/format'
 import { OWNER_CALL } from '@/threats'
@@ -24,12 +25,16 @@ const props = defineProps<{
   /** The word being kept, while it is under way (`null` is taking yours back). */
   calling: OwnerCall | 'clear' | null
 }>()
-defineEmits<{ call: [OwnerCall | null]; ask: [] }>()
+defineEmits<{ call: [OwnerCall | null]; ask: []; answered: [] }>()
 
 const judged = computed(() => {
   const { classification, confidence } = props.family
   if (!classification) return null
-  return { look: CLASSIFICATION[classification], confidence: confidence as number }
+  return {
+    kind: classification,
+    look: CLASSIFICATION[classification],
+    confidence: confidence as number,
+  }
 })
 const by = computed(() => {
   const { provider, model, judged_at: at } = props.family
@@ -57,6 +62,13 @@ const OWNER_CALLS = Object.keys(OWNER_CALL) as OwnerCall[]
       </v-chip>
       <p class="text-body-large" data-test="judgement-reason">{{ family.reason }}</p>
       <p class="text-body-medium text-medium-emphasis" data-test="judgement-by">{{ by }}</p>
+      <ReviewStrip
+        :id="family.id"
+        subject="family"
+        :kind="judged.kind"
+        :review="family.review"
+        @answered="$emit('answered')"
+      />
     </div>
     <p v-else class="text-body-large" data-test="judgement-none">
       No AI has judged this kind yet. It is judged from a few of its incidents, once, when the AI is

@@ -60,6 +60,7 @@ from app.models.interfaces import Interface, InterfaceFeed
 from app.models.metrics import MetricRetention, MetricSample, MetricSeries
 from app.models.passkeys import Passkey, PasskeyChallenge
 from app.models.retention import SourceRetention
+from app.models.review import ANSWERS, REVIEW_MODES, ReviewFeedback, ReviewSettings
 from app.models.searches import SavedSearch
 from app.models.system import SystemInfo
 from app.models.verdicts import VERDICTS, VerdictRule
@@ -69,12 +70,14 @@ __all__ = [
     "AGENT_TRIGGERS",
     "AI_SOURCES",
     "ALERT_KINDS",
+    "ANSWERS",
     "CLASSES",
     "CLEANUP_MODES",
     "INCIDENT_STATUSES",
     "INTERFACE_ROLES",
     "MIN_INTERVAL_MINUTES",
     "PROPOSAL_STATUSES",
+    "REVIEW_MODES",
     "USAGE_LEVELS",
     "VERDICTS",
     "AddressName",
@@ -121,6 +124,8 @@ __all__ = [
     "Passkey",
     "PasskeyChallenge",
     "RecoveryCode",
+    "ReviewFeedback",
+    "ReviewSettings",
     "SavedSearch",
     "SourceRetention",
     "StoredCredential",

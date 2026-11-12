@@ -42,6 +42,12 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/review',
+    name: 'review',
+    component: () => import('@/views/ReviewView.vue'),
+    meta: { title: 'Review' },
+  },
+  {
     // The threats, the kinds of incident that are background, and a page for each kind. All
     // belong to the one place in the menu.
     path: '/threats',
@@ -248,6 +254,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'threat-detection',
         name: 'settings-threat-detection',
         component: () => import('@/views/ThreatSettingsView.vue'),
+      },
+      {
+        path: 'review',
+        name: 'settings-review',
+        component: () => import('@/views/ReviewSettingsView.vue'),
       },
       {
         path: 'ai',

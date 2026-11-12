@@ -366,6 +366,49 @@ def make_verdicts(body: VerdictsRequest, db: Db) -> VerdictsRecord:
     return VerdictsRecord(verdicts=given)
 
 
+class DecisionRequest(BaseModel):
+    """One decision of the AI about an incident that is there, and where its review stands."""
+
+    address: str = Field(max_length=64)
+    subject: Literal["incident", "family"] = "family"
+    ai_class: Literal["compromise", "attack", "probe", "noise", "unclear"] = "probe"
+    confidence: int = Field(default=90, ge=0, le=100)
+    review: Literal["pending", "auto", "agreed", "disagreed"] = "pending"
+    headline: str = Field(default="Routine scanning from the internet.", max_length=160)
+
+
+class DecisionsRequest(BaseModel):
+    decisions: list[DecisionRequest]
+
+
+class DecisionsRecord(BaseModel):
+    decisions: int
+
+
+@router.post("/factories/decisions", status_code=status.HTTP_201_CREATED)
+def make_decisions(body: DecisionsRequest, db: Db) -> DecisionsRecord:
+    """Records what an AI decided of incidents that are there, for the Review page to show."""
+    made = factories.decisions(
+        db, utcnow(), [factories.DecisionSpec(**item.model_dump()) for item in body.decisions]
+    )
+    db.commit()
+    return DecisionsRecord(decisions=made)
+
+
+class ReviewSettingsRequest(BaseModel):
+    mode: Literal["all", "uncertain", "auto"] = "all"
+    auto_from: int = Field(default=85, ge=50, le=100)
+    learn: bool = True
+
+
+@router.post("/factories/review-settings", status_code=status.HTTP_201_CREATED)
+def make_review_settings(body: ReviewSettingsRequest, db: Db) -> ReviewSettingsRequest:
+    """Sets how much of what the AI decides waits for the owner."""
+    factories.review_settings(db, body.mode, body.auto_from, body.learn)
+    db.commit()
+    return body
+
+
 class AiCallRequest(BaseModel):
     """One request to an AI provider. All of it is optional: it is made up where left out."""
 

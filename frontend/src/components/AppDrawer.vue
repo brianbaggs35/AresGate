@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useDisplay } from 'vuetify'
 
 import AppLogo from '@/components/AppLogo.vue'
+import NavIcon from '@/components/NavIcon.vue'
 import { navItems } from '@/navigation'
 import { useNavigationStore } from '@/stores/navigation'
 
@@ -37,13 +38,15 @@ const rail = computed(() => (store.width ? store.width === 'rail' : display.sm.v
         v-for="item in navItems"
         :key="item.route"
         :to="{ name: item.route }"
-        :prepend-icon="item.icon"
         :title="item.title"
         rounded="lg"
         color="primary"
         :tabindex="0"
         :data-test="`nav-${item.route}`"
       >
+        <template #prepend>
+          <NavIcon :item="item" />
+        </template>
         <!-- The link's name is already its title, so a tooltip would only say it twice. -->
         <v-tooltip
           v-if="rail"

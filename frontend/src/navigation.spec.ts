@@ -26,11 +26,12 @@ describe('navigation', () => {
     expect(more.length).toBeGreaterThan(0)
   })
 
-  it('keeps the places in the order they are listed, Threats next to the Dashboard and the Assistant next to Incidents, with the Agents after it', () => {
+  it('keeps the places in the order they are listed, Threats next to the Dashboard, Review next to Incidents, and the Assistant and Agents after them', () => {
     expect(navItems.map((item) => item.route)).toEqual([
       'home',
       'threats',
       'incidents',
+      'review',
       'assistant',
       'agents',
       'logs',
