@@ -140,10 +140,10 @@ class _Named:
     """What the pulses of an answer name: the malware families, adversaries and attack techniques,
     the tags, and how many of the pulses name any of the first three."""
 
-    malware: list[str] = field(default_factory=lambda: list[str]())
-    adversaries: list[str] = field(default_factory=lambda: list[str]())
-    techniques: list[str] = field(default_factory=lambda: list[str]())
-    tags: list[str] = field(default_factory=lambda: list[str]())
+    malware: list[str] = field(default_factory=list[str])
+    adversaries: list[str] = field(default_factory=list[str])
+    techniques: list[str] = field(default_factory=list[str])
+    tags: list[str] = field(default_factory=list[str])
     strong: int = 0
 
 
