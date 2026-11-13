@@ -232,7 +232,11 @@ hosts ntopng lists, adds the ones it knows the MAC address of
 **Zenarmor** has an API of its own, on a port of its own, that takes a key made in Zenconsole
 (register the firewall there, enable the API and make a key). It has its own switch on the
 OPNsense page, **Use Zenarmor API**, with its own address, user and key, and its own certificate
-settings. Leave it off if you don't use Zenarmor.
+settings. Leave it off if you don't use Zenarmor. **It needs a paid Zenarmor subscription:**
+Zenarmor's documentation lists API access (and custom reports and exports) among the features of
+its paid editions, not the free one, so with the free edition the connection may be refused. You
+lose nothing by leaving it off, because everything else about the firewall comes through OPNsense's
+own API.
 
 **Suricata** has no API outside OPNsense: it is the intrusion detection plugin, and it appears
 under Services; its alerts are read as above. **CrowdSec** on OPNsense is read the same way (see
