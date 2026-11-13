@@ -601,6 +601,58 @@ GREYNOISE = IntegrationDef(
     ),
 )
 
+NVD_NOTE = (
+    "NVD is asked about CVEs only: the identifiers that the incidents name, and nothing else is "
+    "sent, no address and nothing of your network. A key is optional. Without one NVD allows 5 "
+    "requests in 30 seconds, and with one 50, and AresGate asks about one CVE every few seconds "
+    "at most, so the free key is more than enough. A key belongs to one person or application "
+    "and is not to be shared."
+)
+
+NVD = IntegrationDef(
+    key="nvd",
+    name="NIST NVD",
+    provides=(
+        "What the National Vulnerability Database says of each CVE an incident names: its CVSS "
+        "score and rating, the weakness behind it, and whether CISA lists it as exploited in the "
+        "wild, so that the AI weighs how dangerous it is when it classifies."
+    ),
+    icon="threats",
+    category=THREAT_INTELLIGENCE,
+    docs_url="https://nvd.nist.gov/developers/start-here",
+    guide=guides.NVD,
+    connections=(
+        ConnectionDef(
+            key="api",
+            label="NVD API",
+            summary="The National Vulnerability Database's CVE API. Its address is fixed.",
+            url_example="https://services.nvd.nist.gov",
+            address="https://services.nvd.nist.gov",
+            allow_http=False,
+            internet=True,
+            fields=(
+                FieldDef(
+                    key="access",
+                    label="API key",
+                    kind=FieldKind.CHOICE,
+                    default="key",
+                    choices=(
+                        Choice(value="key", label="Ask with an API key"),
+                        Choice(value="none", label="Ask without a key"),
+                    ),
+                    caution=NVD_NOTE,
+                ),
+                FieldDef(
+                    key="api_key",
+                    label=API_KEY,
+                    kind=FieldKind.SECRET,
+                    only_if=Condition(field="access", value="key"),
+                ),
+            ),
+        ),
+    ),
+)
+
 DEVICE_INTELLIGENCE = "Device intelligence"
 # Fingerbank's free key is understood to allow 600 requests an hour (the maintainer's figure; the
 # pages read give none), and AresGate stays inside that. The API
@@ -669,6 +721,7 @@ INTEGRATIONS: Mapping[str, IntegrationDef] = {
         VIRUSTOTAL,
         ALIENVAULT_OTX,
         GREYNOISE,
+        NVD,
         FINGERBANK,
     )
 }

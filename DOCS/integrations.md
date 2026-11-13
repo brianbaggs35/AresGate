@@ -14,6 +14,7 @@ connect it, change its settings, test it or disconnect it.
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
 | AlienVault OTX | Which threat reports from the OTX community name each internet address an incident names, and what they say it is part of                                                                                                         | An API key, and how fast to look things up            |
 | GreyNoise | Whether each internet address an incident names is one of the many that scan every address, or belongs to a common business service | An API key and the plan it belongs to, or no account at all |
+| NIST NVD | What the National Vulnerability Database says of each CVE an incident names: how severe it is, whether CISA has seen it exploited, and what it is | An API key, or none at all |
 | Fingerbank | What each device on the network is, from its hardware address: its make and model, its operating system and how sure Fingerbank is | An API key, and whether the devices in incidents and threats are identified too |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
@@ -901,6 +902,96 @@ Worked out here, not in the documentation:
   key is not, which is why those are tested with a lookup.
 - A plan that holds back the classification gives a scanner counted as suspicious, the same as one
   GreyNoise does not classify.
+
+Not tried against the live service: the answers are tested against a stand-in built from these
+descriptions, and any field that isn't what was expected is left out rather than guessed.
+
+## NIST NVD
+
+The National Vulnerability Database (NVD) is the US government's list of known software
+vulnerabilities, each a CVE with a score for how severe it is. It is the fourth integration in the
+**Threat intelligence** group, and it answers a different question from the others: not who is
+attacking, but what the attack tried. It is asked about **CVEs, never addresses**: an alert that
+says it tried an exploit of `CVE-2021-44228` is worth reading differently once the AI knows what
+that is. Its address is fixed at `https://services.nvd.nist.gov`.
+
+### Plans
+
+An API key is optional, and the card's **API key** setting chooses whether one is sent:
+
+| Setting                | What NVD allows              | What AresGate does                          |
+| ---------------------- | ---------------------------- | ------------------------------------------- |
+| Ask with an API key    | 50 requests in 30 seconds    | One lookup every 3 seconds at most          |
+| Ask without a key      | 5 requests in 30 seconds     | One lookup every 10 seconds at most         |
+
+NVD suggests waiting about six seconds between requests. A lookup is one request for one CVE, and
+there are rarely more than a few a day, so even no key is plenty; with one the CVEs of a flood of
+alerts are answered sooner. Ask for a key on NVD's
+[request page](https://nvd.nist.gov/developers/request-an-api-key) with an organization name, an
+email address and the organization type, and agree to its terms. NVD emails a link, good for seven
+days, that shows the key once. A key belongs to one person or application and is not to be shared.
+The key is sent in the `apiKey` header, so it is in no address and no API log entry, and it is
+encrypted and never shown again.
+
+If NVD answers 403, 429 or 503, which it does when a limit is reached, nothing is sent for two
+minutes. That is never a sign the connection is broken. The connection is tested with one lookup
+of `CVE-2021-44228`, by hand and on the periodic check, and it passes when NVD answers with a list
+of CVEs. NVD says a key it doesn't know in a header named `message`, which the test shows.
+
+### What is asked about, and what is kept
+
+AresGate reads the CVE ids that recent incidents (the last 30 days) name in what their alerts say:
+the summary, the signature and what a program reported (including the CVEs Wazuh's vulnerability
+detector lists). Each is asked about once with `GET /rest/json/cves/2.0?cveIds=...`, the newest
+incident's first, and nothing else is sent. Nothing is asked until the connection has been tested.
+What NVD answers is kept in a table of its own, one row for each CVE:
+
+- the **CVSS score**, its rating (None, Low, Medium, High or Critical) and its vector. The newest
+  version of CVSS NVD gives is read, and the primary source's score when it has two;
+- the **weakness** (the CWE ids) and a description in English;
+- NVD's **status** (Awaiting Analysis, Analyzed, Rejected and so on) and when it was published;
+- whether CISA's **Known Exploited Vulnerabilities** list has it, since when, and what CISA
+  requires and by when. NVD carries this list, which is the nearest thing there is to knowing a
+  vulnerability was used in the wild.
+
+A CVE NVD has no record of is kept as unknown, which says little: a new one is recorded some time
+after it is announced. How long an answer stands follows how it can change: a record with no score
+or no record at all is asked about again after a day, a scored one after three days, and one on
+CISA's list after two weeks, since it is not taken off.
+
+### What the AI does with it
+
+The AI reads what NVD says of the CVEs an incident names (up to eight) under its own heading, and
+its `vulnerability` tool shows one. It is told that the CVSS score rates the vulnerability and not
+this attack: a Critical CVE that was only probed, or that the device isn't running, is not a
+Critical incident, while one on CISA's list has been used against real networks. An unknown CVE
+says little and a Rejected one is not a vulnerability at all.
+
+An incident's page lists the CVEs it names in a card of their own: the score and rating, an
+*Exploited in the wild* badge for one CISA lists, what it is, and a link to the CVE at NVD. A CVE
+that NVD has not been asked about yet says so. NVD asks that a service that shows its data says
+that it **uses data from the NVD API but is not endorsed or certified by the NVD**, and the card
+does.
+
+### Where this comes from, and what isn't tried
+
+Taken from NVD's [CVE API](https://nvd.nist.gov/developers/vulnerabilities) and
+[Start Here](https://nvd.nist.gov/developers/start-here) pages: the address and the `cveIds`,
+`resultsPerPage` and `hasKev` parameters, the `apiKey` header (case sensitive), the rate limits of
+5 and 50 requests in a rolling 30 seconds and the six seconds NVD suggests between requests, that
+an explanation of an error is in the `message` header and that a valid request can answer 200 with
+no results, the shape of the answer (`vulnerabilities`, each with a `cve` holding `descriptions`,
+`metrics`, `weaknesses` and the `cisa` fields), and the notice above.
+
+Worked out here, not in the documentation:
+
+- A 403, a 429 or a 503 is taken as a limit being reached, and nothing is sent for two minutes.
+- A 404 whose `message` names the key is taken as a key NVD doesn't know. Any other 404 is a CVE
+  NVD has no record of.
+- Which CVSS score is read: the newest version, and the primary source's before a secondary one.
+  A rating NVD does not give is worked out from the score with the bands CVSS defines.
+- The pace of the lookups, how long an answer stands and the 30 days of incidents that are read
+  are AresGate's own.
 
 Not tried against the live service: the answers are tested against a stand-in built from these
 descriptions, and any field that isn't what was expected is left out rather than guessed.

@@ -224,6 +224,8 @@ class IncidentRequest(BaseModel):
     detailed: bool = False
     # Whether the firewall's record also holds what was said on the wire (needs `detailed`).
     wire: bool = False
+    # A CVE the alerts name.
+    cve: str | None = Field(default=None, pattern=r"^CVE-\d{4}-\d{4,7}$")
 
 
 class IncidentsRequest(BaseModel):
@@ -269,6 +271,7 @@ def make_incidents(body: IncidentsRequest, db: Db, settings: SettingsDep) -> Inc
                 twin=item.twin,
                 detailed=item.detailed,
                 wire=item.wire,
+                cve=item.cve,
             )
             for item in body.incidents
         ],

@@ -154,6 +154,7 @@ def test_it_lists_every_integration_even_with_none_connected(
         "virustotal",
         "otx",
         "greynoise",
+        "nvd",
         "fingerbank",
     ]
     for part in parts:

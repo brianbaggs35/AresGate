@@ -25,6 +25,7 @@ import type {
   WireRequest,
   TravelPath,
   Triage,
+  Vulnerability,
 } from '@/api/incidents'
 
 import { asset } from '@/test/assets'
@@ -460,6 +461,30 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     path: null,
     through: [],
     wire: null,
+    vulnerabilities: [],
+    ...changes,
+  }
+}
+
+/** A CVE an incident names that NVD has a record of: Log4Shell, which CISA has seen exploited. */
+export function vulnerability(changes: Partial<Vulnerability> = {}): Vulnerability {
+  return {
+    id: 'CVE-2021-44228',
+    link: 'https://nvd.nist.gov/vuln/detail/CVE-2021-44228',
+    state: 'found',
+    status: 'Analyzed',
+    cvss_version: '3.1',
+    score: 10,
+    severity: 'CRITICAL',
+    vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H',
+    description: 'Apache Log4j2 JNDI features do not protect against attacker controlled LDAP.',
+    weaknesses: ['CWE-917'],
+    exploited: true,
+    exploited_on: '2021-12-10',
+    action_due: '2021-12-24',
+    required_action: 'Apply updates per vendor instructions.',
+    kev_name: 'Apache Log4j2 Remote Code Execution Vulnerability',
+    published_at: '2021-12-10T10:15:00Z',
     ...changes,
   }
 }

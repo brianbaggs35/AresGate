@@ -177,8 +177,20 @@ class TestServing:
             assert callable(recorder)
             started.append(f"Fingerbank, enabled: {enabled}")
 
+        async def look_up_cves(
+            new_session: Callable[[], Session],
+            settings: Settings,
+            recorder: object,
+            *,
+            enabled: bool,
+        ) -> None:
+            assert callable(new_session)
+            assert callable(recorder)
+            started.append(f"NVD, enabled: {enabled}")
+
         monkeypatch.setattr(worker, "build", collecting)
         monkeypatch.setattr(worker.fingerbank, "run", identify_devices)
+        monkeypatch.setattr(worker.nvd, "run", look_up_cves)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
         monkeypatch.setattr(worker.ai, "run", read_incidents)
         monkeypatch.setattr(worker.agents, "run", run_agents)
@@ -191,6 +203,7 @@ class TestServing:
         assert sorted(started) == [
             "AI, enabled: True",
             "Fingerbank, enabled: True",
+            "NVD, enabled: True",
             "VirusTotal, enabled: True",
             "agents, enabled: True",
             "alerts, enabled: True",
@@ -222,6 +235,7 @@ class TestServing:
 
         monkeypatch.setattr(worker, "build", failing)
         monkeypatch.setattr(worker.fingerbank, "run", waiting("Fingerbank"))
+        monkeypatch.setattr(worker.nvd, "run", waiting("NVD"))
         monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
         monkeypatch.setattr(worker.ai, "run", waiting("AI"))
         monkeypatch.setattr(worker.agents, "run", waiting("agents"))
@@ -237,6 +251,7 @@ class TestServing:
         assert sorted(cancelled) == [
             "AI",
             "Fingerbank",
+            "NVD",
             "VirusTotal",
             "agents",
             "alerts",

@@ -40,6 +40,7 @@ def test_the_integrations_are_listed_in_order() -> None:
         "virustotal",
         "otx",
         "greynoise",
+        "nvd",
         "fingerbank",
     ]
 
@@ -74,6 +75,22 @@ def test_otx_is_threat_intelligence_on_the_internet_with_a_pace_to_choose() -> N
     assert pace.default == "balanced"
     assert [choice.value for choice in pace.choices] == ["gentle", "balanced", "fast"]
     assert pace.caution == registry.PACE_NOTE
+
+
+def test_nvd_is_threat_intelligence_on_the_internet_with_a_key_only_when_one_is_sent() -> None:
+    definition = INTEGRATIONS["nvd"]
+    connection = definition.connection("api")
+    assert connection is not None
+
+    assert definition.category == "Threat intelligence"
+    assert connection.address == "https://services.nvd.nist.gov"
+    assert connection.internet
+    assert not connection.allow_http
+    access, key = connection.fields
+    assert (access.key, access.default) == ("access", "key")
+    assert [choice.value for choice in access.choices] == ["key", "none"]
+    assert key.only_if is not None
+    assert (key.only_if.field, key.only_if.value) == ("access", "key")
 
 
 def test_greynoise_is_threat_intelligence_and_has_a_key_only_with_an_account() -> None:
@@ -132,6 +149,7 @@ def test_an_integration_is_internet_only_when_every_connection_is_on_the_interne
     assert INTEGRATIONS["virustotal"].internet_only
     assert INTEGRATIONS["otx"].internet_only
     assert INTEGRATIONS["greynoise"].internet_only
+    assert INTEGRATIONS["nvd"].internet_only
     assert INTEGRATIONS["fingerbank"].internet_only
     assert not INTEGRATIONS["wazuh"].internet_only
 

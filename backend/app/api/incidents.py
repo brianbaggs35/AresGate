@@ -2,6 +2,7 @@
 how serious they are, how sure AresGate is and why. For someone signed in."""
 
 from dataclasses import dataclass
+from datetime import date
 from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated, Literal, NamedTuple, Self, cast
 
@@ -52,7 +53,10 @@ from app.incidents import (
 )
 from app.incidents.attention import Lane
 from app.incidents.queries import Order
-from app.models import AiTriage, Device, Incident, IncidentFamily, IncidentSignal, utcnow
+from app.models import AiTriage, Device, Incident, IncidentFamily, IncidentSignal, NvdCve, utcnow
+from app.nvd import lookup as nvd_lookup
+from app.nvd import said as nvd_said
+from app.nvd import store as nvd_store
 from app.threats import explain
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
@@ -412,6 +416,33 @@ class InsightsOut(BaseModel):
     programs: list[ContributionOut]
 
 
+class VulnerabilityOut(BaseModel):
+    """A CVE the incident names, and what the National Vulnerability Database says of it."""
+
+    id: str
+    # NVD's page about it.
+    link: str
+    # ``found``: NVD has a record. ``unknown``: it has none yet. ``pending``: it has not been asked.
+    state: Literal["found", "unknown", "pending"]
+    # NVD's status for the record (``Analyzed``, ``Awaiting Analysis``, ``Rejected``).
+    status: str | None
+    # The newest CVSS score it has: its version, the score from 0 to 10, the rating and the vector.
+    cvss_version: str | None
+    score: float | None
+    severity: Literal["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"] | None
+    vector: str | None
+    description: str | None
+    weaknesses: list[str]
+    # Whether CISA's Known Exploited Vulnerabilities list has it, which says it has been seen
+    # exploited in the wild, and what CISA says of that.
+    exploited: bool
+    exploited_on: date | None
+    action_due: date | None
+    required_action: str | None
+    kev_name: str | None
+    published_at: AwareDatetime | None
+
+
 class FamilyBrief(BaseModel):
     """A kind of incident: the ones that a program reported in the same words about the same sort of
     place (see app/threats/families.py), and what is thought of all of them."""
@@ -504,6 +535,8 @@ class IncidentDetail(IncidentOut):
     path: PathOut | None
     # What it travelled through: the devices of the network it touched, in the order it met them.
     through: list[ThroughOut]
+    # The CVEs the signals name, with what the National Vulnerability Database says of each.
+    vulnerabilities: list[VulnerabilityOut]
 
 
 class TermOut(BaseModel):
@@ -991,6 +1024,36 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         ],
         path=drawn,
         through=_through(db, incident, seen, drawn),
+        vulnerabilities=_vulnerabilities(db, seen),
+    )
+
+
+def _vulnerabilities(db: Db, seen: list[IncidentSignal]) -> list[VulnerabilityOut]:
+    """The CVEs the incident's signals name, each with what NVD said of it if it was asked."""
+    return [_vulnerability(cve_id, row) for cve_id, row in nvd_said.named_in(db, seen)]
+
+
+def _vulnerability(cve_id: str, row: NvdCve | None) -> VulnerabilityOut:
+    found = row is not None and row.state == nvd_store.FOUND
+    return VulnerabilityOut(
+        id=cve_id,
+        link=nvd_lookup.link_of(cve_id),
+        state="pending" if row is None else "found" if found else "unknown",
+        status=row.status if row else None,
+        cvss_version=row.cvss_version if row else None,
+        score=row.score if row else None,
+        severity=cast("Literal['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] | None", row.severity)
+        if row
+        else None,
+        vector=row.vector if row else None,
+        description=row.description if row else None,
+        weaknesses=list(row.weaknesses) if row else [],
+        exploited=row.exploited if row else False,
+        exploited_on=row.exploited_on if row else None,
+        action_due=row.action_due if row else None,
+        required_action=row.required_action if row else None,
+        kev_name=row.kev_name if row else None,
+        published_at=row.published_at if row else None,
     )
 
 

@@ -20,6 +20,7 @@ from app.incidents import run as incidents
 from app.integrations import netguard
 from app.integrations.apilog import ApiLogRecorder
 from app.intel import run as intel
+from app.nvd import run as nvd
 from app.secret_key import load_secret_key
 
 
@@ -53,6 +54,7 @@ async def serve(settings: Settings) -> None:
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
         work.create_task(agents.run(new_session, context, enabled=collecting(settings)))
         work.create_task(intel.run(new_session, settings, recorder, enabled=collecting(settings)))
+        work.create_task(nvd.run(new_session, settings, recorder, enabled=collecting(settings)))
         work.create_task(
             fingerbank.run(new_session, settings, recorder, enabled=collecting(settings))
         )

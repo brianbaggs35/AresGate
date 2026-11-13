@@ -1283,6 +1283,85 @@ def test_fingerbank_that_does_not_answer_properly_is_explained(
     assert message in result.message
 
 
+def test_nvd_asks_for_one_cve_with_the_key_in_a_header(serve: Serve) -> None:
+    result, server, log = verdict(
+        serve,
+        "nvd",
+        "api",
+        lambda seen: Answer(body='{"vulnerabilities": []}'),
+        options={"access": "key"},
+        secrets={"api_key": "nvd-key"},
+    )
+
+    assert result == Verdict(True, "NVD answered with the key.")
+    [seen] = server.seen
+    assert seen.target.startswith("/rest/json/cves/2.0?")
+    assert "cveIds=CVE-2021-44228" in seen.target
+    assert "resultsPerPage=1" in seen.target
+    assert seen.headers["apikey"] == "nvd-key"
+    # The key is in a header, so it is in no address and no log entry.
+    assert "nvd-key" not in log.calls[0].path
+
+
+def test_nvd_without_a_key_sends_none_and_says_what_that_allows(serve: Serve) -> None:
+    result, server, _ = verdict(
+        serve,
+        "nvd",
+        "api",
+        lambda seen: Answer(body='{"vulnerabilities": [{}]}'),
+        options={"access": "none"},
+        secrets={"api_key": "left-over"},
+    )
+
+    assert result.ok
+    assert "5 requests in 30 seconds" in result.message
+    assert "apikey" not in server.seen[0].headers
+
+
+def test_nvd_naming_the_key_in_its_message_is_a_key_it_refused(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve,
+        "nvd",
+        "api",
+        lambda seen: Answer(status=404, headers={"message": "Invalid apiKey: nope"}),
+        options={"access": "key"},
+        secrets={"api_key": "k"},
+    )
+
+    assert result == Verdict(False, "NVD didn't accept the key. Request a new one from NVD.")
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_nvd_turning_the_request_away_asks_for_the_key_to_be_checked(
+    serve: Serve, status: int
+) -> None:
+    result, _, _ = verdict(
+        serve, "nvd", "api", lambda seen: Answer(status=status), options={"access": "none"}
+    )
+
+    assert not result.ok
+    assert f"HTTP {status}" in result.message
+    assert "try again in a minute" in result.message
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (Answer(status=500), "NVD answered HTTP 500."),
+        (Answer(status=404), "NVD answered 404"),
+        (Answer(body="<html>"), "doesn't look like NVD's"),
+        (Answer(body='{"id": 1}'), "doesn't look like NVD's"),
+    ],
+)
+def test_nvd_that_does_not_answer_properly_is_explained(
+    serve: Serve, answer: Answer, message: str
+) -> None:
+    result, _, _ = verdict(serve, "nvd", "api", lambda seen: answer, options={"access": "none"})
+
+    assert not result.ok
+    assert message in result.message
+
+
 def test_the_state_of_a_service_is_read_from_the_words_it_uses() -> None:
     state = probes.service_state
 

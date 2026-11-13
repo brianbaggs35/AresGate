@@ -5,6 +5,13 @@ export function formatDateTime(iso: string, locale?: string): string {
   )
 }
 
+/** A day given as `YYYY-MM-DD`, as people read it. It is the same day wherever they are. */
+export function formatDate(day: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(
+    new Date(day),
+  )
+}
+
 /** A moment as people read it, down to the second, for a log. */
 export function formatTimestamp(iso: string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(

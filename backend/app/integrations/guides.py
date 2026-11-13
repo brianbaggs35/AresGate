@@ -889,6 +889,71 @@ GREYNOISE = Guide(
 )
 
 
+NVD = Guide(
+    parts=(
+        Part(
+            title="Get an NVD API key",
+            connection="api",
+            intro=(
+                "AresGate asks the National Vulnerability Database about the CVEs that incidents "
+                "name, to learn how severe each is and whether CISA has seen it exploited. NVD "
+                "answers without a key, though slowly: with a free key it answers ten times as "
+                "fast, which is the better choice."
+            ),
+            steps=(
+                Step(
+                    title="Request a key",
+                    detail=(
+                        "On NVD's Request an API Key page, give an organization name (Personal "
+                        "Use is one of the choices), an email address and the type of "
+                        "organization, then agree to the Terms of Use at the end of the page and "
+                        "submit. NVD emails a single-use link."
+                    ),
+                    result="Choose Ask with an API key on the card.",
+                    watch=(
+                        "The link works once and expires after seven days. NVD can't show the "
+                        "key again or tell you whether one was requested, so a lost key means a "
+                        "new request, and asking again with the same email address cancels the "
+                        "key from before as soon as the new link is opened."
+                    ),
+                ),
+                Step(
+                    title="Copy the key",
+                    detail=(
+                        "Open the link in the email. The page shows the key once: copy it "
+                        "before closing it."
+                    ),
+                    result=PASTE_KEY,
+                    watch=(
+                        "A key is for one person or application. Don't share it, and keep it to "
+                        "AresGate alone."
+                    ),
+                ),
+                Step(
+                    title="Or ask without a key",
+                    detail=(
+                        "Without a key NVD allows 5 requests in 30 seconds, and AresGate asks "
+                        "about one CVE every ten seconds. A new CVE can wait a little for its "
+                        "answer, which is rarely a problem."
+                    ),
+                    result="Choose Ask without a key on the card.",
+                ),
+            ),
+        ),
+    ),
+    sources=(
+        Source(title="NVD: Start Here", url="https://nvd.nist.gov/developers/start-here"),
+        Source(
+            title="NVD: Vulnerability APIs", url="https://nvd.nist.gov/developers/vulnerabilities"
+        ),
+        Source(
+            title="NVD: Request an API Key",
+            url="https://nvd.nist.gov/developers/request-an-api-key",
+        ),
+    ),
+)
+
+
 FINGERBANK = Guide(
     parts=(
         Part(

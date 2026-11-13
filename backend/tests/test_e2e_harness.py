@@ -198,6 +198,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "metric_samples": 0,
         "metric_series": 0,
         "noise_settings": 0,
+        "nvd_cves": 0,
         "passkey_challenges": 0,
         "passkeys": 0,
         "recovery_codes": 0,
@@ -264,6 +265,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "saved_searches",
             "review_settings",
             "review_feedback",
+            "nvd_cves",
             "noise_settings",
             "metric_series",
             "metric_retention",
@@ -1108,7 +1110,7 @@ def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
                     "detailed": True,
                     "wire": True,
                 },
-                {"address": "20.20.20.5", "signals": 1},
+                {"address": "20.20.20.5", "signals": 1, "cve": "CVE-2021-44228"},
             ]
         },
     )
@@ -1127,7 +1129,13 @@ def test_an_incident_can_be_made_with_what_each_program_says_besides_the_basics(
         e2e.get(f"/api/incidents/{listed['1.1.1.1']}").json()["insights"]["apps"][0]["value"]
         == "ssh"
     )
-    assert e2e.get(f"/api/incidents/{listed['20.20.20.5']}").json()["insights"] is None
+    named = e2e.get(f"/api/incidents/{listed['20.20.20.5']}").json()
+    assert named["insights"] is None
+    # The CVE the alert names is listed, as one NVD has not been asked about.
+    assert [(each["id"], each["state"]) for each in named["vulnerabilities"]] == [
+        ("CVE-2021-44228", "pending")
+    ]
+    assert both["vulnerabilities"] == []
     sent = e2e.get(f"/api/incidents/{listed['1.1.1.1']}").json()["wire"]
     assert sent["certificates"][0]["self_signed"] is True
     assert sent["requests"][0]["request_headers"][1]["hidden"] is True

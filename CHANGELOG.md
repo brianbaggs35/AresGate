@@ -8,6 +8,16 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Know how severe a vulnerability is with NIST NVD.** A new **NIST NVD** card in the **Threat
+  intelligence** group takes an API key (optional, encrypted and never shown again) for the
+  National Vulnerability Database. When an incident's alerts name a CVE, AresGate asks NVD about
+  it in the background, one CVE at a time and well inside NVD's limits (5 requests in 30 seconds
+  without a key, 50 with one), and keeps its CVSS score and rating, the weakness, what it is and
+  whether CISA has seen it exploited in the wild. Only the CVE is sent, never an address. The AI
+  reads it with the incident, and is told that the score rates the vulnerability and not the
+  attack, and has a new `vulnerability` tool. An incident's page lists the CVEs it names, with an
+  *Exploited in the wild* badge, a link to NVD and the notice NVD asks for. See
+  [NIST NVD](DOCS/integrations.md#nist-nvd).
 - **Know what each device is with Fingerbank.** A new **Fingerbank** card in a new **Device
   intelligence** group of the Integrations page takes the API key from your Fingerbank account
   (encrypted and never shown again). AresGate then asks Fingerbank, in the background, what each

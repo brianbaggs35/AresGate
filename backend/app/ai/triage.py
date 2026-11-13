@@ -34,9 +34,18 @@ from app.incidents import attention, conversations, filters, insights, occurrenc
 from app.incidents.verdicts import MUTING
 from app.intel import greynoise, otx, overrides, virustotal
 from app.intel import store as intel_store
-from app.models import CLASSES, AiCall, AiTriage, Incident, IntelOverride, IntelSubject
+from app.models import (
+    CLASSES,
+    AiCall,
+    AiTriage,
+    Incident,
+    IncidentSignal,
+    IntelOverride,
+    IntelSubject,
+)
 from app.models.base import utcnow
 from app.models.verdicts import VERDICTS
+from app.nvd import said as nvd_said
 from app.review import service as review
 from app.review import settings as review_settings
 from app.threats import calls, settings
@@ -117,6 +126,14 @@ One it classes benign is a known researcher or search engine. An address it has 
 little, because an attack aimed at one network alone shows on none of its sensors. Its word that \
 an address is benign or a business service is not proof that what the address did to this home \
 was harmless: weigh it with what the device did.
+
+Where the National Vulnerability Database is given for a CVE the incident names, its CVSS score \
+rates how bad the vulnerability is in general, not how bad this attack was. A CVE on CISA's \
+Known Exploited Vulnerabilities list has been seen exploited in the wild, which makes an attempt \
+to use it more serious, above all against a device that runs the affected software, and a \
+critical score with no sign of exploitation is a reason to check the device, not to call the \
+incident a breach. An attempt on a CVE that was blocked or failed is still an attempt. A CVE NVD \
+has no record of yet says little: NVD is slow to receive a new one.
 
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
 "story" is two to four sentences: what happened in order, what it means for the home, and what \
@@ -266,8 +283,10 @@ def prompt_for(db: Session, incident: Incident, redactor: Redactor) -> str:
         ]
     lines += _device_lines(db, incident, redactor)
     lines += _reputation_lines(db, incident, redactor)
+    seen = queries.signals(db, incident)
+    lines += _vulnerability_lines(db, seen, redactor)
     lines += _lesson_lines(db, redactor)
-    found = occurrences.group(queries.signals(db, incident))
+    found = occurrences.group(seen)
     lines.append(redactor.evidence("signals, oldest first", _timeline(found)))
     if told := _told_lines(found):
         lines.append(redactor.evidence("What the programs said of the traffic", told))
@@ -351,6 +370,19 @@ def _device_lines(db: Session, incident: Incident, redactor: Redactor) -> list[s
         what = profile.describe(said.get(device.id), redactor.text)
         lines.append(f"- {redactor.address(str(address))}: {name}{vendor}{what}")
     return lines
+
+
+def _vulnerability_lines(
+    db: Session, signals: list[IncidentSignal], redactor: Redactor
+) -> list[str]:
+    """What NVD says of the CVEs the incident names, if it names any."""
+    named = nvd_said.named_in(db, signals)
+    if not named:
+        return []
+    return [
+        nvd_said.HEADING,
+        *(f"- {nvd_said.said(row, cve_id, redactor.text)}" for cve_id, row in named),
+    ]
 
 
 def _lesson_lines(db: Session, redactor: Redactor) -> list[str]:
