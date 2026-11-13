@@ -125,6 +125,31 @@ test.describe('the kinds of incident', () => {
     await expect(page.getByTestId('incident-card')).toHaveCount(2)
   })
 
+  test('say when they changed after the AI judged them, and that your word stands', async ({
+    harness,
+    kinds,
+    kind,
+  }) => {
+    await harness.createIncidents(SWEEPS)
+    await harness.createDecisions([
+      { address: BOT, ai_class: 'probe', review: 'auto', changed: true },
+    ])
+    await kinds.goto()
+
+    const sweep = kinds.cards.filter({ hasText: 'ET SCAN Potential SSH Scan' })
+    await expect(sweep.getByTestId('family-changed')).toHaveText('Changed since judged')
+    await sweep.getByTestId('family').click()
+
+    await expect(kind.changed).toContainText('It has changed since it was judged')
+    await expect(kind.changes.first()).toContainText('destination ports')
+    await expect(kind.changed).toContainText('The AI will be asked about it again')
+
+    await kind.watch.click()
+
+    await expect(kind.judgementOwner).toContainText('You watch it')
+    await expect(kind.changed).toContainText('Your word on it stands')
+  })
+
   test('are set aside by your word, whatever the AI says, until you take it back', async ({
     harness,
     kinds,

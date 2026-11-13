@@ -13,7 +13,7 @@ import IncidentCard from '@/components/IncidentCard.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
-import { formatCount } from '@/format'
+import { formatAgo, formatCount } from '@/format'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
 import { reachOf } from '@/threats'
@@ -91,6 +91,7 @@ async function ask() {
 
 // Read only once the kind is shown.
 const reach = computed(() => reachOf((family.value as FamilyDetail).reach))
+const changedAt = computed(() => (family.value as FamilyDetail).changed_at as string)
 
 onMounted(() => load())
 usePolling(() => load(true), REFRESH_SECONDS * 1000)
@@ -118,6 +119,28 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         @ask="ask"
         @answered="load(true)"
       />
+
+      <v-alert
+        v-if="family.changes.length"
+        type="warning"
+        variant="tonal"
+        title="It has changed since it was judged"
+        data-test="changed"
+      >
+        <ul class="kind__why">
+          <li v-for="line in family.changes" :key="line" data-test="change">{{ line }}</li>
+        </ul>
+        <p class="kind__changed text-body-medium">
+          First noticed
+          <time :datetime="changedAt">{{ formatAgo(changedAt) }}</time
+          >.
+          {{
+            family.owner_call
+              ? 'Your word on it stands, but it may not be what you called any more.'
+              : 'The AI will be asked about it again as soon as your usage level allows, or you can ask now.'
+          }}
+        </p>
+      </v-alert>
 
       <SectionCard
         v-if="family.why.length"
@@ -185,6 +208,10 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 .kind__why {
   margin: 0;
   padding-inline-start: 1.25rem;
+}
+
+.kind__changed {
+  margin: 0.5rem 0 0;
 }
 
 .kind__sample {

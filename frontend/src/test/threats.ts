@@ -62,6 +62,8 @@ export function family(changes: Partial<Family> = {}): Family {
     threats: 0,
     suspects: 1,
     background: 40,
+    changed_at: null,
+    changes: [],
     ...changes,
   }
 }

@@ -41,7 +41,7 @@ from app.models import (
 )
 from app.security import passwords
 from app.security.accounts import normalize_username
-from app.threats import calls, chains, families
+from app.threats import calls, chains, drift, families
 
 DEFAULT_VALUE = "an e2e value"
 DEFAULT_PASSWORD = "an e2e password for testing"  # nosec B105: made up, for test accounts
@@ -738,6 +738,8 @@ class DecisionSpec(NamedTuple):
     review: Literal["pending", "auto", "agreed", "disagreed"] = "pending"
     # What the AI said of it, in a line.
     headline: str = "Routine scanning from the internet."
+    # Whether its incidents are different now from when it was judged (a kind only).
+    changed: bool = False
 
 
 def decisions(session: Session, now: datetime, specs: Sequence[DecisionSpec]) -> int:
@@ -762,6 +764,14 @@ def decisions(session: Session, now: datetime, specs: Sequence[DecisionSpec]) ->
             family.model = "claude-haiku-5-5"
             family.review = spec.review
             family.reviewed_at = now if spec.review in ("agreed", "disagreed") else None
+            if spec.changed:
+                # Judged when its incidents were like nothing, so that what they are like now is
+                # what changed, which is what the worker finds too.
+                like = drift.profiles(session, [family.id]).get(family.id, drift.Profile())
+                family.judged_profile = drift.Profile().as_json()
+                family.changes = drift.compare(drift.Profile(), like) or None
+                family.changed_at = now
+                family.drift_checked_at = now
         else:
             session.merge(
                 AiTriage(

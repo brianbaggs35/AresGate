@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { TriangleAlert } from '@lucide/vue'
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -52,6 +53,15 @@ const lanes = computed(() =>
           {{ verdict.text }}
         </v-chip>
         <v-chip v-else variant="outlined" data-test="family-waiting">{{ verdict.text }}</v-chip>
+        <v-chip
+          v-if="family.changes.length"
+          variant="outlined"
+          color="warning"
+          :prepend-icon="TriangleAlert"
+          data-test="family-changed"
+        >
+          Changed since judged
+        </v-chip>
         <span class="family__when text-body-medium text-medium-emphasis">
           Last seen
           <time :datetime="family.last_seen_at">{{ formatAgo(family.last_seen_at) }}</time>

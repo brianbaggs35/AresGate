@@ -50,6 +50,15 @@ describe('FamilyCard', () => {
     expect(wrapper.find('[data-test="family-ai"]').exists()).toBe(false)
   })
 
+  it('says it has changed since it was judged only when it has', async () => {
+    const { wrapper } = await open()
+    expect(wrapper.find('[data-test="family-changed"]').exists()).toBe(false)
+
+    const changed = await open({ changes: ['It comes from many more addresses.'] })
+
+    expect(changed.wrapper.find('[data-test="family-changed"]').text()).toBe('Changed since judged')
+  })
+
   it('says when no one has judged it', async () => {
     const { wrapper } = await open({ classification: null, confidence: null })
 

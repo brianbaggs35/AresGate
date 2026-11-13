@@ -21,7 +21,7 @@ from app.events.event import Severity
 from app.incidents import attention, filters, response
 from app.incidents.attention import Lane
 from app.models import Incident, IncidentFamily, utcnow
-from app.threats import calls, overview
+from app.threats import calls, drift, overview
 from app.threats import settings as threat_settings
 
 router = APIRouter(prefix="/threats", tags=["threats"], dependencies=[Depends(signed_in)])
@@ -70,6 +70,10 @@ class FamilyOut(incident_api.FamilyBrief):
     threats: int
     suspects: int
     background: int
+    # When the kind was first seen to differ from what it was when it was judged, and how, in
+    # words, a line each (see app/threats/drift.py): none while it is as it was.
+    changed_at: AwareDatetime | None
+    changes: list[str]
 
 
 class FamilyPage(BaseModel):
@@ -126,6 +130,8 @@ def _family(item: overview.Kind, incidents: int | None = None) -> FamilyOut:
         threats=item.threats,
         suspects=item.suspects,
         background=item.background,
+        changed_at=item.family.changed_at,
+        changes=drift.lines_of(item.family),
     )
 
 

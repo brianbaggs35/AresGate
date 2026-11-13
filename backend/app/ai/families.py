@@ -39,7 +39,7 @@ from app.models import CLASSES, AiCall, Incident, IncidentFamily
 from app.models.base import utcnow
 from app.review import service as review
 from app.review import settings as review_settings
-from app.threats import calls, families, settings
+from app.threats import calls, drift, families, settings
 
 PURPOSE: Final = "families"
 # How many families one request is about: more would make the answer cut short and the request
@@ -157,18 +157,24 @@ def plan(db: Session, now: datetime, policy: Policy | None = None) -> list[int]:
         .subquery()
     )
     wanted = IncidentFamily.judged_at.is_(None)
+    # A kind that has changed since it was judged (app/threats/drift.py) is judged again whatever
+    # its growth, at any level that judges kinds, though never sooner than ``PAUSE``.
+    again = (IncidentFamily.judged_at < now - PAUSE) & IncidentFamily.changed_at.is_not(None)
     if policy.family_growth is not None:
-        wanted = or_(
-            wanted,
+        again = or_(
+            again,
             (IncidentFamily.judged_at < now - PAUSE)
             & (IncidentFamily.judged_incidents * policy.family_growth <= size.c.size),
         )
+    wanted = or_(wanted, again)
     return list(
         db.scalars(
             select(IncidentFamily.id)
             .join(size, size.c.id == IncidentFamily.id)
             .where(size.c.size >= policy.family_min, IncidentFamily.owner_call.is_(None), wanted)
-            .order_by(size.c.size.desc(), IncidentFamily.id)
+            .order_by(
+                IncidentFamily.changed_at.is_not(None).desc(), size.c.size.desc(), IncidentFamily.id
+            )
             .limit(MAX_FAMILIES)
         )
     )
@@ -272,6 +278,20 @@ _WHERE = {
 }
 
 
+def _changed(family: IncidentFamily, redactor: Redactor) -> list[str]:
+    """What has changed about a kind since it was last judged, which is why it is asked about
+    again, and what it was judged then."""
+    lines = drift.lines_of(family, redactor.address)
+    if not lines:
+        return []
+    before = (
+        f"you judged it {family.ai_class} ({family.ai_confidence}% sure)"
+        if family.ai_class
+        else "it was judged before"
+    )
+    return [f"  CHANGED since {before}:", *(f"    - {line}" for line in lines)]
+
+
 def prompt_for(facts: list[Facts], redactor: Redactor, taught: Sequence[str] = ()) -> str:
     """Everything the AI is told about the families, every address and name through the
     redactor. The ids are only for this request. ``taught`` is what the owner has disagreed with
@@ -295,6 +315,7 @@ def prompt_for(facts: list[Facts], redactor: Redactor, taught: Sequence[str] = (
             f"{item.worst.name.lower()}; banned: {item.banned} of {item.incidents}",
             f"  stages of an attack seen: {', '.join(item.stages) or 'none'}",
             f"  destination ports touched (incidents): {port_text}",
+            *_changed(family, redactor),
             redactor.evidence(
                 f"example from F{number}", [signal_line(example) for example in item.examples]
             ),
@@ -386,6 +407,7 @@ def keep(db: Session, found: list[Facts], answered: Answer | Unavailable, now: d
         return NotJudged(f"The AI answered, but not in a form AresGate could read.{cut} Try again.")
     incidents = 0
     policy = review_settings.load(db)
+    like = drift.profiles(db, [item.family.id for item in found])
     for number, judgement in judged.items():
         item = found[number - 1]
         family = item.family
@@ -403,6 +425,7 @@ def keep(db: Session, found: list[Facts], answered: Answer | Unavailable, now: d
         family.call_id = answered.call_id
         family.provider = answered.provider
         family.model = answered.model
+        drift.keep(family, like.get(family.id, drift.Profile()), now)
         db.flush()
         calls.sync(db, family_id=family.id)
         incidents += item.incidents

@@ -1564,6 +1564,24 @@ def test_a_decision_of_a_kind_that_was_disagreed_with_is_on_record_as_an_answer(
     assert (page["standing"]["agreed"], page["standing"]["disagreed"]) == (0, 1)
 
 
+def test_a_kind_can_be_made_to_have_changed_since_the_ai_judged_it(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={"incidents": [{"address": "8.8.8.8"}]},
+    )
+
+    e2e.post(
+        "/api/__test__/factories/decisions",
+        json={"decisions": [{"address": "8.8.8.8", "review": "auto", "changed": True}]},
+    )
+
+    sign_in(e2e)
+    [kind] = e2e.get("/api/threats/families").json()["items"]
+    assert kind["changed_at"] is not None
+    assert any("destination ports it did not before" in line for line in kind["changes"])
+
+
 def test_how_much_of_what_the_ai_decides_waits_can_be_set(e2e: TestClient) -> None:
     e2e.post("/api/__test__/database/clean")
 

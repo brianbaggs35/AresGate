@@ -4,6 +4,19 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Notice when a quiet kind turns loud.** AresGate keeps what a kind of incident was like when
+  the AI judged it: its stages of an attack, the destination ports, which of your devices it
+  touches and how many addresses are behind it. When the incidents of it that are going on come to
+  more (a new stage, a port or device a small kind never touched, or three times as many
+  addresses), the kind is marked **Changed since judged**, its page says what changed, and the AI
+  is asked about it again at the next opportunity your usage level allows, told what changed. A
+  kind you called stays yours and is not judged again, but its page says it changed. See
+  [Threats](DOCS/threats.md#when-a-kind-changes-after-it-was-judged).
+
 ## 0.1.5
 
 ### Added
