@@ -37,12 +37,13 @@ describe('DeviceCard', () => {
     expect(quiet.wrapper.text()).toContain('No connections this week')
   })
 
-  it('draws the share made to it as a bar, which says it in words', async () => {
-    const { wrapper } = await open(device({ incoming: 3, outgoing: 1 }))
+  it('draws the share made to it as a bar, hidden from a reader since the counts beside it say it', async () => {
+    const { wrapper, text } = await open(device({ incoming: 3, outgoing: 1 }))
 
-    const bar = wrapper.find('[role="img"]')
-    expect(bar.attributes('aria-label')).toBe('3 connections to it, 1 from it')
+    expect(wrapper.find('.device__bar').attributes('aria-hidden')).toBe('true')
     expect(wrapper.find('.device__in').attributes('style')).toContain('75%')
+    expect(text('device-incoming')).toContain('3 in')
+    expect(text('device-outgoing')).toContain('1 out')
   })
 
   it('lists the ports used, with the service each stands for', async () => {
