@@ -33,12 +33,15 @@ class Kind(StrEnum):
     AI_PROVIDER = "ai_provider"
     # Where alerts are sent, such as the address of a Discord webhook.
     DESTINATION = "destination"
+    # The password of the mail server that email destinations send through.
+    SMTP = "smtp"
 
 
 _PURPOSES = {
     Kind.INTEGRATION: "integration-credential",
     Kind.AI_PROVIDER: "ai-provider-credential",
     Kind.DESTINATION: "destination-credential",
+    Kind.SMTP: "smtp-credential",
 }
 
 

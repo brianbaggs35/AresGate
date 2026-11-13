@@ -2,16 +2,41 @@ import {
   DELIVERY_REASONS,
   DELIVERY_STATES,
   KINDS,
+  addressLabel,
   deliveryTitle,
   deliveryTotals,
   lastResult,
   maskedAddress,
 } from '@/alerts'
-import { destination, failing, working } from '@/test/alerts'
+import { destination, emailDestination, failing, working } from '@/test/alerts'
 
 describe('maskedAddress', () => {
   it('shows where the webhook is and the end of its number, and none of the token', () => {
     expect(maskedAddress(destination())).toBe('discord.com/api/webhooks/…6789/••••••••')
+  })
+
+  it('shows where an email destination goes and the mail server it goes through', () => {
+    expect(maskedAddress(emailDestination())).toBe('me@example.org through smtp.example.com')
+  })
+
+  it('says an email destination waits for the mail server while there is none', () => {
+    expect(maskedAddress(emailDestination({ host: '' }))).toBe(
+      'me@example.org, once the mail server is set up',
+    )
+  })
+
+  it('copes with an email destination that somehow has no address', () => {
+    expect(maskedAddress(emailDestination({ host: '', recipient: null }))).toBe(
+      ', once the mail server is set up',
+    )
+    expect(maskedAddress(emailDestination({ recipient: null }))).toBe(' through smtp.example.com')
+  })
+})
+
+describe('addressLabel', () => {
+  it('says what the address is, for a screen reader', () => {
+    expect(addressLabel(destination())).toBe('Webhook address, with the secret part hidden: ')
+    expect(addressLabel(emailDestination())).toContain('Email address')
   })
 })
 
@@ -44,6 +69,12 @@ describe('lastResult', () => {
     )
   })
 
+  it('says when the mail server is gone', () => {
+    expect(lastResult(emailDestination({ status: 'not_connected' }), now)).toBe(
+      "The mail server isn't set up.",
+    )
+  })
+
   it('falls back to the last try for a working one that has no success date', () => {
     const at = new Date(now - 3 * 60_000).toISOString()
 
@@ -60,6 +91,11 @@ describe('the kinds', () => {
   it('has a name and a picture for Discord', () => {
     expect(KINDS.discord.label).toBe('Discord')
     expect(KINDS.discord.icon).toBeDefined()
+  })
+
+  it('has a name and a picture for email', () => {
+    expect(KINDS.email.label).toBe('Email')
+    expect(KINDS.email.icon).toBeDefined()
   })
 })
 

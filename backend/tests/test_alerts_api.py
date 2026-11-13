@@ -120,6 +120,7 @@ class TestAddingOne:
             "enabled": True,
             "host": "discord.com",
             "hint": "…6789",
+            "recipient": None,
             "status": "untested",
             "last_attempt_at": None,
             "last_success_at": None,

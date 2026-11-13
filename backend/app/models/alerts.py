@@ -19,8 +19,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
 
-# How a destination is reached. Discord's webhooks are the first; others join the list.
-KINDS = ("discord",)
+# How a destination is reached: a Discord webhook, or an email through the SMTP server the owner
+# configured (see ``SmtpSettings``).
+KINDS = ("discord", "email")
 # How much of an incident a message says (see app/alerts/rules.py).
 DETAILS = ("brief", "standard", "full")
 # What a destination is told about: ``threats``, only the incidents on the Threats page (a real
@@ -68,7 +69,7 @@ class AlertDestination(Base):
 
     __tablename__ = "alert_destinations"
     __table_args__ = (
-        CheckConstraint("kind IN ('discord')", name="kind"),
+        CheckConstraint("kind IN ('discord', 'email')", name="kind"),
         CheckConstraint("min_severity BETWEEN 1 AND 4", name="min_severity"),
         CheckConstraint("min_confidence BETWEEN 0 AND 100", name="min_confidence"),
         CheckConstraint("max_per_hour BETWEEN 1 AND 60", name="max_per_hour"),
@@ -88,6 +89,9 @@ class AlertDestination(Base):
     # The end of the webhook's number, so the owner can tell two webhooks apart. Not enough to
     # find the webhook, and it has no part of the token.
     hint: Mapped[str] = mapped_column(String(8), default="")
+    # For an email destination: the address it is sent to. Not a secret (the owner reads it on the
+    # page, to tell two destinations apart), unlike a webhook. None for any other kind.
+    recipient: Mapped[str | None] = mapped_column(String(254), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     # The last time a message was tried, the last time one got through and why the last one did not.
@@ -204,3 +208,31 @@ class AlertDelivery(Base):
     target_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("alert_deliveries.id", ondelete=SET_NULL), default=None
     )
+
+
+# How the connection to the mail server is made: ``starttls`` (a plain connection that is upgraded,
+# usually port 587), ``ssl`` (encrypted from the start, usually port 465) or ``none``.
+SMTP_SECURITIES = ("starttls", "ssl", "none")
+
+
+class SmtpSettings(Base):
+    """The mail server that email destinations send through. There is only ever one row, and none
+    until the owner first saves. The server's password is a secret, so it is not here: it is sealed
+    in the credential store under ``smtp``, and only the code that sends opens it."""
+
+    __tablename__ = "smtp_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        CheckConstraint("port BETWEEN 1 AND 65535", name="port"),
+        CheckConstraint("security IN ('starttls', 'ssl', 'none')", name="security"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
+    host: Mapped[str] = mapped_column(String(253))
+    port: Mapped[int] = mapped_column(Integer, default=587)
+    security: Mapped[str] = mapped_column(String(8), default="starttls")
+    # The account to sign in with, if the server asks for one.
+    username: Mapped[str | None] = mapped_column(String(254), default=None)
+    # The address the mail is sent from.
+    sender: Mapped[str] = mapped_column(String(254))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

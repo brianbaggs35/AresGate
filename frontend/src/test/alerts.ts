@@ -5,6 +5,7 @@ import type {
   Destination,
   Destinations,
   DiscordMessage,
+  MailServer,
   Rules,
   RulesPreview,
   Sample,
@@ -98,6 +99,7 @@ export function destination(changes: Partial<Destination> = {}): Destination {
     enabled: true,
     host: 'discord.com',
     hint: '…6789',
+    recipient: null,
     status: 'untested',
     last_attempt_at: null,
     last_success_at: null,
@@ -107,6 +109,46 @@ export function destination(changes: Partial<Destination> = {}): Destination {
     updated_at: new Date(NOW - 60 * MINUTE).toISOString(),
     ...changes,
   }
+}
+
+/** An email destination, through a mail server that is set up. */
+export function emailDestination(changes: Partial<Destination> = {}): Destination {
+  return destination({
+    id: 2,
+    kind: 'email',
+    name: 'Inbox',
+    host: 'smtp.example.com',
+    hint: '',
+    recipient: 'me@example.org',
+    ...changes,
+  })
+}
+
+/** The mail server as it is before it is set up. */
+export function noMailServer(changes: Partial<MailServer> = {}): MailServer {
+  return {
+    configured: false,
+    host: '',
+    port: 587,
+    security: 'starttls',
+    username: null,
+    sender: '',
+    password_kept: false,
+    default_ports: { starttls: 587, ssl: 465, none: 25 },
+    ...changes,
+  }
+}
+
+/** A mail server that is set up, with a password kept. */
+export function mailServer(changes: Partial<MailServer> = {}): MailServer {
+  return noMailServer({
+    configured: true,
+    host: 'smtp.example.com',
+    username: 'alerts@example.com',
+    sender: 'alerts@example.com',
+    password_kept: true,
+    ...changes,
+  })
 }
 
 /** A destination whose last message got through, ten minutes ago. */
@@ -137,6 +179,7 @@ export function destinations(
 ): Destinations {
   return {
     items,
+    smtp: noMailServer(),
     max_destinations: 10,
     hosts: ['discord.com', 'discordapp.com'],
     choices: choices(),

@@ -7,6 +7,8 @@ import {
   fetchSample,
   previewRules,
   removeDestination,
+  removeMailServer,
+  saveMailServer,
   sendSample,
   testDestination,
 } from '@/api/alerts'
@@ -42,6 +44,36 @@ describe('alerts', () => {
     await removeDestination(4, 'a-token')
 
     expect(remove).toHaveBeenCalledWith('/alerts/destinations/4', 'a-token')
+  })
+
+  it('adds an email destination, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ id: 5 })
+    const add = { kind: 'email', name: 'Inbox', recipient: 'me@example.org' } as const
+
+    await expect(addDestination(add, 'a-token')).resolves.toEqual({ id: 5 })
+    expect(post).toHaveBeenCalledWith('/alerts/destinations', add, 'a-token')
+  })
+
+  it('saves the mail server, with the sign-in token', async () => {
+    const put = vi.spyOn(client, 'apiPut').mockResolvedValue({ configured: true })
+    const change = {
+      host: 'smtp.example.com',
+      port: 587,
+      security: 'starttls',
+      username: null,
+      sender: 'alerts@example.com',
+    } as const
+
+    await expect(saveMailServer(change, 'a-token')).resolves.toEqual({ configured: true })
+    expect(put).toHaveBeenCalledWith('/alerts/smtp', change, 'a-token')
+  })
+
+  it('removes the mail server, with the sign-in token', async () => {
+    const remove = vi.spyOn(client, 'apiDelete').mockResolvedValue(undefined)
+
+    await removeMailServer('a-token')
+
+    expect(remove).toHaveBeenCalledWith('/alerts/smtp', 'a-token')
   })
 
   it('sends a test message, with the sign-in token', async () => {

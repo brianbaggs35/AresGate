@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Get alerts by email.** A new **Mail server** card on the **Alerts** page takes the settings
+  of your email provider's server, or one on your network: its name, how the connection is made
+  (STARTTLS, SSL or none), the port, the user name and password it needs and the address the
+  emails come from. The password is encrypted and never shown again, and a user name and password
+  are only sent over an encrypted connection. **Add destination** now offers **Email** beside
+  Discord: give it an address and it has its own rules, a test message, a sample alert and a place
+  in the delivery log, like a Discord channel. An email's subject is the incident's title with
+  `[AresGate]` in front, and it can't be changed after it is sent. See
+  [Alerts](DOCS/alerts.md#setting-up-email).
 - **Know how severe a vulnerability is with NIST NVD.** A new **NIST NVD** card in the **Threat
   intelligence** group takes an API key (optional, encrypted and never shown again) for the
   National Vulnerability Database. When an incident's alerts name a CVE, AresGate asks NVD about
