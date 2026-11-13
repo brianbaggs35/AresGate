@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 ADDRESS = "Address, for example"
 INDEXER = "Indexer management"
 PASTE_KEY = "Paste it into API key on the card."
+COPY_KEY = "Copy the API key"
 
 
 class Source(BaseModel):
@@ -730,7 +731,7 @@ VIRUSTOTAL = Guide(
             ),
             steps=(
                 Step(
-                    title="Copy the API key",
+                    title=COPY_KEY,
                     detail="Sign in to VirusTotal. Your API key is in your account's user menu.",
                     menu=("User menu",),
                     result=PASTE_KEY,
@@ -854,7 +855,7 @@ GREYNOISE = Guide(
                     ),
                 ),
                 Step(
-                    title="Copy the API key",
+                    title=COPY_KEY,
                     detail=(
                         "Sign in to the GreyNoise Visualizer, or sign up. Open the account menu "
                         "at the bottom of the left sidebar and choose API Key under Workspace."
@@ -899,7 +900,7 @@ FINGERBANK = Guide(
             ),
             steps=(
                 Step(
-                    title="Copy the API key",
+                    title=COPY_KEY,
                     detail=(
                         "Create a free account on Fingerbank's website, or sign in. Your API key "
                         "is on your account page."

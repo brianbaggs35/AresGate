@@ -79,7 +79,8 @@ function noiseWords(found: GreyNoiseReputation): string {
   if (found.business) return `GreyNoise: ${found.business}, a business service`
   const kind = found.classification ? `, ${found.classification}` : ''
   const named = [found.actor, found.tags].filter(Boolean).join('; ')
-  return `GreyNoise: scans the internet${kind}${named ? ` (${named})` : ''}`
+  const detail = named ? ` (${named})` : ''
+  return `GreyNoise: scans the internet${kind}${detail}`
 }
 
 const noise = computed(() => {
