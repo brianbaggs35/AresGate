@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
 from ipaddress import ip_address
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import select
@@ -64,6 +65,9 @@ def finding(**changes: object) -> dict[str, object]:
         "cites": [],
         "action": "Close port 22 on the router.",
         "confidence": "high",
+        "evidence": ["Eleven connections to port 22 in an hour.", "Refused by rule 4."],
+        "verify": "Look at the firewall log for port 22.",
+        "benign": "You were testing SSH yourself.",
         **changes,
     }
 
@@ -162,11 +166,12 @@ def test_a_run_without_ai_collects_what_the_template_looks_at_and_says_why_the_a
         (
             "plan",
             "Planned what to look at first: open incidents limit 5, alerts hours 24 limit 10, "
-            "blocked sources hours 24 limit 5",
+            "blocked sources hours 24 limit 5, attack chains limit 3",
         ),
         ("act", "Looked at open incidents limit 5"),
         ("act", "Looked at alerts hours 24 limit 10"),
         ("act", "Looked at blocked sources hours 24 limit 5"),
+        ("act", "Looked at attack chains limit 3"),
         ("think", "Didn't ask the AI"),
         ("report", "Wrote the report"),
     ]
@@ -175,7 +180,7 @@ def test_a_run_without_ai_collects_what_the_template_looks_at_and_says_why_the_a
     assert f"Scan from {ATTACKER}" in str(first_look.detail["lines"])
     assert first_look.detail["more"] == 0
     assert [ref["kind"] for ref in first_look.detail["refs"]] == ["incident"]  # type: ignore[attr-defined, union-attr]
-    assert [step.seq for step in steps_of(session, run_id)] == [1, 2, 3, 4, 5, 6]
+    assert [step.seq for step in steps_of(session, run_id)] == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_a_run_shows_the_model_only_what_the_level_allows_and_keeps_its_report(
@@ -209,6 +214,11 @@ def test_a_run_shows_the_model_only_what_the_level_allows_and_keeps_its_report(
     [kept] = done.findings
     assert kept["severity"] == "high"
     assert (kept["action"], kept["confidence"]) == ("Close port 22 on the router.", "high")
+    assert kept["evidence"] == ["Eleven connections to port 22 in an hour.", "Refused by rule 4."]
+    assert (kept["verify"], kept["benign"]) == (
+        "Look at the firewall log for port 22.",
+        "You were testing SSH yourself.",
+    )
     assert kept["cites"] == [
         {"kind": "incident", "key": str(seen.id), "label": f"Incident {seen.id}"}
     ]
@@ -758,6 +768,9 @@ def test_what_a_model_says_is_cut_down_to_what_is_allowed() -> None:
                     cites="nothing",
                     action=5,
                     confidence="certain",
+                    evidence=None,
+                    verify=None,
+                    benign=None,
                 ),
                 "not a finding",
                 *[finding(title=f"Finding {n}") for n in range(30)],
@@ -776,7 +789,9 @@ def test_what_a_model_says_is_cut_down_to_what_is_allowed() -> None:
     assert reading is not None
     assert reading.summary == ""
     assert len(reading.findings) == graph.MAX_FINDINGS
-    assert reading.findings[0] == graph.Raised("info", "x" * graph.MAX_TITLE, "", [], "", "medium")
+    assert reading.findings[0] == graph.Raised(
+        "info", "x" * graph.MAX_TITLE, "", [], "", "medium", [], "", ""
+    )
     assert reading.findings[1].action == "Close port 22 on the router."
     assert reading.findings[1].confidence == "high"
     assert len(reading.lookups) == graph.MAX_LOOKUPS
@@ -784,6 +799,41 @@ def test_what_a_model_says_is_cut_down_to_what_is_allowed() -> None:
         "device", tools.Args(id=None, name="nas", hours=2, limit=None)
     )
     assert all(item.tool in template.asks for item in reading.lookups)
+
+
+def test_the_evidence_a_model_gives_is_kept_short_and_only_as_text() -> None:
+    said_text = json.dumps(
+        {
+            "summary": "x",
+            "findings": [
+                finding(
+                    evidence=["  one  ", 5, "", "y" * 500, *[f"line {n}" for n in range(10)]],
+                    verify="v" * 900,
+                    benign=None,
+                ),
+                finding(evidence="not a list", verify=3),
+            ],
+            "lookups": [],
+        }
+    )
+
+    reading = graph.parse(said_text, catalog.THREAT_HUNTER)
+
+    assert reading is not None
+    first, second = reading.findings
+    # Only the first six are looked at, and of those the number and the empty line are dropped.
+    assert first.evidence == ["one", "y" * graph.MAX_EVIDENCE_LINE, "line 0", "line 1"]
+    assert len(first.verify) == graph.MAX_VERIFY
+    assert first.benign == ""
+    assert (second.evidence, second.verify) == ([], "")
+
+
+def test_every_agent_is_asked_for_the_evidence_a_finding_rests_on() -> None:
+    for template in (catalog.THREAT_HUNTER, catalog.HEALTH_WATCH):
+        assert '"evidence"' in graph.system_for(template)
+        properties = cast("dict[str, Any]", graph.schema(template)["properties"])
+        required = properties["findings"]["items"]["required"]
+        assert {"evidence", "verify", "benign"} <= set(required)
 
 
 def test_a_reply_that_names_no_lists_is_a_report_with_nothing_in_it() -> None:

@@ -343,6 +343,38 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         </v-btn>
       </v-alert>
 
+      <v-alert
+        v-if="shown.hunter.length"
+        type="warning"
+        variant="tonal"
+        :icon="false"
+        data-test="incident-hunter"
+      >
+        <p class="text-title-medium">Flagged by the threat hunter</p>
+        <p class="text-body-medium text-medium-emphasis">
+          It only reads and does not change this incident: it is its opinion, for you to decide.
+        </p>
+        <ul class="incident__hunter text-body-large">
+          <li
+            v-for="flag in shown.hunter"
+            :key="`${flag.agent_id}-${flag.title}`"
+            data-test="incident-hunter-flag"
+          >
+            <strong>{{ flag.agent_name }}</strong> ({{ flag.severity }},
+            {{ flag.confidence }} sure): {{ flag.title }}
+            <template v-if="flag.action"> What to do: {{ flag.action }}</template>
+          </li>
+        </ul>
+        <v-btn
+          variant="text"
+          :append-icon="ArrowRight"
+          :to="{ name: 'agent', params: { id: shown.hunter[0]!.agent_id } }"
+          data-test="incident-hunter-open"
+        >
+          See everything it found
+        </v-btn>
+      </v-alert>
+
       <HeroSurface
         test-id="incident-hero"
         :tone="heroTone"
@@ -574,6 +606,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 <style scoped>
 .incident {
   container-type: inline-size;
+}
+
+.incident__hunter {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
 }
 
 .incident__top {

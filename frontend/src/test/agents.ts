@@ -243,6 +243,9 @@ export const finding = (overrides: Partial<Finding> = {}): Finding => ({
   confidence: 'high',
   first_seen_at: '2026-11-10T12:00:12Z',
   runs_seen: 1,
+  evidence: [],
+  verify: '',
+  benign: '',
   ...overrides,
 })
 

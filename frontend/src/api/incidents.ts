@@ -169,6 +169,23 @@ export interface Incident {
   chain_role: 'attacker' | 'callout' | null
   chain_link: 'confirmed' | 'inferred' | null
   chain_reason: string | null
+  /** What the threat hunter's last run says of it, when it names it in a finding worth acting on.
+   * The hunter only reads: this is what it thinks, for you to decide. */
+  hunter: HunterFlag[]
+}
+
+/** One finding of the threat hunter that names an incident. */
+export interface HunterFlag {
+  agent_id: number
+  agent_name: string
+  run_id: number
+  finished_at: string
+  severity: string
+  title: string
+  /** What to do about it, or empty. */
+  action: string
+  /** How sure the agent is: low, medium or high. */
+  confidence: string
 }
 
 /** What is made of an incident beyond the rules, and whose word it is. */

@@ -11,6 +11,7 @@ import AppPage from '@/components/AppPage.vue'
 import ChainsSection from '@/components/ChainsSection.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FamilyCard from '@/components/FamilyCard.vue'
+import HuntedSection from '@/components/HuntedSection.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import KindSuggestion from '@/components/KindSuggestion.vue'
@@ -213,6 +214,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </section>
 
       <ChainsSection />
+      <HuntedSection :hunted="overview.hunted" />
 
       <SectionCard
         title="From reports to threats"

@@ -61,15 +61,19 @@ THREAT_HUNTER: Final = Template(
     ),
     icon="radar",
     brief=(
-        "You hunt for threats. Look at the open incidents, the latest alerts and the sources the "
-        "firewall turned away most, follow up on what looks serious, and report what is worth "
-        "the owner's attention and what is only noise."
+        "You hunt for threats. Look at the open incidents, the latest alerts, the attacks that "
+        "crossed two devices and the sources the firewall turned away most, follow up on what "
+        "looks serious by looking at the incident itself, and report what is worth the owner's "
+        "attention and what is only noise. A finding should let the owner decide without looking "
+        "it up again: name the incident, the device and the address involved, say what was seen "
+        "and how often, which stage of an attack it is, and how they can tell whether it is real."
     ),
     goal="Tell me about anything that looks like a real compromise, and ignore routine scanning.",
     first=(
         Lookup("open_incidents", Args(limit=5)),
         Lookup("alerts", Args(hours=24, limit=10)),
         Lookup("blocked_sources", Args(hours=24, limit=5)),
+        Lookup("attack_chains", Args(limit=3)),
     ),
     asks=(
         "open_incidents",

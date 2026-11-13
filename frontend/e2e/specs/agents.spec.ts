@@ -80,6 +80,8 @@ test.describe('agents', () => {
     harness,
     aiSettings,
     agents,
+    incident,
+    threats,
     page,
   }) => {
     await harness.createIncidents([SCAN])
@@ -119,6 +121,10 @@ test.describe('agents', () => {
     await expect(agents.findings.first()).toContainText('needs a look')
     await expect(agents.findings.first()).toContainText('What to do: Check the device it reached')
     await expect(agents.findings.first()).toContainText('Sure')
+    // What it rests on, how to check it, and what would make it harmless, to decide on.
+    await expect(agents.findings.first()).toContainText('Two programs reported it.')
+    await expect(agents.findings.first()).toContainText('How to check it')
+    await expect(agents.findings.first()).toContainText('What would make it harmless')
     await expect(agents.findings.first()).toContainText('First time it was reported')
     await expect(agents.trend).toBeVisible()
     await expect(agents.steps.first()).toBeVisible()
@@ -126,6 +132,15 @@ test.describe('agents', () => {
     await agents.findings.first().getByTestId('finding-cite').first().click()
 
     await expect(page).toHaveURL(/\/incidents\/\d+$/)
+    // The incident the hunter named says so, beside what AresGate makes of it.
+    await expect(incident.hunter).toContainText('Flagged by the threat hunter')
+    await expect(incident.hunter).toContainText('Night watch')
+    await expect(incident.hunter).toContainText('What to do: Check the device it reached')
+
+    // And so does the Threats page, whatever lane the incident is in.
+    await threats.goto()
+    await expect(threats.hunted).toContainText('The threat hunter flagged 1 incident')
+    await expect(threats.huntedItems).toHaveCount(1)
   })
 
   test('says nothing needed attention when there was nothing to look at', async ({

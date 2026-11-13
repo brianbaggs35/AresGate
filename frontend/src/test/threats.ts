@@ -92,6 +92,7 @@ export function overview(changes: Partial<Overview> = {}): Overview {
     threat_from: 65,
     families: [family()],
     suggestions: [],
+    hunted: { total: 0, items: [] },
     ...changes,
   }
 }

@@ -367,6 +367,10 @@ every kind that was set aside, and a kind that **changed since it was judged** s
 - **Incidents** can be narrowed to a lane or a kind, each incident says its lane, and changing every
   incident that matches a search includes the lane and kind in it.
 - A **kind** has its own page, and an incident links to its kind.
+- What the **threat hunter** flagged among the incidents going on is listed under the chains, with
+  what it suggests and a link to all of them (`hunted:yes` in Incidents). It is the hunter's
+  opinion, shown beside AresGate's own: it never moves an incident from one lane to another. See
+  [Agents](agents.md#what-the-threat-hunter-flagged).
 
 ## For developers
 
@@ -374,14 +378,14 @@ The API, all under `/api` and signed in:
 
 | | |
 | --- | --- |
-| `GET /threats/overview?window=24h\|7d` | The funnel, how many kinds the AI has judged, and the kinds with background incidents. |
+| `GET /threats/overview?window=24h\|7d` | The funnel, how many kinds the AI has judged, the kinds with background incidents, and `hunted`, how many incidents going on the threat hunter flagged and the first few. |
 | `GET /threats/families` | The kinds, narrowed by `lane`, `judged` (`ai`, `owner`, `waiting`) and `q`, a page at a time. |
 | `GET /threats/families/{id}` | One kind: what is thought of it, why its incidents are where they are, and a sample. A kind carries `changed_at` and `changes` when it has changed since it was judged. |
 | `PUT /threats/families/{id}/call` | Your word on a kind: `background`, `watch` or `null` to take it back. |
 | `POST /threats/families/{id}/judge` | Has the AI judge the kind now. |
 | `POST /threats/families/{id}/suggestion/dismiss` | Says not now to what is offered about the kind. The offer itself is `suggestion` on the kind and `suggestions` on the overview; taking it is `PUT …/call`. |
 | `GET` and `PUT /threat-settings`, `POST /threat-settings/preview` | The settings, and what saving them would do. |
-| `GET /incidents?lane=…&family=…` | The incident list takes repeatable `lane` and a `family`. |
+| `GET /incidents?lane=…&family=…` | The incident list takes repeatable `lane` and a `family`. Each incident carries `hunter`, what the threat hunter's last run said of it, if anything, and the search takes `hunted:yes`. |
 | `GET /review?state=waiting\|decided\|answered` | The AI's decisions in one list (`limit`, `offset`), with the counts of all three, how often you agreed (`standing`) and the mode. |
 | `GET /review/summary` | How many decisions wait, for the menu. |
 | `POST /review/{incident\|family}/{id}` | Agree, disagree (with a `reason`, and `keep_kind` for a kind that was set aside) or `undo`. |

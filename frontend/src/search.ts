@@ -47,6 +47,7 @@ export const SEARCH_EXAMPLES: readonly SearchExample[] = [
   { text: 'port:22', meaning: 'It touched this destination port' },
   { text: 'device:nas', meaning: 'It involves a device with this name, maker or hardware address' },
   { text: 'banned:yes', meaning: 'An integration banned the address' },
+  { text: 'hunted:yes', meaning: 'The threat hunter flagged it in its last run' },
   {
     text: 'since:6h',
     meaning: 'Going on in the last 6h, 2d, 1w, or since today, yesterday or a date',

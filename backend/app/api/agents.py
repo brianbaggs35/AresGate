@@ -183,6 +183,11 @@ class FindingOut(BaseModel):
     confidence: str
     first_seen_at: AwareDatetime
     runs_seen: int
+    # What it rests on, how to check it, and what would make it harmless. Empty for a finding made
+    # before they were asked for, or one the AI was not shown enough to say them of.
+    evidence: list[str]
+    verify: str
+    benign: str
 
 
 class GoneOut(BaseModel):
@@ -945,6 +950,9 @@ def _finding_out(item: dict[str, object], run: AgentRun, before: list[AgentRun])
         confidence=confidence if confidence in graph.CONFIDENCE else "medium",
         first_seen_at=kept.since,
         runs_seen=kept.runs,
+        evidence=[str(line) for line in cast("list[object]", item.get("evidence") or [])],
+        verify=str(item.get("verify") or ""),
+        benign=str(item.get("benign") or ""),
     )
 
 

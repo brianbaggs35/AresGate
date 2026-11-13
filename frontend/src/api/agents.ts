@@ -217,6 +217,12 @@ export interface Finding {
   /** Since when it has been reported, and in how many runs in a row. */
   first_seen_at: string
   runs_seen: number
+  /** The facts it rests on, one to a line; how to check it for yourself; what would make it
+   * harmless. Empty for a finding made before they were asked for, or when the agent was not shown
+   * enough to say. */
+  evidence: string[]
+  verify: string
+  benign: string
 }
 
 /** A finding the run before reported and this one does not. */

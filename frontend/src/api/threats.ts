@@ -89,6 +89,27 @@ export interface Overview {
   threat_from: number
   families: Family[]
   suggestions: SuggestedKind[]
+  /** What the threat hunter's last run flagged among the incidents going on, whatever lane they
+   * are in: it only reads, so its word is not one of the lanes. */
+  hunted: HuntedPage
+}
+
+/** An incident going on that the threat hunter flagged, and what it said of it. */
+export interface Hunted {
+  id: number
+  title: string
+  severity: string
+  agent_id: number
+  agent_name: string
+  run_id: number
+  finding: string
+  action: string
+}
+
+export interface HuntedPage {
+  /** How many incidents going on it flagged in all, and the first few. */
+  total: number
+  items: Hunted[]
 }
 
 export interface FamilyPage {

@@ -696,6 +696,7 @@ and each incident has a page of its own.
   | `port:22`, `port:22,2222` | it touched this destination port |
   | `device:nas` | it involves a device with this name, maker or hardware address |
   | `banned:yes` | a program banned the address |
+  | `hunted:yes` | the threat hunter flagged it in its last run (`hunted:no` for the rest) |
   | `since:6h`, `since:today`, `since:2026-10-01` | still going on after this time (`30m`, `6h`, `2d`, `1w`, `today`, `yesterday`, a date or a date and time) |
   | `before:2d` | began before this time |
   | `-source:wazuh` | a minus turns any term around |
