@@ -33,10 +33,11 @@ const title = () =>
 
 function moves(): string {
   const { moves: count, call } = props.suggestion
-  const incidents = `${count.toString()} ${count === 1 ? 'incident' : 'incidents'}`
-  return call === 'background'
-    ? `That would set aside ${incidents} that ${count === 1 ? 'is' : 'are'} going on now.`
-    : `That would bring ${incidents} that ${count === 1 ? 'is' : 'are'} set aside back into view.`
+  const one = count === 1
+  const incidents = `${count.toString()} ${one ? 'incident' : 'incidents'}`
+  const are = one ? 'is' : 'are'
+  if (call === 'background') return `That would set aside ${incidents} that ${are} going on now.`
+  return `That would bring ${incidents} that ${are} set aside back into view.`
 }
 
 /** Takes the offer: it becomes your word on the kind. */
