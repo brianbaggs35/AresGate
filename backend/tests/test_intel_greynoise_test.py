@@ -328,8 +328,8 @@ def test_the_subscription_ping_goes_out_through_the_connections_own_client(
 
     monkeypatch.setattr(service, "policy_for", policy_for)
 
-    async def record(call: Call) -> None:
-        del call
+    async def record(_call: Call) -> None:
+        """Keeps nothing: the test needs only the verdict."""
 
     result = asyncio.run(connection._ping(where, record))  # pyright: ignore[reportPrivateUsage]
 

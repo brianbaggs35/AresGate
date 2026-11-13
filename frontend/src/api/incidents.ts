@@ -368,10 +368,13 @@ export interface OtxReputation {
   link: string
 }
 
+/** How a threat-intelligence service judges an address. */
+export type ReputationJudgement = 'malicious' | 'suspicious' | 'clean' | 'unknown'
+
 /** What GreyNoise says of an address: whether it is one of the many that scan every address on
  * the internet, or a common business service. */
 export interface GreyNoiseReputation {
-  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  judgement: ReputationJudgement
   /** What it classifies the scanner as (benign, malicious or unknown), if it was seen. */
   classification: string | null
   /** The business service it is, if it is one. */
@@ -386,9 +389,9 @@ export interface GreyNoiseReputation {
 /** What the threat-intelligence service said of an address it was asked about. */
 export interface Reputation {
   /** What it comes to: the owner's ruling where there is one, else what the service made of it. */
-  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  judgement: ReputationJudgement
   /** What the service made of it, which a ruling does not change. */
-  reported: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  reported: ReputationJudgement
   /** What the owner of the network ruled of the address, and why, if they did. */
   ruling: 'safe' | 'suspicious' | null
   ruling_note: string | null
