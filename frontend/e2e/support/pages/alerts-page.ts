@@ -247,13 +247,18 @@ export class AlertsPage {
     await this.save.click()
   }
 
-  /** Sets up the mail server through its dialog, with the usual way to connect. */
-  async setUpMail(host: string, sender: string, password: string): Promise<void> {
-    await this.mailEdit.click()
+  /** Fills in the open mail server dialog, with the usual way to connect, and saves it. */
+  async fillMail(host: string, sender: string, password: string): Promise<void> {
     await this.mailHost.fill(host)
     await this.mailUsername.fill(sender)
     await this.mailPassword.fill(password)
     await this.mailSender.fill(sender)
     await this.mailSave.click()
+  }
+
+  /** Opens the mail server dialog and sets the server up. */
+  async setUpMail(host: string, sender: string, password: string): Promise<void> {
+    await this.mailEdit.click()
+    await this.fillMail(host, sender, password)
   }
 }
