@@ -1,7 +1,7 @@
 import { ApiError } from '@/api/client'
 import * as threatsApi from '@/api/threats'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { familyDetail } from '@/test/threats'
+import { familyDetail, suggestion } from '@/test/threats'
 import FamilyView from '@/views/FamilyView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -96,6 +96,24 @@ describe('FamilyView', () => {
     )
 
     expect(find('changed').text()).toContain('Your word on it stands')
+  })
+
+  it('offers what you keep deciding, and asks again once you have taken or put it off', async () => {
+    const { find, fetchIt } = await open(familyDetail({ suggestion: suggestion() }))
+    vi.spyOn(threatsApi, 'dismissSuggestion').mockResolvedValue(familyDetail())
+    expect(find('suggestion-reason').text()).toContain('You have closed 12')
+    fetchIt.mockClear()
+
+    await find('suggestion-dismiss').trigger('click')
+    await flushPromises()
+
+    expect(fetchIt).toHaveBeenCalledWith(7)
+  })
+
+  it('offers nothing when there is nothing to offer', async () => {
+    const { find } = await open()
+
+    expect(find('suggestion').exists()).toBe(false)
   })
 
   it('leaves out the reasons when there are none', async () => {

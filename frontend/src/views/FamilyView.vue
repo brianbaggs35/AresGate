@@ -10,6 +10,7 @@ import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FamilyJudgement from '@/components/FamilyJudgement.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
+import KindSuggestion from '@/components/KindSuggestion.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -118,6 +119,13 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         @call="call"
         @ask="ask"
         @answered="load(true)"
+      />
+
+      <KindSuggestion
+        v-if="family.suggestion"
+        :id="family.id"
+        :suggestion="family.suggestion"
+        @changed="load(true)"
       />
 
       <v-alert

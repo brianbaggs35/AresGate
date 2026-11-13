@@ -16,6 +16,15 @@ Every release's notes are here, newest first. The format follows
   is asked about it again at the next opportunity your usage level allows, told what changed. A
   kind you called stays yours and is not judged again, but its page says it changed. See
   [Threats](DOCS/threats.md#when-a-kind-changes-after-it-was-judged).
+- **Learn from your verdicts.** When you keep closing a kind of incident as not suspicious, low
+  priority or dismissed (at least 5 of the incidents you decided, 4 in 5 of them), the Threats page
+  and the kind's page offer **Always background?** with the numbers that led to it and how many
+  incidents it would move. The other way round, a kind the AI set aside that you keep taking up or
+  disagree with is offered **Never set aside?**. Nothing is ever done without your click, **Not
+  now** is remembered until you have decided twice as many incidents of the kind, and a kind that
+  has had a chain of stages in it is never offered to be set aside. What you decided of a kind is
+  also told to the AI when it judges it. See
+  [Threats](DOCS/threats.md#learning-from-what-you-decide).
 
 ## 0.1.5
 

@@ -3,7 +3,7 @@ import * as incidentsApi from '@/api/incidents'
 import * as threatsApi from '@/api/threats'
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { chain, family, funnel, overview } from '@/test/threats'
+import { chain, family, funnel, overview, suggestion } from '@/test/threats'
 import ThreatsView from '@/views/ThreatsView.vue'
 
 const offline = () => new ApiError(0, "Can't reach AresGate.", 'offline')
@@ -37,6 +37,44 @@ async function open({
 }
 
 describe('ThreatsView', () => {
+  it('offers what you keep deciding, kind by kind, above the chains', async () => {
+    const { wrapper, find } = await open({
+      found: overview({
+        suggestions: [
+          { id: 7, label: 'ET SCAN Potential SSH Scan', suggestion: suggestion() },
+          { id: 8, label: 'ET SCAN Nmap', suggestion: suggestion({ call: 'watch' }) },
+        ],
+      }),
+    })
+
+    expect(find('suggestions').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="suggestion"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-test="suggestion-kind"]').map((item) => item.text())).toEqual([
+      'ET SCAN Potential SSH Scan',
+      'ET SCAN Nmap',
+    ])
+  })
+
+  it('asks again once an offer is taken or put off', async () => {
+    const { wrapper, fetchOverview } = await open({
+      found: overview({
+        suggestions: [{ id: 7, label: 'ET SCAN Potential SSH Scan', suggestion: suggestion() }],
+      }),
+    })
+    fetchOverview.mockClear()
+
+    wrapper.findComponent({ name: 'KindSuggestion' }).vm.$emit('changed')
+    await flushPromises()
+
+    expect(fetchOverview).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no offers on a page with nothing to offer', async () => {
+    const { find } = await open()
+
+    expect(find('suggestions').exists()).toBe(false)
+  })
+
   it('shows the attacks across two devices above the funnel, when there are any', async () => {
     const { find, wrapper } = await open({ chains: [chain()] })
 

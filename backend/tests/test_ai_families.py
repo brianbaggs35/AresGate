@@ -231,6 +231,31 @@ class TestWhatTheAiIsAsked:
         assert "22 (3), 80 (3)" in said
         assert "45.33.32" not in said.split("example from")[0]
 
+    def test_it_is_told_what_the_owner_has_decided_of_its_incidents(self, session: Session) -> None:
+        found = kind(session, 4)
+        members = sorted(
+            session.scalars(select(Incident).where(Incident.family_id == found.id)),
+            key=lambda each: each.id,
+        )
+        members[0].status = "dismissed"
+        members[1].verdict = "low_priority"
+        members[2].verdict = "threat"
+        session.commit()
+
+        said = self.prompt(session, [found.id])
+
+        assert (
+            "the owner has decided 3 of its incidents: 2 closed as not suspicious, low priority "
+            "or dismissed, 1 called threats, taken up or disagreed with"
+        ) in said
+
+    def test_it_is_told_nothing_of_a_kind_the_owner_has_not_decided_anything_of(
+        self, session: Session
+    ) -> None:
+        found = kind(session, 2)
+
+        assert "the owner has decided" not in self.prompt(session, [found.id])
+
     def test_it_is_reminded_of_what_the_owner_disagreed_with(self, session: Session) -> None:
         found = kind(session, 3)
         session.add(

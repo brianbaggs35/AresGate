@@ -39,6 +39,62 @@ const SWEEPS: IncidentRequest[] = [
   },
 ]
 
+/** Eight bots from eight networks that said the same, of which you dismissed five. */
+const BOTS: IncidentRequest[] = Array.from({ length: 8 }, (_, number) => ({
+  address: `${11 + number}.20.30.40`,
+  programs: ['opnsense'],
+  signals: 3,
+  scan: true,
+  status: number < 5 ? 'dismissed' : 'open',
+}))
+
+test.describe('what is offered from what you decide', () => {
+  test('is a kind to set aside when you keep dismissing it, and is never done by itself', async ({
+    harness,
+    threats,
+    kinds,
+  }) => {
+    await harness.createIncidents(BOTS)
+
+    await threats.goto()
+
+    await expect(threats.suggestions).toHaveCount(1)
+    await expect(threats.suggestions).toContainText('Always treat this kind as background?')
+    await expect(threats.suggestionReason).toContainText('You have closed 5 of the 5 incidents')
+    await kinds.goto()
+    await expect(kinds.cards.first().getByTestId('family-owner')).toHaveCount(0)
+  })
+
+  test('becomes your word on the kind when you say yes', async ({ harness, threats, kinds }) => {
+    await harness.createIncidents(BOTS)
+    await threats.goto()
+
+    await threats.suggestionTake.click()
+
+    await expect(threats.suggestions).toHaveCount(0)
+    await kinds.goto()
+    await expect(kinds.cards.first().getByTestId('family-owner')).toHaveText('You set it aside')
+  })
+
+  test('goes when you say not now, and stays on the kind page until then', async ({
+    harness,
+    threats,
+    kinds,
+    kind,
+  }) => {
+    await harness.createIncidents(BOTS)
+    await kinds.goto()
+    await kinds.cards.first().getByTestId('family').click()
+    await expect(kind.suggestion).toContainText('Always treat this kind as background?')
+
+    await kind.suggestionDismiss.click()
+
+    await expect(kind.suggestion).toHaveCount(0)
+    await threats.goto()
+    await expect(threats.suggestions).toHaveCount(0)
+  })
+})
+
 test.describe('the kinds of incident', () => {
   test('are listed from the threats page, and none are made on a new install', async ({
     page,

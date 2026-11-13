@@ -101,6 +101,88 @@ class TestTheOverview:
         assert client.get(f"{BASE}/overview", params={"window": "1y"}).status_code == 422
 
 
+class TestSuggestions:
+    def decided(self, session: Session, name: str = "ET SCAN learned") -> IncidentFamily:
+        found = kind(session, 8, name, confidence=50)
+        for each in session.scalars(select(Incident).where(Incident.family_id == found.id)).all()[
+            :5
+        ]:
+            each.status = "dismissed"
+        session.commit()
+        return found
+
+    def test_the_overview_offers_what_you_keep_deciding(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.decided(session)
+
+        [offered] = client.get(f"{BASE}/overview").json()["suggestions"]
+
+        assert (offered["id"], offered["label"]) == (found.id, found.label)
+        assert (offered["suggestion"]["call"], offered["suggestion"]["moves"]) == ("background", 3)
+
+    def test_a_quiet_install_is_offered_nothing(self, client: TestClient, csrf_token: str) -> None:
+        assert client.get(f"{BASE}/overview").json()["suggestions"] == []
+
+    def test_not_now_is_kept_and_recorded_and_changes_nothing_else(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.decided(session)
+
+        answer = client.post(
+            f"{BASE}/families/{found.id}/suggestion/dismiss", headers=headers(csrf_token)
+        )
+
+        assert answer.status_code == 200
+        assert answer.json()["suggestion"] is None
+        assert client.get(f"{BASE}/overview").json()["suggestions"] == []
+        session.expire_all()
+        assert found.owner_call is None
+        [event] = audited(session, Action.THREATS_SUGGESTION_DISMISSED)
+        assert event.detail == {"family": found.id, "call": "background"}
+
+    def test_saying_not_now_to_nothing_changes_and_records_nothing(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = kind(session, 3, "ET SCAN nothing")
+
+        answer = client.post(
+            f"{BASE}/families/{found.id}/suggestion/dismiss", headers=headers(csrf_token)
+        )
+
+        assert answer.status_code == 200
+        assert audited(session, Action.THREATS_SUGGESTION_DISMISSED) == []
+
+    def test_a_kind_that_is_not_there_is_not_found_and_it_needs_the_token(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        missing = client.post(
+            f"{BASE}/families/4040/suggestion/dismiss", headers=headers(csrf_token)
+        )
+        bare = client.post(f"{BASE}/families/1/suggestion/dismiss")
+
+        assert (missing.status_code, bare.status_code) == (404, 403)
+
+    def test_it_is_only_for_someone_signed_in(self, client: TestClient, account: User) -> None:
+        assert client.post(f"{BASE}/families/1/suggestion/dismiss").status_code == 401
+
+    def test_taking_the_offer_is_your_word_on_the_kind_and_nothing_is_done_before(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = self.decided(session)
+        session.expire_all()
+        assert found.owner_call is None
+
+        answer = client.put(
+            f"{BASE}/families/{found.id}/call",
+            json={"call": "background"},
+            headers=headers(csrf_token),
+        )
+
+        assert answer.json()["suggestion"] is None
+        assert client.get(f"{BASE}/overview").json()["suggestions"] == []
+
+
 class TestListingTheKinds:
     def made(self, session: Session) -> dict[str, IncidentFamily]:
         return {
@@ -263,6 +345,30 @@ class TestOneKind:
             if each["id"] == found.id
         ]
         assert item["changes"] == body["changes"]
+
+    def test_it_says_what_is_offered_from_what_you_decided_and_nothing_when_there_is_none(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = kind(session, 8, "ET SCAN learned", confidence=50)
+        assert client.get(f"{BASE}/families/{found.id}").json()["suggestion"] is None
+        for each in session.scalars(select(Incident).where(Incident.family_id == found.id)).all()[
+            :5
+        ]:
+            each.status = "dismissed"
+        session.commit()
+
+        body = client.get(f"{BASE}/families/{found.id}").json()["suggestion"]
+
+        assert body == {
+            "call": "background",
+            "benign": 5,
+            "loud": 0,
+            "moves": 3,
+            "reason": (
+                "You have closed 5 of the 5 incidents of this kind you decided as not "
+                "suspicious, low priority or dismissed."
+            ),
+        }
 
     def test_a_kind_with_nothing_going_on_is_still_there(
         self, client: TestClient, csrf_token: str, session: Session

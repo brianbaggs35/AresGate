@@ -19,7 +19,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Final, cast
 
@@ -39,7 +39,7 @@ from app.models import CLASSES, AiCall, Incident, IncidentFamily
 from app.models.base import utcnow
 from app.review import service as review
 from app.review import settings as review_settings
-from app.threats import calls, drift, families, settings
+from app.threats import calls, drift, families, learning, settings
 
 PURPOSE: Final = "families"
 # How many families one request is about: more would make the answer cut short and the request
@@ -199,6 +199,8 @@ class Facts:
     stages: list[str]
     ports: list[tuple[int, int]]
     examples: list[occurrences.Occurrence]
+    # What the owner has decided of its incidents so far.
+    pattern: learning.Pattern = field(default_factory=learning.Pattern)
 
 
 def _span(first: datetime, last: datetime) -> str:
@@ -267,6 +269,10 @@ def facts_of(db: Session, ids: list[int]) -> list[Facts]:
                 occurrences.group(queries.signals(db, best[family.id]))[:EXAMPLES],
             )
         )
+    decided = learning.patterns(db, ids)
+    found = [
+        replace(item, pattern=decided.get(item.family.id, learning.Pattern())) for item in found
+    ]
     order = {family_id: place for place, family_id in enumerate(ids)}
     return sorted(found, key=lambda item: order[item.family.id])
 
@@ -276,6 +282,17 @@ _WHERE = {
     families.NETWORK: "the owner's own network",
     families.RULE: "a rule that names no address",
 }
+
+
+def _decided(pattern: learning.Pattern) -> list[str]:
+    """What the owner has decided of the incidents of a kind, which is what they think of it."""
+    if not pattern.decided:
+        return []
+    return [
+        f"  the owner has decided {pattern.decided} of its incidents: {pattern.benign} closed as "
+        f"not suspicious, low priority or dismissed, {pattern.loud} called threats, taken up or "
+        "disagreed with"
+    ]
 
 
 def _changed(family: IncidentFamily, redactor: Redactor) -> list[str]:
@@ -315,6 +332,7 @@ def prompt_for(facts: list[Facts], redactor: Redactor, taught: Sequence[str] = (
             f"{item.worst.name.lower()}; banned: {item.banned} of {item.incidents}",
             f"  stages of an attack seen: {', '.join(item.stages) or 'none'}",
             f"  destination ports touched (incidents): {port_text}",
+            *_decided(item.pattern),
             *_changed(family, redactor),
             redactor.evidence(
                 f"example from F{number}", [signal_line(example) for example in item.examples]

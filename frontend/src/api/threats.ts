@@ -60,6 +60,26 @@ export interface Family extends FamilyBrief {
   changes: string[]
 }
 
+/** What is offered about a kind from what you have decided of its incidents. It is never done
+ * unless you say yes. */
+export interface Suggestion {
+  /** background: always set it aside. watch: never set it aside. */
+  call: OwnerCall
+  /** How many of the incidents of it you decided closed them as benign, and how many you took up. */
+  benign: number
+  loud: number
+  /** How many incidents that are going on it would move: out of view, or back into it. */
+  moves: number
+  reason: string
+}
+
+/** A kind with something to offer about it. */
+export interface SuggestedKind {
+  id: number
+  label: string
+  suggestion: Suggestion
+}
+
 export interface Overview {
   window: WindowInfo
   funnel: Funnel
@@ -68,6 +88,7 @@ export interface Overview {
   watching: boolean
   threat_from: number
   families: Family[]
+  suggestions: SuggestedKind[]
 }
 
 export interface FamilyPage {
@@ -81,6 +102,8 @@ export interface FamilyDetail extends Family {
   owner_call_at: string | null
   /** What is behind the call on the kind, a fact to a line. */
   why: string[]
+  /** What is offered about it from what you have decided of its incidents, if anything. */
+  suggestion: Suggestion | null
   /** The incidents of it going on, the most recent first. */
   sample: Incident[]
 }
@@ -126,6 +149,12 @@ export function callFamily(
   csrfToken: string,
 ): Promise<FamilyDetail> {
   return apiPut<FamilyDetail>(`/threats/families/${id}/call`, { call }, csrfToken)
+}
+
+/** Says not now to what is offered about a kind: it is offered again once you have decided twice
+ * as many of its incidents. */
+export function dismissSuggestion(id: number, csrfToken: string): Promise<FamilyDetail> {
+  return apiPost<FamilyDetail>(`/threats/families/${id}/suggestion/dismiss`, {}, csrfToken)
 }
 
 /** Asks the AI what a kind of incident is. */

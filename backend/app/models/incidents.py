@@ -310,6 +310,11 @@ class IncidentFamily(Base):
     changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     # When it was last compared, so that it is looked at no more often than needed.
     drift_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # A suggestion the owner said not now to (app/threats/learning.py): which call it was and how
+    # many of the kind's incidents they had decided by then, so that it is offered again only
+    # when they have decided twice as many.
+    suggestion_dismissed: Mapped[str | None] = mapped_column(String(10), default=None)
+    suggestion_dismissed_count: Mapped[int | None] = mapped_column(Integer, default=None)
 
 
 class ThreatSettings(Base):

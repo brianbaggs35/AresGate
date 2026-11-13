@@ -7,6 +7,7 @@ import type {
   FamilyDetail,
   Funnel,
   Overview,
+  Suggestion,
 } from '@/api/threats'
 import type { ThreatPreview, ThreatSettings } from '@/api/threatSettings'
 
@@ -68,6 +69,19 @@ export function family(changes: Partial<Family> = {}): Family {
   }
 }
 
+/** The offer to always set a kind aside, from a kind that was dismissed again and again. */
+export function suggestion(changes: Partial<Suggestion> = {}): Suggestion {
+  return {
+    call: 'background',
+    benign: 12,
+    loud: 0,
+    moves: 4,
+    reason:
+      'You have closed 12 of the 12 incidents of this kind you decided as not suspicious, low priority or dismissed.',
+    ...changes,
+  }
+}
+
 export function overview(changes: Partial<Overview> = {}): Overview {
   const { window } = dashboard()
   return {
@@ -77,6 +91,7 @@ export function overview(changes: Partial<Overview> = {}): Overview {
     watching: true,
     threat_from: 65,
     families: [family()],
+    suggestions: [],
     ...changes,
   }
 }
@@ -89,6 +104,7 @@ export function familyDetail(changes: Partial<FamilyDetail> = {}): FamilyDetail 
     model: 'claude-haiku-5-5',
     owner_call_at: null,
     why: ['The AI is 92% sure this kind is a probe, so its incidents are background.'],
+    suggestion: null,
     sample: [incident({ id: 3, lane: 'background', family_id: 7 })],
     ...changes,
   }
