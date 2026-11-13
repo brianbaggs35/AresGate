@@ -341,7 +341,8 @@ export type StandInKind =
   | 'discord'
 
 /** What a stand-in accepts: ntopng a `token`, CrowdSec and Zenarmor an `api_key`, OPNsense an
- * `api_key` and `api_secret` (and the keys of the `services` it has installed and running),
+ * `api_key` and `api_secret` (and the keys of the `services` it has installed and running, and
+ * of the `stopped` ones it has installed but not running),
  * Wazuh a `username` and `password` (one stand-in answers as both its manager and its indexer).
  * An AI provider's stand-in has the `models` it knows, and an Anthropic or OpenAI one an `api_key`
  * (so does Ollama's cloud); `provider` makes AresGate ask it instead of the provider it stands
@@ -352,6 +353,7 @@ export interface StandInRequest {
   api_key?: string
   api_secret?: string
   services?: string[]
+  stopped?: string[]
   username?: string
   password?: string
   models?: string[]

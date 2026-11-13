@@ -19,7 +19,13 @@ from app.integrations import netguard, probes, registry
 from app.integrations.client import ApiClient, Recorder, Target
 from app.integrations.netguard import AddressPolicy, Origin, Refused
 from app.integrations.probes import Verdict
-from app.integrations.registry import ConnectionDef, FieldKind, IntegrationDef, SettingsError
+from app.integrations.registry import (
+    ConnectionDef,
+    FieldKind,
+    IntegrationDef,
+    ModuleState,
+    SettingsError,
+)
 from app.models import CollectorHealth, IntegrationConnection
 from app.security import credential_store
 from app.security.credential_store import Kind
@@ -440,15 +446,28 @@ async def look_up(
         return await probes.look_up(lookup, client, target)
 
 
-def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> None:
+def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> list[str]:
     """Keeps how an attempt went. A success clears the last failure's reason. A held connection
-    isn't tested now, so its last success stays as it was, but its failure is cleared."""
+    isn't tested now, so its last success stays as it was, but its failure is cleared.
+
+    The first time a connection works, the modules it found installed but not running are switched
+    off (the keys of those are returned), so that AresGate doesn't read what isn't there to read.
+    That is done once, when connecting: what is switched on or off after that is the owner's."""
     row.last_attempt_at = now
+    switched_off: list[str] = []
     if verdict.modules is not None:
         row.module_states = {key: state.value for key, state in verdict.modules.items()}
     if verdict.ok:
         if not verdict.held:
+            if verdict.modules is not None and row.last_success_at is None:
+                switched_off = sorted(
+                    key
+                    for key, state in verdict.modules.items()
+                    if state is ModuleState.STOPPED and key not in row.disabled_modules
+                )
+                row.disabled_modules = sorted({*row.disabled_modules, *switched_off})
             row.last_success_at = now
         row.last_error = None
     else:
         row.last_error = audit.clean(verdict.message, 500)
+    return switched_off

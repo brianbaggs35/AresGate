@@ -16,12 +16,14 @@ export async function connectFirewall(
   harness: Harness,
   integration: IntegrationPage,
   services: string[],
+  stopped: string[] = [],
 ): Promise<void> {
   const firewall = await harness.standIn({
     kind: 'opnsense',
     api_key: FIREWALL_KEY,
     api_secret: FIREWALL_SECRET,
     services,
+    stopped,
   })
   await integration.goto('opnsense')
   await integration.address('api').fill(firewall.url)

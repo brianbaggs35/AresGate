@@ -8,6 +8,11 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Connecting OPNsense switches off the services that aren't running.** The first time the
+  connection works, the services it finds installed but stopped are switched off, the test says
+  which, and the form shows them off, so AresGate doesn't try to read what isn't there. Switch one
+  back on whenever you like: later tests leave your choice alone. See
+  [Integrations](DOCS/integrations.md#opnsense-and-everything-that-runs-on-it).
 - **Zenarmor needs a paid subscription, and the setup says so.** The Zenarmor part of the OPNsense
   setup guide and [Integrations](DOCS/integrations.md) now say that Zenarmor lists its API as a
   feature of its paid editions, so the free edition may refuse the connection, and that leaving

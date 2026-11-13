@@ -1187,6 +1187,28 @@ test.describe('integrations', () => {
       ])
     })
 
+    test('switches off the services that are installed but not running, until you switch them on', async ({
+      harness,
+      integration,
+    }) => {
+      await connectFirewall(harness, integration, ['suricata'], ['openvpn'])
+
+      await expect(integration.report).toContainText(
+        'Switched off, as they are installed but not running: OpenVPN.',
+      )
+      await expect(integration.module('api', 'OpenVPN')).toContainText('Stopped')
+      await expect(integration.moduleSwitch('api', 'OpenVPN')).not.toBeChecked()
+      await expect(integration.moduleSwitch('api', 'Suricata')).toBeChecked()
+      await expect(integration.unsaved).toBeHidden()
+
+      // It is the owner's to switch on, and a later test leaves it on.
+      await integration.moduleSwitch('api', 'OpenVPN').check()
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await expect(integration.report).not.toContainText('Switched off')
+      await expect(integration.moduleSwitch('api', 'OpenVPN')).toBeChecked()
+    })
+
     test('reads its firewall log and what it measures beside the connection check', async ({
       harness,
       integration,

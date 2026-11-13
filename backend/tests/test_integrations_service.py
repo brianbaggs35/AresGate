@@ -121,6 +121,58 @@ def test_saving_again_replaces_the_settings_and_keeps_the_secrets_left_blank(
     assert secret(session, settings, "opnsense-api", "api_secret") == "secret-123456"
 
 
+def test_the_first_time_a_connection_works_the_services_that_are_not_running_are_switched_off(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api(disabled_modules=["kea"])})
+    row = service.rows_for(session, "opnsense")["api"]
+    found = {
+        "firewall": ModuleState.RUNNING,
+        "suricata": ModuleState.RUNNING,
+        "crowdsec": ModuleState.STOPPED,
+        "kea": ModuleState.STOPPED,
+        "openvpn": ModuleState.INSTALLED,
+        "wireguard": ModuleState.NOT_INSTALLED,
+        "ipsec": ModuleState.NO_ACCESS,
+        "unbound": ModuleState.UNKNOWN,
+    }
+
+    switched_off = service.record_attempt(row, Verdict(True, "ok", found), NOW)
+
+    # Only those found stopped, and not one that was off already.
+    assert switched_off == ["crowdsec"]
+    assert row.disabled_modules == ["crowdsec", "kea"]
+    assert row.module_states["crowdsec"] == "stopped"
+
+
+def test_what_the_owner_switches_on_after_connecting_stays_on(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+    stopped = Verdict(True, "ok", {"crowdsec": ModuleState.STOPPED})
+    assert service.record_attempt(row, stopped, NOW) == ["crowdsec"]
+
+    row.disabled_modules = []
+    assert service.record_attempt(row, stopped, LATER) == []
+
+    assert row.disabled_modules == []
+
+
+def test_nothing_is_switched_off_by_a_test_that_failed_or_that_did_not_look(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+    stopped = {"crowdsec": ModuleState.STOPPED}
+
+    assert service.record_attempt(row, Verdict(False, "Broke", stopped), NOW) == []
+    assert service.record_attempt(row, Verdict(True, "Held", stopped, held=True), NOW) == []
+    assert service.record_attempt(row, Verdict(True, "No modules"), NOW) == []
+
+    assert row.disabled_modules == []
+
+
 def test_saving_what_is_already_saved_keeps_how_the_last_test_went(
     session: Session, settings: Settings
 ) -> None:

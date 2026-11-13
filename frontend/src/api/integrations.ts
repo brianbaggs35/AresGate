@@ -189,6 +189,8 @@ export interface Check {
   message: string
   /** Whether it failed over the system's certificate. */
   certificate_problem: boolean
+  /** The keys of the services found installed but not running, which connecting switched off. */
+  switched_off: string[]
 }
 
 /** How a test went, and the integration as it is now. */

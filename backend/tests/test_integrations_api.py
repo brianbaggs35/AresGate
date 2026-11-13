@@ -361,6 +361,7 @@ def test_a_test_that_works_marks_it_connected_and_logs_the_call(
             "ok": True,
             "message": "CrowdSec's local API accepted the key.",
             "certificate_problem": False,
+            "switched_off": [],
         }
     ]
     assert body["integration"]["status"] == "connected"
@@ -515,6 +516,50 @@ def test_opnsense_over_tls_finds_the_services_and_remembers_them(
     calls = client.get(f"{BASE}/opnsense/calls", params={"limit": 200}).json()["calls"]
     assert calls[-1]["path"] == "/api/diagnostics/system/system_information"
     assert len(calls) == 11
+
+
+def test_connecting_opnsense_switches_off_the_services_that_are_installed_but_not_running(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    certificate = make_certificate()
+
+    def router(seen: Seen) -> Answer:
+        if seen.path == "/api/diagnostics/system/system_information":
+            return Answer(body='{"versions": ["OPNsense 25.7"]}')
+        if seen.path == "/api/ids/service/status":
+            return Answer(body='{"status": "running"}')
+        if seen.path == "/api/crowdsec/service/status":
+            return Answer(body='{"status": "stopped"}')
+        return Answer(status=404)
+
+    server = serve(router, certificate)
+    api: dict[str, object] = {
+        "url": server.url,
+        "tls_mode": "pinned",
+        "tls_fingerprint": certificate.fingerprint,
+        "secrets": {"api_key": "key-123456", "api_secret": "secret-123456"},
+    }
+    assert put(client, csrf_token, "opnsense", {"connections": {"api": api}}).status_code == 200
+
+    first = client.post(f"{BASE}/opnsense/test", headers=headers(csrf_token)).json()
+
+    [check] = first["checks"]
+    assert check["switched_off"] == ["crowdsec"]
+    assert check["message"].endswith(
+        "Switched off, as they are installed but not running: CrowdSec. "
+        "Switch them on whenever you like."
+    )
+    modules = {item["key"]: item for item in first["integration"]["connections"][0]["modules"]}
+    assert (modules["crowdsec"]["state"], modules["crowdsec"]["enabled"]) == ("stopped", False)
+    assert modules["suricata"]["enabled"] is True
+
+    # Switched on again, it stays on through the next test.
+    again: dict[str, object] = {**api, "disabled_modules": [], "secrets": {}}
+    assert put(client, csrf_token, "opnsense", {"connections": {"api": again}}).status_code == 200
+    second = client.post(f"{BASE}/opnsense/test", headers=headers(csrf_token)).json()
+    assert second["checks"][0]["switched_off"] == []
+    modules = {item["key"]: item for item in second["integration"]["connections"][0]["modules"]}
+    assert modules["crowdsec"]["enabled"] is True
 
 
 def test_the_certificate_a_system_presents_can_be_looked_at(
