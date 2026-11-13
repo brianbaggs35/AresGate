@@ -40,12 +40,12 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE alert_destinations ADD COLUMN IF NOT EXISTS recipient VARCHAR(254)")
     op.execute(f"ALTER TABLE alert_destinations DROP CONSTRAINT IF EXISTS {KIND}")
-    op.create_check_constraint(KIND, "alert_destinations", "kind IN ('discord', 'email')")
+    op.create_check_constraint(op.f(KIND), "alert_destinations", "kind IN ('discord', 'email')")
 
 
 def downgrade() -> None:
     op.execute("DELETE FROM alert_destinations WHERE kind = 'email'")
     op.execute(f"ALTER TABLE alert_destinations DROP CONSTRAINT IF EXISTS {KIND}")
-    op.create_check_constraint(KIND, "alert_destinations", "kind IN ('discord')")
+    op.create_check_constraint(op.f(KIND), "alert_destinations", "kind IN ('discord')")
     op.execute("ALTER TABLE alert_destinations DROP COLUMN IF EXISTS recipient")
     op.drop_table("smtp_settings", if_exists=True)
