@@ -64,6 +64,50 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the devices and the page of one have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      devices,
+      device,
+      shell,
+    }) => {
+      await harness.createAssets({
+        devices: [
+          {
+            hostname: 'laptop',
+            mac: '00:11:22:0a:0b:0c',
+            vendor: 'Example Devices Inc.',
+            addresses: ['192.168.1.20'],
+          },
+        ],
+      })
+      await harness.createEvents([
+        {
+          src_address: '192.168.1.20',
+          dst_address: '93.184.216.34',
+          dst_port: 443,
+          protocol: 'tcp',
+          repeat: 3,
+        },
+        { src_address: '8.8.8.8', dst_address: '192.168.1.20', dst_port: 22, protocol: 'tcp' },
+      ])
+      await harness.createIncidents([{ address: '8.8.8.8', severity: 'critical' }])
+      await devices.goto()
+      await expect(devices.cards).toHaveCount(3)
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      await devices.find('no such device')
+      await expect(devices.emptyTitle).toHaveText('Nothing matches')
+      await expectAccessible(page)
+
+      await page.goto('/devices/8.8.8.8')
+      await expect(device.connectionRows.first()).toBeVisible()
+      await expect(device.incidents).toHaveCount(1)
+      await expectAccessible(page)
+    })
+
     test('the assets of a network with nothing connected have no WCAG 2.2 AA problems', async ({
       page,
       assets,

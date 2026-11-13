@@ -13,6 +13,7 @@ import { AssetsPage } from './pages/assets-page'
 import { AssistantPage } from './pages/assistant-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
+import { DevicePage, DevicesPage } from './pages/devices-page'
 import { IncidentPage } from './pages/incident-page'
 import { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 import { IncidentsPage } from './pages/incidents-page'
@@ -70,6 +71,10 @@ export interface AresGateFixtures {
   assets: AssetsPage
   /** The page of one asset: what it is, how it has been listed, and what it did. */
   asset: AssetPage
+  /** Every address that took part in a connection the connected programs reported. */
+  devices: DevicesPage
+  /** The page of one of them: the connections to it and from it, and what is known of it. */
+  device: DevicePage
   status: StatusPage
   /** What the AI decided, for the owner to agree or disagree with, and how much of it waits. */
   review: ReviewPage
@@ -220,6 +225,14 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   asset: async ({ page }, use) => {
     await use(new AssetPage(page))
+  },
+
+  devices: async ({ page }, use) => {
+    await use(new DevicesPage(page))
+  },
+
+  device: async ({ page }, use) => {
+    await use(new DevicePage(page))
   },
 
   status: async ({ page }, use) => {

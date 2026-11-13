@@ -214,14 +214,14 @@ def asset_out(asset: Asset) -> AssetOut:
         listings=[_listing(item) for item in asset.listings],
         interfaces=list(asset.interfaces),
         own=asset.own,
-        profile=_profile(asset.profile),
+        profile=profile_out(asset.profile),
         suggested_kind=asset.suggested,
         suggested_label=profiles.BY_KEY[asset.suggested].label if asset.suggested else None,
-        identity=_identity(asset.identity),
+        identity=identity_out(asset.identity),
     )
 
 
-def _identity(named: inventory.Identity | None) -> IdentityOut | None:
+def identity_out(named: inventory.Identity | None) -> IdentityOut | None:
     if named is None:
         return None
     return IdentityOut(
@@ -238,7 +238,7 @@ def _identity(named: inventory.Identity | None) -> IdentityOut | None:
     )
 
 
-def _profile(said: profiles.Profile | None) -> ProfileOut | None:
+def profile_out(said: profiles.Profile | None) -> ProfileOut | None:
     return None if said is None else _said(said)
 
 
@@ -508,7 +508,7 @@ def _total(readings: Sequence[Reading]) -> tuple[float, float]:
     )
 
 
-def _event(item: detail.EventSeen, mine: set[str]) -> EventOut:
+def event_out(item: detail.EventSeen, mine: set[str]) -> EventOut:
     source = _text(item.src_address)
     return EventOut(
         id=item.id,
@@ -528,8 +528,25 @@ def _event(item: detail.EventSeen, mine: set[str]) -> EventOut:
     )
 
 
+def standing_out(standing: detail.Standing | None) -> StandingOut | None:
+    """What threat intelligence kept of an address, as the pages show it."""
+    if standing is None:
+        return None
+    return StandingOut(
+        judgement=cast("Judgement", standing.judgement),
+        reported=cast("Judgement", standing.reported),
+        malicious=standing.malicious,
+        suspicious=standing.suspicious,
+        engines=standing.engines,
+        owner=standing.owner,
+        country=standing.country,
+        checked_at=standing.checked_at,
+        ruling=cast("Literal['safe', 'suspicious'] | None", standing.ruling),
+        ruling_note=standing.ruling_note,
+    )
+
+
 def _peer(item: detail.Peer) -> PeerOut:
-    standing = item.standing
     return PeerOut(
         address=str(item.address),
         events=item.events,
@@ -539,20 +556,7 @@ def _peer(item: detail.Peer) -> PeerOut:
             for port in item.ports
         ],
         internal=item.internal,
-        standing=None
-        if standing is None
-        else StandingOut(
-            judgement=cast("Judgement", standing.judgement),
-            reported=cast("Judgement", standing.reported),
-            malicious=standing.malicious,
-            suspicious=standing.suspicious,
-            engines=standing.engines,
-            owner=standing.owner,
-            country=standing.country,
-            checked_at=standing.checked_at,
-            ruling=cast("Literal['safe', 'suspicious'] | None", standing.ruling),
-            ruling_note=standing.ruling_note,
-        ),
+        standing=standing_out(item.standing),
     )
 
 
@@ -572,7 +576,7 @@ def _detail_out(found: detail.Detail) -> AssetDetailOut:
             )
             for item in found.addresses
         ],
-        events=[_event(item, mine) for item in found.events],
+        events=[event_out(item, mine) for item in found.events],
         events_day=found.events_day,
         events_week=found.events_week,
         talks_to=[_peer(item) for item in found.talks_to],

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   MonitorSmartphone,
   Network,
+  Radar,
   Workflow,
   Plug,
   ScanSearch,
@@ -56,6 +57,13 @@ export const navItems: readonly NavItem[] = [
   },
   { route: 'logs', title: 'Logs', icon: ScrollText },
   { route: 'assets', title: 'Assets', icon: MonitorSmartphone },
+  {
+    route: 'devices',
+    title: 'Devices',
+    icon: Radar,
+    keywords:
+      'connections incoming outgoing source destination port protocol peers remote internet',
+  },
   { route: 'integrations', title: 'Integrations', icon: Plug },
   {
     route: 'threat-intelligence',

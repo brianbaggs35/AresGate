@@ -12,7 +12,13 @@ const PAUSE = 350
  * search, which lives in the address of the page; what is typed is applied after a pause, or at
  * once with Enter.
  */
-const props = defineProps<{ modelValue: string }>()
+const props = withDefaults(
+  defineProps<{ modelValue: string; label?: string; placeholder?: string }>(),
+  {
+    label: 'Search assets',
+    placeholder: 'Name, address, maker or hardware address',
+  },
+)
 const emit = defineEmits<{ 'update:modelValue': [text: string] }>()
 
 const typed = ref(props.modelValue)
@@ -54,8 +60,8 @@ onBeforeUnmount(() => {
     ref="field"
     :model-value="typed"
     type="search"
-    label="Search assets"
-    placeholder="Name, address, maker or hardware address"
+    :label="label"
+    :placeholder="placeholder"
     :prepend-inner-icon="Search"
     clearable
     hide-details
