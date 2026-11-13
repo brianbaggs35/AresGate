@@ -46,6 +46,7 @@ const passed = (after: Integration = working()): CheckReport => ({
       ok: true,
       message: 'ntopng answered. Interface 0 is eth0.',
       certificate_problem: false,
+      switched_off: [],
     },
   ],
   integration: after,
@@ -355,6 +356,7 @@ describe('IntegrationView', () => {
             ok: false,
             message: 'ntopng redirected to its login page.',
             certificate_problem: false,
+            switched_off: [],
           },
         ],
         integration: after,
@@ -557,6 +559,7 @@ describe('IntegrationView', () => {
             ok: false,
             message: 'ntopng answered, but has no interface with ID 0.',
             certificate_problem: false,
+            switched_off: [],
           },
         ],
         integration: gone,
@@ -655,6 +658,50 @@ describe('IntegrationView', () => {
     })
   })
 
+  describe('services that are not running', () => {
+    /** What testing found: CrowdSec is installed but stopped, so connecting switched it off. */
+    const switchedOff = (): CheckReport => {
+      const found = opnsense({ status: 'connected' })
+      found.connections[0]!.modules = [
+        module({ key: 'firewall', label: 'Firewall and system', state: 'running' }),
+        module({ key: 'suricata', label: 'Suricata', state: 'running' }),
+        module({ key: 'crowdsec', label: 'CrowdSec', state: 'stopped', enabled: false }),
+      ]
+      return {
+        ok: true,
+        checks: [
+          {
+            connection: 'api',
+            ok: true,
+            message:
+              'OPNsense answered. Switched off, as they are installed but not running: CrowdSec. ' +
+              'Switch them on whenever you like.',
+            certificate_problem: false,
+            switched_off: ['crowdsec'],
+          },
+        ],
+        integration: found,
+      }
+    }
+    const switches = (opened: Awaited<ReturnType<typeof open>>) =>
+      opened.wrapper
+        .findAll('[data-test="module-switch"] input')
+        .map((each) => (each.element as HTMLInputElement).checked)
+
+    it('says so, and shows them switched off without calling the form changed', async () => {
+      const opened = await open(opnsense())
+      opened.save.mockResolvedValue(opnsense())
+      opened.test.mockResolvedValue(switchedOff())
+      await opened.type('connection-url', 'https://192.168.1.1')
+
+      await opened.submit()
+
+      expect(opened.find('report').text()).toContain('Switched off, as they are installed')
+      expect(switches(opened)).toEqual([true, true, false])
+      expect(opened.find('unsaved').exists()).toBe(false)
+    })
+  })
+
   describe('a certificate that is not trusted', () => {
     const REASON = "The certificate isn't trusted: it vouches for itself and nobody else does."
 
@@ -682,6 +729,7 @@ describe('IntegrationView', () => {
           ok: false,
           message: REASON,
           certificate_problem: certificateProblem,
+          switched_off: [],
         },
       ],
       integration: refused(),
@@ -803,12 +851,14 @@ describe('IntegrationView', () => {
             ok: true,
             message: 'OPNsense answered.',
             certificate_problem: false,
+            switched_off: [],
           },
           {
             connection: 'zenarmor',
             ok: false,
             message: 'Zenarmor answered 403.',
             certificate_problem: false,
+            switched_off: [],
           },
         ],
         integration: opnsense(),

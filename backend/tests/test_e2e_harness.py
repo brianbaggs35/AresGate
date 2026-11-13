@@ -48,6 +48,7 @@ from e2e.baseline import (
 )
 from e2e.coverage_report import current_measurement
 from e2e.main import create_e2e_app
+from e2e.stand_ins import Seen, opnsense
 from tests.helpers import ORIGIN
 
 WEBHOOK_ID = "1234567890123456789"
@@ -436,6 +437,19 @@ def test_a_stand_in_can_be_started_for_a_test_to_connect_to(e2e: TestClient) -> 
     assert secure.json()["fingerprint"].count(":") == 31
     assert reachable(plain.json()["url"])
     assert reachable(secure.json()["url"])
+
+
+def test_an_opnsense_stand_in_has_services_running_stopped_and_not_installed() -> None:
+    handler = opnsense("a-key", "a-secret", {"suricata"}, stopped={"openvpn"})
+    login = "Basic " + base64.b64encode(b"a-key:a-secret").decode()
+
+    def status_of(path: str) -> tuple[int, str]:
+        answer = handler(Seen("GET", path, {"authorization": login}, b""))
+        return answer.status, str(answer.body)
+
+    assert status_of("/api/openvpn/service/search_sessions") == (200, '{"status": "stopped"}')
+    assert status_of("/api/wireguard/service/status")[0] == 404
+    assert "running" in status_of("/api/ids/service/status")[1]
 
 
 @pytest.mark.usefixtures("stand_ins")

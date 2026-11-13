@@ -601,6 +601,8 @@ class StandInRequest(BaseModel):
     api_secret: str = ""
     # OPNsense only: the services (by key) that are installed and running on it.
     services: list[str] = []
+    # OPNsense only: the services (by key) that are installed but stopped.
+    stopped: list[str] = []
     # Wazuh: the user and password of its manager and its indexer.
     username: str = ""
     password: str = ""
@@ -637,6 +639,7 @@ def start_stand_in(body: StandInRequest, request: Request) -> StandInRecord:
         api_key=body.api_key,
         api_secret=body.api_secret,
         services=body.services,
+        stopped=body.stopped,
         username=body.username,
         password=body.password,
         models=body.models,

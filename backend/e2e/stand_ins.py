@@ -1117,6 +1117,7 @@ def opnsense(
     api_secret: str,
     services: Collection[str],
     *,
+    stopped: Collection[str] = (),
     firewall_log: Sequence[Mapping[str, str]] = (),
     suricata_alerts: Sequence[Mapping[str, object]] = (),
     arp_table: Sequence[Mapping[str, object]] = (),
@@ -1126,8 +1127,9 @@ def opnsense(
     crowdsec_alerts: Sequence[Mapping[str, object]] = (),
     zone: timedelta = timedelta(0),
 ) -> Handler:
-    """OPNsense's API with one key and secret. The services named are installed and running; the
-    others answer 404, as a plugin that isn't installed does. It has a clock in a time zone that
+    """OPNsense's API with one key and secret. The services named are installed and running, the
+    ``stopped`` ones are installed and say they are stopped, and the others answer 404, as a plugin
+    that isn't installed does. It has a clock in a time zone that
     is ``zone`` ahead of UTC, the lines given in its firewall log, newest first, the entries
     given in its ARP table and, if Suricata, Dnsmasq, Kea or CrowdSec is installed, its alerts,
     leases, or the alerts and decisions of the plugin."""
@@ -1172,6 +1174,8 @@ def opnsense(
             return _plugin_search(seen, crowdsec_alerts)
         if paths.get(seen.path) in services:
             return _json({"status": "running"})
+        if paths.get(seen.path) in stopped:
+            return _json({"status": "stopped"})
         return _json({"status": 404, "message": "Not found"}, 404)
 
     return handle
@@ -1775,6 +1779,7 @@ class StandIns:
         api_key: str = "",
         api_secret: str = "",
         services: Collection[str] = (),
+        stopped: Collection[str] = (),
         username: str = "",
         password: str = "",
         models: Collection[str] = (),
@@ -1798,6 +1803,7 @@ class StandIns:
                 api_key,
                 api_secret,
                 services,
+                stopped=stopped,
                 firewall_log=sample_firewall_log(),
                 suricata_alerts=sample_suricata_alerts(),
                 arp_table=sample_arp_table(),

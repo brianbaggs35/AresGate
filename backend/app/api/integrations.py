@@ -149,6 +149,8 @@ class Check(BaseModel):
     message: str
     # Whether it failed over the system's certificate.
     certificate_problem: bool
+    # The keys of the services found installed but not running, which connecting switched off.
+    switched_off: list[str] = Field(default_factory=list)
 
 
 class CheckReport(BaseModel):
@@ -409,6 +411,18 @@ def disconnect_integration(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _with_switched_off(connection: ConnectionDef, message: str, keys: list[str]) -> str:
+    """A test's message, with which services connecting switched off because they aren't running."""
+    if not keys:
+        return message
+    labels = {module.key: module.label for module in connection.modules}
+    names = ", ".join(labels.get(key, key) for key in keys)
+    return (
+        f"{message} Switched off, as they are installed but not running: {names}. "
+        "Switch them on whenever you like."
+    )
+
+
 def _check(
     db: Session, target: Target, recorder: Recorder, policy: AddressPolicy
 ) -> service.Verdict:
@@ -454,15 +468,15 @@ def test_integration(
                 f"The limits on this connection hold the test. Try again in {seconds} seconds.",
                 headers={"Retry-After": str(seconds)},
             ) from wait
-        if row:
-            service.record_attempt(row, verdict, utcnow())
+        switched_off = service.record_attempt(row, verdict, utcnow()) if row else []
         checks.append(
             Check(
                 connection=connection.key,
                 ok=verdict.ok,
-                message=verdict.message,
+                message=_with_switched_off(connection, verdict.message, switched_off),
                 certificate_problem=not verdict.ok
                 and _certificate_problem(connection, verdict.message),
+                switched_off=switched_off,
             )
         )
     ok = all(check.ok for check in checks)

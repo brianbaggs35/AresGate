@@ -29,6 +29,12 @@ listed under **Services** on the OPNsense page, each with its state (running, st
 installed, or not allowed for the key's user), and each can be switched off if you don't want it
 read. The card on the list shows the ones in use.
 
+The first time the connection works, the services it finds **installed but not running** (say, a
+Suricata or CrowdSec you stopped) are switched off for you, and the test says which, so AresGate
+doesn't try to read what isn't there. It is only a starting point: switch one back on whenever
+you like, and later tests leave your choice alone. A service that isn't installed needs no switch,
+because it is skipped, and is read as soon as a test finds it installed.
+
 1. In OPNsense, open **System, Access, Users** and make a user for AresGate, or edit one.
 2. Give that user only the privileges to view what AresGate collects: diagnostics, interfaces,
    gateways, the firewall log, intrusion detection and the services you run. OPNsense applies the

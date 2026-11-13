@@ -150,6 +150,19 @@ async function refreshLimit() {
   }
 }
 
+/** Connecting switched off the services that are installed but not running, which are saved, so
+ * the forms say so too, or the next save would switch them back on. The forms are locked while a
+ * test runs and a test only runs on a form nobody has changed, so it stays unchanged. */
+function switchOff(result: CheckReport) {
+  for (const check of result.checks) {
+    const draft = drafts.value[check.connection]
+    if (draft && check.switched_off.length) {
+      draft.disabledModules = [...new Set([...draft.disabledModules, ...check.switched_off])]
+    }
+  }
+  untouched.value = JSON.stringify(drafts.value)
+}
+
 /** One harmless read of each connection, to show it works. Returns why it couldn't be done. */
 async function runTest(): Promise<string | null> {
   busy.value = 'testing'
@@ -158,6 +171,7 @@ async function runTest(): Promise<string | null> {
     report.value = result
     // Only what testing finds out is taken in: the forms may have something typed in them.
     integration.value = result.integration
+    switchOff(result)
     return null
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
