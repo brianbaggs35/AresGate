@@ -13,6 +13,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import FamilyCard from '@/components/FamilyCard.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
+import KindSuggestion from '@/components/KindSuggestion.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -195,6 +196,22 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         {{ loadError }} What is shown is from earlier.
       </v-alert>
 
+      <section
+        v-if="overview.suggestions.length"
+        aria-label="Suggestions from what you decided"
+        class="threats__suggestions"
+        data-test="suggestions"
+      >
+        <KindSuggestion
+          v-for="item in overview.suggestions"
+          :id="item.id"
+          :key="item.id"
+          :suggestion="item.suggestion"
+          :label="item.label"
+          @changed="load(true)"
+        />
+      </section>
+
       <ChainsSection />
 
       <SectionCard
@@ -322,6 +339,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
 </template>
 
 <style scoped>
+.threats__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .threats__coverage {
   display: flex;
   flex-wrap: wrap;

@@ -22,6 +22,11 @@ export class ThreatsPage {
   readonly more: Locator
   readonly error: Locator
   readonly stale: Locator
+  /** What is offered from what you decided of incidents, and its buttons. */
+  readonly suggestions: Locator
+  readonly suggestionReason: Locator
+  readonly suggestionTake: Locator
+  readonly suggestionDismiss: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -41,6 +46,10 @@ export class ThreatsPage {
     this.more = page.getByTestId('more')
     this.error = page.getByTestId('threats-error')
     this.stale = page.getByTestId('threats-stale')
+    this.suggestions = page.getByTestId('suggestion')
+    this.suggestionReason = page.getByTestId('suggestion-reason')
+    this.suggestionTake = page.getByTestId('suggestion-take')
+    this.suggestionDismiss = page.getByTestId('suggestion-dismiss')
   }
 
   async goto(lane?: 'threat' | 'suspect' | 'background'): Promise<void> {
@@ -112,6 +121,8 @@ export class KindPage {
   readonly takeBack: Locator
   readonly judge: Locator
   readonly why: Locator
+  readonly suggestion: Locator
+  readonly suggestionDismiss: Locator
   readonly changed: Locator
   readonly changes: Locator
   readonly sample: Locator
@@ -132,6 +143,8 @@ export class KindPage {
     this.takeBack = page.getByTestId('call-clear')
     this.judge = page.getByTestId('judge')
     this.why = page.getByTestId('why')
+    this.suggestion = page.getByTestId('suggestion')
+    this.suggestionDismiss = page.getByTestId('suggestion-dismiss')
     this.changed = page.getByTestId('changed')
     this.changes = page.getByTestId('change')
     this.sample = page.getByTestId('sample')

@@ -268,6 +268,24 @@ told what changed and what it said before. A kind you have called stays yours: i
 again, but its page says that it changed, so you can look again at your word on it. A kind with a
 chain in it is never set aside, as before.
 
+### Learning from what you decide
+
+AresGate remembers what you say of each incident (a verdict, dismissing it, taking it up) and which
+kind it is of, so it can notice when you keep saying the same thing about a kind. It then offers,
+on the Threats page and on the kind's page, with the numbers that led to it and how many incidents
+going on now it would move. It is **never done by itself**: it needs your click, and **Not now**
+is remembered until you have decided twice as many of that kind's incidents.
+
+- **Always background?** Offered when you have decided at least 5 incidents of a kind and 4 in 5 of
+  them were closed as not suspicious, low priority or dismissed. It is never offered for a kind that
+  has had a chain of stages in it, or any sign that it worked, because a scan that turned into more
+  is not one to stop hearing about.
+- **Never set aside?** Offered for a kind the AI set aside when you have taken up at least 3 of its
+  incidents (called them threats, or taken them up) or disagreed with the AI about it, and that is
+  at least half of what you decided.
+
+What you decided of a kind is also told to the AI when it judges the kind, as a line of numbers.
+
 ## Reviewing what the AI decided
 
 The AI may sound an alarm on its own, but setting something aside is a decision you may want to
@@ -338,6 +356,7 @@ The API, all under `/api` and signed in:
 | `GET /threats/families/{id}` | One kind: what is thought of it, why its incidents are where they are, and a sample. A kind carries `changed_at` and `changes` when it has changed since it was judged. |
 | `PUT /threats/families/{id}/call` | Your word on a kind: `background`, `watch` or `null` to take it back. |
 | `POST /threats/families/{id}/judge` | Has the AI judge the kind now. |
+| `POST /threats/families/{id}/suggestion/dismiss` | Says not now to what is offered about the kind. The offer itself is `suggestion` on the kind and `suggestions` on the overview; taking it is `PUT …/call`. |
 | `GET` and `PUT /threat-settings`, `POST /threat-settings/preview` | The settings, and what saving them would do. |
 | `GET /incidents?lane=…&family=…` | The incident list takes repeatable `lane` and a `family`. |
 | `GET /review?state=waiting\|decided\|answered` | The AI's decisions in one list (`limit`, `offset`), with the counts of all three, how often you agreed (`standing`) and the mode. |
@@ -353,7 +372,7 @@ or `dns`) and each conversation a `purpose`, and the log list `twin_of` and `als
 The assistant and the agents can ask `who_is` (an address's reverse name) and `attack_chains`.
 
 The code is in `app/threats/` (`families.py`, `stages.py`, `calls.py`, `explain.py`, `overview.py`,
-`settings.py`, `drift.py`, which notices a kind that changed since it was judged, and `chains.py`, which links the incidents of an attack across two devices on
+`settings.py`, `drift.py`, which notices a kind that changed since it was judged, `learning.py`, which offers what you keep deciding, and `chains.py`, which links the incidents of an attack across two devices on
 every run of the engine), `app/events/twins.py` (the same alert from two programs), `app/incidents/hops.py`, `names.py` and
 `purpose.py` (how it travelled, what an address is called and what the traffic was for), `app/incidents/occurrences.py`
 (repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of

@@ -21,7 +21,7 @@ from app.events.event import Severity
 from app.incidents import attention, filters, response
 from app.incidents.attention import Lane
 from app.models import Incident, IncidentFamily, utcnow
-from app.threats import calls, drift, overview
+from app.threats import calls, drift, learning, overview
 from app.threats import settings as threat_settings
 
 router = APIRouter(prefix="/threats", tags=["threats"], dependencies=[Depends(signed_in)])
@@ -81,6 +81,28 @@ class FamilyPage(BaseModel):
     items: list[FamilyOut]
 
 
+class SuggestionOut(BaseModel):
+    """What AresGate offers to do about a kind from what you have decided of its incidents: never
+    done unless you say yes (see app/threats/learning.py)."""
+
+    # background: always set it aside. watch: never set it aside.
+    call: Literal["background", "watch"]
+    # How many of the incidents of it you decided closed them as benign, and how many you took up.
+    benign: int
+    loud: int
+    # How many incidents that are going on it would move: out of view, or back into it.
+    moves: int
+    reason: str
+
+
+class SuggestedKindOut(BaseModel):
+    """A kind with something to offer about it."""
+
+    id: int
+    label: str
+    suggestion: SuggestionOut
+
+
 class OverviewOut(BaseModel):
     window: WindowOut
     funnel: FunnelOut
@@ -90,6 +112,8 @@ class OverviewOut(BaseModel):
     threat_from: int
     # The kinds of incident there are most of, so a person can see what was set aside.
     families: list[FamilyOut]
+    # What is offered about kinds from what you have decided of their incidents.
+    suggestions: list[SuggestedKindOut]
 
 
 class FamilyDetail(FamilyOut):
@@ -98,6 +122,8 @@ class FamilyDetail(FamilyOut):
     model: str | None
     owner_call_at: AwareDatetime | None
     why: list[str]
+    # What is offered about it from what you have decided of its incidents, if anything.
+    suggestion: SuggestionOut | None
     # The incidents of it going on, the most recent first (``total`` is how many there are).
     sample: list[incident_api.IncidentOut]
 
@@ -116,6 +142,16 @@ class JudgeOut(BaseModel):
     ok: bool
     reason: str | None
     family: FamilyDetail
+
+
+def _suggestion(offer: learning.Suggestion) -> SuggestionOut:
+    return SuggestionOut(
+        call=offer.call,
+        benign=offer.benign,
+        loud=offer.loud,
+        moves=offer.moves,
+        reason=offer.reason,
+    )
 
 
 def _family(item: overview.Kind, incidents: int | None = None) -> FamilyOut:
@@ -165,6 +201,11 @@ def _kind(db: Db, family_id: int) -> overview.Kind:
     return overview.Kind(family, 0, 0, 0, Severity.INFO, family.created_at, now, 0, 0, 0)
 
 
+def _offered(db: Db, item: overview.Kind) -> SuggestionOut | None:
+    offer = learning.of_kind(db, item)
+    return _suggestion(offer) if offer else None
+
+
 def _detail(db: Db, family_id: int) -> FamilyDetail:
     item = _kind(db, family_id)
     judgement = incident_api.Judging(filters.load(db).confidence_floor, threat_settings.load(db))
@@ -184,6 +225,7 @@ def _detail(db: Db, family_id: int) -> FamilyDetail:
         model=family.model,
         owner_call_at=family.owner_call_at,
         why=_why(family),
+        suggestion=_offered(db, item),
         sample=[
             incident_api._incident(incident, done[incident.id], judgement)  # pyright: ignore[reportPrivateUsage]
             for incident in members
@@ -218,6 +260,12 @@ def get_overview(
         watching=threat_settings.watching(db),
         threat_from=tuning.threat_from,
         families=[_family(item) for item in top.items],
+        suggestions=[
+            SuggestedKindOut(
+                id=item.family.id, label=item.family.label, suggestion=_suggestion(offer)
+            )
+            for item, offer in learning.offers(db, floor, tuning)
+        ],
     )
 
 
@@ -319,3 +367,30 @@ def judge_family(
         reason=None if ok else outcome.reason,
         family=_detail(db, family_id),
     )
+
+
+@router.post("/families/{family_id}/suggestion/dismiss")
+def dismiss_suggestion(
+    family_id: FamilyId,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> FamilyDetail:
+    """Says not now to what is offered about a kind. It is offered again only when you have
+    decided twice as many of its incidents. Nothing is offered that is not there."""
+    family = db.get(IncidentFamily, family_id)
+    if family is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_KIND)
+    offer = learning.of_kind(db, _kind(db, family_id))
+    if offer is not None:
+        record_audit(
+            db,
+            request,
+            Action.THREATS_SUGGESTION_DISMISSED,
+            Outcome.SUCCESS,
+            user=auth.user,
+            detail={"family": family.id, "call": offer.call},
+        )
+        learning.dismiss(family, offer)
+        db.commit()
+    return _detail(db, family_id)
