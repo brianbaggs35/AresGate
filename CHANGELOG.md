@@ -24,6 +24,15 @@ Every release's notes are here, newest first. The format follows
   integration is called or what it provides, and a button for each kind of integration, so the
   list is easy to narrow as more are added. Every card now says what kind it is, including the
   ones that watch the network.
+- **See every device that connected, with the Devices page.** A new **Devices** place in the menu
+  lists every address that took part in a connection your programs reported over the last week:
+  your own devices, other private addresses and the ones on the Internet, with how many connections
+  were made to each and by each, the ports they used, when it was last seen, the incidents it is in
+  and what threat intelligence and Fingerbank say of it. Search by address or name, narrow to a
+  kind of device or to those in an incident, and open one for its page: each connection with its
+  source, destination, port and protocol, the events it was in, and links to its incidents, the kind
+  of threat and the attack chain. The count is of events your programs reported, not every packet.
+  See [Devices](DOCS/ui.md#devices).
 
 ### Changed
 

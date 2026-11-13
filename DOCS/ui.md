@@ -328,6 +328,45 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   the owner's on the Internet interface leaves out what is on it, and one on a home interface keeps
   what is on it. The Internet is not offered as an *Interface* choice.
 
+## Devices
+
+The Devices page lists every address that took part in a connection the connected programs
+reported over the last week (`GET /api/devices`), and a page for each (`GET /api/devices/{address}`).
+The Assets page is the owner's inventory, what the network says is on it; this is what it did, so a
+server on the Internet that a camera called, or a scanner that knocked on the firewall, is here and
+is not an asset. It is read from the events the integrations stored (`app/devices/seen.py`), so a
+connection is an event such as a firewall block or an alert, not every packet, and the page says so.
+The route's query keeps what the list is narrowed to (`q`, `scope`, `direction`, `flagged`, `sort`;
+the words and defaults are in `src/devices.ts`), as on the Assets page.
+
+- **A card** (`DeviceCard`) names the address, links to its page, and says whose it is: *Your
+  devices* (an address of an asset), *Other local* (a private address no asset holds) or *On the
+  Internet*, each with its own icon. A bar splits its connections into those made *to* it (in) and
+  those it made (out), with both counts, and chips list the ports they used. Flags appear only when
+  there is something to say: the incidents it is in, what threat intelligence kept of it (the same
+  judgement as on the asset page, never asked for to show it) and what Fingerbank says it is, for an
+  address that is an asset. Its asset's name links to the asset's page.
+- **The choices.** The scopes are a row of toggle buttons with how many each holds among the devices
+  the search finds; *Connections* narrows to those connected to or those that connected out; *In an
+  incident* is a button; *Order* is the most recently seen, the busiest or by address. Slash goes to
+  the search, which finds an address, a name from a reverse lookup that is already kept, or the name,
+  maker or hardware address of its asset.
+- **A device's page** has four tiles (connections to it, connections from it, when it was last seen,
+  events in the last day), then *Connections*: a row for each peer and port with the direction in
+  words and an arrow, the source and destination (the other end links to its own page), the port with
+  the service it stands for, and how often and when. Below are *Your device* for an asset (its name,
+  maker, hardware address, what the owner said it is, and what Fingerbank says it is), *What threat
+  intelligence says* for an address on the Internet (what is kept, the owner's ruling over it), the
+  incidents it is in, each with links to its kind of threat and its attack chain, and the latest
+  events. On a phone the connections stack and on a computer they are a table, by the card's own
+  width.
+- **Nothing to show** says why: nothing has been reported in the last 7 days (leads to Integrations)
+  or nothing matches the choices (*Clear filters*, which leaves the scope and the order alone). More
+  devices than a page are asked for with *Show more*. If more addresses were seen than are read (5,000
+  for each side of a connection), the page says the list is the ones seen most recently.
+- An address nothing is known of (in no event of the week, no incident, and not an asset) has no
+  page: the API answers 404 and the page says so.
+
 ## Integrations
 
 The Integrations page (`IntegrationsView`) has one `IntegrationCard` for each integration, with a

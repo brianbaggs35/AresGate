@@ -91,6 +91,7 @@ describe('BottomNavigation', () => {
         'Agents',
         'Logs',
         'Assets',
+        'Devices',
         'Integrations',
         'Threat intelligence',
         'Interfaces',

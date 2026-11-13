@@ -16,6 +16,7 @@ from app.api import (
     collectors,
     credentials,
     dashboard,
+    devices,
     events,
     health,
     incidents,
@@ -50,6 +51,7 @@ api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(interfaces.router)
 api_router.include_router(assets.router)
+api_router.include_router(devices.router)
 api_router.include_router(agents.router)
 api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)

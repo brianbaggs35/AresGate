@@ -200,7 +200,7 @@ def load(db: Session, key: str, now: datetime) -> Detail | None:
     if asset is None:
         return None
     addresses = list(asset.addresses)
-    events, events_day, events_week = _events(db, addresses, now)
+    events, events_day, events_week = events_of(db, addresses, now)
     return Detail(
         asset=asset,
         networks=tuple(network for network in found.networks if network.id in asset.interfaces),
@@ -208,10 +208,10 @@ def load(db: Session, key: str, now: datetime) -> Detail | None:
         events=events,
         events_day=events_day,
         events_week=events_week,
-        talks_to=_peers(db, Event.src_address, Event.dst_address, addresses, now - WEEK),
-        contacted_by=_peers(db, Event.dst_address, Event.src_address, addresses, now - WEEK),
+        talks_to=peers_of(db, Event.src_address, Event.dst_address, addresses, now - WEEK),
+        contacted_by=peers_of(db, Event.dst_address, Event.src_address, addresses, now - WEEK),
         traffic=_traffic(db, addresses, now),
-        incidents=_incidents(db, addresses),
+        incidents=incidents_of(db, addresses),
         verdicts=_verdicts(db, addresses),
     )
 
@@ -252,7 +252,7 @@ def _involving(addresses: list[Address]) -> ColumnElement[bool]:
     return or_(Event.src_address.in_(addresses), Event.dst_address.in_(addresses))
 
 
-def _events(
+def events_of(
     db: Session, addresses: list[Address], now: datetime
 ) -> tuple[tuple[EventSeen, ...], int, int]:
     """The latest events its addresses were in, and how many there were in the last day and in the
@@ -292,7 +292,7 @@ def _events(
     return shown, int(day), int(week)
 
 
-def _peers(
+def peers_of(
     db: Session,
     ours: InstrumentedAttribute[Address | None],
     theirs: InstrumentedAttribute[Address | None],
@@ -324,7 +324,7 @@ def _peers(
             events=count,
             last_seen_at=last,
             ports=ports.get(address, ()),
-            standing=_standing(standing.get(address), rulings.get(str(address))),
+            standing=standing_of(standing.get(address), rulings.get(str(address))),
             internal=not address.is_global,
         )
         for address, count, last in peers
@@ -364,7 +364,7 @@ def _ports(
     return {address: tuple(seen) for address, seen in found.items()}
 
 
-def _standing(kept: IntelSubject | None, ruling: IntelOverride | None) -> Standing | None:
+def standing_of(kept: IntelSubject | None, ruling: IntelOverride | None) -> Standing | None:
     """What a kept answer and the owner's ruling say of a peer, as the page shows it."""
     if kept is not None:
         when = kept.checked_at
@@ -457,7 +457,7 @@ def _traffic(db: Session, addresses: list[Address], now: datetime) -> Traffic:
     return Traffic(measured=bool(sums), hours=hours, days=days)
 
 
-def _incidents(db: Session, addresses: list[Address]) -> tuple[IncidentSeen, ...]:
+def incidents_of(db: Session, addresses: list[Address]) -> tuple[IncidentSeen, ...]:
     """The latest incidents one of its addresses is the subject of, or is in the signals of."""
     rows = db.scalars(
         select(Incident)

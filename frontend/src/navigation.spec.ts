@@ -36,6 +36,7 @@ describe('navigation', () => {
       'agents',
       'logs',
       'assets',
+      'devices',
       'integrations',
       'threat-intelligence',
       'interfaces',

@@ -139,6 +139,24 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // The list, and a page for each device, by its address. Both belong to the one place in the menu.
+    path: '/devices',
+    children: [
+      {
+        path: '',
+        name: 'devices',
+        component: () => import('@/views/DevicesView.vue'),
+        meta: { title: 'Devices' },
+      },
+      {
+        path: ':address',
+        name: 'device',
+        component: () => import('@/views/DeviceView.vue'),
+        meta: { title: 'Devices' },
+      },
+    ],
+  },
+  {
     // The list, and a page for each integration. Both belong to the one place in the menu.
     path: '/integrations',
     children: [
