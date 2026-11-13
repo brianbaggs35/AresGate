@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 # Said the same way in every guide, and by the guides that mention the same menu.
 ADDRESS = "Address, for example"
 INDEXER = "Indexer management"
+PASTE_KEY = "Paste it into API key on the card."
 
 
 class Source(BaseModel):
@@ -732,7 +733,7 @@ VIRUSTOTAL = Guide(
                     title="Copy the API key",
                     detail="Sign in to VirusTotal. Your API key is in your account's user menu.",
                     menu=("User menu",),
-                    result="Paste it into API key on the card.",
+                    result=PASTE_KEY,
                     watch=(
                         "Keep the key to AresGate alone. Anyone who holds it can act as your "
                         "account there."
@@ -792,7 +793,7 @@ OTX = Guide(
                         "your account's settings page."
                     ),
                     menu=("Settings",),
-                    result="Paste it into API key on the card.",
+                    result=PASTE_KEY,
                     watch=(
                         "Keep the key to AresGate alone. Anyone who holds it can act as your "
                         "account there."
@@ -842,7 +843,7 @@ FINGERBANK = Guide(
                         "is on your account page."
                     ),
                     menu=("My Account",),
-                    result="Paste it into API key on the card.",
+                    result=PASTE_KEY,
                     watch=(
                         "Use one key for AresGate alone. Fingerbank blocks a client that uses "
                         "more than one key from the same internet address."

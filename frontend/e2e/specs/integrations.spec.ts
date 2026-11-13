@@ -1507,7 +1507,7 @@ test.describe('integrations', () => {
       await integrations.search.fill('fingerbank')
       await expect(integrations.names).toHaveText(['Fingerbank'])
 
-      await integrations.search.fill('flags each')
+      await integrations.search.fill('flag each')
       await expect(integrations.names).toHaveText(['VirusTotal'])
 
       await integrations.search.fill('no such integration')

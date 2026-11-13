@@ -283,8 +283,9 @@ def test_the_loop_keeps_going_when_one_lookup_fails(
             timeout=0.1,
         )
 
+    loop = looping()
     with caplog.at_level(logging.ERROR), pytest.raises(TimeoutError):
-        asyncio.run(looping())
+        asyncio.run(loop)
 
     assert calls > 1
     assert "Couldn't ask Fingerbank about a device" in caplog.text
@@ -315,8 +316,9 @@ def test_nothing_is_asked_while_collecting_is_off(
             timeout=0.05,
         )
 
+    loop = looping()
     with pytest.raises(TimeoutError):
-        asyncio.run(looping())
+        asyncio.run(loop)
 
     assert called is False
 
