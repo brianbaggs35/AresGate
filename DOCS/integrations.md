@@ -790,10 +790,27 @@ is weak.
 
 ### Where this comes from, and what isn't tried
 
-Taken from OTX's [DirectConnect API page](https://otx.alienvault.com/assets/static/external_api.html)
-and its public descriptions: the `X-OTX-API-KEY` header, the indicator paths above, the `pulse_info`
-(`count` and `pulses`), `reputation`, `asn`, `country_code` and `validation` fields of the general
-section, and `GET /api/v1/users/me` for the connection test.
+Checked on 2026-11-12 against OTX's
+[external API reference](https://otx.alienvault.com/assets/static/external_api.html) (titled
+"LevelBlue External API documentation", version 1, base `/api/v1`), which the code was first written
+without, from public descriptions. The reference confirms:
+
+- `GET /api/v1/indicators/IPv4/{ip}/{section}` and `/IPv6/{ip}/{section}` exist, with the sections
+  general, reputation, geo, malware, url_list, passive_dns and http_scans. AresGate asks for
+  `general`.
+- `GET /api/v1/indicators/domain/{domain}/{section}` exists, with the sections general, geo,
+  malware, url_list, passive_dns, whois and http_scans. AresGate asks for `general`.
+- A 404 is documented for indicator lookups, which AresGate takes as no report.
+- `GET /api/v1/users/me` (and `/user/me`) exist as the way to validate a key, which is what the
+  connection test uses.
+
+The reference also lists `/pulses/subscribed`, `/pulses/activity`, `/pulses/{id}`, `/search/pulses`
+and a separate `/indicators/hostname/{hostname}/{section}`, none of which AresGate asks for.
+
+What the reference does **not** state, so that it rests on OTX's public descriptions and has not
+been checked against a live key: the `X-OTX-API-KEY` header name, a limit on requests (it gives
+none), and the body of every answer (it lists only 200 and 404), so the `pulse_info`, `validation`,
+`reputation`, `asn` and `country_code` fields are read as described elsewhere.
 
 Worked out here, not in the documentation:
 
@@ -804,6 +821,10 @@ Worked out here, not in the documentation:
   address as safe, and the pulse fields `malware_families`, `adversary` and `attack_ids` as what a
   pulse names.
 - The links to OTX's website (`/indicator/ip/` and `/indicator/domain/`) are inferred from its site.
+- Every name is sent to the `domain` endpoint, subdomains included. The reference gives `rghost.net`
+  as the example for `domain` and `otx.alienvault.com` for the separate `hostname` endpoint, and
+  doesn't say whether `domain` answers a subdomain the same way. AresGate has not tried the
+  `hostname` endpoint.
 
 Not tried against the live service: the answers are tested against a stand-in built from these
 descriptions, and any field that isn't what was expected is left out rather than guessed. An answer
@@ -1086,7 +1107,7 @@ window lists the pages at its end:
 | Wazuh | [API](https://documentation.wazuh.com/current/user-manual/api/getting-started.html), [RBAC](https://documentation.wazuh.com/current/user-manual/api/rbac/configuration.html), [internal users](https://documentation.wazuh.com/current/user-manual/user-administration/rbac.html) and the default roles in Wazuh's source |
 | CrowdSec | [local API authentication](https://docs.crowdsec.net/docs/local_api/authentication/) and [configuration](https://docs.crowdsec.net/docs/configuration/crowdsec_configuration/) |
 | VirusTotal | [Public vs Premium API](https://docs.virustotal.com/reference/public-vs-premium-api), the [overview](https://docs.virustotal.com/reference/overview) for where the key is found, the [IP address report](https://docs.virustotal.com/reference/ip-info) and its [object](https://docs.virustotal.com/reference-link/ip-object), and the [errors](https://docs.virustotal.com/reference/errors) |
-| AlienVault OTX | OTX's [DirectConnect API page](https://otx.alienvault.com/assets/static/external_api.html)                                                                                                                                                                                                                                                                                                                                                       |
+| AlienVault OTX | OTX's [external API reference](https://otx.alienvault.com/assets/static/external_api.html)                                                                                                                                                                                                                                                                                                                                                       |
 
 A step marked **Not from the documentation** says what was worked out and why. These were
 read, not run against every release, so the connection test is what tells whether a step worked.
