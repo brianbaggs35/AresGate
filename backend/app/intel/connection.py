@@ -16,10 +16,10 @@ from ipaddress import IPv4Address
 import anyio.from_thread
 from sqlalchemy.orm import Session
 
-from app.integrations import netguard, registry, service
-from app.integrations.client import Recorder, Target
+from app.integrations import netguard, probes, registry, service
+from app.integrations.client import ApiClient, Recorder, Target
 from app.integrations.probes import Verdict
-from app.intel import budget, store, subjects, virustotal
+from app.intel import budget, greynoise, store, subjects, virustotal
 from app.models import IntegrationConnection
 
 CONNECTION = registry.VIRUSTOTAL.connections[0]
@@ -61,11 +61,14 @@ def remember(row: IntegrationConnection, answer: virustotal.Answer, now: datetim
 
 
 def test_key(db: Session, target: Target, recorder: Recorder, now: datetime) -> Verdict:
-    """Tests the key with one lookup, through the budget. While VirusTotal's daily quota holds,
+    """Tests the key of VirusTotal, or of GreyNoise (``_test_greynoise``), with one lookup, through
+    the budget. For VirusTotal, while its daily quota holds,
     nothing is sent and the connection is held as it was. Raises ``budget.Wait`` when the limits
     don't allow a test now, which they don't for a minute after VirusTotal asked for fewer requests.
     A test that VirusTotal itself answers with a limit is a pass: it was reached and took the key.
     """
+    if target.integration == greynoise.PROVIDER:
+        return _test_greynoise(db, target, recorder, now)
     try:
         lookup_id = budget.reserve(
             db,
@@ -86,3 +89,49 @@ def test_key(db: Session, target: Target, recorder: Recorder, now: datetime) -> 
     store.finish(db, lookup_id, subject, answer, now)
     db.commit()
     return verdict_for(answer, target.options)
+
+
+GREYNOISE_CONNECTION = registry.GREYNOISE.connections[0]
+GREYNOISE_THROTTLED = "GreyNoise answered, but its limit is reached. Lookups resume in an hour."
+
+
+def greynoise_verdict(answer: greynoise.Answer, options: Mapping[str, str | int]) -> Verdict:
+    """What GreyNoise's answer to a test lookup says of the connection."""
+    if isinstance(answer, greynoise.Failed):
+        return Verdict(False, answer.message)
+    if isinstance(answer, greynoise.Throttled):
+        return Verdict(True, GREYNOISE_THROTTLED)
+    if greynoise.plan_of(options) == greynoise.ANONYMOUS:
+        return Verdict(True, "GreyNoise answered. With no account it allows 10 lookups a day.")
+    return Verdict(True, "GreyNoise accepted the key. The free plan allows 50 searches a week.")
+
+
+async def _ping(target: Target, recorder: Recorder) -> Verdict:
+    policy = service.policy_for(GREYNOISE_CONNECTION, netguard.HOME_NETWORK)
+    async with ApiClient(target, recorder, policy) as client:
+        return await probes.run(probes.greynoise_ping, client, target)
+
+
+def _test_greynoise(db: Session, target: Target, recorder: Recorder, now: datetime) -> Verdict:
+    """Tests a GreyNoise connection. A subscription's key is pinged, which asks nothing about an
+    address and counts as no lookup. With a free account's key or none, one lookup of a public
+    address that is always in GreyNoise's dataset is made through the budget, since that is the
+    only request the Community API has, and it spends one of the few lookups a day or a week
+    allows. Raises ``budget.Wait`` when the limits don't allow a lookup now."""
+    if greynoise.plan_of(target.options) == greynoise.SUBSCRIPTION:
+        return anyio.from_thread.run(_ping, target, recorder)
+    lookup_id = budget.reserve(
+        db,
+        greynoise.PROVIDER,
+        budget.greynoise_level_of(target.options),
+        now,
+        kind=TEST_KIND,
+        subject=str(TEST_ADDRESS),
+    )
+    db.commit()
+    policy = service.policy_for(GREYNOISE_CONNECTION, netguard.HOME_NETWORK)
+    subject = subjects.of_address(TEST_ADDRESS)
+    answer = anyio.from_thread.run(greynoise.ask, target, recorder, policy, subject, now)
+    store.finish(db, lookup_id, subject, answer, now)
+    db.commit()
+    return greynoise_verdict(answer, target.options)

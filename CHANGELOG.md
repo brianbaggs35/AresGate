@@ -20,6 +20,17 @@ Every release's notes are here, newest first. The format follows
   setting, off until you turn it on, identifies the devices that incidents name as well. The free
   key's limit of 600 requests an hour is kept to, and reaching it is never an error. See
   [Fingerbank](DOCS/integrations.md#fingerbank).
+- **Tell background noise from an attack with GreyNoise.** A new **GreyNoise** card in the
+  **Threat intelligence** group takes the API key of a free account or of a Standard, Advanced or
+  Elite subscription (encrypted and never shown again), or none at all: the free Community API
+  allows 10 lookups a day without an account. AresGate asks, in the background, whether each
+  internet address an incident names is one of the many that scan every address, or belongs to a
+  common business service, spread over the allowance of the plan (50 searches a week on a free
+  account, of which ten are left for you) and paused for an hour if GreyNoise says it is used up.
+  The AI reads the answer beside VirusTotal's and OTX's and is told that a blocked or failed attempt
+  from a mass scanner is background and calls for a low severity, while an attack GreyNoise has
+  never seen is not hidden by it. The incident's conversations show it with a link to the address on
+  GreyNoise. See [GreyNoise](DOCS/integrations.md#greynoise).
 - **Search and filter the integrations.** The Integrations page has a search for what an
   integration is called or what it provides, and a button for each kind of integration, so the
   list is easy to narrow as more are added. Every card now says what kind it is, including the

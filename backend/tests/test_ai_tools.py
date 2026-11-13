@@ -17,7 +17,7 @@ from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
 from app.incidents import names
-from app.intel import otx, overrides, subjects, virustotal
+from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.intel.virustotal import Report
 from app.models import (
@@ -48,6 +48,33 @@ def save_report(session: Session, address: IPv4Address | IPv6Address, report: Re
         subjects.of_address(address),
         virustotal.Reported(report),
         report.analysed_at,
+    )
+
+
+def save_noise(
+    session: Session,
+    address: IPv4Address | IPv6Address,
+    *,
+    malicious: int = 0,
+    details: tuple[tuple[str, str], ...] = (),
+) -> None:
+    """Keeps what GreyNoise reported of an address, as the address's answer."""
+    intel_store.keep(
+        session,
+        greynoise.PROVIDER,
+        subjects.of_address(address),
+        greynoise.Reported(
+            greynoise.Report(
+                malicious=malicious,
+                suspicious=0,
+                harmless=0,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+                details=details,
+            )
+        ),
+        NOW,
     )
 
 
@@ -612,6 +639,39 @@ class TestReputation:
             f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report.",
         ]
         assert found.summary == f"AlienVault OTX's report on {PUBLIC}, none from VirusTotal"
+
+    def test_what_greynoise_says_is_told_and_counts_as_a_report_when_virustotal_has_none(
+        self, session: Session
+    ) -> None:
+        save_noise(
+            session,
+            PUBLIC,
+            malicious=1,
+            details=((greynoise.CLASSIFICATION, "malicious"), (greynoise.TAGS, "Mirai")),
+        )
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.lines == [
+            f"GreyNoise: {PUBLIC} is seen scanning the internet and classified malicious; "
+            "tags Mirai; GreyNoise makes it malicious.",
+            f"VirusTotal hasn't reported on {PUBLIC}: it hasn't been asked, or it has no report.",
+        ]
+        assert found.summary == f"GreyNoise's report on {PUBLIC}, none from VirusTotal"
+
+    def test_the_services_that_have_reported_are_all_named_when_virustotal_has_not(
+        self, session: Session
+    ) -> None:
+        save_pulses(session, PUBLIC, malicious=0, suspicious=0)
+        save_noise(session, PUBLIC, malicious=1)
+        session.commit()
+
+        found = run(session, "reputation", Args(name=str(PUBLIC)))
+
+        assert found.summary == (
+            f"AlienVault OTX's report and GreyNoise's report on {PUBLIC}, none from VirusTotal"
+        )
 
     def test_an_address_on_the_home_network_is_not_looked_for(self, session: Session) -> None:
         found = run(session, "reputation", Args(name=str(HOME)))

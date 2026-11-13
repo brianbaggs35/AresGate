@@ -32,7 +32,7 @@ from app.assets import profile
 from app.events.event import Severity
 from app.incidents import attention, conversations, filters, insights, occurrences, queries, wire
 from app.incidents.verdicts import MUTING
-from app.intel import otx, overrides, virustotal
+from app.intel import greynoise, otx, overrides, virustotal
 from app.intel import store as intel_store
 from app.models import CLASSES, AiCall, AiTriage, Incident, IntelOverride, IntelSubject
 from app.models.base import utcnow
@@ -108,6 +108,15 @@ nothing wrong), and an address no pulse names says little, because new attackers
 yet. Weigh it with what the owner said the device is, and with what VirusTotal says. When OTX is \
 the only thing that points at an address, keep your confidence modest, so the owner is asked to \
 review it; when OTX, VirusTotal and the traffic agree, say so and be sure.
+
+Where GreyNoise is given, it says whether an address is one of the many that scan every address \
+on the internet (noise), or belongs to a common business service. An address it classes malicious \
+is mass scanning or opportunistic exploitation aimed at everyone, so an attempt from it that was \
+blocked or failed is background and calls for a low severity, unless the traffic shows it got in. \
+One it classes benign is a known researcher or search engine. An address it has not seen says \
+little, because an attack aimed at one network alone shows on none of its sensors. Its word that \
+an address is benign or a business service is not proof that what the address did to this home \
+was harmless: weigh it with what the device did.
 
 "headline" is one plain sentence of under 100 characters that says what happened to what. \
 "story" is two to four sentences: what happened in order, what it means for the home, and what \
@@ -356,6 +365,7 @@ def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> li
     is only kept for an address that was asked about; a ruling may be of any."""
     reports = intel_store.reports_for(db, virustotal.PROVIDER, incident.addresses)
     pulses = intel_store.answers_for(db, otx.PROVIDER, incident.addresses)
+    noise = intel_store.answers_for(db, greynoise.PROVIDER, incident.addresses)
     rulings = overrides.for_addresses(db, incident.addresses)
     lines: list[str] = []
     if reports:
@@ -364,6 +374,10 @@ def _reputation_lines(db: Session, incident: Incident, redactor: Redactor) -> li
         ]
     if pulses:
         lines += [OTX_HEADING] + [f"- {_pulses(report, redactor)}" for report in pulses.values()]
+    if noise:
+        lines += [GREYNOISE_HEADING] + [
+            f"- {_noise(report, redactor)}" for report in noise.values()
+        ]
     if rulings:
         lines += ["What the owner of the network has ruled of the internet addresses involved:"] + [
             f"- {_ruling(ruling, redactor)}" for ruling in rulings.values()
@@ -375,6 +389,21 @@ OTX_HEADING = (
     "What AlienVault OTX says of the internet addresses involved (community threat reports, "
     "called pulses; a pulse naming an address is a lead, not a verdict):"
 )
+
+
+GREYNOISE_HEADING = (
+    "What GreyNoise says of the internet addresses involved (whether each scans the whole internet "
+    "or is a common business service; an address it has not seen says little):"
+)
+
+
+def _noise(report: IntelSubject, redactor: Redactor) -> str:
+    """One address's answer from GreyNoise, as the AI reads it."""
+    shown = redactor.address(report.subject)
+    if report.outcome != "reported":
+        return f"{shown}: {greynoise.NOT_SEEN}"
+    details = ((item["label"], item["value"]) for item in report.details)
+    return f"{shown}: {greynoise.said(details, report.judgement, redactor.text)}"
 
 
 def _ruling(ruling: IntelOverride, redactor: Redactor) -> str:

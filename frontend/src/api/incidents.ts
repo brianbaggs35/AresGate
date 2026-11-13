@@ -368,6 +368,21 @@ export interface OtxReputation {
   link: string
 }
 
+/** What GreyNoise says of an address: whether it is one of the many that scan every address on
+ * the internet, or a common business service. */
+export interface GreyNoiseReputation {
+  judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  /** What it classifies the scanner as (benign, malicious or unknown), if it was seen. */
+  classification: string | null
+  /** The business service it is, if it is one. */
+  business: string | null
+  /** The actor and the tags it attaches, which only a subscription's answer holds. */
+  actor: string | null
+  tags: string | null
+  /** Its page on GreyNoise's Visualizer. */
+  link: string
+}
+
 /** What the threat-intelligence service said of an address it was asked about. */
 export interface Reputation {
   /** What it comes to: the owner's ruling where there is one, else what the service made of it. */
@@ -385,6 +400,8 @@ export interface Reputation {
   country: string | null
   /** What AlienVault OTX said of it, when that is connected and has something to say. */
   otx?: OtxReputation | null
+  /** What GreyNoise said of it, when that is connected and has something to say. */
+  greynoise?: GreyNoiseReputation | null
 }
 
 /** One end of a conversation: the address and what the programs said of it. */

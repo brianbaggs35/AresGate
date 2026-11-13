@@ -2,7 +2,7 @@
 import { Gavel, Globe, Laptop, Network, ShieldAlert } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
-import type { ConversationEnd, Reputation } from '@/api/incidents'
+import type { ConversationEnd, GreyNoiseReputation, Reputation } from '@/api/incidents'
 import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
 import TrustButton from '@/components/TrustButton.vue'
 import { countryName, endTitle, flagOf, LOCATION, locationOf, portLine } from '@/evidence'
@@ -45,7 +45,8 @@ const flagged = computed(() =>
     : props.end.blacklisted === true ||
       ['malicious', 'suspicious'].includes(judgement.value) ||
       // A pulse that only lists an address is weak, so only OTX's firmer word draws a warning.
-      props.end.reputation?.otx?.judgement === 'malicious',
+      props.end.reputation?.otx?.judgement === 'malicious' ||
+      props.end.reputation?.greynoise?.judgement === 'malicious',
 )
 const judgement = computed(() => props.end.reputation?.judgement ?? 'unknown')
 /** What the engines made of an address, in words: what the service said, whatever was ruled. */
@@ -71,6 +72,21 @@ const pulses = computed(() => {
   const names = found.names ? `, ${found.names}` : ''
   const text = found.judgement === 'clean' ? 'OTX lists it as safe' : `OTX: ${count}${names}`
   return { look: JUDGEMENT[found.judgement], text, link: found.link }
+})
+/** What GreyNoise says of the address, in words: a business service, or a scanner and how it is
+ * classified, with the actor and the tags a subscription's answer attaches. */
+function noiseWords(found: GreyNoiseReputation): string {
+  if (found.business) return `GreyNoise: ${found.business}, a business service`
+  const kind = found.classification ? `, ${found.classification}` : ''
+  const named = [found.actor, found.tags].filter(Boolean).join('; ')
+  return `GreyNoise: scans the internet${kind}${named ? ` (${named})` : ''}`
+}
+
+const noise = computed(() => {
+  const found = props.end.reputation?.greynoise
+  return found
+    ? { look: JUDGEMENT[found.judgement], text: noiseWords(found), link: found.link }
+    : null
 })
 /** What the owner ruled, in words, with the same color a judgement of it would have. */
 const ruled = computed(() => (ruling.value ? RULING[ruling.value] : null))
@@ -165,6 +181,20 @@ const current = computed(() =>
           data-test="end-otx"
         >
           {{ pulses.text }}
+        </v-chip>
+        <v-chip
+          v-if="noise"
+          size="small"
+          :color="ruled ? undefined : noise.look.color"
+          :variant="ruled ? 'outlined' : 'tonal'"
+          :prepend-icon="noise.look.icon"
+          :href="noise.link"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Read what GreyNoise knows of the address"
+          data-test="end-greynoise"
+        >
+          {{ noise.text }}
         </v-chip>
       </div>
       <p

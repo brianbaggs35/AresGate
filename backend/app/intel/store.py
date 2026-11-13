@@ -20,7 +20,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.intel import otx, virustotal
+from app.intel import greynoise, otx, virustotal
 from app.intel.subjects import Subject
 from app.models import IntelLookup, IntelSubject
 
@@ -136,7 +136,11 @@ def keep(db: Session, provider: str, subject: Subject, answer: Answered, now: da
 
 def judge_for(provider: str, report: virustotal.Report | None) -> virustotal.Judgement:
     """What a service's report comes to, by that service's own rules."""
-    return otx.judge(report) if provider == otx.PROVIDER else virustotal.judge(report)
+    if provider == otx.PROVIDER:
+        return otx.judge(report)
+    if provider == greynoise.PROVIDER:
+        return greynoise.judge(report)
+    return virustotal.judge(report)
 
 
 def _values(provider: str, subject: Subject, answer: Answered, now: datetime) -> dict[str, object]:

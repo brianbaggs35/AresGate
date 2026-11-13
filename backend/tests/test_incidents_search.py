@@ -453,7 +453,7 @@ class TestWhatItRefuses:
     def test_a_source_nobody_has_set_up_or_knows(self) -> None:
         assert refused("source:snort") == (
             'No integration is called "snort". '
-            "Try opnsense, ntopng, wazuh, crowdsec, virustotal, otx or fingerbank."
+            "Try opnsense, ntopng, wazuh, crowdsec, virustotal, otx, greynoise or fingerbank."
         )
 
     def test_a_severity_that_is_not_one(self) -> None:

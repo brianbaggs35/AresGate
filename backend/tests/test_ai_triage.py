@@ -24,7 +24,7 @@ from app.ai.redaction import Level, Redactor
 from app.assets import profile
 from app.config import Settings
 from app.incidents import queries
-from app.intel import otx, overrides, subjects, virustotal
+from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import (
     CLASSES,
@@ -49,6 +49,15 @@ ATTACKER = "203.0.113.5"
 DEVICE = "192.168.1.20"
 MINUTE = timedelta(minutes=1)
 events = itertools.count(1)
+
+
+def save_noise(
+    session: Session, address: IPv4Address | IPv6Address, report: greynoise.Report
+) -> None:
+    """Keeps what GreyNoise reported of an address, as the address's answer."""
+    intel_store.keep(
+        session, greynoise.PROVIDER, subjects.of_address(address), greynoise.Reported(report), NOW
+    )
 
 
 def save_pulses(session: Session, address: IPv4Address | IPv6Address, report: otx.Report) -> None:
@@ -1395,6 +1404,77 @@ class TestReputationInThePrompt:
             f"- {ATTACKER}: no OTX pulse names it (that says little: OTX knows only what is shared)"
         ) in said
         assert "clean" not in said.split(triage.OTX_HEADING)[1].split("\n")[1]
+
+    def test_what_greynoise_says_is_given_under_its_own_heading(self, session: Session) -> None:
+        found = incident(session)
+        save_noise(
+            session,
+            ip_address(ATTACKER),
+            greynoise.Report(
+                malicious=1,
+                suspicious=0,
+                harmless=0,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+                details=(
+                    (greynoise.CLASSIFICATION, "malicious"),
+                    (greynoise.LAST_SEEN, "2026-11-08"),
+                    (greynoise.ACTOR, "Group X"),
+                ),
+            ),
+        )
+
+        said = self.prompt(session, found)
+
+        assert triage.GREYNOISE_HEADING in said
+        assert (
+            f"- {ATTACKER}: seen scanning the internet and classified malicious; actor Group X; "
+            "last seen 2026-11-08; GreyNoise makes it malicious"
+        ) in said
+        assert "What VirusTotal says" not in said
+        assert "GreyNoise" in triage.SYSTEM
+
+    def test_an_address_that_is_a_business_service_is_said_to_be_one(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        save_noise(
+            session,
+            ip_address(ATTACKER),
+            greynoise.Report(
+                malicious=0,
+                suspicious=0,
+                harmless=1,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+                details=((greynoise.BUSINESS, "Cloudflare"),),
+            ),
+        )
+
+        said = self.prompt(session, found)
+
+        assert (
+            f"- {ATTACKER}: a common business service (Cloudflare); GreyNoise makes it clean"
+        ) in said
+
+    def test_an_address_greynoise_has_not_seen_is_said_to_tell_little(
+        self, session: Session
+    ) -> None:
+        found = incident(session)
+        intel_store.keep(
+            session,
+            greynoise.PROVIDER,
+            subjects.of_address(ip_address(ATTACKER)),
+            greynoise.Unknown(),
+            NOW,
+        )
+
+        said = self.prompt(session, found)
+
+        assert f"- {ATTACKER}: {greynoise.NOT_SEEN}" in said
+        assert "an attack aimed at one network alone" in said
 
     def test_at_the_strictest_level_the_address_is_a_stand_in(self, session: Session) -> None:
         found = incident(session)

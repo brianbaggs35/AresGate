@@ -536,6 +536,71 @@ ALIENVAULT_OTX = IntegrationDef(
     ),
 )
 
+GREYNOISE_NOTE = (
+    "GreyNoise is asked about addresses on the internet and nothing else, and only IPv4 ones: its "
+    "Community API takes no other. The Community API allows 10 lookups a day without an account, "
+    "and 50 searches a week with a free account's key, which the GreyNoise Visualizer shares, so "
+    "AresGate asks about a new address every few hours and leaves some of the week for you. "
+    "Only an account made with a business email is given an API key. A subscription's limits "
+    "aren't published, so AresGate asks gently. If GreyNoise answers that the limit is reached, "
+    "lookups stop for an hour."
+)
+
+GREYNOISE = IntegrationDef(
+    key="greynoise",
+    name="GreyNoise",
+    provides=(
+        "Whether an address on the internet is one of the thousands that scan every address, "
+        "or belongs to a common business service, so that the AI can tell background noise "
+        "from an attack that was aimed at you."
+    ),
+    icon="threats",
+    category=THREAT_INTELLIGENCE,
+    docs_url="https://docs.greynoise.io/",
+    guide=guides.GREYNOISE,
+    connections=(
+        ConnectionDef(
+            key="api",
+            label="GreyNoise API",
+            summary="GreyNoise's API, with the key from your account. Its address is fixed.",
+            url_example="https://api.greynoise.io",
+            address="https://api.greynoise.io",
+            allow_http=False,
+            internet=True,
+            fields=(
+                FieldDef(
+                    key="access",
+                    label="Account",
+                    kind=FieldKind.CHOICE,
+                    default="key",
+                    choices=(
+                        Choice(value="key", label="An account with an API key"),
+                        Choice(value="none", label="No account"),
+                    ),
+                    caution=GREYNOISE_NOTE,
+                ),
+                FieldDef(
+                    key="plan",
+                    label="Plan",
+                    kind=FieldKind.CHOICE,
+                    default="free",
+                    choices=(
+                        Choice(value="free", label="Free"),
+                        Choice(value="subscription", label="Standard, Advanced or Elite"),
+                    ),
+                    only_if=Condition(field="access", value="key"),
+                ),
+                FieldDef(
+                    key="api_key",
+                    label=API_KEY,
+                    kind=FieldKind.SECRET,
+                    only_if=Condition(field="access", value="key"),
+                ),
+            ),
+        ),
+    ),
+)
+
 DEVICE_INTELLIGENCE = "Device intelligence"
 # Fingerbank's free key is understood to allow 600 requests an hour (the maintainer's figure; the
 # pages read give none), and AresGate stays inside that. The API
@@ -596,7 +661,16 @@ FINGERBANK = IntegrationDef(
 
 INTEGRATIONS: Mapping[str, IntegrationDef] = {
     item.key: item
-    for item in (OPNSENSE, NTOPNG, WAZUH, CROWDSEC, VIRUSTOTAL, ALIENVAULT_OTX, FINGERBANK)
+    for item in (
+        OPNSENSE,
+        NTOPNG,
+        WAZUH,
+        CROWDSEC,
+        VIRUSTOTAL,
+        ALIENVAULT_OTX,
+        GREYNOISE,
+        FINGERBANK,
+    )
 }
 
 

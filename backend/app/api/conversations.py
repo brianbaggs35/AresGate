@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.events.event import Severity
 from app.incidents import conversations, names, purpose, rules
-from app.intel import otx, overrides, virustotal
+from app.intel import greynoise, otx, overrides, virustotal
 from app.intel import store as intel_store
 from app.models import IntelOverride, IntelSubject, utcnow
 
@@ -27,6 +27,22 @@ class OtxOut(BaseModel):
     # The malware and adversaries those pulses name, if they do.
     names: str | None
     # Its page on OTX's website, for reading the pulses in full.
+    link: str
+
+
+class GreyNoiseOut(BaseModel):
+    """What GreyNoise says of an address: whether it is one of the many that scan every address on
+    the internet, or a common business service."""
+
+    judgement: Literal["malicious", "suspicious", "clean", "unknown"]
+    # What GreyNoise classifies the scanner as (benign, malicious or unknown), if it was seen.
+    classification: str | None
+    # The business service it is, if it is one.
+    business: str | None
+    # The actor and the tags GreyNoise attaches to it, which only a subscription's answer holds.
+    actor: str | None
+    tags: str | None
+    # Its page on GreyNoise's Visualizer.
     link: str
 
 
@@ -48,6 +64,8 @@ class ReputationOut(BaseModel):
     ruling_note: str | None
     # What AlienVault OTX said of it, if that is connected and has something to say.
     otx: OtxOut | None = None
+    # What GreyNoise said of it, if that is connected and has something to say.
+    greynoise: GreyNoiseOut | None = None
 
 
 class EndOut(BaseModel):
@@ -121,10 +139,17 @@ def _reputations(db: Session, found: conversations.Conversations) -> dict[str, R
         for row in intel_store.reports_for(db, otx.PROVIDER, addresses)
         if row.judgement != "unknown"
     }
+    noise = {
+        row.subject: _greynoise(row)
+        for row in intel_store.reports_for(db, greynoise.PROVIDER, addresses)
+        if row.judgement != "unknown"
+    }
     rulings = overrides.for_addresses(db, addresses)
     return {
-        address: _reputation(reports.get(address), rulings.get(address), pulses.get(address))
-        for address in reports.keys() | rulings.keys() | pulses.keys()
+        address: _reputation(
+            reports.get(address), rulings.get(address), pulses.get(address), noise.get(address)
+        )
+        for address in reports.keys() | rulings.keys() | pulses.keys() | noise.keys()
     }
 
 
@@ -141,11 +166,28 @@ def _otx(row: IntelSubject) -> OtxOut:
     )
 
 
+def _greynoise(row: IntelSubject) -> GreyNoiseOut:
+    """What GreyNoise says of one address, with where to read more."""
+    said = {item["label"]: item["value"] for item in row.details}
+    business = said.get(greynoise.BUSINESS)
+    return GreyNoiseOut(
+        judgement=row.judgement,  # type: ignore[arg-type]
+        classification=said.get(greynoise.CLASSIFICATION),
+        business=business,
+        actor=said.get(greynoise.ACTOR),
+        tags=said.get(greynoise.TAGS),
+        link=greynoise.link_of(row.subject, business=business is not None),
+    )
+
+
 def _reputation(
-    row: IntelSubject | None, ruling: IntelOverride | None, pulses: OtxOut | None = None
+    row: IntelSubject | None,
+    ruling: IntelOverride | None,
+    pulses: OtxOut | None = None,
+    noise: GreyNoiseOut | None = None,
 ) -> ReputationOut:
     """What is known against one address: the service's report, if it gave one, the pulses OTX
-    names it in, and the ruling."""
+    names it in, what GreyNoise says of it, and the ruling."""
     reported = row.judgement if row else "unknown"
     verdict = ruling.verdict if ruling else None
     return ReputationOut(
@@ -159,6 +201,7 @@ def _reputation(
         ruling=verdict,  # type: ignore[arg-type]
         ruling_note=ruling.note if ruling else None,
         otx=pulses,
+        greynoise=noise,
     )
 
 

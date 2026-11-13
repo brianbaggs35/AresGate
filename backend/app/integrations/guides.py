@@ -826,6 +826,68 @@ OTX = Guide(
 )
 
 
+GREYNOISE = Guide(
+    parts=(
+        Part(
+            title="Get a GreyNoise key",
+            connection="api",
+            intro=(
+                "AresGate asks GreyNoise whether an address on the internet is one of the many "
+                "that scan every address, or belongs to a common business service. It works "
+                "with a free account, with a subscription, and, for 10 lookups a day, with no "
+                "account at all."
+            ),
+            steps=(
+                Step(
+                    title="Choose how to ask",
+                    detail=(
+                        "With no account, GreyNoise's Community API answers up to 10 lookups a "
+                        "day and needs no key. A free account's key allows 50 searches a week. "
+                        "A Standard, Advanced or Elite subscription also gives the tags and the "
+                        "actor GreyNoise attaches to an address."
+                    ),
+                    result="Set Account, and Plan if there is an account, on the card.",
+                    watch=(
+                        "Only an account made with a business email is given an API key: "
+                        "GreyNoise says accounts made with free email addresses, such as Gmail "
+                        "or iCloud, have no key-level access. If yours is one, choose No account."
+                    ),
+                ),
+                Step(
+                    title="Copy the API key",
+                    detail=(
+                        "Sign in to the GreyNoise Visualizer, or sign up. Open the account menu "
+                        "at the bottom of the left sidebar and choose API Key under Workspace."
+                    ),
+                    menu=("Account menu", "Workspace", "API Key"),
+                    result=PASTE_KEY,
+                    watch=(
+                        "The page shows the week's searches used so far. The Visualizer and "
+                        "AresGate share them, and AresGate keeps 10 of the 50 for you. Keep the "
+                        "key to AresGate alone."
+                    ),
+                ),
+            ),
+        ),
+    ),
+    sources=(
+        Source(
+            title="GreyNoise: Using the Community API",
+            url="https://docs.greynoise.io/docs/using-the-greynoise-community-api",
+        ),
+        Source(
+            title="GreyNoise: Using the v3 API",
+            url="https://docs.greynoise.io/docs/using-the-greynoise-api",
+        ),
+        Source(
+            title="GreyNoise: Setting up an account",
+            url="https://docs.greynoise.io/docs/setting-up-an-account",
+        ),
+        Source(title="GreyNoise: Plans", url="https://www.greynoise.io/plans"),
+    ),
+)
+
+
 FINGERBANK = Guide(
     parts=(
         Part(

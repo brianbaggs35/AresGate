@@ -91,6 +91,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "crowdsec",
         "virustotal",
         "otx",
+        "greynoise",
         "fingerbank",
     ]
     assert listed[0]["name"] == "OPNsense"
@@ -102,6 +103,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "threats",
         "threats",
         "threats",
+        "threats",
         "devices",
     ]
     assert [item["category"] for item in listed] == [
@@ -109,6 +111,7 @@ def test_every_integration_is_listed_with_whether_it_is_connected(
         "Network monitoring",
         "Network monitoring",
         "Network monitoring",
+        "Threat intelligence",
         "Threat intelligence",
         "Threat intelligence",
         "Device intelligence",

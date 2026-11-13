@@ -186,6 +186,98 @@ describe('ConversationEnd', () => {
     expect(silent.find('[data-test="end-otx"]').exists()).toBe(false)
   })
 
+  it('says what GreyNoise makes of the address, with a link to read more', async () => {
+    const link = 'https://viz.greynoise.io/ip/203.0.113.7'
+    const scanner = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'unknown',
+        reported: 'unknown',
+        malicious: 0,
+        suspicious: 0,
+        engines: 0,
+        greynoise: {
+          judgement: 'malicious',
+          classification: 'malicious',
+          business: null,
+          actor: 'Group X',
+          tags: 'Mirai, SSH Bruteforcer',
+          link,
+        },
+      },
+    })
+    const bare = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'unknown',
+        reported: 'unknown',
+        malicious: 0,
+        suspicious: 0,
+        engines: 0,
+        greynoise: {
+          judgement: 'suspicious',
+          classification: null,
+          business: null,
+          actor: null,
+          tags: null,
+          link,
+        },
+      },
+    })
+    const tagged = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        greynoise: {
+          judgement: 'suspicious',
+          classification: 'unknown',
+          business: null,
+          actor: null,
+          tags: 'Mirai',
+          link,
+        },
+      },
+    })
+
+    expect(scanner.find('[data-test="end-greynoise"]').text()).toBe(
+      'GreyNoise: scans the internet, malicious (Group X; Mirai, SSH Bruteforcer)',
+    )
+    expect(scanner.find('[data-test="end-greynoise"]').attributes('href')).toBe(link)
+    expect(scanner.find('[data-test="end-client"]').classes()).toContain('end--flagged')
+    expect(bare.find('[data-test="end-greynoise"]').text()).toBe('GreyNoise: scans the internet')
+    expect(bare.find('[data-test="end-client"]').classes()).not.toContain('end--flagged')
+    expect(tagged.find('[data-test="end-greynoise"]').text()).toBe(
+      'GreyNoise: scans the internet, unknown (Mirai)',
+    )
+  })
+
+  it('says when GreyNoise knows the address as a business service, and shows nothing when it said nothing', async () => {
+    const service = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'clean',
+        reported: 'clean',
+        greynoise: {
+          judgement: 'clean',
+          classification: 'benign',
+          business: 'Cloudflare',
+          actor: null,
+          tags: null,
+          link: 'https://viz.greynoise.io/riot/203.0.113.7',
+        },
+      },
+    })
+    const silent = await show({ location: 'remote', reputation: FLAGGED })
+
+    expect(service.find('[data-test="end-greynoise"]').text()).toBe(
+      'GreyNoise: Cloudflare, a business service',
+    )
+    expect(silent.find('[data-test="end-greynoise"]').exists()).toBe(false)
+  })
+
   it('is drawn quietly when the service has nothing against it', async () => {
     const clean = await show({
       reputation: {

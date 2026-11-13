@@ -13,6 +13,7 @@ connect it, change its settings, test it or disconnect it.
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
 | AlienVault OTX | Which threat reports from the OTX community name each internet address an incident names, and what they say it is part of                                                                                                         | An API key, and how fast to look things up            |
+| GreyNoise | Whether each internet address an incident names is one of the many that scan every address, or belongs to a common business service | An API key and the plan it belongs to, or no account at all |
 | Fingerbank | What each device on the network is, from its hardware address: its make and model, its operating system and how sure Fingerbank is | An API key, and whether the devices in incidents and threats are identified too |
 
 Each card's page starts with the steps to get what it asks for, taken from the product's own
@@ -806,6 +807,103 @@ Worked out here, not in the documentation:
 Not tried against the live service: the answers are tested against a stand-in built from these
 descriptions, and any field that isn't what was expected is left out rather than guessed. An answer
 that doesn't hold an indicator is logged as a failed lookup, with the reason, and tried again later.
+
+## GreyNoise
+
+GreyNoise listens on sensors all over the Internet and records who is scanning and attacking
+everything at random. It is the third threat-intelligence integration, in the same **Threat
+intelligence** group on the Integrations page, and it answers a different question from the others:
+not whether an address is bad, but whether it is _background noise_. Most of the alerts a home
+network raises are one of the thousands of addresses that probe every address, which is a reason to
+take an alert less seriously, not more. Its address is fixed at `https://api.greynoise.io`.
+
+### Plans
+
+It works with every way of asking, which the card's **Account** and **Plan** settings choose:
+
+| Setting                                 | What is asked                | What GreyNoise allows                     | What AresGate does                               |
+| --------------------------------------- | ---------------------------- | ----------------------------------------- | ------------------------------------------------ |
+| No account                              | The Community API, no key    | 10 lookups a day                          | At most 8 a day, a new address every 3 hours     |
+| Free account (an API key)               | The Community API, with key  | 50 searches a week, shared with the Visualizer | At most 40 a week, a new address every 4 hours 15 minutes |
+| Standard, Advanced or Elite subscription | The IP Lookup API            | Not published                             | A new address every 10 seconds                   |
+
+Only an account made with a business email is given an API key: GreyNoise says accounts made with a
+free email address, such as Gmail, have none, and for those **No account** is the choice. The key is
+on the GreyNoise Visualizer's **API Key** page, under the account menu's **Workspace**, which also
+shows the week's searches used. The key is encrypted and is never shown again.
+
+The week's searches are shared with the Visualizer, so AresGate leaves ten of the fifty for you.
+Its lookups are spread over the whole allowance instead of used at once, and an address already
+answered is not asked about again until the answer is stale. If GreyNoise answers 429, which says
+the allowance is used up, nothing is sent for an hour, and the integration's page says so while it
+holds. That is never a sign the connection is broken. A test of the connection with an account's key
+or none is one lookup of `8.8.8.8` and spends one of those lookups; a subscription's key is tested
+with GreyNoise's ping, which asks about no address and counts as none. The connection is never
+tested on a timer.
+
+### What is asked about, and what comes back
+
+Only IPv4 addresses on the internet are asked about, since GreyNoise's Community API takes no other,
+with `GET /v3/community/{ip}` (or `GET /v3/ip/{ip}` for a subscription) and the key in the `key`
+header. An address inside the home is never sent, the same as for VirusTotal. Every address sent is
+shared with GreyNoise, which is worth knowing before turning this on.
+
+The answer is one of three things, which AresGate reads as a judgement the AI and you can overrule:
+
+- **A business service** (GreyNoise's RIOT dataset: public DNS, cloud and content providers) is
+  **clean**, as is a scanner GreyNoise classifies _benign_, such as a known research scanner or
+  search engine.
+- **A scanner classified malicious** is **malicious**, and one it has seen scanning but not
+  classified is **suspicious**.
+- **Nothing** is **unknown**, not clean. An attack aimed at one network alone shows on none of
+  GreyNoise's sensors, so an address it has not seen says little.
+
+The classification, when it was last seen and the business service are kept as the address's
+details. A subscription's answer adds when it was first seen, the actor and tags GreyNoise attaches,
+the CVEs, whether it is a Tor exit or a VPN, its reverse DNS, and the owner, country and ASN. A plan
+that holds fields back (GreyNoise answers 206 and lists them) gives a report of what it has.
+
+### What the AI does with it
+
+The AI reads GreyNoise's answer about each address of an incident under its own heading, and its
+`reputation` tool shows it too. It is told that an address GreyNoise classifies malicious is mass
+scanning or opportunistic exploitation aimed at everyone, so an attempt from it that was blocked or
+failed is background and calls for a low severity unless the traffic shows it got in, and that
+GreyNoise calling an address benign or a business service is not proof that what it did to this home
+was harmless. That is how a flood of probes stops raising alarms while a targeted attack, which
+GreyNoise has never seen, is not hidden by it.
+
+On an incident's conversations, an address GreyNoise has something to say about gets a chip beside
+the others, such as *GreyNoise: scans the internet, malicious*, that opens the address's page on the
+GreyNoise Visualizer. It draws the address as a warning only when GreyNoise's word is malicious.
+
+### Where this comes from, and what isn't tried
+
+Taken from GreyNoise's [Community API](https://docs.greynoise.io/reference/getcommunityip) and
+[Using the Community API](https://docs.greynoise.io/docs/using-the-greynoise-community-api) pages,
+its [v3 API guide](https://docs.greynoise.io/docs/using-the-greynoise-api) and
+[OpenAPI description](https://api.greynoise.io/v3/openapi.yaml), its
+[account setup page](https://docs.greynoise.io/docs/setting-up-an-account) and its
+[plans](https://www.greynoise.io/plans): the `key` header, the `noise`, `riot`, `classification`,
+`name` and `last_seen` fields of the Community API, the 10 lookups a day without an account and 50
+searches a week with a free one, that the free key shares them with the Visualizer, `GET /ping`, and
+the `business_service_intelligence` and `internet_scanner_intelligence` sections of the IP Lookup
+API.
+
+Worked out here, not in the documentation:
+
+- A subscription's lookup limits are not published, so the pace for it, the 8 a day and 40 a week
+  margins, and the hour's wait after a 429 are AresGate's own.
+- A 404, and a 200 that names neither noise nor a business service, are taken as no report.
+- The Visualizer's page for an address (`/ip/` and, for a business service, `/riot/`) is inferred
+  from the links in its examples.
+- That `/ping` answers a subscription's key is read from its description; whether it answers a free
+  key is not, which is why those are tested with a lookup.
+- A plan that holds back the classification gives a scanner counted as suspicious, the same as one
+  GreyNoise does not classify.
+
+Not tried against the live service: the answers are tested against a stand-in built from these
+descriptions, and any field that isn't what was expected is left out rather than guessed.
 
 ## Fingerbank
 
