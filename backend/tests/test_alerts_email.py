@@ -225,7 +225,9 @@ class TestTheMailServer:
     def test_removing_what_is_not_there_is_not_an_error(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.delete(SMTP, headers=headers(csrf_token)).status_code == 204
+        response = client.delete(SMTP, headers=headers(csrf_token))
+
+        assert response.status_code == 204
 
     def test_saving_lets_every_email_destination_try_again(
         self, client: TestClient, csrf_token: str, session: Session
@@ -391,7 +393,9 @@ class TestEmailDestinations:
         set_up(client, csrf_token)
         made = add_email(client, csrf_token).json()
 
-        assert client.delete(f"{BASE}/{made['id']}", headers=headers(csrf_token)).status_code == 204
+        response = client.delete(f"{BASE}/{made['id']}", headers=headers(csrf_token))
+
+        assert response.status_code == 204
 
         assert client.get(BASE).json()["smtp"]["password_kept"] is True
 
