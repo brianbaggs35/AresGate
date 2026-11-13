@@ -3,8 +3,13 @@ import { Radar, RefreshCw } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { DEVICE_DIRECTIONS, DEVICE_SCOPES, fetchDevices, type DevicePage } from '@/api/devices'
-import type { Device } from '@/api/devices'
+import {
+  DEVICE_DIRECTIONS,
+  DEVICE_SCOPES,
+  fetchDevices,
+  type Device,
+  type DevicePage,
+} from '@/api/devices'
 import { errorMessage } from '@/api/client'
 import AppPage from '@/components/AppPage.vue'
 import AssetSearch from '@/components/AssetSearch.vue'

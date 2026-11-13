@@ -161,6 +161,25 @@ def _scope(address: Address, assets: dict[Address, Asset]) -> Scope:
     return "outside" if address.is_global else "local"
 
 
+def _merged(
+    before: Tally | None, incoming: bool, count: int, first: datetime, last: datetime
+) -> Tally:
+    """An address's tally with one more side's events added to what is already counted."""
+    if before is None:
+        return Tally(
+            incoming=count if incoming else 0,
+            outgoing=0 if incoming else count,
+            first_seen_at=first,
+            last_seen_at=last,
+        )
+    return Tally(
+        incoming=before.incoming + (count if incoming else 0),
+        outgoing=before.outgoing + (0 if incoming else count),
+        first_seen_at=min(before.first_seen_at, first),
+        last_seen_at=max(before.last_seen_at, last),
+    )
+
+
 def _tallies(db: Session, since: datetime) -> tuple[dict[Address, Tally], bool]:
     """Each address's events in the window, and whether either side was cut at ``MOST``."""
     found: dict[Address, Tally] = {}
@@ -181,13 +200,7 @@ def _tallies(db: Session, since: datetime) -> tuple[dict[Address, Tally], bool]:
         for address, count, first, last in rows:
             if address is None:  # pragma: no cover - the query leaves these out
                 continue
-            before = found.get(address)
-            found[address] = Tally(
-                incoming=(before.incoming if before else 0) + (count if incoming else 0),
-                outgoing=(before.outgoing if before else 0) + (0 if incoming else count),
-                first_seen_at=min(before.first_seen_at, first) if before else first,
-                last_seen_at=max(before.last_seen_at, last) if before else last,
-            )
+            found[address] = _merged(found.get(address), incoming, count, first, last)
     return found, capped
 
 
@@ -305,11 +318,12 @@ def _devices(
 
 
 def _key(sort: Sort, address: Address, tally: Tally) -> tuple[float, ...]:
+    by_address = (address.version, int(address))
     if sort == "busiest":
-        return (-tally.events, -tally.last_seen_at.timestamp(), address.version, int(address))
+        return (-tally.events, -tally.last_seen_at.timestamp(), *by_address)
     if sort == "address":
-        return (address.version, int(address))
-    return (-tally.last_seen_at.timestamp(), -tally.events, address.version, int(address))
+        return (0, 0, *by_address)
+    return (-tally.last_seen_at.timestamp(), -tally.events, *by_address)
 
 
 def search(

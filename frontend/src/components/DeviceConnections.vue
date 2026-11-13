@@ -15,74 +15,79 @@ defineProps<{ connections: readonly DeviceConnection[] }>()
 </script>
 
 <template>
-  <div class="connections" role="table" aria-label="Connections" data-test="connections">
-    <div class="connections__head text-label-large text-medium-emphasis" role="row">
-      <span role="columnheader">Direction</span>
-      <span role="columnheader">Source</span>
-      <span role="columnheader">Destination</span>
-      <span role="columnheader">Port</span>
-      <span role="columnheader" class="connections__right">Seen</span>
-    </div>
-    <div
-      v-for="(item, index) in connections"
-      :key="index"
-      class="connection"
-      role="row"
-      data-test="connection"
-    >
-      <span class="connection__direction" role="cell" data-test="connection-direction">
-        <v-icon
-          :icon="item.direction === 'outgoing' ? ArrowUpRight : ArrowDownLeft"
-          size="16"
-          aria-hidden="true"
-        />
-        {{ DIRECTION[item.direction].label }}
-      </span>
-      <span class="connection__end" role="cell" data-label="Source" data-test="connection-source">
-        <template v-if="item.direction === 'outgoing'">This device</template>
-        <router-link
-          v-else-if="item.peer"
-          :to="{ name: 'device', params: { address: item.peer } }"
-          data-test="connection-peer"
-          >{{ item.peer }}</router-link
+  <div class="connections" data-test="connections">
+    <table aria-label="Connections">
+      <thead class="connections__head text-label-large text-medium-emphasis">
+        <tr>
+          <th scope="col">Direction</th>
+          <th scope="col">Source</th>
+          <th scope="col">Destination</th>
+          <th scope="col">Port</th>
+          <th scope="col" class="connections__right">Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="(item, index) in connections"
+          :key="index"
+          class="connection"
+          data-test="connection"
         >
-        <span v-else class="text-medium-emphasis">Unknown address</span>
-      </span>
-      <span
-        class="connection__end"
-        role="cell"
-        data-label="Destination"
-        data-test="connection-destination"
-      >
-        <template v-if="item.direction === 'incoming'">This device</template>
-        <router-link
-          v-else-if="item.peer"
-          :to="{ name: 'device', params: { address: item.peer } }"
-          data-test="connection-peer"
-          >{{ item.peer }}</router-link
-        >
-        <span v-else class="text-medium-emphasis">Unknown address</span>
-      </span>
-      <span class="connection__port" role="cell" data-label="Port" data-test="connection-port">
-        <template v-if="item.port !== null">{{ describePort(item.port, item.protocol) }}</template>
-        <template v-else-if="item.protocol">{{ item.protocol }}</template>
-        <span v-else class="text-medium-emphasis">Not said</span>
-      </span>
-      <span class="connection__seen connections__right" role="cell" data-test="connection-seen">
-        {{ formatCount(item.events) }} {{ item.events === 1 ? 'time' : 'times' }},
-        <time :datetime="item.last_seen_at" :title="formatDateTime(item.last_seen_at)">{{
-          formatAgo(item.last_seen_at)
-        }}</time>
-      </span>
-    </div>
+          <td class="connection__direction" data-test="connection-direction">
+            <v-icon
+              :icon="item.direction === 'outgoing' ? ArrowUpRight : ArrowDownLeft"
+              size="16"
+              aria-hidden="true"
+            />
+            {{ DIRECTION[item.direction].label }}
+          </td>
+          <td class="connection__end" data-label="Source" data-test="connection-source">
+            <template v-if="item.direction === 'outgoing'">This device</template>
+            <router-link
+              v-else-if="item.peer"
+              :to="{ name: 'device', params: { address: item.peer } }"
+              data-test="connection-peer"
+              >{{ item.peer }}</router-link
+            >
+            <span v-else class="text-medium-emphasis">Unknown address</span>
+          </td>
+          <td class="connection__end" data-label="Destination" data-test="connection-destination">
+            <template v-if="item.direction === 'incoming'">This device</template>
+            <router-link
+              v-else-if="item.peer"
+              :to="{ name: 'device', params: { address: item.peer } }"
+              data-test="connection-peer"
+              >{{ item.peer }}</router-link
+            >
+            <span v-else class="text-medium-emphasis">Unknown address</span>
+          </td>
+          <td class="connection__port" data-label="Port" data-test="connection-port">
+            <template v-if="item.port !== null">{{
+              describePort(item.port, item.protocol)
+            }}</template>
+            <template v-else-if="item.protocol">{{ item.protocol }}</template>
+            <span v-else class="text-medium-emphasis">Not said</span>
+          </td>
+          <td class="connection__seen connections__right" data-test="connection-seen">
+            {{ formatCount(item.events) }} {{ item.events === 1 ? 'time' : 'times' }},
+            <time :datetime="item.last_seen_at" :title="formatDateTime(item.last_seen_at)">{{
+              formatAgo(item.last_seen_at)
+            }}</time>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>
 
 <style scoped>
 .connections {
-  display: flex;
-  flex-direction: column;
   container-type: inline-size;
+}
+
+table,
+tbody {
+  display: block;
 }
 
 .connections__head {
@@ -98,6 +103,13 @@ defineProps<{ connections: readonly DeviceConnection[] }>()
 
 .connection + .connection {
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+th,
+td {
+  padding: 0;
+  text-align: start;
+  font-weight: inherit;
 }
 
 .connection__direction {
@@ -126,7 +138,11 @@ defineProps<{ connections: readonly DeviceConnection[] }>()
 
 /* A wide card reads as a table: one line to a connection, a heading above the columns. */
 @container (min-width: 44rem) {
-  .connections__head,
+  .connections__head {
+    display: block;
+  }
+
+  .connections__head tr,
   .connection {
     display: grid;
     grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1fr) 9rem 12rem;

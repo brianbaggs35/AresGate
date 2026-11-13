@@ -130,6 +130,35 @@ class TestTheList:
             (CAMERA_IP, "yours"),
         ]
 
+    def test_an_address_on_both_sides_of_connections_adds_them_and_spans_the_time(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        stock(session, settings)
+        factories.events(
+            session,
+            settings,
+            utcnow(),
+            [
+                EventSpec(
+                    src_address=SERVER,
+                    src_port=443,
+                    dst_address=LAPTOP_IP,
+                    dst_port=51000,
+                    protocol="tcp",
+                    repeat=4,
+                    seconds_ago=30,
+                )
+            ],
+        )
+        session.commit()
+
+        found = {item["address"]: item for item in get(client).json()["items"]}
+
+        assert (found[SERVER]["incoming"], found[SERVER]["outgoing"]) == (3, 4)
+        assert (found[LAPTOP_IP]["incoming"], found[LAPTOP_IP]["outgoing"]) == (4, 3)
+        # The earliest of the first sightings and the latest of the last.
+        assert found[SERVER]["first_seen_at"] < found[SERVER]["last_seen_at"]
+
     def test_an_address_of_the_home_is_the_asset_it_is(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings
     ) -> None:

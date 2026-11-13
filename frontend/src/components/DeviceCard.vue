@@ -94,11 +94,7 @@ const total = computed(() => connectionsOf(props.device))
     </div>
 
     <div class="device__mix" data-test="device-mix">
-      <div
-        class="device__bar"
-        role="img"
-        :aria-label="`${formatCount(device.incoming)} connections to it, ${formatCount(device.outgoing)} from it`"
-      >
+      <div class="device__bar" aria-hidden="true">
         <span class="device__in" :style="{ inlineSize: `${share}%` }" />
       </div>
       <p class="device__counts text-body-medium">
