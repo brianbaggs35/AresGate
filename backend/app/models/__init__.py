@@ -65,6 +65,7 @@ from app.models.intel import IntelLookup, IntelOverride, IntelSubject
 from app.models.interfaces import ROLES as INTERFACE_ROLES
 from app.models.interfaces import Interface, InterfaceFeed
 from app.models.metrics import MetricRetention, MetricSample, MetricSeries
+from app.models.nvd import NvdCve
 from app.models.passkeys import Passkey, PasskeyChallenge
 from app.models.retention import SourceRetention
 from app.models.review import ANSWERS, REVIEW_MODES, ReviewFeedback, ReviewSettings
@@ -129,6 +130,7 @@ __all__ = [
     "MetricSample",
     "MetricSeries",
     "NoiseSettings",
+    "NvdCve",
     "Passkey",
     "PasskeyChallenge",
     "RecoveryCode",

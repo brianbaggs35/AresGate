@@ -307,6 +307,8 @@ class IncidentSpec(NamedTuple):
     # signed itself, a plain web request with a login in its headers, a name looked up. Needs
     # ``detailed``.
     wire: bool = False
+    # A CVE the alerts name in their summaries, as a scanner's or Wazuh's do.
+    cve: str | None = None
 
 
 class IncidentsRecorded(NamedTuple):
@@ -390,7 +392,8 @@ def _attack(number: int, address: str, spec: IncidentSpec, now: datetime) -> lis
             severity=severity,
             occurred_at=last - gap * later_waves - _STEP * later_in_wave,
             identity=(f"e2e-incident-{number}-{signal}",),
-            summary=f"{program.capitalize()} saw {source} try ssh",
+            summary=f"{program.capitalize()} saw {source} try ssh"
+            + (f" ({spec.cve})" if spec.cve else ""),
             signature="ET SCAN Potential SSH Scan"
             if spec.scan or signal > 0
             else "Brute force on ssh",

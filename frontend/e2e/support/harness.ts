@@ -132,6 +132,8 @@ export interface IncidentRequest {
   /** Whether the firewall's record also says what was said on the wire: a certificate a camera
    * signed itself, a plain web request with a login in it, a name looked up. Needs `detailed`. */
   wire?: boolean
+  /** A CVE the alerts name in what they say, such as `CVE-2021-44228`. */
+  cve?: string
 }
 
 /** How much `createIncidents()` stored. */

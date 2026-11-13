@@ -553,6 +553,38 @@ export interface IncidentDetail extends Incident {
   /** What was said on the wire (certificates, requests, lookups, the packet), or null where no
    * program read any of it. */
   wire: Wire | null
+  /** The CVEs its signals name, and what the National Vulnerability Database says of each. */
+  vulnerabilities: Vulnerability[]
+}
+
+/** How severe a vulnerability is, by the bands of CVSS scores. */
+export type CvssSeverity = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+
+/** A CVE an incident names. `found`: NVD has a record of it. `unknown`: NVD has none yet.
+ * `pending`: it has not been asked about yet. */
+export interface Vulnerability {
+  id: string
+  /** NVD's page about it. */
+  link: string
+  state: 'found' | 'unknown' | 'pending'
+  /** NVD's status for the record, such as `Analyzed`, `Awaiting Analysis` or `Rejected`. */
+  status: string | null
+  cvss_version: string | null
+  /** The CVSS score from 0 to 10: how severe the vulnerability is, not how bad this attack is. */
+  score: number | null
+  severity: CvssSeverity | null
+  vector: string | null
+  description: string | null
+  /** The kinds of weakness it is, as CWE ids. */
+  weaknesses: string[]
+  /** Whether CISA's Known Exploited Vulnerabilities list has it: it was seen exploited. */
+  exploited: boolean
+  /** The days as `YYYY-MM-DD`. */
+  exploited_on: string | null
+  action_due: string | null
+  required_action: string | null
+  kev_name: string | null
+  published_at: string | null
 }
 
 /** A certificate a server showed in a TLS handshake. */

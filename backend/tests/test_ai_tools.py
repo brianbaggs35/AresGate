@@ -139,6 +139,7 @@ class TestTheList:
             "device",
             "integrations",
             "reputation",
+            "vulnerability",
             "who_is",
             "trusted",
             "attack_chains",

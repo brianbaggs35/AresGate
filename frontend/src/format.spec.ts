@@ -6,6 +6,7 @@ import {
   formatClock,
   formatCompact,
   formatCount,
+  formatDate,
   formatDateTime,
   formatDay,
   formatDays,
@@ -59,6 +60,12 @@ describe('describeBrowser', () => {
     expect(describeBrowser('curl/8.5.0')).toBe('Unknown device')
     expect(describeBrowser(null)).toBe('Unknown device')
     expect(describeBrowser('')).toBe('Unknown device')
+  })
+})
+
+describe('formatDate', () => {
+  it('writes a day as the same day wherever the reader is', () => {
+    expect(formatDate('2021-12-10', 'en-US')).toBe('Dec 10, 2021')
   })
 })
 

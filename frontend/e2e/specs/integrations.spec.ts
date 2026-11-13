@@ -32,9 +32,10 @@ test.describe('integrations', () => {
       'VirusTotal',
       'AlienVault OTX',
       'GreyNoise',
+      'NIST NVD',
       'Fingerbank',
     ])
-    await expect(integrations.count).toHaveText('0 of 8 set up')
+    await expect(integrations.count).toHaveText('0 of 9 set up')
     for (const key of [
       'opnsense',
       'ntopng',
@@ -61,7 +62,7 @@ test.describe('integrations', () => {
     await integration.back.click()
 
     await expect(page).toHaveURL('/integrations')
-    await expect(integrations.names).toHaveCount(8)
+    await expect(integrations.names).toHaveCount(9)
   })
 
   test('explains how to get what is needed in a window, and links to the official documentation', async ({
@@ -162,7 +163,7 @@ test.describe('integrations', () => {
     await integrations.retry.click()
 
     await expect(integrations.loadError).toHaveCount(0)
-    await expect(integrations.names).toHaveCount(8)
+    await expect(integrations.names).toHaveCount(9)
   })
 
   test('says so for an integration that does not exist', async ({ page, integration }) => {
@@ -233,7 +234,7 @@ test.describe('integrations', () => {
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
-      await expect(integrations.count).toHaveText('1 of 8 set up')
+      await expect(integrations.count).toHaveText('1 of 9 set up')
     })
 
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
@@ -1236,7 +1237,7 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      await expect(integration.collectors).toHaveCount(8)
+      await expect(integration.collectors).toHaveCount(9)
       await expect(integration.collectors.nth(6)).toContainText('Suricata alerts')
       await expect(integration.collectorStates).toHaveText(new Array(8).fill('Working'))
       await expect(integration.collectorErrors).toHaveCount(0)
@@ -1510,6 +1511,36 @@ test.describe('integrations', () => {
     })
   })
 
+  test.describe('NIST NVD', () => {
+    test('is threat intelligence on the internet, with a key only when one is sent', async ({
+      page,
+      integration,
+      integrations,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.card('nvd')).toContainText('Threat intelligence')
+      await integrations.card('nvd').click()
+
+      await expect(page).toHaveURL('/integrations/nvd')
+      await expect(integration.title).toHaveText('NIST NVD')
+      await expect(integration.address('api')).toHaveValue('https://services.nvd.nist.gov')
+      await expect(integration.address('api')).not.toBeEditable()
+      // A key is asked with, and the limits are said beside the choice.
+      await expect(integration.connection('api').getByLabel('Ask with an API key')).toBeChecked()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+      await expect(integration.connection('api').getByTestId('caution-access')).toContainText(
+        '5 requests in 30 seconds',
+      )
+
+      // With no key there is none to enter.
+      await integration.connection('api').getByLabel('Ask without a key').check()
+      await expect(integration.field('api', 'api_key')).toHaveCount(0)
+
+      await integration.connection('api').getByLabel('Ask with an API key').check()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+    })
+  })
+
   test.describe('Fingerbank', () => {
     test('is device intelligence on the internet, with its one address fixed and a setting for incident devices', async ({
       page,
@@ -1555,7 +1586,7 @@ test.describe('integrations', () => {
       await expect(integrations.names).toHaveCount(0)
 
       await integrations.clear.click()
-      await expect(integrations.names).toHaveCount(8)
+      await expect(integrations.names).toHaveCount(9)
       await expect(integrations.search).toHaveValue('')
     })
 
@@ -1565,13 +1596,18 @@ test.describe('integrations', () => {
       await integrations.goto()
 
       await integrations.kind('Threat intelligence').click()
-      await expect(integrations.names).toHaveText(['VirusTotal', 'AlienVault OTX', 'GreyNoise'])
+      await expect(integrations.names).toHaveText([
+        'VirusTotal',
+        'AlienVault OTX',
+        'GreyNoise',
+        'NIST NVD',
+      ])
       await integrations.kind('Device intelligence').click()
       await expect(integrations.names).toHaveText(['Fingerbank'])
-      await expect(integrations.count).toHaveText('0 of 8 set up')
+      await expect(integrations.count).toHaveText('0 of 9 set up')
 
       await integrations.kind('All').click()
-      await expect(integrations.names).toHaveCount(8)
+      await expect(integrations.names).toHaveCount(9)
     })
   })
 

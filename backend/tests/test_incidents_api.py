@@ -20,11 +20,15 @@ from app.incidents import episode, names, queries, search
 from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
+from app.nvd import lookup as nvd_lookup
+from app.nvd import store as nvd_store
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
 from e2e import factories
 from e2e.factories import AssetSpec, Listed
 from tests.helpers import OTHER_ORIGIN, new_event
+from tests.nvd_support import NOW as NVD_NOW
+from tests.nvd_support import kept
 from tests.test_incidents_engine import (
     ATTACKER,
     DEVICE,
@@ -1905,3 +1909,68 @@ class TestWhatWasSaidOnTheWire:
         run(session)
 
         assert self.detail(client)["wire"] is None
+
+
+class TestVulnerabilities:
+    """The CVEs an incident's alerts name, with what NVD has said of each."""
+
+    def detail(self, client: TestClient) -> dict[str, Any]:
+        [only] = listed(client)
+        return client.get(f"{BASE}/{only['id']}").json()  # type: ignore[no-any-return]
+
+    def two_alerts(self, session: Session, settings: Settings, first: str, second: str) -> None:
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, summary=first),
+            alert(NOW + MINUTE, n=2, summary=second, signature=f"ET EXPLOIT {second}"),
+        )
+        run(session)
+
+    def test_a_cve_nvd_has_not_been_asked_about_is_pending(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.two_alerts(session, settings, "Attempt on CVE-2021-44228", "Attempt on CVE-2021-44228")
+
+        [named] = self.detail(client)["vulnerabilities"]
+
+        assert named["id"] == "CVE-2021-44228"
+        assert named["state"] == "pending"
+        assert named["link"] == "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"
+        assert named["score"] is None
+        assert named["weaknesses"] == []
+        assert named["exploited"] is False
+
+    def test_what_nvd_said_goes_with_the_cve_and_one_it_has_no_record_of_is_unknown(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.two_alerts(session, settings, "Attempt on CVE-2021-44228", "Also CVE-2019-0708")
+        kept(session, "CVE-2021-44228")
+        nvd_store.keep(session, "CVE-2019-0708", nvd_lookup.Unknown(), NVD_NOW)
+        session.commit()
+
+        found, unknown = self.detail(client)["vulnerabilities"]
+
+        assert (found["id"], found["state"], found["score"], found["severity"]) == (
+            "CVE-2021-44228",
+            "found",
+            10.0,
+            "CRITICAL",
+        )
+        assert found["cvss_version"] == "3.1"
+        assert found["exploited"] is True
+        assert found["exploited_on"] == "2021-12-10"
+        assert found["weaknesses"] == ["CWE-917"]
+        assert (unknown["id"], unknown["state"], unknown["score"]) == (
+            "CVE-2019-0708",
+            "unknown",
+            None,
+        )
+
+    def test_an_incident_naming_no_cve_has_none(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1), alert(NOW + MINUTE, n=2))
+        run(session)
+
+        assert self.detail(client)["vulnerabilities"] == []

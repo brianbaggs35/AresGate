@@ -715,6 +715,47 @@ async def greynoise_ping(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, f"GreyNoise accepted the key.{named}")
 
 
+async def nvd(client: ApiClient, target: Target) -> Verdict:
+    """Asks NVD for one well-known CVE, with the key if the settings send one, and checks that the
+    answer is a list of CVEs. NVD answers an unknown key with an error that says so in its
+    ``message`` header, which is passed on. The request counts as one of the requests NVD allows in
+    30 seconds, which the loop that asks about CVEs leaves room for."""
+    use_key = target.options.get("access") != "none"
+    key = target.secrets.get("api_key") if use_key else None
+    reply = await client.request(
+        "GET",
+        "/rest/json/cves/2.0",
+        query={"cveIds": NVD_TEST_CVE, "resultsPerPage": "1"},
+        headers={"apiKey": key} if key else None,
+    )
+    if not reply.ok:
+        said = audit.clean(reply.headers.get("message"), 120)
+        if reply.status == 404 and said and "apikey" in said.lower():
+            return Verdict(False, "NVD didn't accept the key. Request a new one from NVD.")
+        if reply.status in (403, 429):
+            return Verdict(
+                False,
+                "NVD turned the request away (HTTP "
+                f"{reply.status}), which it does when the key is wrong or its limit is reached. "
+                "Check the key, or try again in a minute.",
+            )
+        if bad := problem(reply, "NVD"):
+            return bad
+    answer = as_object(reply.json())
+    if answer is None or as_array(answer.get("vulnerabilities")) is None:
+        return unexpected("NVD")
+    return Verdict(
+        True,
+        "NVD answered with the key."
+        if key
+        else "NVD answered. Without a key it allows 5 requests in 30 seconds.",
+    )
+
+
+# A CVE that NVD has recorded, the Log4Shell one, which it will keep.
+NVD_TEST_CVE = "CVE-2021-44228"
+
+
 # A hardware address that belongs to no device: the example RFC 7042 gives for documentation.
 DOCUMENTATION_MAC = "00:00:5e:00:53:00"
 
@@ -756,6 +797,7 @@ PROBES: Mapping[tuple[str, str], Probe] = {
     ("wazuh", "indexer"): wazuh_indexer,
     ("crowdsec", "lapi"): crowdsec,
     ("otx", "api"): alienvault_otx,
+    ("nvd", "api"): nvd,
     ("fingerbank", "api"): fingerbank,
 }
 

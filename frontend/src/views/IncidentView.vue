@@ -42,6 +42,7 @@ import IncidentOccurrences from '@/components/IncidentOccurrences.vue'
 import IncidentReasons from '@/components/IncidentReasons.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import IncidentTimeline from '@/components/IncidentTimeline.vue'
+import IncidentVulnerabilities from '@/components/IncidentVulnerabilities.vue'
 import IncidentWhere from '@/components/IncidentWhere.vue'
 import LaneChip from '@/components/LaneChip.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -439,6 +440,15 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         data-test="through-card"
       >
         <IncidentThrough :through="shown.through" />
+      </SectionCard>
+
+      <SectionCard
+        v-if="shown.vulnerabilities.length"
+        title="Vulnerabilities it names"
+        description="The CVEs its alerts name, with what the National Vulnerability Database says of each: how severe the vulnerability is, and whether CISA has seen it exploited. The score rates the vulnerability, not this attack."
+        data-test="vulnerabilities-card"
+      >
+        <IncidentVulnerabilities :vulnerabilities="shown.vulnerabilities" />
       </SectionCard>
 
       <IncidentInsights v-if="shown.insights" :insights="shown.insights" />

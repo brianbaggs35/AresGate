@@ -49,6 +49,9 @@ from app.models import (
     IntelSubject,
     VerdictRule,
 )
+from app.nvd import cves
+from app.nvd import said as nvd_said
+from app.nvd import store as nvd_store
 
 MAX_ITEMS: Final = 10
 MAX_ALERTS: Final = 20
@@ -367,6 +370,20 @@ def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
         f"{report.reputation}, analysed {_when(report.analysed_at)}.",
     ]
     return Found(lines, [], f"VirusTotal's report on {shown}")
+
+
+# -- the vulnerabilities
+
+
+def vulnerability(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What the National Vulnerability Database says of one CVE, if it has been asked about it: its
+    score and rating, whether CISA has seen it exploited, the weakness and what it is."""
+    del now
+    cve_id = (args.name or "").strip().upper()
+    if not cves.is_cve(cve_id):
+        return Found(["Give the CVE to look up, such as CVE-2021-44228."], [], "no CVE given")
+    row = nvd_store.load(db, [cve_id]).get(cve_id)
+    return Found([nvd_said.said(row, cve_id, redactor.text) + "."], [], f"NVD's record of {cve_id}")
 
 
 # -- the integrations
@@ -829,6 +846,13 @@ TOOLS: Final[Sequence[Tool]] = (
         "What VirusTotal says of one address on the internet: how many security engines flag "
         "it, and who owns it. Uses: name, for the address.",
         reputation,
+    ),
+    Tool(
+        "vulnerability",
+        "What the National Vulnerability Database says of one CVE: its CVSS score, whether CISA "
+        "has seen it exploited and what it is. Only for a CVE an incident named. Uses: name, for "
+        "the CVE, such as CVE-2021-44228.",
+        vulnerability,
     ),
     Tool(
         "who_is",

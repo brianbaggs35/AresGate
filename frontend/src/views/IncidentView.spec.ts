@@ -15,6 +15,7 @@ import {
   reading,
   signal,
   through,
+  vulnerability,
   wire,
   travelPath,
   triage,
@@ -678,6 +679,15 @@ describe('IncidentView', () => {
       const some = await open({ found: detail({ wire: wire() }) })
       expect(some.find('wire-card').exists()).toBe(true)
       expect(some.text('wire-certificate-name')).toBe('cloud.example.net')
+    })
+
+    it('lists the CVEs it names only when it names any', async () => {
+      const none = await open()
+      expect(none.find('vulnerabilities-card').exists()).toBe(false)
+
+      const some = await open({ found: detail({ vulnerabilities: [vulnerability()] }) })
+      expect(some.find('vulnerabilities-card').exists()).toBe(true)
+      expect(some.text('vulnerability-score')).toBe('CVSS 3.1: 10.0, Critical')
     })
 
     it('reads the incident again when an address in it is ruled on', async () => {
