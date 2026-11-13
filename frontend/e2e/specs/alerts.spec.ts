@@ -501,4 +501,140 @@ test.describe('alerts page', () => {
       await expect(alerts.deliveries).toHaveCount(1)
     })
   })
+
+  test.describe('email', () => {
+    const MAIL_PASSWORD = 'correct horse battery staple'
+
+    test('says no mail server is set up on a new install', async ({ alerts }) => {
+      await alerts.goto()
+
+      await expect(alerts.mail).toContainText('No mail server is set up')
+      await expect(alerts.mailRemove).toHaveCount(0)
+    })
+
+    test('sets up the mail server and never shows the password again', async ({ alerts, page }) => {
+      const answers: string[] = []
+      page.on('response', async (response) => {
+        if (response.url().includes('/api/')) answers.push(await response.text().catch(() => ''))
+      })
+      await alerts.goto()
+
+      await alerts.mailEdit.click()
+      await expect(alerts.mailPort).toHaveValue('587')
+      await expect(alerts.mailPassword).toHaveAttribute('type', 'password')
+      await alerts.setUpMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
+
+      await expect(alerts.notice).toContainText('Saved the mail server.')
+      await expect(alerts.mailName).toHaveText('smtp.example.com:587')
+      await expect(alerts.mail).toContainText('Emails come from alerts@example.com.')
+      await expect(alerts.mail).toContainText('The password is saved, encrypted.')
+      await page.reload()
+      await expect(alerts.mailName).toBeVisible()
+      await expect(page.locator('body')).not.toContainText(MAIL_PASSWORD)
+      await alerts.mailEdit.click()
+      await expect(alerts.mailPassword).toHaveValue('')
+      await expect(alerts.mailDialog).toContainText('Saved. Leave this empty to keep it')
+      expect(answers.join('\n')).not.toContain(MAIL_PASSWORD)
+    })
+
+    test('refuses settings that cannot be used, on the field', async ({ alerts }) => {
+      await alerts.goto()
+
+      await alerts.setUpMail('not a host', 'nobody', MAIL_PASSWORD)
+
+      await expect(alerts.mailDialog).toContainText("Enter the mail server's name")
+      await expect(alerts.mailDialog).toBeVisible()
+      await expect(alerts.mail).toContainText('No mail server is set up')
+    })
+
+    test('keeps the password when it is left empty, and forgets it when asked', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+      await alerts.setUpMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
+      await expect(alerts.notice).toContainText('Saved the mail server.')
+
+      await alerts.mailEdit.click()
+      await alerts.mailHost.fill('mail.example.org')
+      await alerts.mailSave.click()
+      await expect(alerts.mailName).toHaveText('mail.example.org:587')
+      await expect(alerts.mail).toContainText('The password is saved, encrypted.')
+
+      await alerts.mailEdit.click()
+      await alerts.mailForget.check()
+      await alerts.mailUsername.fill('')
+      await alerts.mailSave.click()
+      await expect(alerts.mail).toContainText('It signs in with no user name.')
+      await expect(alerts.mail).not.toContainText('The password is saved')
+    })
+
+    test('adds an email destination that waits for the mail server, then works once it is set up', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+
+      await alerts.addEmailDestination('Inbox', 'me@example.org')
+
+      const card = alerts.destination('Inbox')
+      await expect(alerts.notice).toContainText('Added Inbox.')
+      await expect(card.getByTestId('destination-kind')).toHaveText('Email')
+      await expect(card.getByTestId('destination-address')).toContainText(
+        'me@example.org, once the mail server is set up',
+      )
+      await expect(card.getByTestId('status')).toHaveText('Not connected')
+      await expect(card.getByTestId('destination-test')).toBeDisabled()
+
+      await alerts.setUpMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
+
+      await expect(alerts.notice).toContainText('Saved the mail server.')
+      await expect(card.getByTestId('destination-address')).toContainText(
+        'me@example.org through smtp.example.com',
+      )
+      await expect(card.getByTestId('status')).toHaveText('Not tested yet')
+      await expect(card.getByTestId('destination-test')).toBeEnabled()
+    })
+
+    test('refuses an address that is not one, on the field', async ({ alerts }) => {
+      await alerts.goto()
+
+      await alerts.addEmailDestination('Inbox', 'nobody')
+
+      await expect(alerts.dialog).toContainText('email address')
+      await expect(alerts.dialog).toBeVisible()
+      await alerts.cancel.click()
+      await expect(alerts.destinations).toHaveCount(0)
+    })
+
+    test('changes the address of an email destination', async ({ alerts }) => {
+      await alerts.goto()
+      await alerts.addEmailDestination('Inbox', 'me@example.org')
+      const card = alerts.destination('Inbox')
+
+      await card.getByTestId('destination-edit').click()
+      await expect(alerts.recipient).toHaveValue('me@example.org')
+      await alerts.recipient.fill('you@example.org')
+      await alerts.save.click()
+
+      await expect(alerts.notice).toHaveText('Saved Inbox.')
+      await expect(card.getByTestId('destination-address')).toContainText('you@example.org')
+    })
+
+    test('removes the mail server and leaves the email destinations waiting', async ({
+      alerts,
+    }) => {
+      await alerts.goto()
+      await alerts.setUpMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
+      await alerts.addEmailDestination('Inbox', 'me@example.org')
+      const card = alerts.destination('Inbox')
+      await expect(card.getByTestId('status')).toHaveText('Not tested yet')
+
+      await alerts.mailRemove.click()
+      await expect(alerts.confirmTitle).toHaveText('Remove the mail server?')
+      await alerts.confirm.click()
+
+      await expect(alerts.notice).toContainText('Removed the mail server.')
+      await expect(alerts.mail).toContainText('No mail server is set up')
+      await expect(card.getByTestId('status')).toHaveText('Not connected')
+    })
+  })
 })

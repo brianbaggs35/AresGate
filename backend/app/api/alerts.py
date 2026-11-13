@@ -6,10 +6,18 @@ from typing import Annotated, Literal, cast
 
 import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StringConstraints,
+    model_validator,
+)
 from sqlalchemy.orm import Session
 
-from app.alerts import destinations, discord, log, message
+from app.alerts import destinations, discord, log, mail, message
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import NameTaken, Unusable
 from app.alerts.discord import InvalidWebhook
@@ -72,14 +80,32 @@ class ChoicesOut(BaseModel):
     activities: list[ChoiceOut]
 
 
+class SmtpOut(BaseModel):
+    """The mail server email destinations send through. The password only goes in: whether one is
+    kept is all that is said of it."""
+
+    configured: bool
+    host: str
+    port: int
+    security: Literal["starttls", "ssl", "none"]
+    username: str | None
+    sender: str
+    password_kept: bool
+    # The port that is usual for each way of connecting, for the page to offer.
+    default_ports: dict[str, int]
+
+
 class DestinationOut(BaseModel):
     id: int
-    kind: Literal["discord"]
+    kind: Literal["discord", "email"]
     name: str
     enabled: bool
-    # Where it goes without the secret: the host, and the end of the webhook's number.
+    # Where it goes without the secret: the host, and the end of the webhook's number. For an
+    # email destination, the mail server's name (empty until it is set up).
     host: str
     hint: str
+    # The address an email destination is sent to. Not a secret. None for any other kind.
+    recipient: str | None
     # Not tried, working, or failing; "not_connected" is a destination whose address is gone.
     status: Status
     last_attempt_at: AwareDatetime | None
@@ -96,6 +122,7 @@ class DestinationsOut(BaseModel):
     # The addresses a webhook may be at, for the page to say.
     hosts: list[str]
     choices: ChoicesOut
+    smtp: SmtpOut
 
 
 class LeftOutOut(BaseModel):
@@ -165,10 +192,23 @@ class DeliveriesOut(BaseModel):
 
 
 class DestinationIn(BaseModel):
+    """A new destination: a Discord webhook's address (``url``), or an email address
+    (``recipient``) to send through the mail server."""
+
     model_config = ConfigDict(extra="forbid")
 
+    kind: Literal["discord", "email"] = "discord"
     name: Name
-    url: Address
+    url: Address | None = None
+    recipient: Annotated[str, Field(min_length=1, max_length=mail.MAX_ADDRESS)] | None = None
+
+    @model_validator(mode="after")
+    def _the_address_of_its_kind(self) -> DestinationIn:
+        if self.kind == "discord" and self.url is None:
+            raise ValueError("Paste the webhook address from Discord.")
+        if self.kind == "email" and self.recipient is None:
+            raise ValueError("Enter the email address to send alerts to.")
+        return self
 
 
 class DestinationChange(BaseModel):
@@ -180,6 +220,22 @@ class DestinationChange(BaseModel):
     name: Name | None = None
     enabled: bool | None = None
     url: Address | None = None
+    recipient: Annotated[str, Field(min_length=1, max_length=mail.MAX_ADDRESS)] | None = None
+
+
+class SmtpIn(BaseModel):
+    """The mail server's settings. A password left out stays as it is; ``clear_password`` forgets
+    it, for a server that needs none."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: Annotated[str, Field(min_length=1, max_length=mail.MAX_HOST)]
+    port: Annotated[int, Field(ge=1, le=65535)]
+    security: Literal["starttls", "ssl", "none"]
+    username: Annotated[str, Field(max_length=mail.MAX_USERNAME)] | None = None
+    sender: Annotated[str, Field(min_length=1, max_length=mail.MAX_ADDRESS)]
+    password: Annotated[SecretStr, Field(min_length=1, max_length=mail.MAX_PASSWORD)] | None = None
+    clear_password: bool = False
 
 
 class TestOut(BaseModel):
@@ -210,14 +266,29 @@ def _rules_model(row: AlertDestination) -> RulesModel:
     )
 
 
-def _out(row: AlertDestination, *, has_address: bool) -> DestinationOut:
+def _smtp_out(db: Session) -> SmtpOut:
+    row = destinations.smtp(db)
+    return SmtpOut(
+        configured=row is not None,
+        host=row.host if row else "",
+        port=row.port if row else mail.DEFAULT_PORTS["starttls"],
+        security=cast("Literal['starttls', 'ssl', 'none']", row.security) if row else "starttls",
+        username=row.username if row else None,
+        sender=row.sender if row else "",
+        password_kept=destinations.smtp_password_kept(db),
+        default_ports=mail.DEFAULT_PORTS,
+    )
+
+
+def _out(row: AlertDestination, *, has_address: bool, mail_host: str = "") -> DestinationOut:
     return DestinationOut(
         id=row.id,
-        kind="discord",
+        kind=cast("Literal['discord', 'email']", row.kind),
         name=row.name,
         enabled=row.enabled,
-        host=discord.HOSTS[0],
+        host=mail_host if row.kind == "email" else discord.HOSTS[0],
         hint=row.hint,
+        recipient=row.recipient,
         status=destinations.status_of(row, has_address=has_address),
         last_attempt_at=row.last_attempt_at,
         last_success_at=row.last_success_at,
@@ -229,7 +300,12 @@ def _out(row: AlertDestination, *, has_address: bool) -> DestinationOut:
 
 
 def _one(db: Session, row: AlertDestination) -> DestinationOut:
-    return _out(row, has_address=row.id in destinations.with_address(db))
+    server = destinations.smtp(db)
+    return _out(
+        row,
+        has_address=row.id in destinations.with_address(db),
+        mail_host=server.host if server else "",
+    )
 
 
 def _find(db: Session, destination_id: int) -> AlertDestination:
@@ -239,12 +315,67 @@ def _find(db: Session, destination_id: int) -> AlertDestination:
     return row
 
 
+@router.put("/smtp")
+def change_smtp(
+    body: SmtpIn,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+    settings: SettingsDep,
+) -> SmtpOut:
+    """Keeps the mail server that email destinations send through. Its password is sealed and never
+    returned."""
+    try:
+        destinations.save_smtp(
+            db,
+            settings,
+            host=body.host,
+            port=body.port,
+            security=body.security,
+            username=body.username,
+            sender=body.sender,
+            password=body.password.get_secret_value() if body.password else None,
+            clear_password=body.clear_password,
+            now=utcnow(),
+        )
+    except mail.InvalidSettings as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid(error.field, message=str(error))]
+        ) from None
+    record_audit(
+        db,
+        request,
+        Action.ALERT_SMTP_CHANGED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"host": body.host.strip().lower(), "security": body.security},
+    )
+    db.commit()
+    return _smtp_out(db)
+
+
+@router.delete("/smtp", status_code=status.HTTP_204_NO_CONTENT)
+def remove_smtp(
+    auth: Annotated[SignedIn, Depends(signed_in)], request: Request, db: Db
+) -> Response:
+    """Forgets the mail server and its password. Email destinations stay, and wait for a server."""
+    destinations.forget_smtp(db)
+    record_audit(db, request, Action.ALERT_SMTP_REMOVED, Outcome.SUCCESS, user=auth.user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/destinations")
 def list_destinations(db: Db) -> DestinationsOut:
     """The places alerts are sent, in the order they were added."""
     addressed = destinations.with_address(db)
+    server = destinations.smtp(db)
+    mail_host = server.host if server else ""
     return DestinationsOut(
-        items=[_out(row, has_address=row.id in addressed) for row in destinations.listing(db)],
+        items=[
+            _out(row, has_address=row.id in addressed, mail_host=mail_host)
+            for row in destinations.listing(db)
+        ],
         max_destinations=destinations.MAX_DESTINATIONS,
         hosts=list(discord.HOSTS),
         choices=ChoicesOut(
@@ -255,6 +386,7 @@ def list_destinations(db: Db) -> DestinationsOut:
                 ChoiceOut(key=key, name=name) for key, name in episode.ACTIVITY_NAMES.items()
             ],
         ),
+        smtp=_smtp_out(db),
     )
 
 
@@ -275,10 +407,19 @@ def add_destination(
             "another.",
         )
     try:
-        row = destinations.create(db, settings, body.name, body.url.get_secret_value(), utcnow())
+        if body.kind == "email":
+            row = destinations.create_email(db, body.name, body.recipient or "", utcnow())
+        else:
+            row = destinations.create(
+                db, settings, body.name, (body.url or SecretStr("")).get_secret_value(), utcnow()
+            )
     except InvalidWebhook as error:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(error))]
+        ) from None
+    except mail.InvalidSettings as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid(error.field, message=str(error))]
         ) from None
     except NameTaken as error:
         raise HTTPException(
@@ -293,7 +434,7 @@ def add_destination(
         detail={"destination": row.name, "kind": row.kind},
     )
     db.commit()
-    return _out(row, has_address=True)
+    return _one(db, row)
 
 
 @router.patch("/destinations/{destination_id}")
@@ -319,12 +460,19 @@ def change_destination(
             status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("name", message=str(error))]
         ) from None
     try:
-        if body.url is not None:
+        if body.url is not None and row.kind == "discord":
             destinations.replace_address(db, settings, row, body.url.get_secret_value(), now)
+            changed.append("address")
+        if body.recipient is not None and row.kind == "email":
+            destinations.replace_recipient(row, body.recipient, now)
             changed.append("address")
     except InvalidWebhook as error:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(error))]
+        ) from None
+    except mail.InvalidSettings as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid(error.field, message=str(error))]
         ) from None
     if body.enabled is not None and body.enabled != row.enabled:
         row.enabled = body.enabled
@@ -391,17 +539,21 @@ def _deliver(
     when the destination is turned off."""
     sent: discord.Sent | str
     try:
-        webhook = destinations.open_webhook(db, settings, row)
-        sent = anyio.from_thread.run(
-            lambda: discord.send(
-                webhook,
-                payload,
-                connection=f"destination-{row.id}",
-                recorder=recorder,
-                policy=request.app.state.alert_policy,
-                origin=request.app.state.alert_origin,
+        if row.kind == "email":
+            box = destinations.open_mailbox(db, settings, row)
+            sent = anyio.from_thread.run(lambda: mail.send(box, payload))
+        else:
+            webhook = destinations.open_webhook(db, settings, row)
+            sent = anyio.from_thread.run(
+                lambda: discord.send(
+                    webhook,
+                    payload,
+                    connection=f"destination-{row.id}",
+                    recorder=recorder,
+                    policy=request.app.state.alert_policy,
+                    origin=request.app.state.alert_origin,
+                )
             )
-        )
     except Unusable as problem:
         sent = str(problem)
     destinations.record_attempt(row, sent, now)
@@ -422,6 +574,12 @@ def _deliver(
     return TestOut(ok=ok, message=text, destination=_one(db, row))
 
 
+def _arrived(row: AlertDestination, what: str) -> str:
+    """What a message that got through says, by where it went."""
+    where = f"the inbox of {row.recipient}" if row.kind == "email" else "the channel"
+    return f"The {what} was sent. Look for it in {where}."
+
+
 @router.post("/destinations/{destination_id}/test")
 def test_destination(
     destination_id: DestinationId,
@@ -437,14 +595,16 @@ def test_destination(
     now = utcnow()
     return _deliver(
         row,
-        discord.check_message(row.name, now),
+        mail.check_message(row.name, now)
+        if row.kind == "email"
+        else discord.check_message(row.name, now),
         auth=auth,
         request=request,
         db=db,
         settings=settings,
         recorder=recorder,
         now=now,
-        done="The test message was sent. Look for it in the channel.",
+        done=_arrived(row, "test message"),
     )
 
 
@@ -472,7 +632,7 @@ def send_sample(
         settings=settings,
         recorder=recorder,
         now=now,
-        done="The sample alert was sent. Look for it in the channel.",
+        done=_arrived(row, "sample alert"),
     )
 
 

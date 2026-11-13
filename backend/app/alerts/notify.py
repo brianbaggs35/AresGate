@@ -44,7 +44,7 @@ from typing import Final
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.alerts import destinations, discord, message
+from app.alerts import destinations, discord, mail, message
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import Unusable
 from app.alerts.discord import Sent, Webhook
@@ -331,7 +331,8 @@ class Job:
 
     delivery_id: int
     destination_id: int
-    webhook: Webhook
+    # A Discord webhook, or the mailbox of an email destination.
+    target: Webhook | mail.Mailbox
     payload: dict[str, object]
     # For a change to a message already sent: what Discord called it.
     edit: str | None = None
@@ -528,7 +529,7 @@ def build(
 def _job(
     db: Session,
     destination: AlertDestination,
-    webhook: Webhook,
+    where: Webhook | mail.Mailbox,
     row: AlertDelivery,
     origin: str,
     now: datetime,
@@ -548,7 +549,7 @@ def _job(
             else "Not sent. The incident is gone."
         )
         return None
-    return Job(row.id, destination.id, webhook, payload, edit)
+    return Job(row.id, destination.id, where, payload, edit)
 
 
 def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
@@ -561,14 +562,18 @@ def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
         if not destination.enabled or destination.refused or destination.id not in addressed:
             continue
         try:
-            webhook = destinations.open_webhook(db, settings, destination)
+            target = (
+                destinations.open_mailbox(db, settings, destination)
+                if destination.kind == "email"
+                else destinations.open_webhook(db, settings, destination)
+            )
         except Unusable as problem:
             destinations.record_attempt(destination, str(problem), now)
             continue
         rules = alert_rules.of(destination)
         decide_new(db, destination, rules, now, tuning)
         for row in due_now(db, destination, rules, now):
-            job = _job(db, destination, webhook, row, settings.public_origin, now, tuning)
+            job = _job(db, destination, target, row, settings.public_origin, now, tuning)
             if job is not None:
                 jobs.append(job)
     return jobs
@@ -578,6 +583,14 @@ def retry_in(attempts: int) -> timedelta:
     """How long to wait after the ``attempts``-th failed try: 30 seconds, then twice as long each
     time, up to a quarter of an hour."""
     return min(FIRST_RETRY * 2 ** max(0, attempts - 1), LONGEST_RETRY)
+
+
+# What a message waiting for a destination is said to have come to when the destination refuses
+# everything, by kind.
+REFUSED_NOTES = {
+    "discord": "Not sent. Discord doesn't accept the webhook; replace its address.",
+    "email": "Not sent. The mail server didn't accept the settings or the address; check them.",
+}
 
 
 def keep(db: Session, delivery_id: int, sent: Sent, now: datetime) -> str:
@@ -611,10 +624,7 @@ def keep(db: Session, delivery_id: int, sent: Sent, now: datetime) -> str:
                 AlertDelivery.destination_id == destination.id,
                 AlertDelivery.state.in_(WAITING),
             )
-            .values(
-                state="failed",
-                note="Not sent. Discord doesn't accept the webhook; replace its address.",
-            )
+            .values(state="failed", note=REFUSED_NOTES[destination.kind])
         )
     elif sent.retry and row.attempts < MAX_ATTEMPTS:
         row.state = "retrying"
@@ -667,9 +677,11 @@ async def notify_once(
         if job.destination_id in resting:
             continue
         connection = f"destination-{job.destination_id}"
-        if job.edit:
+        if isinstance(job.target, mail.Mailbox):
+            sent = await mail.send(job.target, job.payload)
+        elif job.edit:
             sent = await discord.edit(
-                job.webhook,
+                job.target,
                 job.edit,
                 job.payload,
                 connection=connection,
@@ -680,7 +692,7 @@ async def notify_once(
         else:
             # Discord is asked to name the message, so that it can be changed later.
             sent = await discord.send(
-                job.webhook,
+                job.target,
                 job.payload,
                 connection=connection,
                 recorder=recorder,
@@ -691,7 +703,7 @@ async def notify_once(
         outcome = await asyncio.to_thread(settle, new_session, job.delivery_id, sent, utcnow())
         counts[outcome] = counts.get(outcome, 0) + 1
         if not sent.ok or (sent.pause or 0) > MAX_PAUSE:
-            # Discord is not taking messages from this webhook now: the rest wait for the next pass.
+            # The destination is not taking messages now: the rest wait for the next pass.
             resting.add(job.destination_id)
         else:
             await asyncio.sleep(max(pace, sent.pause or 0))

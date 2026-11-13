@@ -8,10 +8,15 @@ import {
   changeRules,
   fetchDestinations,
   removeDestination,
+  removeMailServer,
+  saveMailServer,
   sendSample,
   testDestination,
   type Destination,
+  type DestinationChange,
+  type DestinationKind,
   type Destinations,
+  type MailServerChange,
   type Rules,
 } from '@/api/alerts'
 import { ApiError, errorMessage } from '@/api/client'
@@ -23,16 +28,20 @@ import DestinationCard from '@/components/DestinationCard.vue'
 import DestinationDialog from '@/components/DestinationDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
+import MailServerCard from '@/components/MailServerCard.vue'
+import MailServerDialog from '@/components/MailServerDialog.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RulesDialog from '@/components/RulesDialog.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * Where AresGate tells the owner about threats. For now that is Discord: each destination is a
- * webhook for one channel, kept encrypted and never shown again, with a button that sends a real
- * test message, and rules for what each one is told about and when. Adding, changing, setting
- * the rules of, turning off and removing a destination all happen here.
+ * Where AresGate tells the owner about threats: a Discord channel, reached with a webhook, or an
+ * email address, reached through the mail server set up here. A webhook's address and the mail
+ * server's password are kept encrypted and never shown again. Each destination has a button that
+ * sends a real test message, and rules for what it is told about and when. Adding, changing,
+ * setting the rules of, turning off and removing a destination, and setting up the mail server,
+ * all happen here.
  */
 const session = useSessionStore()
 
@@ -57,6 +66,12 @@ const problems = ref<Record<string, string>>({})
 const formFailure = ref<string | null>(null)
 
 /** The destination whose rules are open, which the sheet keeps showing while it fades out. */
+const mailing = ref(false)
+const mailRemoving = ref(false)
+const mailSaving = ref(false)
+const mailProblems = ref<Record<string, string>>({})
+const mailFailure = ref<string | null>(null)
+
 const ruling = ref<Destination | null>(null)
 const rulesOpen = ref(false)
 const rulesSaving = ref(false)
@@ -141,23 +156,41 @@ function ask(destination: Destination) {
   confirming.value = true
 }
 
-async function save(answer: { name: string; url: string }) {
+/** Where a message goes, in words, for the notices. */
+function whereOf(destination: Destination): string {
+  return destination.kind === 'email'
+    ? `the inbox of ${destination.recipient ?? destination.name}`
+    : 'the channel'
+}
+
+async function save(answer: {
+  kind: DestinationKind
+  name: string
+  url: string
+  recipient: string
+}) {
   const destination = target.value
   saving.value = true
   problems.value = {}
   formFailure.value = null
   try {
     if (destination) {
-      const change = { name: answer.name, ...(answer.url ? { url: answer.url } : {}) }
+      const change: DestinationChange = { name: answer.name }
+      if (answer.url) change.url = answer.url
+      if (answer.recipient) change.recipient = answer.recipient
       const saved = await session.change((token) =>
         changeDestination(destination.id, change, token),
       )
       replace(saved)
       notice.value = `Saved ${saved.name}.`
     } else {
-      const saved = await session.change((token) => addDestination(answer, token))
+      const add =
+        answer.kind === 'email'
+          ? { kind: answer.kind, name: answer.name, recipient: answer.recipient }
+          : { kind: answer.kind, name: answer.name, url: answer.url }
+      const saved = await session.change((token) => addDestination(add, token))
       keep([...items.value, saved])
-      notice.value = `Added ${saved.name}. Send a test message to check it reaches the channel.`
+      notice.value = `Added ${saved.name}. Send a test message to check it reaches ${whereOf(saved)}.`
     }
     editing.value = false
   } catch (error) {
@@ -179,7 +212,7 @@ async function test(destination: Destination) {
     replace(answer.destination)
     // A failure is shown on the card, which carries what went wrong.
     if (answer.ok)
-      notice.value = `Test message sent to ${destination.name}. Look for it in the channel.`
+      notice.value = `Test message sent to ${destination.name}. Look for it in ${whereOf(destination)}.`
   } catch (error) {
     failure.value = errorMessage(error)
   } finally {
@@ -194,7 +227,7 @@ async function sample(destination: Destination) {
     const answer = await session.change((token) => sendSample(destination.id, token))
     replace(answer.destination)
     if (answer.ok)
-      notice.value = `A sample alert was sent to ${destination.name}. Look for it in the channel.`
+      notice.value = `A sample alert was sent to ${destination.name}. Look for it in ${whereOf(destination)}.`
   } catch (error) {
     failure.value = errorMessage(error)
   } finally {
@@ -232,6 +265,54 @@ async function remove() {
   }
 }
 
+function setUpMail() {
+  begin()
+  mailProblems.value = {}
+  mailFailure.value = null
+  mailing.value = true
+}
+
+async function saveMail(answer: MailServerChange) {
+  mailSaving.value = true
+  mailProblems.value = {}
+  mailFailure.value = null
+  try {
+    await session.change((token) => saveMailServer(answer, token))
+    notice.value =
+      'Saved the mail server. Send a test message from an email destination to check it.'
+    mailing.value = false
+    // Saving the settings lets the email destinations try again, so how they stand has changed.
+    await load()
+  } catch (error) {
+    if (error instanceof ApiError && error.problems.length > 0) {
+      mailProblems.value = problemsByField(error.problems)
+    } else {
+      mailFailure.value = errorMessage(error)
+    }
+  } finally {
+    mailSaving.value = false
+  }
+}
+
+function askAboutMail() {
+  begin()
+  mailRemoving.value = true
+}
+
+async function removeMail() {
+  mailSaving.value = true
+  try {
+    await session.change((token) => removeMailServer(token))
+    notice.value = 'Removed the mail server. Email destinations wait until another is set up.'
+    await load()
+  } catch (error) {
+    failure.value = errorMessage(error)
+  } finally {
+    mailSaving.value = false
+    mailRemoving.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -239,7 +320,7 @@ onMounted(load)
   <AppPage width="regular">
     <PageHeader
       title="Alerts"
-      description="Where AresGate tells you about threats. Add a Discord channel and it posts there when something needs your attention."
+      description="Where AresGate tells you about threats. Add a Discord channel or an email address and it tells you there when something needs your attention."
     >
       <template #icon>
         <BellRing :size="28" />
@@ -277,7 +358,7 @@ onMounted(load)
     <SectionCard
       v-else-if="listing"
       title="Destinations"
-      description="Each is a webhook for one Discord channel. Its address is a secret: it is kept encrypted and never shown again."
+      description="Each is a Discord channel, reached with a webhook, or an email address. A webhook's address is a secret: it is kept encrypted and never shown again."
     >
       <ul v-if="items.length" class="alerts__list" data-test="destination-list">
         <DestinationCard
@@ -299,7 +380,7 @@ onMounted(load)
       <EmptyState
         v-else
         title="No alerts are set up"
-        description="AresGate watches your network, but it has nowhere to tell you. Add the webhook of a Discord channel and it can post there."
+        description="AresGate watches your network, but it has nowhere to tell you. Add the webhook of a Discord channel, or an email address, and it can tell you there."
         :icon="BellOff"
         data-test="no-destinations"
       >
@@ -310,7 +391,7 @@ onMounted(load)
           data-test="empty-add"
           @click="add"
         >
-          Add a Discord channel
+          Add a destination
         </v-btn>
       </EmptyState>
       <p v-if="full" class="text-body-medium text-medium-emphasis mt-4" data-test="alerts-full">
@@ -319,15 +400,38 @@ onMounted(load)
       </p>
     </SectionCard>
     <v-skeleton-loader v-else type="card" />
+    <SectionCard
+      v-if="listing"
+      title="Mail server"
+      description="Email destinations send through this server. Its password is kept encrypted and never shown again."
+      data-test="mail-section"
+    >
+      <MailServerCard
+        :server="listing.smtp"
+        :busy="mailSaving"
+        @edit="setUpMail"
+        @remove="askAboutMail"
+      />
+    </SectionCard>
     <DeliveryLog v-if="listing && items.length" :destinations="items" />
 
     <DestinationDialog
       v-model="editing"
       :destination="target"
       :busy="saving"
+      :mail-ready="listing?.smtp.configured ?? false"
       :problems="problems"
       :failure="formFailure"
       @save="save"
+    />
+    <MailServerDialog
+      v-if="listing"
+      v-model="mailing"
+      :server="listing.smtp"
+      :busy="mailSaving"
+      :problems="mailProblems"
+      :failure="mailFailure"
+      @save="saveMail"
     />
     <RulesDialog
       v-if="listing && ruling"
@@ -349,11 +453,27 @@ onMounted(load)
     >
       <template v-if="target">
         <p class="mb-2">{{ target.name }}</p>
-        <p>
+        <p v-if="target.kind === 'email'">
+          AresGate sends nothing more to {{ target.recipient }}. The mail server stays as it is.
+        </p>
+        <p v-else>
           AresGate forgets its webhook address and sends it nothing more. The webhook stays in
           Discord until you delete it there.
         </p>
       </template>
+    </ConfirmDialog>
+    <ConfirmDialog
+      v-model="mailRemoving"
+      title="Remove the mail server?"
+      confirm-label="Remove it"
+      destructive
+      :busy="mailSaving"
+      @confirm="removeMail"
+    >
+      <p>
+        AresGate forgets the mail server and its password. Email destinations are kept, but send
+        nothing until you set up a mail server again.
+      </p>
     </ConfirmDialog>
   </AppPage>
 </template>

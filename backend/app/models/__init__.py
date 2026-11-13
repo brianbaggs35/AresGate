@@ -29,7 +29,7 @@ from app.models.ai import (
     AiTriage,
 )
 from app.models.alerts import KINDS as ALERT_KINDS
-from app.models.alerts import AlertDelivery, AlertDestination
+from app.models.alerts import AlertDelivery, AlertDestination, SmtpSettings
 from app.models.audit import AuditEvent
 from app.models.auth import (
     LoginThrottle,
@@ -137,6 +137,7 @@ __all__ = [
     "ReviewFeedback",
     "ReviewSettings",
     "SavedSearch",
+    "SmtpSettings",
     "SourceRetention",
     "StoredCredential",
     "SystemInfo",

@@ -1,20 +1,24 @@
 import { defineComponent, h, ref } from 'vue'
 
-import type { Destination } from '@/api/alerts'
+import type { Destination, DestinationKind } from '@/api/alerts'
 import DestinationDialog from '@/components/DestinationDialog.vue'
-import { destination } from '@/test/alerts'
+import { destination, emailDestination } from '@/test/alerts'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 interface Props {
   destination?: Destination | null
   busy?: boolean
+  mailReady?: boolean
   problems?: Record<string, string>
   failure?: string | null
 }
 
 /** The dialog in a page with a button that opens it, as pages use it. */
 async function mountDialog(props: Props = {}) {
-  const saved = vi.fn<(answer: { name: string; url: string }) => void>()
+  const saved =
+    vi.fn<
+      (answer: { kind: DestinationKind; name: string; url: string; recipient: string }) => void
+    >()
   const open = ref(false)
   const Page = defineComponent({
     render: () =>
@@ -37,7 +41,7 @@ async function mountDialog(props: Props = {}) {
     await mounted.wrapper.find('[data-test="opener"]').trigger('click')
     await flushPromises()
   }
-  const write = async (field: 'dialog-name' | 'dialog-url', text: string) => {
+  const write = async (field: 'dialog-name' | 'dialog-url' | 'dialog-recipient', text: string) => {
     const input = inDialog(field)!.querySelector('input')!
     input.value = text
     input.dispatchEvent(new Event('input'))
@@ -87,7 +91,12 @@ describe('DestinationDialog', () => {
       expect(inDialog('dialog-save')!.hasAttribute('disabled')).toBe(false)
       await save()
 
-      expect(saved).toHaveBeenCalledWith({ name: 'Security', url: ADDRESS })
+      expect(saved).toHaveBeenCalledWith({
+        kind: 'discord',
+        name: 'Security',
+        url: ADDRESS,
+        recipient: '',
+      })
     })
 
     it('does not save with a name of only spaces', async () => {
@@ -113,7 +122,12 @@ describe('DestinationDialog', () => {
 
       await save()
 
-      expect(saved).toHaveBeenCalledWith({ name: 'Security', url: ADDRESS })
+      expect(saved).toHaveBeenCalledWith({
+        kind: 'discord',
+        name: 'Security',
+        url: ADDRESS,
+        recipient: '',
+      })
     })
 
     it('does not show the address unless asked', async () => {
@@ -140,7 +154,12 @@ describe('DestinationDialog', () => {
       expect(inDialog('dialog-url')!.textContent).toContain('Saved. Leave this empty to keep it')
       expect(inDialog('dialog-save')!.textContent).toContain('Save')
       await save()
-      expect(saved).toHaveBeenCalledWith({ name: 'Security channel', url: '' })
+      expect(saved).toHaveBeenCalledWith({
+        kind: 'discord',
+        name: 'Security channel',
+        url: '',
+        recipient: '',
+      })
     })
 
     it('sends a new address to replace the old', async () => {
@@ -150,7 +169,12 @@ describe('DestinationDialog', () => {
 
       await save()
 
-      expect(saved).toHaveBeenCalledWith({ name: 'Security channel', url: ADDRESS })
+      expect(saved).toHaveBeenCalledWith({
+        kind: 'discord',
+        name: 'Security channel',
+        url: ADDRESS,
+        recipient: '',
+      })
     })
 
     it('shows what is kept now each time it opens, not what an earlier visit left', async () => {
@@ -163,6 +187,108 @@ describe('DestinationDialog', () => {
       await openIt()
 
       expect(inDialog('dialog-name')!.querySelector('input')!.value).toBe('Security channel')
+    })
+  })
+
+  describe('email', () => {
+    const chooseEmail = async (ctx: Awaited<ReturnType<typeof mountDialog>>) => {
+      ctx.inDialog('dialog-kind-email')!.click()
+      await flushPromises()
+    }
+
+    it('is chosen when adding, and asks for a name and an email address', async () => {
+      const ctx = await mountDialog()
+      await ctx.openIt()
+      expect(ctx.inDialog('dialog-recipient')).toBeNull()
+
+      await chooseEmail(ctx)
+
+      expect(ctx.inDialog('dialog-title')!.textContent).toBe('Add an email destination')
+      expect(ctx.inDialog('dialog-intro')!.textContent).toContain('emails one address')
+      expect(ctx.inDialog('dialog-url')).toBeNull()
+      expect(ctx.inDialog('dialog-help')).toBeNull()
+      expect(ctx.inDialog('dialog-recipient')!.textContent).toContain('Where the alerts are sent.')
+    })
+
+    it('cannot be saved until it has a name and an address, and sends only the address', async () => {
+      const ctx = await mountDialog()
+      await ctx.openIt()
+      await chooseEmail(ctx)
+      await ctx.write('dialog-name', 'Inbox')
+      expect(ctx.inDialog('dialog-save')!.hasAttribute('disabled')).toBe(true)
+      await ctx.write('dialog-recipient', '   ')
+      expect(ctx.inDialog('dialog-save')!.hasAttribute('disabled')).toBe(true)
+      await ctx.write('dialog-recipient', '  me@example.org ')
+      expect(ctx.inDialog('dialog-save')!.hasAttribute('disabled')).toBe(false)
+
+      await ctx.save()
+
+      expect(ctx.saved).toHaveBeenCalledWith({
+        kind: 'email',
+        name: 'Inbox',
+        url: '',
+        recipient: 'me@example.org',
+      })
+    })
+
+    it('does not save without a name, or by submitting when it is not ready', async () => {
+      const ctx = await mountDialog()
+      await ctx.openIt()
+      await chooseEmail(ctx)
+      await ctx.write('dialog-recipient', 'me@example.org')
+
+      document
+        .querySelector('[data-test="destination-dialog"] form')!
+        .dispatchEvent(new Event('submit', { cancelable: true }))
+      await flushPromises()
+
+      expect(ctx.saved).not.toHaveBeenCalled()
+    })
+
+    it('says the mail server is not set up until it is', async () => {
+      const waiting = await mountDialog()
+      await waiting.openIt()
+      await chooseEmail(waiting)
+      expect(waiting.inDialog('dialog-mail-not-ready')!.textContent).toContain(
+        "The mail server isn't set up yet",
+      )
+      waiting.wrapper.unmount()
+      document.body.innerHTML = ''
+
+      const ready = await mountDialog({ mailReady: true })
+      await ready.openIt()
+      await chooseEmail(ready)
+
+      expect(ready.inDialog('dialog-mail-not-ready')).toBeNull()
+    })
+
+    it('shows its address when changing it, and the kind cannot be changed', async () => {
+      const ctx = await mountDialog({ destination: emailDestination() })
+
+      await ctx.openIt()
+
+      expect(ctx.inDialog('dialog-title')!.textContent).toBe('Change this destination')
+      expect(ctx.inDialog('dialog-kind')).toBeNull()
+      expect(ctx.inDialog('dialog-recipient')!.querySelector('input')!.value).toBe('me@example.org')
+      await ctx.write('dialog-recipient', 'you@example.org')
+      await ctx.save()
+      expect(ctx.saved).toHaveBeenCalledWith({
+        kind: 'email',
+        name: 'Inbox',
+        url: '',
+        recipient: 'you@example.org',
+      })
+    })
+
+    it('shows what was wrong with the address', async () => {
+      const ctx = await mountDialog({
+        destination: emailDestination(),
+        problems: { recipient: 'That is not an email address.' },
+      })
+
+      await ctx.openIt()
+
+      expect(ctx.inDialog('dialog-recipient')!.textContent).toContain('not an email address')
     })
   })
 

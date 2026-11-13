@@ -1,4 +1,4 @@
-import { Hash } from '@lucide/vue'
+import { Hash, Mail } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type { DeliveryReason, DeliveryState, Destination } from '@/api/alerts'
@@ -6,20 +6,38 @@ import { formatAgo } from '@/format'
 
 type Icon = NonNullable<IconProps['icon']>
 
-/** How each kind of destination is shown. Discord's webhooks are the first. */
+/** How each kind of destination is shown. */
 export const KINDS: Readonly<Record<Destination['kind'], { label: string; icon: Icon }>> = {
   discord: { label: 'Discord', icon: Hash },
+  email: { label: 'Email', icon: Mail },
 }
 
-/** The address of a destination as the page shows it: where it is and the end of its number, and
- * the token as dots, since the token is the secret and is never shown. */
+/** The address of a destination as the page shows it. A webhook's is where it is and the end of
+ * its number, and the token as dots, since the token is the secret and is never shown. An email
+ * destination's is the address it sends to and the mail server it goes through. */
 export function maskedAddress(destination: Destination): string {
+  if (destination.kind === 'email') {
+    return destination.host
+      ? `${destination.recipient ?? ''} through ${destination.host}`
+      : `${destination.recipient ?? ''}, once the mail server is set up`
+  }
   return `${destination.host}/api/webhooks/${destination.hint}/••••••••`
+}
+
+/** What the address is, for someone who can't see how it is set out. */
+export function addressLabel(destination: Destination): string {
+  return destination.kind === 'email'
+    ? 'Email address and the mail server it goes through: '
+    : 'Webhook address, with the secret part hidden: '
 }
 
 /** What is known about how sending to a destination has gone, in a line. */
 export function lastResult(destination: Destination, now: number = Date.now()): string {
-  if (destination.status === 'not_connected') return 'Its webhook address is gone.'
+  if (destination.status === 'not_connected') {
+    return destination.kind === 'email'
+      ? "The mail server isn't set up."
+      : 'Its webhook address is gone.'
+  }
   if (destination.last_attempt_at === null) {
     return 'Not tried yet. Send a test message to check it.'
   }

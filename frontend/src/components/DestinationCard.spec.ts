@@ -1,6 +1,14 @@
 import type { Destination } from '@/api/alerts'
 import DestinationCard from '@/components/DestinationCard.vue'
-import { choices, destination, failing, rules, threatRules, working } from '@/test/alerts'
+import {
+  choices,
+  destination,
+  emailDestination,
+  failing,
+  rules,
+  threatRules,
+  working,
+} from '@/test/alerts'
 import { mountWithPlugins } from '@/test/mount'
 
 async function show(item: Destination = destination(), props: Record<string, unknown> = {}) {
@@ -25,6 +33,15 @@ describe('DestinationCard', () => {
 
     expect(text('destination-address')).toBe(
       'Webhook address, with the secret part hidden: discord.com/api/webhooks/…6789/••••••••',
+    )
+  })
+
+  it('shows an email destination with its address and mail server', async () => {
+    const { text } = await show(emailDestination())
+
+    expect(text('destination-kind')).toBe('Email')
+    expect(text('destination-address')).toBe(
+      'Email address and the mail server it goes through: me@example.org through smtp.example.com',
     )
   })
 

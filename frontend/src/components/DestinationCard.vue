@@ -5,12 +5,12 @@ import { computed, useId } from 'vue'
 import type { Choices, Destination } from '@/api/alerts'
 import StatusChip from '@/components/StatusChip.vue'
 import { describeRules } from '@/alertRules'
-import { KINDS, lastResult, maskedAddress } from '@/alerts'
+import { KINDS, addressLabel, lastResult, maskedAddress } from '@/alerts'
 import { formatDateTime } from '@/format'
 
 /**
- * One place alerts are sent: its name, what kind it is, whether it works, a masked version of its
- * address (the address itself is a secret that is never shown again), what it is told about in
+ * One place alerts are sent: its name, what kind it is, whether it works, its address (a
+ * webhook's is a secret that is never shown again, so it is masked), what it is told about in
  * words, and the buttons to test it, send a sample alert, set its rules, change it, turn it off or
  * remove it. It only asks; what the buttons do is up to the page.
  */
@@ -53,7 +53,7 @@ const titleId = useId()
     </div>
 
     <p class="destination__address text-body-medium" data-test="destination-address">
-      <span class="sr-only">Webhook address, with the secret part hidden: </span>
+      <span class="sr-only">{{ addressLabel(destination) }}</span>
       <code>{{ maskedAddress(destination) }}</code>
     </p>
 

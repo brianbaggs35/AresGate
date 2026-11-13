@@ -44,9 +44,10 @@ see [SECURITY.md](../SECURITY.md).
   can be read only by the API. It must be at least 32 characters, and the API won't start
   without one.
 - The credentials AresGate holds for the things it talks to (a firewall's API key, an AI
-  provider's key, the address of a Discord webhook that alerts go to) are encrypted with
+  provider's key, the address of a Discord webhook that alerts go to, the password of the mail
+  server that email alerts go through) are encrypted with
   AES-256-GCM before they reach the database, using a key made from the app secret key with
-  HKDF, one for each purpose (integrations, AI providers and alert destinations).
+  HKDF, one for each purpose (integrations, AI providers, alert destinations and the mail server).
   Each is also tied to the row it belongs to, so it can't be opened with another key, as
   another kind of value, or copied onto another row. A copy of the database on its own reveals
   none of them, and a test checks that no password, key or recovery code appears anywhere in a

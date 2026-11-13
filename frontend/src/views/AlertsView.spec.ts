@@ -2,12 +2,16 @@ import * as alertsApi from '@/api/alerts'
 import { ApiError } from '@/api/client'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DestinationDialog from '@/components/DestinationDialog.vue'
+import MailServerDialog from '@/components/MailServerDialog.vue'
 import RulesDialog from '@/components/RulesDialog.vue'
 import {
   deliveries,
   destination,
   destinations,
+  emailDestination,
   failing,
+  mailServer,
+  noMailServer,
   preview,
   rules,
   sample,
@@ -25,6 +29,8 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
   const add = vi.spyOn(alertsApi, 'addDestination')
   const change = vi.spyOn(alertsApi, 'changeDestination')
   const remove = vi.spyOn(alertsApi, 'removeDestination').mockResolvedValue(undefined)
+  const saveMail = vi.spyOn(alertsApi, 'saveMailServer')
+  const removeMail = vi.spyOn(alertsApi, 'removeMailServer').mockResolvedValue(undefined)
   const test = vi.spyOn(alertsApi, 'testDestination')
   const sendIt = vi.spyOn(alertsApi, 'sendSample')
   vi.spyOn(alertsApi, 'fetchSample').mockResolvedValue(sample())
@@ -45,7 +51,7 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     await cards()[card]?.find(`[data-test="destination-${name}"]`).trigger('click')
     await flushPromises()
   }
-  const write = async (field: 'dialog-name' | 'dialog-url', value: string) => {
+  const write = async (field: 'dialog-name' | 'dialog-url' | 'dialog-recipient', value: string) => {
     const input = inDialog(field)!.querySelector('input')!
     input.value = value
     input.dispatchEvent(new Event('input'))
@@ -61,6 +67,8 @@ async function open(answer: alertsApi.Destinations | Error = destinations([desti
     add,
     change,
     remove,
+    saveMail,
+    removeMail,
     sendIt,
     test,
     changeIt,
@@ -148,12 +156,52 @@ describe('AlertsView', () => {
       await write('dialog-url', ADDRESS)
       await save()
 
-      expect(add).toHaveBeenCalledWith({ name: 'Security', url: ADDRESS }, 'a-security-token')
+      expect(add).toHaveBeenCalledWith(
+        { kind: 'discord', name: 'Security', url: ADDRESS },
+        'a-security-token',
+      )
       expect(editing()).toBe(false)
       expect(cards()).toHaveLength(1)
       expect(text('alerts-notice')).toBe(
         'Added Security. Send a test message to check it reaches the channel.',
       )
+    })
+
+    it('keeps an email destination and says where to look for the test', async () => {
+      const { add, find, text, cards, write, save, inDialog } = await open(destinations([]))
+      add.mockResolvedValue(emailDestination({ id: 8 }))
+
+      await find('destination-add').trigger('click')
+      await flushPromises()
+      inDialog('dialog-kind-email')!.click()
+      await flushPromises()
+      await write('dialog-name', 'Inbox')
+      await write('dialog-recipient', 'me@example.org')
+      await save()
+
+      expect(add).toHaveBeenCalledWith(
+        { kind: 'email', name: 'Inbox', recipient: 'me@example.org' },
+        'a-security-token',
+      )
+      expect(cards()).toHaveLength(1)
+      expect(text('alerts-notice')).toBe(
+        'Added Inbox. Send a test message to check it reaches the inbox of me@example.org.',
+      )
+    })
+
+    it('names the destination when an email one comes back with no address', async () => {
+      const { add, find, text, write, save, inDialog } = await open(destinations([]))
+      add.mockResolvedValue(emailDestination({ recipient: null }))
+
+      await find('destination-add').trigger('click')
+      await flushPromises()
+      inDialog('dialog-kind-email')!.click()
+      await flushPromises()
+      await write('dialog-name', 'Inbox')
+      await write('dialog-recipient', 'me@example.org')
+      await save()
+
+      expect(text('alerts-notice')).toContain('reaches the inbox of Inbox.')
     })
 
     it('adds nothing when the dialog is closed again', async () => {
@@ -227,6 +275,24 @@ describe('AlertsView', () => {
       expect(change).toHaveBeenCalledWith(1, { name: 'Security channel' }, 'a-security-token')
     })
 
+    it('sends a new email address of an email destination, and no webhook', async () => {
+      const { change, press, write, save, cards } = await open(
+        destinations([emailDestination()], { smtp: mailServer() }),
+      )
+      change.mockResolvedValue(emailDestination({ recipient: 'you@example.org' }))
+
+      await press(0, 'edit')
+      await write('dialog-recipient', 'you@example.org')
+      await save()
+
+      expect(change).toHaveBeenCalledWith(
+        2,
+        { name: 'Inbox', recipient: 'you@example.org' },
+        'a-security-token',
+      )
+      expect(cards()[0]!.text()).toContain('you@example.org')
+    })
+
     it('turns it off and on again', async () => {
       const { change, cards, text } = await open()
       change.mockResolvedValueOnce(destination({ enabled: false }))
@@ -288,6 +354,21 @@ describe('AlertsView', () => {
         'Test message sent to Security channel. Look for it in the channel.',
       )
       expect(cards()[0]?.find('[data-test="status"]').text()).toBe('Connected')
+    })
+
+    it('says to look in the inbox for an email destination', async () => {
+      const { test, press, text } = await open(destinations([emailDestination()]))
+      test.mockResolvedValue({
+        ok: true,
+        message: 'The test message was sent.',
+        destination: working({ id: 2, kind: 'email', name: 'Inbox', recipient: 'me@example.org' }),
+      })
+
+      await press(0, 'test')
+
+      expect(text('alerts-notice')).toBe(
+        'Test message sent to Inbox. Look for it in the inbox of me@example.org.',
+      )
     })
 
     it('shows on the card why it did not get through', async () => {
@@ -475,6 +556,16 @@ describe('AlertsView', () => {
       expect(text('alerts-notice')).toBe('Removed Security channel.')
     })
 
+    it('says an email destination leaves the mail server as it is', async () => {
+      const { press, inDialog } = await open(destinations([emailDestination()]))
+
+      await press(0, 'remove')
+
+      expect(inDialog('confirm-message')!.textContent).toContain(
+        'sends nothing more to me@example.org',
+      )
+    })
+
     it('says why it could not be removed', async () => {
       const { remove, press, inDialog, text, cards } = await open()
       remove.mockRejectedValue(offline())
@@ -496,6 +587,168 @@ describe('AlertsView', () => {
 
       expect(confirming()).toBe(false)
       expect(remove).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the mail server', () => {
+    const openMail = async (answer = destinations([], { smtp: noMailServer() })) => {
+      const view = await open(answer)
+      const field = async (name: string, value: string) => {
+        const input = view.inDialog(name)!.querySelector('input')!
+        input.value = value
+        input.dispatchEvent(new Event('input'))
+        await flushPromises()
+      }
+      const pressMail = async (name: string) => {
+        await view.find(name).trigger('click')
+        await flushPromises()
+      }
+      const saveIt = async () => {
+        view.inDialog('mail-save')!.click()
+        await flushPromises()
+      }
+      return { ...view, field, pressMail, saveIt }
+    }
+
+    it('says none is set up, and offers to set one up', async () => {
+      const { find, text } = await openMail()
+
+      expect(text('mail-none')).toContain('No mail server is set up')
+      expect(find('mail-edit').text()).toBe('Set up the mail server')
+      expect(find('mail-remove').exists()).toBe(false)
+    })
+
+    it('shows it once the destinations have loaded, and not before', async () => {
+      vi.spyOn(alertsApi, 'fetchDestinations').mockReturnValue(new Promise(() => {}))
+      const { wrapper } = await mountWithPlugins(AlertsView, { signedIn: 'admin' })
+
+      expect(wrapper.find('[data-test="mail-section"]').exists()).toBe(false)
+    })
+
+    it('saves the settings, loads the destinations again and says so', async () => {
+      const view = await openMail()
+      const { saveMail, fetchIt, pressMail, field, saveIt, text } = view
+      saveMail.mockResolvedValue(mailServer())
+      fetchIt.mockResolvedValue(
+        destinations([emailDestination()], { smtp: mailServer({ host: 'smtp.example.com' }) }),
+      )
+
+      await pressMail('mail-edit')
+      await field('mail-host', 'smtp.example.com')
+      await field('mail-sender', 'alerts@example.com')
+      await saveIt()
+
+      expect(saveMail).toHaveBeenCalledWith(
+        {
+          host: 'smtp.example.com',
+          port: 587,
+          security: 'starttls',
+          username: null,
+          sender: 'alerts@example.com',
+        },
+        'a-security-token',
+      )
+      expect(fetchIt).toHaveBeenCalledTimes(2)
+      expect(text('alerts-notice')).toContain('Saved the mail server.')
+      expect(text('mail-name')).toBe('smtp.example.com:587')
+      expect(view.wrapper.findComponent(MailServerDialog).props('modelValue')).toBe(false)
+    })
+
+    it('shows what was wrong with a field and stays open', async () => {
+      const { saveMail, pressMail, field, saveIt, inDialog } = await openMail()
+      saveMail.mockRejectedValue(
+        new ApiError(422, "AresGate couldn't use that.", 'invalid', [
+          { path: ['host'], message: "That isn't a server name." },
+        ]),
+      )
+
+      await pressMail('mail-edit')
+      await field('mail-host', 'not a host')
+      await field('mail-sender', 'alerts@example.com')
+      await saveIt()
+
+      expect(inDialog('mail-host')!.textContent).toContain("That isn't a server name.")
+    })
+
+    it('shows a failure that is not about a field in the dialog', async () => {
+      const { saveMail, pressMail, field, saveIt, inDialog } = await openMail()
+      saveMail.mockRejectedValue(offline())
+
+      await pressMail('mail-edit')
+      await field('mail-host', 'smtp.example.com')
+      await field('mail-sender', 'alerts@example.com')
+      await saveIt()
+
+      expect(inDialog('mail-failure')!.textContent).toContain("Can't reach AresGate.")
+    })
+
+    it('forgets an earlier failure when it is opened again', async () => {
+      const { saveMail, pressMail, field, saveIt, inDialog } = await openMail()
+      saveMail.mockRejectedValue(offline())
+      await pressMail('mail-edit')
+      await field('mail-host', 'smtp.example.com')
+      await field('mail-sender', 'alerts@example.com')
+      await saveIt()
+      inDialog('mail-cancel')!.click()
+      await flushPromises()
+
+      await pressMail('mail-edit')
+
+      expect(inDialog('mail-failure')).toBeNull()
+    })
+
+    it('asks before removing it, and loads the destinations again', async () => {
+      const { removeMail, fetchIt, pressMail, inDialog, text } = await openMail(
+        destinations([emailDestination()], { smtp: mailServer() }),
+      )
+
+      await pressMail('mail-remove')
+      expect(inDialog('confirm-message')!.textContent).toContain('forgets the mail server')
+      fetchIt.mockResolvedValue(destinations([emailDestination({ status: 'not_connected' })]))
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+
+      expect(removeMail).toHaveBeenCalledWith('a-security-token')
+      expect(fetchIt).toHaveBeenCalledTimes(2)
+      expect(text('alerts-notice')).toContain('Removed the mail server.')
+      expect(text('mail-none')).toContain('No mail server is set up')
+    })
+
+    it('keeps it when the question is cancelled', async () => {
+      const { removeMail, pressMail, inDialog, text } = await openMail(
+        destinations([], { smtp: mailServer() }),
+      )
+
+      await pressMail('mail-remove')
+      inDialog('confirm-cancel')!.click()
+      await flushPromises()
+
+      expect(removeMail).not.toHaveBeenCalled()
+      expect(text('mail-name')).toBe('smtp.example.com:587')
+    })
+
+    it('says why it could not be removed', async () => {
+      const { removeMail, pressMail, inDialog, text } = await openMail(
+        destinations([], { smtp: mailServer() }),
+      )
+      removeMail.mockRejectedValue(offline())
+
+      await pressMail('mail-remove')
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+
+      expect(text('alerts-failure')).toContain("Can't reach AresGate.")
+    })
+
+    it('tells the destination dialog whether the mail server is set up', async () => {
+      const { find, inDialog } = await openMail(destinations([], { smtp: mailServer() }))
+
+      await find('destination-add').trigger('click')
+      await flushPromises()
+      inDialog('dialog-kind-email')!.click()
+      await flushPromises()
+
+      expect(inDialog('dialog-mail-not-ready')).toBeNull()
     })
   })
 })

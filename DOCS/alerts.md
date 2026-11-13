@@ -1,15 +1,16 @@
 # Alerts
 
 Alerts are how AresGate tells you about a threat when you aren't looking at it. The **Alerts**
-page in the menu sets up where they go. Today that is **Discord**: one channel of your own Discord
-server, reached through a webhook. (Email and push notifications are planned; see the Jira
-tickets the changelog names.)
+page in the menu sets up where they go: a **Discord** channel of your own server, reached through
+a webhook, or an **email** address, reached through a mail server you set up once. (Push
+notifications are planned; see the Jira tickets the changelog names.)
 
 This page is built in slices. What works today, and what comes next:
 
 | | |
 | --- | --- |
 | Destinations: add, rename, turn off, remove, send a test message | Works |
+| Email destinations, through a mail server you set up (STARTTLS or SSL, with a password kept encrypted) | Works |
 | Rules for what is sent (real attacks only, or filters of your own, quiet hours, a rate limit), with a preview | Works |
 | Real-attack alerts that say why, tell again on escalation and are changed when they turn out harmless | Works |
 | The sender, with de-duplication, retries and a delivery log | Works |
@@ -33,6 +34,37 @@ This page is built in slices. What works today, and what comes next:
 A destination can be **turned off** without losing its address, **renamed**, given a **new
 address**, or **removed**. Removing it forgets the address in AresGate. The webhook itself stays
 in Discord until you delete it there.
+
+## Setting up email
+
+Email is a destination like a Discord channel: it has its own rules, a test message, a sample
+alert and a place in the delivery log. What differs is how it is sent, so there are two steps.
+
+1. **Set up the mail server** once, in the **Mail server** card under the destinations: its name
+   (such as `smtp.example.com`), how the connection is made, the port, the user name and password
+   it needs (if any) and the address the emails come from. Use your email provider's settings, or
+   those of a server on your own network. If your provider offers an app password, use that.
+   Choosing a way to connect fills in the usual port: **STARTTLS** is 587, **SSL/TLS** is 465
+   and **none** is 25.
+2. **Add the destination**: choose **Add destination**, then **Email**, give it a name and the
+   address the alerts go to. It shows **Not connected** until the mail server is set up.
+
+Then **Send test message** emails "AresGate can email you" to the address, and the destination
+shows **Connected**. If it doesn't, the card says why in words: the server didn't accept the user
+name and password, it refused the sender or the recipient, its certificate couldn't be verified,
+it couldn't be reached, or it asked for the message to be tried again later.
+
+An email is the same alert a Discord message is: the incident's title is the subject (with
+`[AresGate]` in front, so you can filter it), and the description and the details are the text,
+with a link back to the incident. The words that Discord would show in bold and as links are
+written out as plain words. Unlike a Discord message, **an email can't be changed after it is
+sent**, so one for an incident that later turns out to be harmless isn't followed by a correction:
+the log shows only the one that was sent.
+
+Saving the mail server settings, or giving a destination a new address, lets a destination that
+had stopped after the server refused it try again. Removing the mail server forgets it and its
+password; the email destinations stay, wait with **Not connected**, and send nothing until
+another is set up.
 
 ## What a destination is told about
 
@@ -213,6 +245,30 @@ Anyone who has a webhook's address can post to the channel, with no other sign-i
   is replaced wherever it would turn up in an error message. The audit log says that a
   destination was added, changed, removed or tested, and names it, but never holds the address.
 
+## The mail server and its password
+
+The password lets anyone who has it send mail as you, so it gets the same care as a webhook's
+address:
+
+- It is **sealed** with the app secret key like the other credentials (see
+  [Security](security.md)), only the code that sends opens it, and **no route returns it**: the
+  page says only that one is kept. Saving the settings with the password left empty keeps the one
+  saved; **Forget the saved password** removes it, for a server that needs none. The audit log
+  says that the mail server was changed or removed, and names its host, but never holds the
+  password.
+- **A user name and password are only sent over an encrypted connection.** STARTTLS and SSL
+  check the server's certificate against the system's authorities, and AresGate refuses to save a
+  user name or password with the connection set to **none**. A server on your own network that
+  needs no sign-in can be used without encryption.
+- The server's address is checked before every connection, like a webhook's: it may be on the
+  internet or on your home network (a relay is often either), but never this computer, a
+  link-local address or a cloud provider's metadata service. Only the signed-in owner can set it,
+  so the name is looked up and then connected to by name, which is not the same as the pinned
+  connection the webhooks use.
+- A connection that doesn't answer in 20 seconds is taken as unreachable, and tried again later.
+  A server that refuses the sign-in, the sender or the recipient stops the destination until the
+  settings or the address are fixed; a temporary refusal (a `4xx` answer) is tried again.
+
 ## What a message can contain
 
 A message is a single Discord *embed*, kept inside Discord's limits (title 256, description
@@ -258,6 +314,12 @@ wide); that a wrong token answers `401` (the pages say only that `404` is a webh
 gone); that a `5xx` can be tried again; and that sending the `User-Agent` in that format is
 enough for a webhook, which has no bot. The test message is how you find out on your own server.
 
+**Email, inferred and not tried against a real provider:** that the usual ports are 587 for
+STARTTLS and 465 for SSL, and 25 for a relay on your own network; that a refused sign-in is a
+wrong user name or password (so it stops the destination, where other `5xx` answers only fail
+that message), and that a `4xx` answer can be tried again. Python's `smtplib` does the talking. The test message is how you
+find out with your own provider.
+
 ## For developers
 
 - `backend/app/alerts/discord.py` checks the address, builds messages and sends them;
@@ -267,6 +329,13 @@ enough for a webhook, which has no bot. The test message is how you find out on 
   function that says whether an incident is sent to a destination, and the preview built on it;
   `PUT .../rules` replaces a destination's rules and `POST .../preview` previews a set of rules
   without saving them. The rules are columns of `alert_destinations` (migration 0025).
+- `backend/app/alerts/mail.py` checks the mail server's settings, turns a message built in
+  Discord's form into an email (`render`) and sends it (`send`, which never raises: the answer is
+  a `Sent`, like Discord's). The mail server is the one row of `smtp_settings` and its password
+  is credential kind `smtp`, name `server` (migration 0051); an email destination is an
+  `alert_destinations` row with kind `email` and a `recipient`. The API is `PUT` and `DELETE` on
+  `/api/alerts/smtp`, and `GET /api/alerts/destinations` returns the settings (never the
+  password) with the destinations.
 - `backend/app/alerts/notify.py` is the notifier: `decide_new` writes the outbox (`alert_deliveries`,
   migration 0029), `due_now` holds, limits and summarises, `plan` is one pass of deciding,
   `keep` records how a send went, and `run` is the loop the worker starts next to the collectors

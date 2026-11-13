@@ -25,6 +25,23 @@ export class AlertsPage {
   readonly save: Locator
   readonly cancel: Locator
   readonly dialogFailure: Locator
+  /** The choice of Discord or email when adding, and the email address. */
+  readonly kindEmail: Locator
+  readonly recipient: Locator
+  /** The mail server email destinations send through, and the dialog that sets it up. */
+  readonly mail: Locator
+  readonly mailName: Locator
+  readonly mailEdit: Locator
+  readonly mailRemove: Locator
+  readonly mailDialog: Locator
+  readonly mailHost: Locator
+  readonly mailPort: Locator
+  readonly mailSecurity: Locator
+  readonly mailUsername: Locator
+  readonly mailPassword: Locator
+  readonly mailForget: Locator
+  readonly mailSender: Locator
+  readonly mailSave: Locator
   /** The question that comes before removing one. */
   readonly confirmTitle: Locator
   readonly confirm: Locator
@@ -91,6 +108,21 @@ export class AlertsPage {
     this.save = page.getByTestId('dialog-save')
     this.cancel = page.getByTestId('dialog-cancel')
     this.dialogFailure = page.getByTestId('dialog-failure')
+    this.kindEmail = page.getByTestId('dialog-kind-email')
+    this.recipient = page.getByTestId('dialog-recipient').locator('input')
+    this.mail = page.getByTestId('mail-server')
+    this.mailName = page.getByTestId('mail-name')
+    this.mailEdit = page.getByTestId('mail-edit')
+    this.mailRemove = page.getByTestId('mail-remove')
+    this.mailDialog = page.getByTestId('mail-dialog')
+    this.mailHost = page.getByTestId('mail-host').locator('input')
+    this.mailPort = page.getByTestId('mail-port').locator('input')
+    this.mailSecurity = page.getByTestId('mail-security')
+    this.mailUsername = page.getByTestId('mail-username').locator('input')
+    this.mailPassword = page.getByTestId('mail-password').locator('input')
+    this.mailForget = page.getByTestId('mail-forget').getByRole('checkbox')
+    this.mailSender = page.getByTestId('mail-sender').locator('input')
+    this.mailSave = page.getByTestId('mail-save')
     this.confirmTitle = page.getByTestId('confirm-title')
     this.confirm = page.getByTestId('confirm-accept')
     this.confirmCancel = page.getByTestId('confirm-cancel')
@@ -204,5 +236,24 @@ export class AlertsPage {
     await this.name.fill(name)
     await this.url.fill(url)
     await this.save.click()
+  }
+
+  /** Adds an email destination through the dialog. */
+  async addEmailDestination(name: string, recipient: string): Promise<void> {
+    await this.add.click()
+    await this.kindEmail.click()
+    await this.name.fill(name)
+    await this.recipient.fill(recipient)
+    await this.save.click()
+  }
+
+  /** Sets up the mail server through its dialog, with the usual way to connect. */
+  async setUpMail(host: string, sender: string, password: string): Promise<void> {
+    await this.mailEdit.click()
+    await this.mailHost.fill(host)
+    await this.mailUsername.fill(sender)
+    await this.mailPassword.fill(password)
+    await this.mailSender.fill(sender)
+    await this.mailSave.click()
   }
 }

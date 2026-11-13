@@ -42,17 +42,23 @@ export interface Choices {
   activities: Choice[]
 }
 
-/** A place alerts are sent: a channel on the owner's Discord server, reached with a webhook. The
- * webhook's address is a secret that only goes in, so nothing here holds it. */
+/** A place alerts are sent: a channel on the owner's Discord server, reached with a webhook, or an
+ * email address, reached through the mail server. A webhook's address is a secret that only goes
+ * in, so nothing here holds it. */
+export type DestinationKind = 'discord' | 'email'
+
 export interface Destination {
   id: number
-  kind: 'discord'
+  kind: DestinationKind
   name: string
   /** Sending to it is on. A destination that is off keeps its address and is sent nothing. */
   enabled: boolean
-  /** Where it is, without the secret: the host, and the end of the webhook's number. */
+  /** Where it is, without the secret: a webhook's host, and the end of its number, or the mail
+   * server's name (empty until the mail server is set up). */
   host: string
   hint: string
+  /** Where an email destination's messages go, and none for a webhook. */
+  recipient: string | null
   /** Not tried, working or failing. "Not connected" is a destination whose address is gone. */
   status: Status
   last_attempt_at: string | null
@@ -63,8 +69,41 @@ export interface Destination {
   updated_at: string
 }
 
+/** How the connection to the mail server is made: `starttls` starts plain and switches to
+ * encryption, `ssl` is encrypted from the start, and `none` is never encrypted. */
+export type Security = 'starttls' | 'ssl' | 'none'
+
+/** The mail server that email destinations send through. The password only goes in, so all that is
+ * said of it is whether one is kept. */
+export interface MailServer {
+  configured: boolean
+  host: string
+  port: number
+  security: Security
+  username: string | null
+  sender: string
+  password_kept: boolean
+  /** The port that is usual for each way of connecting. */
+  default_ports: Record<Security, number>
+}
+
+/** What the mail server's settings are saved as. A password left out stays as it is. */
+export interface MailServerChange {
+  host: string
+  port: number
+  security: Security
+  username: string | null
+  sender: string
+  /** A new password. Never returned. */
+  password?: string
+  /** Forgets the password kept, for a server that needs none. */
+  clear_password?: boolean
+}
+
 export interface Destinations {
   items: Destination[]
+  /** The mail server email destinations send through. */
+  smtp: MailServer
   /** How many may be kept. */
   max_destinations: number
   /** The hosts a webhook's address may be at. */
@@ -113,18 +152,23 @@ export interface DestinationTest {
   destination: Destination
 }
 
-export interface NewDestination {
-  name: string
-  /** The webhook's address, as Discord shows it. Never returned. */
-  url: string
-}
+export type NewDestination =
+  | {
+      kind: 'discord'
+      name: string
+      /** The webhook's address, as Discord shows it. Never returned. */
+      url: string
+    }
+  | { kind: 'email'; name: string; /** Where the messages go. */ recipient: string }
 
 /** What can be changed of a destination. What is left out stays as it is. */
 export interface DestinationChange {
   name?: string
   enabled?: boolean
-  /** A new address to replace the old. */
+  /** A new webhook address to replace the old. */
   url?: string
+  /** A new email address to send to. */
+  recipient?: string
 }
 
 export function fetchDestinations(): Promise<Destinations> {
@@ -147,6 +191,16 @@ export function changeDestination(
 /** Forgets a destination and its address. */
 export function removeDestination(id: number, csrfToken: string): Promise<undefined> {
   return apiDelete(`/alerts/destinations/${id.toString()}`, csrfToken)
+}
+
+/** Saves the mail server's settings, and answers how they are kept. */
+export function saveMailServer(change: MailServerChange, csrfToken: string): Promise<MailServer> {
+  return apiPut<MailServer>('/alerts/smtp', change, csrfToken)
+}
+
+/** Forgets the mail server and its password. Email destinations wait for another. */
+export function removeMailServer(csrfToken: string): Promise<undefined> {
+  return apiDelete('/alerts/smtp', csrfToken)
 }
 
 /** Sends a real test message, and answers how it went. */
