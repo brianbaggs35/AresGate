@@ -191,7 +191,9 @@ OPNSENSE = Guide(
             optional=True,
             intro=(
                 "Only if you use Zenarmor. Its API is separate from OPNsense's: it has an address "
-                "and keys of its own, made in Zenconsole."
+                "and keys of its own, made in Zenconsole. Zenarmor lists API access as a feature "
+                "of its paid subscription, so the free edition may not offer it. Nothing else in "
+                "AresGate needs it: leave it off if you don't pay for Zenarmor."
             ),
             steps=(
                 Step(

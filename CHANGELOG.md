@@ -8,6 +8,10 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Zenarmor needs a paid subscription, and the setup says so.** The Zenarmor part of the OPNsense
+  setup guide and [Integrations](DOCS/integrations.md) now say that Zenarmor lists its API as a
+  feature of its paid editions, so the free edition may refuse the connection, and that leaving
+  it off loses nothing else.
 - **A guide to a quieter Threats page.** [Threats](DOCS/threats.md#if-it-is-still-too-noisy) now
   lists, in order, what to change when the page holds more than real attacks: how sure it has to be,
   the AI, what you tell it about your network, what you decide of a kind and what you answer on
