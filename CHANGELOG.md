@@ -8,6 +8,10 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **A guide to a quieter Threats page.** [Threats](DOCS/threats.md#if-it-is-still-too-noisy) now
+  lists, in order, what to change when the page holds more than real attacks: how sure it has to be,
+  the AI, what you tell it about your network, what you decide of a kind and what you answer on
+  the Review page.
 - **Notice when a quiet kind turns loud.** AresGate keeps what a kind of incident was like when
   the AI judged it: its stages of an attack, the destination ports, which of your devices it
   touches and how many addresses are behind it. When the incidents of it that are going on come to

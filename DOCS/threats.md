@@ -335,6 +335,29 @@ on now moved between lanes, so you see the effect first.
 
 The two AI settings do nothing while no AI is on; the page says so.
 
+## If it is still too noisy
+
+The Threats page is meant to hold only what could be a real attack. If it holds more than that for
+you, these are the levers, from the one that changes the most to the one that changes the least.
+None of them throws anything away: the logs and the incidents are always there.
+
+1. **Raise how sure it has to be** (Settings > Threat detection). Each step up sends the weakest
+   threats to *suspects*. The page shows what saving would move before you save.
+2. **Let the AI set harmless incidents aside**, and give it a usage level that judges often enough
+   to keep up (Settings > AI). It judges each *kind* of incident once, so a sweep of 400 addresses
+   costs one answer.
+3. **Tell it about your network** (what is open to the internet, and anything else in your own
+   words). The same scan means little behind a shut firewall.
+4. **Say what you think of a kind.** *Always background* on a kind's page, or the offer the Threats
+   page makes once you have closed most of a kind's incidents, stops it for good.
+   [Kinds of incident](#kinds-of-incident) says how it is offered, and that it is never done for
+   you.
+5. **Answer the [Review](#reviewing-what-the-ai-decided) page.** Disagreeing with the AI is told to
+   it the next time, so its judgement of your network improves.
+
+If the page is quiet, but you want to be sure nothing real is hiding, the **background** lane lists
+every kind that was set aside, and a kind that **changed since it was judged** says so there.
+
 ## Where it shows
 
 - **Threats** is in the menu between the dashboard and Incidents, and on a phone in the bottom bar
