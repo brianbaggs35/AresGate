@@ -820,7 +820,7 @@ OTX = Guide(
     ),
     sources=(
         Source(
-            title="OTX API: DirectConnect",
+            title="OTX external API reference",
             url="https://otx.alienvault.com/assets/static/external_api.html",
         ),
     ),
