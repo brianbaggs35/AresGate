@@ -522,7 +522,7 @@ test.describe('alerts page', () => {
       await alerts.mailEdit.click()
       await expect(alerts.mailPort).toHaveValue('587')
       await expect(alerts.mailPassword).toHaveAttribute('type', 'password')
-      await alerts.setUpMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
+      await alerts.fillMail('smtp.example.com', 'alerts@example.com', MAIL_PASSWORD)
 
       await expect(alerts.notice).toContainText('Saved the mail server.')
       await expect(alerts.mailName).toHaveText('smtp.example.com:587')
