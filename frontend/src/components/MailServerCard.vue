@@ -23,11 +23,12 @@ const WAYS: Readonly<Record<Security, string>> = {
 }
 
 const way = computed(() => WAYS[props.server.security])
-const signIn = computed(() =>
-  props.server.username
-    ? `It signs in as ${props.server.username}${props.server.password_kept ? '' : ', with no password'}.`
-    : 'It signs in with no user name.',
-)
+const signIn = computed(() => {
+  const { username, password_kept: kept } = props.server
+  if (!username) return 'It signs in with no user name.'
+  const without = kept ? '' : ', with no password'
+  return `It signs in as ${username}${without}.`
+})
 </script>
 
 <template>
