@@ -261,7 +261,8 @@ export function identitySteps(identity: Pick<AssetIdentity, 'name' | 'path'>): s
     .split('/')
     .map((step) => step.trim())
     .filter(Boolean)
-  return steps.length ? steps : identity.name ? [identity.name] : []
+  if (steps.length) return steps
+  return identity.name ? [identity.name] : []
 }
 
 /** How sure Fingerbank is, in words, by the bands its documentation gives its score: below 30 very

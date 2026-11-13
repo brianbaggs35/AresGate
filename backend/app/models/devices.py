@@ -21,6 +21,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime
 
+DEVICE_ID = "devices.id"
+
 
 class Device(Base):
     """One thing that has been on the network, told apart from the others by its hardware (MAC)
@@ -59,7 +61,7 @@ class DeviceIdentity(Base):
     )
 
     device_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+        BigInteger, ForeignKey(DEVICE_ID, ondelete="CASCADE"), primary_key=True
     )
     # The integration that said so (``fingerbank``).
     source: Mapped[str] = mapped_column(String(32))
@@ -94,7 +96,7 @@ class DeviceAddress(Base):
         Index("ix_device_addresses_address", "address"),
     )
 
-    device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("devices.id", ondelete="CASCADE"))
+    device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(DEVICE_ID, ondelete="CASCADE"))
     address: Mapped[IPv4Address | IPv6Address] = mapped_column(INET)
     first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
@@ -110,7 +112,7 @@ class DeviceSource(Base):
     # Not on when it was seen, which changes on every read, so that reading is a cheap update.
     __table_args__ = (PrimaryKeyConstraint("device_id", "source", "via"),)
 
-    device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("devices.id", ondelete="CASCADE"))
+    device_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(DEVICE_ID, ondelete="CASCADE"))
     # The integration (opnsense) and how it listed the device: a key of ``app.devices.ways``.
     source: Mapped[str] = mapped_column(String(32))
     via: Mapped[str] = mapped_column(String(16))

@@ -125,19 +125,38 @@ def next_wanted(db: Session, now: datetime, *, incidents: bool) -> Wanted | None
     involved: set[int] = set()
     if incidents and outside:
         involved = _involved(db, [row.id for row in outside], now)
-    ranked: list[tuple[tuple[int, int, float], Wanted]] = []
-    for row in due:
-        asset = assets.get(f"device-{row.id}")
-        if asset is None and row.id not in involved:
-            continue
-        fresh = row.state is None
-        tier = (0 if fresh else 2) + (0 if asset is not None else 1)
-        # Never asked about comes first, new devices first, and then the newest on the network.
-        new = asset is not None and asset.is_new
-        key = (tier, 0 if new else 1, -row.first_seen_at.timestamp())
-        reason = "asset" if asset is not None else "incident"
-        ranked.append((key, Wanted(row.id, row.mac, reason)))
+    ranked = [
+        found
+        for row in due
+        if (
+            found := _rank(
+                Wanted(row.id, row.mac, "asset" if f"device-{row.id}" in assets else "incident"),
+                row.state is None,
+                row.first_seen_at,
+                assets.get(f"device-{row.id}"),
+                row.id in involved,
+            )
+        )
+        is not None
+    ]
     return min(ranked, key=lambda found: found[0])[1] if ranked else None
+
+
+def _rank(
+    wanted: Wanted,
+    fresh: bool,
+    first_seen_at: datetime,
+    asset: inventory.Asset | None,
+    involved: bool,
+) -> tuple[tuple[int, int, float], Wanted] | None:
+    """Where a device that is due goes in the queue, or None if it is not worth asking about: one
+    that is neither on the Assets list nor in a recent incident."""
+    if asset is None and not involved:
+        return None
+    tier = (0 if fresh else 2) + (0 if asset is not None else 1)
+    # Never asked about comes first, new devices first, and then the newest on the network.
+    new = asset is not None and asset.is_new
+    return (tier, 0 if new else 1, -first_seen_at.timestamp()), wanted
 
 
 def _involved(db: Session, device_ids: list[int], now: datetime) -> set[int]:
