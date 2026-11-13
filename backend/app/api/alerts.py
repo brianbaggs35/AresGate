@@ -25,6 +25,7 @@ from app.api.dashboard import SEVERITY_NAMES, SeverityName
 from app.api.deps import Db, SettingsDep, SignedIn, record_audit, signed_in
 from app.api.integrations import RecorderDep
 from app.audit import Action, Outcome
+from app.config import Settings
 from app.events.event import Severity
 from app.incidents import episode
 from app.integrations import registry
@@ -437,6 +438,43 @@ def add_destination(
     return _one(db, row)
 
 
+def _rename(db: Db, row: AlertDestination, body: DestinationChange) -> bool:
+    """Gives the destination the new name, if there is one. Answers whether it changed."""
+    if body.name is None or body.name == row.name:
+        return False
+    try:
+        destinations.check_name(db, body.name, except_id=row.id)
+    except NameTaken as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("name", message=str(error))]
+        ) from None
+    row.name = body.name
+    return True
+
+
+def _readdress(
+    db: Db, settings: Settings, row: AlertDestination, body: DestinationChange, now: datetime
+) -> bool:
+    """Replaces the webhook's address or the email address, when one is given for its kind.
+    Answers whether it changed."""
+    try:
+        if body.url is not None and row.kind == "discord":
+            destinations.replace_address(db, settings, row, body.url.get_secret_value(), now)
+            return True
+        if body.recipient is not None and row.kind == "email":
+            destinations.replace_recipient(row, body.recipient, now)
+            return True
+    except InvalidWebhook as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(error))]
+        ) from None
+    except mail.InvalidSettings as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid(error.field, message=str(error))]
+        ) from None
+    return False
+
+
 @router.patch("/destinations/{destination_id}")
 def change_destination(
     destination_id: DestinationId,
@@ -450,30 +488,10 @@ def change_destination(
     row = _find(db, destination_id)
     now = utcnow()
     changed: list[str] = []
-    try:
-        if body.name is not None and body.name != row.name:
-            destinations.check_name(db, body.name, except_id=row.id)
-            row.name = body.name
-            changed.append("name")
-    except NameTaken as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("name", message=str(error))]
-        ) from None
-    try:
-        if body.url is not None and row.kind == "discord":
-            destinations.replace_address(db, settings, row, body.url.get_secret_value(), now)
-            changed.append("address")
-        if body.recipient is not None and row.kind == "email":
-            destinations.replace_recipient(row, body.recipient, now)
-            changed.append("address")
-    except InvalidWebhook as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid("url", message=str(error))]
-        ) from None
-    except mail.InvalidSettings as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, [_invalid(error.field, message=str(error))]
-        ) from None
+    if _rename(db, row, body):
+        changed.append("name")
+    if _readdress(db, settings, row, body, now):
+        changed.append("address")
     if body.enabled is not None and body.enabled != row.enabled:
         row.enabled = body.enabled
         if body.enabled:

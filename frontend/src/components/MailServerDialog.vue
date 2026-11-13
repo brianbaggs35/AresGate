@@ -43,7 +43,9 @@ const password = ref('')
 const forget = ref(false)
 const sender = ref('')
 
-const portNumber = computed(() => (/^\d{1,5}$/.test(port.value.trim()) ? Number(port.value) : NaN))
+const portNumber = computed(() =>
+  /^\d{1,5}$/.test(port.value.trim()) ? Number(port.value) : Number.NaN,
+)
 const ready = computed(
   () =>
     host.value.trim() !== '' &&

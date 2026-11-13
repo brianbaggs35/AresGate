@@ -53,17 +53,10 @@ SERVER_POLICY: Final = netguard.AddressPolicy(
     allowed=(ipaddress.ip_network("0.0.0.0/0"), ipaddress.ip_network("::/0")),
     refused=(
         *netguard.THIS_COMPUTER,
-        *(
-            ipaddress.ip_network(each)
-            for each in (
-                "0.0.0.0/8",
-                "169.254.0.0/16",
-                "224.0.0.0/3",
-                "::/128",
-                "fe80::/10",
-                "ff00::/8",
-            )
-        ),
+        *(ipaddress.ip_network(each) for each in ("0.0.0.0/8", "::/128", "fe80::/10", "ff00::/8")),
+        # Multicast and the reserved addresses above it, as (address, prefix length).
+        ipaddress.IPv4Network((0xE0000000, 3)),
+        # Cloud metadata also holds the IPv4 link-local range.
         *netguard.CLOUD_METADATA,
     ),
     problem="isn't a mail server's address",
