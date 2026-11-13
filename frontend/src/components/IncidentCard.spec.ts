@@ -61,6 +61,24 @@ describe('IncidentCard', () => {
     expect(wrapper.find('[data-test="ai-chip"]').exists()).toBe(false)
   })
 
+  it('says which hunter flagged it, beside what AresGate makes of it', async () => {
+    const hunter = {
+      agent_id: 3,
+      agent_name: 'Night watch',
+      run_id: 9,
+      finished_at: '2026-11-10T12:00:00Z',
+      severity: 'high',
+      title: 'Looks real',
+      action: '',
+      confidence: 'high',
+    }
+    const { text, wrapper } = await show({ hunter: [hunter] })
+
+    expect(text('hunter-chip')).toBe('Flagged by Night watch')
+    expect((await show({})).wrapper.find('[data-test="hunter-chip"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="incident-title"]').exists()).toBe(true)
+  })
+
   it('says how many alerts another program had already reported, counted once', async () => {
     const { text, wrapper } = await show({ duplicates: 12 })
     expect(text('incident-duplicates')).toBe('12 also reported by another program, counted once')

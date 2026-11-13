@@ -55,6 +55,9 @@ MAX_SUMMARY: Final = 1500
 MAX_TITLE: Final = 160
 MAX_DETAIL: Final = 800
 MAX_ACTION: Final = 400
+MAX_EVIDENCE: Final = 6
+MAX_EVIDENCE_LINE: Final = 240
+MAX_VERIFY: Final = 500
 CONFIDENCE: Final = ("low", "medium", "high")
 MAX_GOAL: Final = 2000
 MAX_TOKENS: Final = 1800
@@ -91,6 +94,11 @@ class Finding(TypedDict):
     confidence: str
     # Whether the agent's last run reported the same thing: ``new`` or ``ongoing``.
     status: str
+    # What the owner needs to decide whether it is real: the facts it rests on, one to a line, how
+    # to check it for themselves, and what would make it harmless.
+    evidence: list[str]
+    verify: str
+    benign: str
 
 
 class State(TypedDict):
@@ -215,8 +223,14 @@ are the things worth the owner's attention, each with a severity (info, low, med
 critical), a short title, "detail" (what you saw and why it matters), "action" (the one thing to \
 do about it, or an empty string when there is nothing to do) and "confidence" (low, medium or \
 high: how sure you are, given only what you were shown); leave "findings" empty when there is \
-nothing. Write an incident as [incident 3]. In a finding's "cites" list what it is based on, as \
-"incident 3" or "integration opnsense", only things that appeared in what you were given.
+nothing. So that the owner can decide without looking everything up again, each finding also has \
+"evidence" (up to six short lines, each one fact you were shown: what, from where to where, how \
+many times, when, which rule or technique), "verify" (how the owner can check for themselves \
+whether it is real, such as what to look at on which device) and "benign" (what would make it \
+harmless, so they can tell). State only what you were shown, never guess a number, and use an \
+empty list or string when you were not shown enough. Write an incident as [incident 3]. In a \
+finding's "cites" list what it is based on, as "incident 3" or "integration opnsense", only things \
+that appeared in what you were given.
 
 {tidy}Answer only with the JSON you are asked for.\
 """
@@ -245,8 +259,21 @@ def schema(template: Template) -> Mapping[str, object]:
             "cites": {"type": "array", "items": {"type": "string"}},
             "action": {"type": "string"},
             "confidence": {"type": "string", "enum": list(CONFIDENCE)},
+            "evidence": {"type": "array", "items": {"type": "string"}},
+            "verify": {"type": "string"},
+            "benign": {"type": "string"},
         },
-        "required": ["severity", "title", "detail", "cites", "action", "confidence"],
+        "required": [
+            "severity",
+            "title",
+            "detail",
+            "cites",
+            "action",
+            "confidence",
+            "evidence",
+            "verify",
+            "benign",
+        ],
     }
     properties: dict[str, object] = {
         "summary": {"type": "string"},
@@ -329,6 +356,9 @@ class Raised(NamedTuple):
     cites: list[str]
     action: str
     confidence: str
+    evidence: list[str]
+    verify: str
+    benign: str
 
 
 @dataclass(frozen=True)
@@ -396,6 +426,9 @@ def _finding(item: object) -> Raised | None:
     cites = fields.get("cites")
     action = fields.get("action")
     confidence = fields.get("confidence")
+    evidence = fields.get("evidence")
+    verify = fields.get("verify")
+    benign = fields.get("benign")
     return Raised(
         severity if isinstance(severity, str) and severity in probe.SEVERITIES else "info",
         audit.clean(title, MAX_TITLE) or "",
@@ -403,6 +436,13 @@ def _finding(item: object) -> Raised | None:
         [cite for cite in _items(cites) if isinstance(cite, str)],
         (audit.clean(action, MAX_ACTION) or "") if isinstance(action, str) else "",
         confidence if isinstance(confidence, str) and confidence in CONFIDENCE else "medium",
+        [
+            line
+            for item in _items(evidence)[:MAX_EVIDENCE]
+            if isinstance(item, str) and (line := audit.clean(item, MAX_EVIDENCE_LINE))
+        ],
+        (audit.clean(verify, MAX_VERIFY) or "") if isinstance(verify, str) else "",
+        (audit.clean(benign, MAX_VERIFY) or "") if isinstance(benign, str) else "",
     )
 
 
@@ -659,6 +699,9 @@ def _findings_of(
             action=raised.action,
             confidence=raised.confidence,
             status=status_of(raised.title, previous),
+            evidence=raised.evidence,
+            verify=raised.verify,
+            benign=raised.benign,
         )
         for raised in reading.findings
     ]
@@ -724,6 +767,9 @@ def _found_by_testing(ran: Sequence[Entry]) -> list[Finding]:
             # A port that answered did answer, whatever the AI says of it.
             confidence="high",
             status="new",
+            evidence=[],
+            verify="",
+            benign="",
         )
         for entry in ran
         for hit in entry["hits"]

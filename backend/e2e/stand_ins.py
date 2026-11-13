@@ -1305,6 +1305,9 @@ def _answer_of_an_agent(asked: Mapping[str, Any]) -> str | None:
                     "cites": [cite],
                     "action": "Check the device it reached and change its password.",
                     "confidence": "high",
+                    "evidence": ["Two programs reported it.", "The device answered the scan."],
+                    "verify": "Open the device's page and look at what it was doing then.",
+                    "benign": "You were scanning your own network.",
                 }
             ],
             "lookups": [],

@@ -170,6 +170,39 @@ describe('IncidentView', () => {
     })
   })
 
+  describe('flagged by the threat hunter', () => {
+    const flag = (changes = {}) => ({
+      agent_id: 3,
+      agent_name: 'Night watch',
+      run_id: 9,
+      finished_at: '2026-11-10T12:00:00Z',
+      severity: 'high',
+      title: 'Looks real',
+      action: 'Check the device.',
+      confidence: 'high',
+      ...changes,
+    })
+
+    it('says what it thinks, what to do, and leads to what it found', async () => {
+      const { find, wrapper, text } = await open({
+        found: detail({ hunter: [flag(), flag({ agent_id: 4, agent_name: 'Other', action: '' })] }),
+      })
+
+      expect(text('incident-hunter')).toContain('Flagged by the threat hunter')
+      const flags = wrapper.findAll('[data-test="incident-hunter-flag"]')
+      expect(flags[0]!.text()).toContain('Night watch (high, high sure): Looks real')
+      expect(flags[0]!.text()).toContain('What to do: Check the device.')
+      expect(flags[1]!.text()).not.toContain('What to do')
+      expect(find('incident-hunter-open').attributes('href')).toBe('/agents/3')
+    })
+
+    it('says nothing when it did not', async () => {
+      const { find } = await open({ found: detail() })
+
+      expect(find('incident-hunter').exists()).toBe(false)
+    })
+  })
+
   describe('a step of an attack across two devices', () => {
     it('says so, why, and leads to the whole attack', async () => {
       const { find, text } = await open({

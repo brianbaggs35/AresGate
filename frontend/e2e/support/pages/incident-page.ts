@@ -9,6 +9,8 @@ export class IncidentPage {
   /** What can be done about it, and what was done. */
   readonly notice: Locator
   readonly changeError: Locator
+  /** What the threat hunter said of it, when it flagged it. */
+  readonly hunter: Locator
   /** The four numbers under the title. */
   /** The sentence at the top that tells what happened, its parts and the confidence in its ring. */
   readonly hero: Locator
@@ -94,6 +96,7 @@ export class IncidentPage {
     this.back = page.getByTestId('back')
     this.notice = page.getByTestId('notice')
     this.changeError = page.getByTestId('change-error')
+    this.hunter = page.getByTestId('incident-hunter')
     this.hero = page.getByTestId('incident-hero')
     this.heroTitle = page.getByTestId('incident-hero-title')
     this.heroDetail = page.getByTestId('incident-hero-detail')

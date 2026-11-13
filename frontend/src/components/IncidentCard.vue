@@ -10,6 +10,7 @@ import { VERDICTS, giveVerdict, type VerdictKind } from '@/api/verdicts'
 import AiChip from '@/components/AiChip.vue'
 import CallChip from '@/components/CallChip.vue'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
+import HunterChip from '@/components/HunterChip.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import LaneChip from '@/components/LaneChip.vue'
 import ResponseChip from '@/components/ResponseChip.vue'
@@ -141,6 +142,7 @@ async function give(kind: VerdictKind) {
         <ResponseChip :response="incident.response" />
         <CallChip v-if="incident.call" :call="incident.call" />
         <AiChip v-else-if="incident.ai" :ai="incident.ai" />
+        <HunterChip :flags="incident.hunter" />
         <span class="incident-card__when text-body-medium text-medium-emphasis">
           Last signal
           <time

@@ -185,9 +185,27 @@ counts what is new, what is still open and what the run before reported that thi
 which is how you see that something was fixed. *How it has been going* draws the findings of each
 of its last runs by severity, so you can see whether an agent is finding more or less.
 
+A finding is meant to be enough to decide on without looking it up again. Besides the above, the AI
+is asked for **what it rests on** (up to six short lines, each one fact it was shown: what, from
+where to where, how many times, when), **how to check it** for yourself (what to look at, on which
+device) and **what would make it harmless**, so you can tell. It is told to state only what it was
+shown and to leave them empty when it was shown too little, so a finding may have none of them, and
+one made before they were asked for does not. The **threat hunter** also looks at the attacks that
+crossed two devices (as well as the open incidents, the alerts and the sources the firewall turned
+away most), and is told to follow up on what looks serious by reading the incident itself.
+
 *What it did* lists each step with how long it took, a link to each incident it looked at, and
 *What it saw*, up to forty lines of it (the rest are counted, not kept). An agent that tests your
 network states its findings with high confidence, because a port that answered did answer.
+
+### What the threat hunter flagged
+
+An incident that a finding of the threat hunter's last finished run names, at *medium* or higher,
+is **flagged by the hunter**: its card says so, its page says what the hunter thinks and what to
+do, the **Threats** page lists the first few (whatever lane they are in, because the hunter only
+reads and its word is not one of the lanes), and `hunted:yes` finds them all in Incidents (`hunted:no`
+the rest). Nothing about the incident changes: not its confidence, its lane or its status. Like
+everything an agent says, it stays only as long as the hunter's last run still reports it.
 
 ## Mission control
 

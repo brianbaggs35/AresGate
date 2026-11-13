@@ -55,6 +55,33 @@ describe('ThreatsView', () => {
     ])
   })
 
+  it('names what the threat hunter flagged, and leaves it out when it flagged nothing', async () => {
+    const flagged = await open({
+      found: overview({
+        hunted: {
+          total: 1,
+          items: [
+            {
+              id: 4,
+              title: 'Scan from 203.0.113.7',
+              severity: 'high',
+              agent_id: 3,
+              agent_name: 'Night watch',
+              run_id: 9,
+              finding: 'Looks real',
+              action: '',
+            },
+          ],
+        },
+      }),
+    })
+    const quiet = await open({ found: overview() })
+
+    expect(flagged.find('hunted').exists()).toBe(true)
+    expect(flagged.wrapper.findAll('[data-test="hunted-item"]')).toHaveLength(1)
+    expect(quiet.find('hunted').exists()).toBe(false)
+  })
+
   it('asks again once an offer is taken or put off', async () => {
     const { wrapper, fetchOverview } = await open({
       found: overview({

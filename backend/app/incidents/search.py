@@ -12,6 +12,7 @@ from typing import Final
 from sqlalchemy import ColumnElement, String, cast, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import INET
 
+from app.agents import flags
 from app.incidents import rules
 from app.incidents.queries import NO_VERDICT
 from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Incident, IncidentSignal
@@ -133,6 +134,12 @@ def _banned(clause: Clause, _context: Context) -> Compiled:
     return Incident.banned.is_(yes), f"Banned: {'yes' if yes else 'no'}"
 
 
+def _hunted(clause: Clause, _context: Context) -> Compiled:
+    yes = yes_or_no(clause, "hunted")
+    found = flags.clause()
+    return (found if yes else ~found), f"Flagged by the threat hunter: {'yes' if yes else 'no'}"
+
+
 def _since(clause: Clause, context: Context) -> Compiled:
     when, shown = moment(only_one(clause, "since"), context)
     return Incident.last_seen_at >= when, f"Going on since: {shown}"
@@ -166,6 +173,7 @@ FIELDS: Final = (
     Field("device", _device),
     Field("port", _port),
     Field("banned", _banned),
+    Field("hunted", _hunted),
     Field("since", _since),
     Field("before", _before),
 )
@@ -177,6 +185,8 @@ ALIASES: Final = {
     "sev": "severity",
     "conf": "confidence",
     "sig": "signature",
+    "hunter": "hunted",
+    "flagged": "hunted",
 }
 LANGUAGE: Final = Language.of(FIELDS, ALIASES, _text)
 

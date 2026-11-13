@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app import dashboard
+from app.agents import flags
 from app.ai import families as judging
 from app.api import incidents as incident_api
 from app.api.ai import AiContext
@@ -30,6 +31,8 @@ FamilyId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 Judged = Literal["ai", "owner", "waiting"]
 MAX_PAGE = 100
 SAMPLE = 20
+# How many of the incidents the threat hunter flagged the Threats page names.
+HUNTED_SHOWN = 3
 NO_SUCH_KIND = "There's no such kind of incident."
 
 
@@ -103,6 +106,25 @@ class SuggestedKindOut(BaseModel):
     suggestion: SuggestionOut
 
 
+class HuntedOut(BaseModel):
+    """An incident going on that the threat hunter flagged, and what it said of it."""
+
+    id: int
+    title: str
+    severity: str
+    agent_id: int
+    agent_name: str
+    run_id: int
+    finding: str
+    action: str
+
+
+class HuntedPage(BaseModel):
+    # How many incidents going on the threat hunter flagged in all, and the first few.
+    total: int
+    items: list[HuntedOut]
+
+
 class OverviewOut(BaseModel):
     window: WindowOut
     funnel: FunnelOut
@@ -114,6 +136,9 @@ class OverviewOut(BaseModel):
     families: list[FamilyOut]
     # What is offered about kinds from what you have decided of their incidents.
     suggestions: list[SuggestedKindOut]
+    # What the threat hunter's last run flagged among the incidents going on, whatever lane they
+    # are in, because it only reads and its word is not one of the lanes.
+    hunted: HuntedPage
 
 
 class FamilyDetail(FamilyOut):
@@ -247,6 +272,7 @@ def get_overview(
     found = overview.funnel(db, win, floor, tuning)
     covered = overview.coverage(db)
     top = overview.kinds(db, floor, tuning, limit=6)
+    hunted_total, hunted = flags.going_on(db, HUNTED_SHOWN)
     return OverviewOut(
         window=WindowOut(
             key=win.key,
@@ -266,6 +292,22 @@ def get_overview(
             )
             for item, offer in learning.offers(db, floor, tuning)
         ],
+        hunted=HuntedPage(
+            total=hunted_total,
+            items=[
+                HuntedOut(
+                    id=incident.id,
+                    title=incident.title,
+                    severity=SEVERITY_NAMES[Severity(incident.severity)],
+                    agent_id=said.agent_id,
+                    agent_name=said.agent_name,
+                    run_id=said.run_id,
+                    finding=said.title,
+                    action=said.action,
+                )
+                for incident, said in hunted
+            ],
+        ),
     )
 
 

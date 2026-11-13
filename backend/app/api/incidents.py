@@ -17,6 +17,7 @@ from pydantic import (
 )
 from sqlalchemy import ColumnElement, func, or_, select
 
+from app.agents import flags
 from app.ai import catalog, triage
 from app.api import asking
 from app.api import conversations as conversation_api
@@ -138,6 +139,21 @@ class CallOut(BaseModel):
     basis: Basis
 
 
+class HunterFlagOut(BaseModel):
+    """What the threat hunter said of an incident in its last run: the finding that names it. The
+    hunter only reads, so this is what it thinks and what it suggests, for the owner to decide."""
+
+    agent_id: int
+    agent_name: str
+    run_id: int
+    finished_at: AwareDatetime
+    severity: str
+    title: str
+    # What to do about it, or empty, and how sure the agent is (low, medium or high).
+    action: str
+    confidence: str
+
+
 class IncidentOut(BaseModel):
     id: int
     title: str
@@ -199,6 +215,8 @@ class IncidentOut(BaseModel):
     chain_role: Literal["attacker", "callout"] | None
     chain_link: Literal["confirmed", "inferred"] | None
     chain_reason: str | None
+    # What the threat hunter's last run says of it, if it names it in a finding worth acting on.
+    hunter: list[HunterFlagOut] = Field(default_factory=lambda: [])
 
 
 class ReasonOut(BaseModel):
@@ -757,8 +775,16 @@ def _call(incident: Incident) -> CallOut | None:
     )
 
 
+def _hunter(found: list[flags.Flag]) -> list[HunterFlagOut]:
+    return [HunterFlagOut.model_validate(item, from_attributes=True) for item in found]
+
+
 def _incident(
-    incident: Incident, done: response.Response, judging: Judging, read: AiTriage | None = None
+    incident: Incident,
+    done: response.Response,
+    judging: Judging,
+    read: AiTriage | None = None,
+    hunted: list[flags.Flag] | None = None,
 ) -> IncidentOut:
     lane = attention.lane_of(incident, judging.floor, judging.tuning)
     return IncidentOut(
@@ -795,6 +821,7 @@ def _incident(
         chain_role=cast(Literal["attacker", "callout"] | None, incident.chain_role),
         chain_link=cast(Literal["confirmed", "inferred"] | None, incident.chain_link),
         chain_reason=incident.chain_reason,
+        hunter=_hunter(hunted or []),
     )
 
 
@@ -986,7 +1013,9 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     devices = queries.devices(db, incident)
     drawn = _path(db, incident, seen, done, devices)
     return IncidentDetail(
-        **_incident(incident, done, judging, read).model_dump(),
+        **_incident(
+            incident, done, judging, read, flags.of_incidents(db, [incident.id])[incident.id]
+        ).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
             subject=incident.subject,
@@ -1253,10 +1282,13 @@ def list_incidents(
             select(AiTriage).where(AiTriage.incident_id.in_([i.id for i in page.incidents]))
         )
     }
+    hunted = flags.of_incidents(db, [incident.id for incident in page.incidents])
     return IncidentPage(
         total=page.total,
         items=[
-            _incident(incident, done[incident.id], judging, read.get(incident.id))
+            _incident(
+                incident, done[incident.id], judging, read.get(incident.id), hunted[incident.id]
+            )
             for incident in page.incidents
         ],
         terms=[

@@ -17,6 +17,35 @@ describe('AgentFindings', () => {
     )
   })
 
+  it('shows what it rests on and how to check it, when the agent said', async () => {
+    const { wrapper } = await open([
+      finding({
+        evidence: ['Eleven connections to port 22 in an hour.', 'Refused by rule 4.'],
+        verify: 'Look at the firewall log for port 22.',
+        benign: 'You were testing SSH yourself.',
+      }),
+    ])
+
+    expect(wrapper.findAll('[data-test="finding-fact"]').map((fact) => fact.text())).toEqual([
+      'Eleven connections to port 22 in an hour.',
+      'Refused by rule 4.',
+    ])
+    expect(wrapper.find('[data-test="finding-verify"]').text()).toContain(
+      'Look at the firewall log for port 22.',
+    )
+    expect(wrapper.find('[data-test="finding-benign"]').text()).toContain(
+      'You were testing SSH yourself.',
+    )
+  })
+
+  it('shows only the one of how to check it and what would make it harmless that there is', async () => {
+    const { wrapper } = await open([finding({ benign: 'It is the backup job.' })])
+
+    expect(wrapper.find('[data-test="finding-evidence"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="finding-verify"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="finding-benign"]').exists()).toBe(true)
+  })
+
   it('puts the most serious first', async () => {
     const { wrapper } = await open([
       finding({ severity: 'low', title: 'Minor' }),

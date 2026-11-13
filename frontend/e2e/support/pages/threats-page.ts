@@ -27,6 +27,9 @@ export class ThreatsPage {
   readonly suggestionReason: Locator
   readonly suggestionTake: Locator
   readonly suggestionDismiss: Locator
+  /** What the threat hunter flagged among the incidents going on. */
+  readonly hunted: Locator
+  readonly huntedItems: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -50,6 +53,8 @@ export class ThreatsPage {
     this.suggestionReason = page.getByTestId('suggestion-reason')
     this.suggestionTake = page.getByTestId('suggestion-take')
     this.suggestionDismiss = page.getByTestId('suggestion-dismiss')
+    this.hunted = page.getByTestId('hunted')
+    this.huntedItems = page.getByTestId('hunted-item')
   }
 
   async goto(lane?: 'threat' | 'suspect' | 'background'): Promise<void> {

@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Threat hunter findings you can decide on, and the incidents it flagged.** A finding now says
+  what it rests on (the facts it was shown, a line each), how to check it yourself and what would
+  make it harmless, where the AI had enough to say. The hunter also reads the attacks across two
+  devices, and is told to follow up on what looks serious. An incident that its last run names in
+  a finding of medium or higher is **flagged** on its card and its page, listed on the Threats page
+  and found by `hunted:yes` in Incidents. It is the hunter's opinion, and changes nothing about the
+  incident. See [Agents](DOCS/agents.md#what-a-run-tells-you).
 - **CI clears the caches nobody needs.** A new workflow deletes a pull request's caches when it is
   closed, and each Monday any that a pull request left and nothing has used for 3 days, so they
   don't crowd out the ones master's builds need. See [Development](DOCS/development.md#ci-caches).

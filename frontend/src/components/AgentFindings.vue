@@ -48,6 +48,24 @@ const ordered = computed(() =>
         <v-icon :icon="Lightbulb" size="18" aria-hidden="true" />
         <span><strong>What to do:</strong> {{ finding.action }}</span>
       </p>
+      <div v-if="finding.evidence.length" class="finding__evidence" data-test="finding-evidence">
+        <span class="text-label-medium text-medium-emphasis">What it rests on</span>
+        <ul>
+          <li v-for="(line, index) in finding.evidence" :key="index" data-test="finding-fact">
+            {{ line }}
+          </li>
+        </ul>
+      </div>
+      <dl v-if="finding.verify || finding.benign" class="finding__checks">
+        <div v-if="finding.verify" data-test="finding-verify">
+          <dt class="text-label-medium text-medium-emphasis">How to check it</dt>
+          <dd class="text-body-medium">{{ finding.verify }}</dd>
+        </div>
+        <div v-if="finding.benign" data-test="finding-benign">
+          <dt class="text-label-medium text-medium-emphasis">What would make it harmless</dt>
+          <dd class="text-body-medium">{{ finding.benign }}</dd>
+        </div>
+      </dl>
       <p class="text-body-small text-medium-emphasis finding__meta" data-test="finding-meta">
         <span class="finding__sure" data-test="finding-confidence">
           <v-icon :icon="CONFIDENCE[finding.confidence].icon" size="14" aria-hidden="true" />
@@ -119,6 +137,28 @@ const ordered = computed(() =>
 .finding__action .v-icon {
   margin-top: 0.2rem;
   color: rgb(var(--v-theme-primary));
+}
+
+.finding__evidence {
+  margin-top: 0.75rem;
+}
+
+.finding__evidence ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.finding__checks {
+  display: grid;
+  gap: 0.5rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  margin: 0.75rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.finding__checks dd {
+  margin: 0;
 }
 
 .finding__meta {

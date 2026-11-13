@@ -511,6 +511,9 @@ class TestRuns:
                 "action": "",
                 "confidence": "medium",
                 "runs_seen": 1,
+                "evidence": [],
+                "verify": "",
+                "benign": "",
             },
             {
                 "severity": "info",
@@ -521,6 +524,9 @@ class TestRuns:
                 "action": "",
                 "confidence": "medium",
                 "runs_seen": 1,
+                "evidence": [],
+                "verify": "",
+                "benign": "",
             },
         ]
         assert body["by_severity"] == {"medium": 1, "info": 1}
@@ -549,7 +555,16 @@ class TestRuns:
             session,
             agent,
             finished_at=now - timedelta(days=1),
-            findings=[finding("telnet open", confidence="low", action="Close it.")],
+            findings=[
+                finding(
+                    "telnet open",
+                    confidence="low",
+                    action="Close it.",
+                    evidence=["Port 23 answered.", 7],
+                    verify="Try it from the guest network.",
+                    benign="The camera needs it.",
+                )
+            ],
         )
         last = ran(
             session,
@@ -573,6 +588,9 @@ class TestRuns:
         assert shown["changes"]["gone"] == [{"severity": "high", "title": "Odd logins"}]
         assert shown["findings_list"][0]["confidence"] == "low"
         assert shown["findings_list"][0]["action"] == "Close it."
+        assert shown["findings_list"][0]["evidence"] == ["Port 23 answered.", "7"]
+        assert shown["findings_list"][0]["verify"] == "Try it from the guest network."
+        assert shown["findings_list"][0]["benign"] == "The camera needs it."
         assert client.get(f"{BASE}/{agent.id}/runs/{first.id}").json()["changes"] is not None
 
     def test_the_first_run_has_nothing_before_it_to_differ_from(

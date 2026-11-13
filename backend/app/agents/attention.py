@@ -54,7 +54,7 @@ class Attention:
     briefing: Briefing | None
 
 
-def _latest(db: Session) -> list[tuple[Agent, AgentRun]]:
+def latest(db: Session) -> list[tuple[Agent, AgentRun]]:
     """Each agent's last run that finished well, if it has one."""
     latest = (
         select(AgentRun)
@@ -71,7 +71,7 @@ def _latest(db: Session) -> list[tuple[Agent, AgentRun]]:
 def gather(db: Session) -> Attention:
     items: list[Item] = []
     briefing: Briefing | None = None
-    for agent, run in _latest(db):
+    for agent, run in latest(db):
         template = catalog.template(agent.template)
         finished = run.finished_at
         if finished is None:  # pragma: no cover - the query only takes runs that finished
