@@ -141,7 +141,7 @@ test.describe('the kinds of incident', () => {
     await sweep.getByTestId('family').click()
 
     await expect(kind.changed).toContainText('It has changed since it was judged')
-    await expect(kind.changes.first()).toContainText('destination ports')
+    await expect(kind.changes.filter({ hasText: 'destination ports' })).toHaveCount(1)
     await expect(kind.changed).toContainText('The AI will be asked about it again')
 
     await kind.watch.click()
