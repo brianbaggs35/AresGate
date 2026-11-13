@@ -45,11 +45,14 @@ def sendable(address: Address, own: tuple[Network, ...]) -> bool:
     return not any(address in network for network in own if network.version == address.version)
 
 
-def next_address(db: Session, provider: str, now: datetime) -> Address | None:
+def next_address(
+    db: Session, provider: str, now: datetime, *, ipv4_only: bool = False
+) -> Address | None:
     """The address to ask about next, or None if there is none to ask about. An address with no
     answer kept comes first, the most recent incident's first. After those, the address whose
     answer stopped being fresh longest ago. One asked about within ``RETRY`` waits, whatever came
-    of it, so a lookup that failed or was cut short isn't repeated at once."""
+    of it, so a lookup that failed or was cut short isn't repeated at once. A service that only
+    takes IPv4 addresses is never given another kind (``ipv4_only``)."""
     own = own_networks(db)
     groups = db.scalars(
         select(Incident.addresses)
@@ -66,7 +69,13 @@ def next_address(db: Session, provider: str, now: datetime) -> Address | None:
             )
         )
     )
-    wanted = [address for address in ordered if address not in retried and sendable(address, own)]
+    wanted = [
+        address
+        for address in ordered
+        if address not in retried
+        and sendable(address, own)
+        and (address.version == 4 or not ipv4_only)
+    ]
     if not wanted:
         return None
     answers = {

@@ -39,6 +39,7 @@ def test_the_integrations_are_listed_in_order() -> None:
         "crowdsec",
         "virustotal",
         "otx",
+        "greynoise",
         "fingerbank",
     ]
 
@@ -75,6 +76,32 @@ def test_otx_is_threat_intelligence_on_the_internet_with_a_pace_to_choose() -> N
     assert pace.caution == registry.PACE_NOTE
 
 
+def test_greynoise_is_threat_intelligence_and_has_a_key_only_with_an_account() -> None:
+    definition = INTEGRATIONS["greynoise"]
+    connection = definition.connection("api")
+
+    assert definition.category == "Threat intelligence"
+    assert connection is not None
+    assert connection.internet
+    assert connection.address == "https://api.greynoise.io"
+    fields = {item.key: item for item in connection.fields}
+    assert [item.key for item in connection.fields] == ["access", "plan", "api_key"]
+    assert fields["access"].default == "key"
+    assert [choice.value for choice in fields["access"].choices] == ["key", "none"]
+    assert fields["access"].caution == registry.GREYNOISE_NOTE
+    assert [choice.value for choice in fields["plan"].choices] == ["free", "subscription"]
+    assert fields["api_key"].kind is FieldKind.SECRET
+    # With no account there is no plan and no key to enter.
+    assert [item.key for item in registry.active_fields(connection, {"access": "none"})] == [
+        "access"
+    ]
+    assert [item.key for item in registry.active_fields(connection, {"access": "key"})] == [
+        "access",
+        "plan",
+        "api_key",
+    ]
+
+
 def test_fingerbank_is_device_intelligence_with_a_setting_for_incident_devices() -> None:
     definition = INTEGRATIONS["fingerbank"]
     connection = definition.connection("api")
@@ -104,6 +131,7 @@ def test_every_integration_belongs_to_a_kind() -> None:
 def test_an_integration_is_internet_only_when_every_connection_is_on_the_internet() -> None:
     assert INTEGRATIONS["virustotal"].internet_only
     assert INTEGRATIONS["otx"].internet_only
+    assert INTEGRATIONS["greynoise"].internet_only
     assert INTEGRATIONS["fingerbank"].internet_only
     assert not INTEGRATIONS["wazuh"].internet_only
 

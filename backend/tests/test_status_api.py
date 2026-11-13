@@ -153,6 +153,7 @@ def test_it_lists_every_integration_even_with_none_connected(
         "crowdsec",
         "virustotal",
         "otx",
+        "greynoise",
         "fingerbank",
     ]
     for part in parts:

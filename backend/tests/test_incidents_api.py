@@ -17,7 +17,7 @@ from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine as correlation
 from app.incidents import episode, names, queries, search
-from app.intel import otx, overrides, subjects, virustotal
+from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
 from app.threats import settings as threat_settings
@@ -1265,6 +1265,35 @@ class TestWhatTheProgramsSaid:
         assert body["insights"]["techniques"][0]["count"] == 4
 
 
+def keep_noise(
+    session: Session,
+    address: str,
+    *,
+    malicious: int = 0,
+    harmless: int = 0,
+    details: tuple[tuple[str, str], ...] = (),
+) -> None:
+    """Keeps what GreyNoise said of an address."""
+    intel_store.keep(
+        session,
+        greynoise.PROVIDER,
+        subjects.of_address(ip_address(address)),
+        greynoise.Reported(
+            greynoise.Report(
+                malicious=malicious,
+                suspicious=0,
+                harmless=harmless,
+                undetected=0,
+                reputation=0,
+                analysed_at=NOW,
+                details=details,
+            )
+        ),
+        NOW,
+    )
+    session.commit()
+
+
 class TestWhatWasSent:
     """Who talked to whom, what over and how much, and what more connecting a program would add."""
 
@@ -1398,6 +1427,7 @@ class TestWhatWasSent:
             "ruling": None,
             "ruling_note": None,
             "otx": None,
+            "greynoise": None,
         }
         # Only the internet is looked up: the device on the network is not.
         assert conversation["client"]["reputation"] is None
@@ -1456,6 +1486,7 @@ class TestWhatWasSent:
             "ruling": "suspicious",
             "ruling_note": None,
             "otx": None,
+            "greynoise": None,
         }
 
     def test_what_otx_says_of_an_address_is_told_beside_what_virustotal_said(
@@ -1519,6 +1550,57 @@ class TestWhatWasSent:
             NOW,
         )
         session.commit()
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        assert conversation["server"]["reputation"] is None
+
+    def test_what_greynoise_says_of_a_scanner_is_told_with_a_link_to_read_more(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        keep_noise(
+            session,
+            ATTACKER,
+            malicious=1,
+            details=(
+                (greynoise.CLASSIFICATION, "malicious"),
+                (greynoise.ACTOR, "Group X"),
+                (greynoise.TAGS, "Mirai, SSH Bruteforcer"),
+            ),
+        )
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        reputation = conversation["server"]["reputation"]
+        assert reputation["greynoise"] == {
+            "judgement": "malicious",
+            "classification": "malicious",
+            "business": None,
+            "actor": "Group X",
+            "tags": "Mirai, SSH Bruteforcer",
+            "link": f"https://viz.greynoise.io/ip/{ATTACKER}",
+        }
+        # VirusTotal has said nothing, which is not the same as GreyNoise's word.
+        assert (reputation["reported"], reputation["engines"]) == ("unknown", 0)
+
+    def test_a_business_service_links_to_its_own_page_on_greynoise(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        keep_noise(session, ATTACKER, harmless=1, details=((greynoise.BUSINESS, "Cloudflare"),))
+
+        [conversation] = self.detail(client)["conversations"]["items"]
+
+        said = conversation["server"]["reputation"]["greynoise"]
+        assert (said["judgement"], said["business"]) == ("clean", "Cloudflare")
+        assert said["link"] == f"https://viz.greynoise.io/riot/{ATTACKER}"
+
+    def test_an_address_greynoise_has_not_seen_has_nothing_of_greynoise_to_tell(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.flow(session, settings)
+        keep_noise(session, ATTACKER)
 
         [conversation] = self.detail(client)["conversations"]["items"]
 

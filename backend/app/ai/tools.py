@@ -16,6 +16,7 @@ answer was based on.
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from ipaddress import IPv4Address, IPv6Address
 from typing import Final
 
 from sqlalchemy import ColumnElement, and_, false, func, or_, select
@@ -32,7 +33,7 @@ from app.incidents import names as dns_names
 from app.incidents import trust as trust_words
 from app.incidents.verdicts import MUTING
 from app.integrations.registry import INTEGRATIONS
-from app.intel import otx, overrides, virustotal
+from app.intel import greynoise, otx, overrides, virustotal
 from app.intel import store as intel_store
 from app.models import (
     Agent,
@@ -303,6 +304,27 @@ def _pulse_line(report: IntelSubject, shown: str) -> str:
     )
 
 
+def _others(
+    db: Session, redactor: Redactor, address: IPv4Address | IPv6Address
+) -> tuple[list[str], list[str]]:
+    """What AlienVault OTX and GreyNoise say of one address, as lines, and the names of those that
+    have said anything."""
+    shown = redactor.address(str(address))
+    lines: list[str] = []
+    names: list[str] = []
+    pulses = intel_store.report_for(db, otx.PROVIDER, address)
+    if pulses is not None:
+        lines.append(_pulse_line(pulses, shown))
+        names.append("AlienVault OTX")
+    noise = intel_store.report_for(db, greynoise.PROVIDER, address)
+    if noise is not None:
+        details = ((item["label"], item["value"]) for item in noise.details)
+        said = greynoise.said(details, noise.judgement, redactor.text)
+        lines.append(f"GreyNoise: {shown} is {said}.")
+        names.append("GreyNoise")
+    return lines, names
+
+
 def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     """What VirusTotal has said of one address on the internet, if it has been asked about it, and
     what the owner has ruled of it, which stands over the report."""
@@ -324,15 +346,15 @@ def reputation(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
             f"The owner of the network has ruled {shown} {ruling.verdict}{why}"
             " That stands over what VirusTotal says."
         )
-    pulses = intel_store.report_for(db, otx.PROVIDER, address)
-    if pulses is not None:
-        said.append(_pulse_line(pulses, shown))
+    others, names = _others(db, redactor, address)
+    said.extend(others)
     report = intel_store.report_for(db, virustotal.PROVIDER, address)
     if report is None:
         silent = (
             f"VirusTotal hasn't reported on {shown}: it hasn't been asked, or it has no report."
         )
-        what = f"AlienVault OTX's report on {shown}, none from VirusTotal" if pulses else None
+        reports = " and ".join(f"{name}'s report" for name in names)
+        what = f"{reports} on {shown}, none from VirusTotal" if names else None
         return Found([*said, silent], [], what or f"no VirusTotal report on {shown}")
     total = report.malicious + report.suspicious + report.harmless + report.undetected
     owner = redactor.text(report.owner, 60) if report.owner else "unknown owner"

@@ -1,8 +1,8 @@
-"""The loop that asks each threat-intelligence service (VirusTotal, AlienVault OTX) about the
-internet addresses of recent incidents, one lookup at a time and within that service's limits. It
-runs in the worker, beside the collectors. It asks a service nothing until its connection has been
-tested and has worked, and nothing while the service's own limit holds. Each service is asked for
-what it has not answered yet, so an address is asked of each of them once.
+"""The loop that asks each threat-intelligence service (VirusTotal, AlienVault OTX, GreyNoise)
+about the internet addresses of recent incidents, one lookup at a time and within that service's
+limits. It runs in the worker, beside the collectors. It asks a service nothing until its
+connection has been tested and has worked, and nothing while the service's own limit holds. Each
+service is asked for what it has not answered yet, so an address is asked of each of them once.
 """
 
 import asyncio
@@ -18,7 +18,7 @@ from app.integrations import netguard, registry, service
 from app.integrations.client import Recorder, Target
 from app.integrations.netguard import AddressPolicy
 from app.integrations.registry import ConnectionDef, IntegrationDef
-from app.intel import budget, candidates, connection, otx, store, subjects, virustotal
+from app.intel import budget, candidates, connection, greynoise, otx, store, subjects, virustotal
 from app.intel.answers import Answer, Failed
 from app.intel.subjects import Subject
 from app.models import IntegrationConnection, utcnow
@@ -42,6 +42,8 @@ class Feed:
     level_of: Callable[[Mapping[str, str | int]], budget.Level]
     # What an answer says of the connection, kept on it: only VirusTotal's limits do.
     remember: Callable[[IntegrationConnection, Answer, datetime], None] | None = None
+    # The service only takes IPv4 addresses.
+    ipv4_only: bool = False
 
     @property
     def connection(self) -> ConnectionDef:
@@ -63,7 +65,15 @@ ALIENVAULT_OTX = Feed(
     ask=otx.ask,
     level_of=budget.otx_level_of,
 )
-FEEDS: tuple[Feed, ...] = (VIRUSTOTAL, ALIENVAULT_OTX)
+GREYNOISE = Feed(
+    name="GreyNoise",
+    provider=greynoise.PROVIDER,
+    definition=registry.GREYNOISE,
+    ask=greynoise.ask,
+    level_of=budget.greynoise_level_of,
+    ipv4_only=True,
+)
+FEEDS: tuple[Feed, ...] = (VIRUSTOTAL, ALIENVAULT_OTX, GREYNOISE)
 # VirusTotal is the one a person searches by hand, so the pages that do speak of it alone.
 DEFINITION = VIRUSTOTAL.definition
 CONNECTION = VIRUSTOTAL.connection
@@ -85,7 +95,7 @@ def _start(
         if budget.paused(db, feed.provider, now) is not None:
             db.commit()
             return None
-        address = candidates.next_address(db, feed.provider, now)
+        address = candidates.next_address(db, feed.provider, now, ipv4_only=feed.ipv4_only)
         if address is None:
             db.commit()
             return None

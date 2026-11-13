@@ -31,9 +31,10 @@ test.describe('integrations', () => {
       'CrowdSec',
       'VirusTotal',
       'AlienVault OTX',
+      'GreyNoise',
       'Fingerbank',
     ])
-    await expect(integrations.count).toHaveText('0 of 7 set up')
+    await expect(integrations.count).toHaveText('0 of 8 set up')
     for (const key of [
       'opnsense',
       'ntopng',
@@ -41,6 +42,7 @@ test.describe('integrations', () => {
       'crowdsec',
       'virustotal',
       'otx',
+      'greynoise',
       'fingerbank',
     ]) {
       await expect(integrations.status(key)).toHaveText('Not connected')
@@ -59,7 +61,7 @@ test.describe('integrations', () => {
     await integration.back.click()
 
     await expect(page).toHaveURL('/integrations')
-    await expect(integrations.names).toHaveCount(7)
+    await expect(integrations.names).toHaveCount(8)
   })
 
   test('explains how to get what is needed in a window, and links to the official documentation', async ({
@@ -160,7 +162,7 @@ test.describe('integrations', () => {
     await integrations.retry.click()
 
     await expect(integrations.loadError).toHaveCount(0)
-    await expect(integrations.names).toHaveCount(7)
+    await expect(integrations.names).toHaveCount(8)
   })
 
   test('says so for an integration that does not exist', async ({ page, integration }) => {
@@ -231,7 +233,7 @@ test.describe('integrations', () => {
       await integration.back.click()
       await expect(integrations.status('ntopng')).toHaveText('Connected')
       await expect(integrations.lastCall('ntopng')).toContainText('Last successful call')
-      await expect(integrations.count).toHaveText('1 of 7 set up')
+      await expect(integrations.count).toHaveText('1 of 8 set up')
     })
 
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
@@ -1470,6 +1472,44 @@ test.describe('integrations', () => {
     })
   })
 
+  test.describe('GreyNoise', () => {
+    test('is threat intelligence on the internet, with a key only when there is an account', async ({
+      page,
+      integration,
+      integrations,
+    }) => {
+      await integrations.goto()
+      await expect(integrations.card('greynoise')).toContainText('Threat intelligence')
+      await integrations.card('greynoise').click()
+
+      await expect(page).toHaveURL('/integrations/greynoise')
+      await expect(integration.title).toHaveText('GreyNoise')
+      await expect(integration.address('api')).toHaveValue('https://api.greynoise.io')
+      await expect(integration.address('api')).not.toBeEditable()
+      // An account with a key is chosen, with the free plan, and the limits are said beside it.
+      await expect(
+        integration.connection('api').getByLabel('An account with an API key'),
+      ).toBeChecked()
+      await expect(integration.connection('api').getByLabel('Free', { exact: true })).toBeChecked()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+      await expect(integration.connection('api').getByTestId('caution-access')).toContainText(
+        '10 lookups a day without an account',
+      )
+
+      // With no account there is no plan to choose and no key to enter.
+      await integration.connection('api').getByLabel('No account').check()
+      await expect(integration.connection('api').getByLabel('Free', { exact: true })).toHaveCount(0)
+      await expect(integration.field('api', 'api_key')).toHaveCount(0)
+
+      await integration.connection('api').getByLabel('An account with an API key').check()
+      await integration.connection('api').getByLabel('Standard, Advanced or Elite').check()
+      await expect(
+        integration.connection('api').getByLabel('Standard, Advanced or Elite'),
+      ).toBeChecked()
+      await expect(integration.field('api', 'api_key')).toHaveAttribute('type', 'password')
+    })
+  })
+
   test.describe('Fingerbank', () => {
     test('is device intelligence on the internet, with its one address fixed and a setting for incident devices', async ({
       page,
@@ -1515,7 +1555,7 @@ test.describe('integrations', () => {
       await expect(integrations.names).toHaveCount(0)
 
       await integrations.clear.click()
-      await expect(integrations.names).toHaveCount(7)
+      await expect(integrations.names).toHaveCount(8)
       await expect(integrations.search).toHaveValue('')
     })
 
@@ -1525,13 +1565,13 @@ test.describe('integrations', () => {
       await integrations.goto()
 
       await integrations.kind('Threat intelligence').click()
-      await expect(integrations.names).toHaveText(['VirusTotal', 'AlienVault OTX'])
+      await expect(integrations.names).toHaveText(['VirusTotal', 'AlienVault OTX', 'GreyNoise'])
       await integrations.kind('Device intelligence').click()
       await expect(integrations.names).toHaveText(['Fingerbank'])
-      await expect(integrations.count).toHaveText('0 of 7 set up')
+      await expect(integrations.count).toHaveText('0 of 8 set up')
 
       await integrations.kind('All').click()
-      await expect(integrations.names).toHaveCount(7)
+      await expect(integrations.names).toHaveCount(8)
     })
   })
 

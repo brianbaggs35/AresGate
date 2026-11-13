@@ -27,7 +27,7 @@ from ipaddress import IPv4Address, IPv6Address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.intel import otx, store, virustotal
+from app.intel import greynoise, otx, store, virustotal
 from app.models import IntelLookup
 
 # The lock every lookup takes while it checks the limits and keeps its place: a number that stands
@@ -46,6 +46,7 @@ class Level:
     per_day: int | None
     per_month: int | None
     background_spacing: timedelta = NONE
+    per_week: int | None = None
 
 
 class Wait(Exception):
@@ -82,6 +83,7 @@ FREE = Level(
 )
 PREMIUM = Level(spacing=timedelta(seconds=1), per_day=None, per_month=None)
 DAY = timedelta(days=1)
+WEEK = timedelta(days=7)
 MONTH = timedelta(days=30)
 
 
@@ -108,10 +110,38 @@ OTX_PACES: Mapping[str, Level] = {
     ),
 }
 OTX_DEFAULT_PACE = "balanced"
+
+# GreyNoise allows what the plan gives, and the plans are small. Without an account the Community
+# API allows 10 lookups a day, and a free account's key 50 searches a week that the GreyNoise
+# Visualizer shares, so some are left for a person to use it by hand. The background loop spaces its
+# lookups over the whole of the allowance. A subscription's limits aren't published, so it is only
+# kept gentle.
+GREYNOISE_LEVELS: Mapping[greynoise.Plan, Level] = {
+    greynoise.ANONYMOUS: Level(
+        spacing=timedelta(seconds=10),
+        per_day=8,
+        per_month=None,
+        background_spacing=timedelta(hours=3),
+    ),
+    greynoise.FREE: Level(
+        spacing=timedelta(seconds=10),
+        per_day=None,
+        per_month=None,
+        per_week=40,
+        background_spacing=timedelta(hours=4, minutes=15),
+    ),
+    greynoise.SUBSCRIPTION: Level(
+        spacing=timedelta(seconds=1),
+        per_day=None,
+        per_month=None,
+        background_spacing=timedelta(seconds=10),
+    ),
+}
 # How long each service's request to send fewer holds lookups.
 THROTTLES: Mapping[str, timedelta] = {
     virustotal.PROVIDER: virustotal.THROTTLE,
     otx.PROVIDER: otx.THROTTLE,
+    greynoise.PROVIDER: greynoise.THROTTLE,
 }
 
 
@@ -124,6 +154,11 @@ def level_of(options: Mapping[str, str | int]) -> Level:
 def otx_level_of(options: Mapping[str, str | int]) -> Level:
     """The limits of the pace chosen for OTX. Anything unknown is the balanced pace."""
     return OTX_PACES.get(str(options.get("pace")), OTX_PACES[OTX_DEFAULT_PACE])
+
+
+def greynoise_level_of(options: Mapping[str, str | int]) -> Level:
+    """The limits of the plan chosen for GreyNoise."""
+    return GREYNOISE_LEVELS[greynoise.plan_of(options)]
 
 
 def _requested_since(db: Session, provider: str, since: datetime) -> int:
@@ -192,6 +227,8 @@ def wait_for(
         waits.append(last + gap - now)
     if level.per_day is not None:
         waits.append(_until_room(db, provider, now, DAY, level.per_day))
+    if level.per_week is not None:
+        waits.append(_until_room(db, provider, now, WEEK, level.per_week))
     if level.per_month is not None:
         waits.append(_until_room(db, provider, now, MONTH, level.per_month))
     return max(waits)

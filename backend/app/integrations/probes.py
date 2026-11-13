@@ -699,6 +699,22 @@ async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "OTX accepted the key.")
 
 
+async def greynoise_ping(client: ApiClient, target: Target) -> Verdict:
+    """Asks GreyNoise whether the key works and which plan it belongs to. The ping is about the
+    key alone, so it sends no address and counts as no lookup. Only a subscription's key is
+    tested this way: the Community API's keys are tested with a lookup, which it counts."""
+    reply = await client.request("GET", "/ping", headers={"key": target.secrets["api_key"]})
+    refused = "GreyNoise didn't accept the key. Copy it again from your GreyNoise account."
+    if bad := problem(reply, "GreyNoise", refused=refused, forbidden=refused):
+        return bad
+    answer = as_object(reply.json())
+    if answer is None or answer.get("message") != "pong":
+        return unexpected("GreyNoise")
+    plan = answer.get("plan")
+    named = f" It belongs to the {plan[:40]} plan." if isinstance(plan, str) and plan else ""
+    return Verdict(True, f"GreyNoise accepted the key.{named}")
+
+
 # A hardware address that belongs to no device: the example RFC 7042 gives for documentation.
 DOCUMENTATION_MAC = "00:00:5e:00:53:00"
 
@@ -745,7 +761,7 @@ PROBES: Mapping[tuple[str, str], Probe] = {
 
 # The connections whose test spends one of the lookups their key allows. They are tested by hand,
 # through the budget of the threat intelligence code (app/intel/connection.py), never on a timer.
-METERED: frozenset[tuple[str, str]] = frozenset({("virustotal", "api")})
+METERED: frozenset[tuple[str, str]] = frozenset({("virustotal", "api"), ("greynoise", "api")})
 
 
 async def run(probe: Probe, client: ApiClient, target: Target) -> Verdict:
