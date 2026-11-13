@@ -25,7 +25,11 @@ describe('alerts', () => {
 
   it('adds one, with the sign-in token', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ id: 4 })
-    const add = { name: 'Security', url: 'https://discord.com/api/webhooks/1/x' }
+    const add = {
+      kind: 'discord',
+      name: 'Security',
+      url: 'https://discord.com/api/webhooks/1/x',
+    } as const
 
     await expect(addDestination(add, 'a-token')).resolves.toEqual({ id: 4 })
     expect(post).toHaveBeenCalledWith('/alerts/destinations', add, 'a-token')
