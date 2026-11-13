@@ -48,15 +48,17 @@ def hits(db: Session, rule_ids: Sequence[int]) -> dict[int, tuple[int, datetime]
     return {rule_id: (count, last) for rule_id, count, last in rows if rule_id is not None}
 
 
-def matches(rule: VerdictRule, signal: Signal) -> bool:
-    """Whether a signal is what a rule is about: all that it names, and no more is asked."""
+def matches(rule: VerdictRule, signal: Signal, about: set[str] | None = None) -> bool:
+    """Whether a signal is what a rule is about: all that it names, and no more is asked. The
+    addresses it is about (see ``_about``) can be given when they are known, as they are the same
+    for every rule."""
     if rule.source is not None and rule.source != signal.source:
         return False
     if rule.signature is not None and rule.signature != signal.signature:
         return False
     if rule.destination is not None:
         return _sent_to(rule.address, rule.destination, signal)
-    return rule.address is None or str(rule.address) in _about(signal)
+    return rule.address is None or str(rule.address) in (_about(signal) if about is None else about)
 
 
 def _sent_to(
@@ -109,7 +111,9 @@ def standing(
 
 def judge(signal: Signal, rules: Sequence[VerdictRule]) -> VerdictRule | None:
     """The rule that decides what is said of a signal, or none if the owner has said nothing."""
-    return max((rule for rule in rules if matches(rule, signal)), key=_weight, default=None)
+    # What a signal is about is worked out once, however many rules there are to ask.
+    about = _about(signal) if any(rule.address is not None for rule in rules) else None
+    return max((rule for rule in rules if matches(rule, signal, about)), key=_weight, default=None)
 
 
 def muted(counts: Mapping[str, int]) -> int:

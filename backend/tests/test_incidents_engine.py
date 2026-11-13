@@ -542,6 +542,17 @@ class TestLimits:
         (incident,) = incidents(session)
         assert [str(address) for address in incident.addresses] == [ATTACKER, DEVICE]
 
+    def test_the_subject_goes_first_when_it_is_named_after_other_addresses(self) -> None:
+        known = [ip_address(DEVICE), ip_address("192.168.1.21")]
+        subject = ip_address(ATTACKER)
+
+        named = correlation._with(known, [subject], ATTACKER)  # pyright: ignore[reportPrivateUsage]
+        again = correlation._with(named, [ip_address("8.8.8.8")], ATTACKER)  # pyright: ignore[reportPrivateUsage]
+
+        assert [str(address) for address in named] == [ATTACKER, DEVICE, "192.168.1.21"]
+        assert [str(address) for address in again] == [ATTACKER, DEVICE, "192.168.1.21", "8.8.8.8"]
+        assert [str(address) for address in known] == [DEVICE, "192.168.1.21"]
+
     def test_the_subject_is_kept_even_when_the_first_signal_had_more_addresses_than_fit(
         self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -747,6 +758,51 @@ class TestWhenTheOwnerChangesTheirMind:
         assert after.verdict_counts == {"not_suspicious": 1}
         assert after.signal_count == 1
         assert {signal.verdict_rule_id for signal in signals(session)} == {rule.id}
+
+    def test_an_incident_that_is_judged_as_it_was_is_not_worked_out_again(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        before = self.attack(session, settings)
+        worked: list[object] = []
+        absorb = correlation._absorb  # pyright: ignore[reportPrivateUsage]
+
+        def counting(*args: Any, **kwargs: Any) -> None:
+            worked.append(args)
+            absorb(*args, **kwargs)
+
+        monkeypatch.setattr(correlation, "_absorb", counting)
+        say(session, "not_suspicious", address="8.8.8.8")
+
+        after = self.reapply(session)
+
+        assert worked == []
+        assert (after.confidence, after.verdict_counts, after.signal_count) == (
+            before.confidence,
+            before.verdict_counts,
+            before.signal_count,
+        )
+
+    def test_the_incidents_are_judged_in_chunks_and_each_is_judged_by_its_own_signals(
+        self, session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(correlation, "REAPPLY_CHUNK", 2)
+        store(
+            session,
+            settings,
+            *(
+                alert(NOW + timedelta(minutes=n), n=n, src_address=f"{n + 40}.184.216.34")
+                for n in range(1, 6)
+            ),
+        )
+        run(session)
+        assert len(incidents(session)) == 5
+
+        rule = say(session, "not_suspicious", source="wazuh")
+        correlation.reapply(session)
+        session.commit()
+
+        assert {each.verdict for each in incidents(session)} == {"not_suspicious"}
+        assert {each.verdict_rule_id for each in signals(session)} == {rule.id}
 
     def test_one_that_is_taken_back_counts_again(
         self, session: Session, settings: Settings

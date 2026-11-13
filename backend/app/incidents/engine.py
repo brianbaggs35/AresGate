@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 from typing import Final
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.events.event import Severity
 from app.incidents import episode, evidence, filters, rules, verdicts
@@ -56,6 +56,9 @@ SETTLE: Final = timedelta(seconds=30)
 LOOKBACK: Final = timedelta(hours=24)
 # How many events one run reads: a run that reads this many has more to do.
 BATCH: Final = 1000
+# How many incidents are judged again together: their signals are read in one query and written
+# in one flush, which is much faster than one of each per incident.
+REAPPLY_CHUNK: Final = 100
 # How many signals an incident lists. More are counted, and still change its severity, its
 # programs and its end.
 MAX_SIGNALS: Final = 1000
@@ -377,7 +380,13 @@ def _with(known: list[Address], new: list[Address], subject: str) -> list[Addres
     wanted = [address for address in new if address not in known]
     if not wanted or len(known) >= MAX_ADDRESSES:
         return known
-    return sorted([*known, *wanted], key=lambda address: str(address) != subject)[:MAX_ADDRESSES]
+    combined = [*known, *wanted]
+    # The subject goes first and the rest keep their order. An address is named once, so there is
+    # at most one to move, and looking stops when it is found.
+    found = next((at for at, address in enumerate(combined) if str(address) == subject), 0)
+    if found:
+        combined.insert(0, combined.pop(found))
+    return combined[:MAX_ADDRESSES]
 
 
 def _title_of(incident: Incident, rule_title: str) -> str:
@@ -449,6 +458,21 @@ def _signals_of(db: Session, incident: Incident) -> list[IncidentSignal]:
             .order_by(IncidentSignal.occurred_at, IncidentSignal.id)
         )
     )
+
+
+def _signals_of_each(db: Session, ids: Sequence[int]) -> dict[int, list[IncidentSignal]]:
+    """The signals of each of the incidents, oldest first, read in one query. What the program
+    reported besides the facts (``evidence``) is the biggest part of a signal, and nothing that
+    judges one reads it, so it is left unread."""
+    found: dict[int, list[IncidentSignal]] = {}
+    for signal in db.scalars(
+        select(IncidentSignal)
+        .where(IncidentSignal.incident_id.in_(ids))
+        .options(defer(IncidentSignal.evidence))
+        .order_by(IncidentSignal.incident_id, IncidentSignal.occurred_at, IncidentSignal.id)
+    ):
+        found.setdefault(signal.incident_id, []).append(signal)
+    return found
 
 
 def _backfill(db: Session) -> list[Incident]:
@@ -592,22 +616,12 @@ def correlate(db: Session, now: datetime) -> Result:
     )
 
 
-def _rebuild(
-    db: Session, incident: Incident, verdict_rules: Sequence[VerdictRule], noise: Filters
-) -> None:
-    """Works an incident's summary out again from its signals, judged by the rules and the
-    filters as they are."""
-    signals = db.scalars(
-        select(IncidentSignal)
-        .where(IncidentSignal.incident_id == incident.id)
-        .order_by(IncidentSignal.occurred_at, IncidentSignal.id)
-    ).all()
-    first, last = incident.first_seen_at, incident.last_seen_at
-    _describe(incident, signals[0])
-    incident.signal_count = 0
-    incident.verdict_counts = {}
-    incident.filtered_count = 0
-    incident.duplicate_count = 0
+def _judge(
+    signals: Sequence[IncidentSignal], verdict_rules: Sequence[VerdictRule], noise: Filters
+) -> bool:
+    """Judges each signal by the rules and the filters as they are, and says whether any of them
+    came out differently than it was."""
+    before = [(signal.verdict_rule_id, signal.verdict, signal.filtered_by) for signal in signals]
     for signal in signals:
         rule, signal.filtered_by = _decide(signal, verdict_rules, noise)
         signal.verdict = rule.verdict if rule else None
@@ -617,6 +631,41 @@ def _rebuild(
     if filters.too_thin(signals, noise.thin_low_signals):
         for signal in signals:
             signal.filtered_by = signal.filtered_by or filters.THIN
+    return before != [
+        (signal.verdict_rule_id, signal.verdict, signal.filtered_by) for signal in signals
+    ]
+
+
+def _rebuild(
+    db: Session,
+    incident: Incident,
+    verdict_rules: Sequence[VerdictRule],
+    noise: Filters,
+    signals: Sequence[IncidentSignal] | None = None,
+    *,
+    only_if_judged_differently: bool = False,
+) -> None:
+    """Works an incident's summary out again from its signals, judged by the rules and the
+    filters as they are. The signals are read here unless the caller has them already, oldest
+    first (see ``_signals_of_each``).
+
+    An incident whose signals all come out as they were, which is most of those a verdict is
+    looked for in (see ``reach``), is left as it is when asked to (``only_if_judged_differently``):
+    its summary is already what its signals say."""
+    if signals is None:
+        signals = db.scalars(
+            select(IncidentSignal)
+            .where(IncidentSignal.incident_id == incident.id)
+            .order_by(IncidentSignal.occurred_at, IncidentSignal.id)
+        ).all()
+    if not _judge(signals, verdict_rules, noise) and only_if_judged_differently:
+        return
+    first, last = incident.first_seen_at, incident.last_seen_at
+    _describe(incident, signals[0])
+    incident.signal_count = 0
+    incident.verdict_counts = {}
+    incident.filtered_count = 0
+    incident.duplicate_count = 0
     for signal in signals:
         _absorb(incident, signal, signal.verdict, signal.filtered_by is not None, signal.duplicate)
     # What an incident that outgrew its timeline saw after it is not there to be read again, but
@@ -684,5 +733,19 @@ def reapply(db: Session, only: Collection[int] | None = None) -> None:
     query = select(Incident).where(Incident.status != "resolved").order_by(Incident.id)
     if only is not None:
         query = query.where(Incident.id.in_(only))
-    for incident in db.scalars(query).all():
-        _rebuild(db, incident, verdict_rules, noise)
+    found = db.scalars(query).all()
+    for start in range(0, len(found), REAPPLY_CHUNK):
+        chunk = found[start : start + REAPPLY_CHUNK]
+        signals = _signals_of_each(db, [incident.id for incident in chunk])
+        # Nothing is read in between, so what is changed is written once for the chunk.
+        with db.no_autoflush:
+            for incident in chunk:
+                _rebuild(
+                    db,
+                    incident,
+                    verdict_rules,
+                    noise,
+                    signals.get(incident.id, []),
+                    only_if_judged_differently=True,
+                )
+        db.flush()
