@@ -24,7 +24,7 @@ make             # lists every command
 | `frontend/e2e` | The end-to-end tests (Playwright) |
 | `docker` | What runs inside the container: the entrypoint, nginx and supervisord settings, and the certificate scripts |
 | `scripts` | What runs on the host behind `make` commands (`make cert` and its siblings) |
-| `.github` | The CI, CodeQL, zizmor and release workflows, and the scripts they run |
+| `.github` | The CI, CodeQL, zizmor, release and cache clean-up workflows, and the scripts they run |
 | `DOCS` | These guides |
 
 AresGate ships as one container, and the `Dockerfile` has a stage for each purpose: `runtime`
@@ -66,6 +66,16 @@ is reported and never fails the build, and the web app's is kept above **90%**. 
 that adds code adds the tests for it in all three.
 
 SonarQube Cloud must report **zero open issues** on the pull request.
+
+### CI caches
+
+Every pull request writes caches of its own (the image's build layers, the npm packages), and the
+repository has a fixed room for caches, past which GitHub deletes the ones used least recently,
+which can be the ones master needs. So the **Clear old caches** workflow deletes a pull request's
+caches when it is closed, and each Monday deletes any a pull request left that nothing has used for
+3 days (a fork's, or one that went quiet). Master's caches are left to GitHub, which deletes one
+that goes unused for 7 days. Run it from the Actions tab to clear them now. A workflow that
+publishes still uses no build cache.
 
 ## Making a change
 

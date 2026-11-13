@@ -8,6 +8,9 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **CI clears the caches nobody needs.** A new workflow deletes a pull request's caches when it is
+  closed, and each Monday any that a pull request left and nothing has used for 3 days, so they
+  don't crowd out the ones master's builds need. See [Development](DOCS/development.md#ci-caches).
 - **Connecting OPNsense switches off the services that aren't running.** The first time the
   connection works, the services it finds installed but stopped are switched off, the test says
   which, and the form shows them off, so AresGate doesn't try to read what isn't there. Switch one
