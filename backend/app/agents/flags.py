@@ -77,6 +77,33 @@ def clause() -> ColumnElement[bool]:
     )
 
 
+def _flag(agent: Agent, run: AgentRun, item: dict[str, object]) -> Flag | None:
+    """The flag a finding makes, or None if it is not serious enough to need the owner."""
+    if item.get("severity") not in WORTH or run.finished_at is None:
+        return None
+    return Flag(
+        agent.id,
+        agent.name,
+        run.id,
+        run.finished_at,
+        str(item.get("severity")),
+        str(item.get("title", "")),
+        str(item.get("action") or ""),
+        str(item.get("confidence") or "medium"),
+    )
+
+
+def _named(item: dict[str, object], wanted: set[str]) -> list[int]:
+    """The ids, among those wanted, of the incidents a finding cites."""
+    cites = item.get("cites")
+    found: list[int] = []
+    for cite in cast("list[object]", cites) if isinstance(cites, list) else []:
+        named = cast("dict[str, str]", cite) if isinstance(cite, dict) else {}
+        if named.get("kind") == KIND and named.get("key") in wanted:
+            found.append(int(named["key"]))
+    return found
+
+
 def of_incidents(db: Session, ids: Sequence[int]) -> dict[int, list[Flag]]:
     """What the hunter flagged, by incident, for these incidents."""
     wanted = {str(each) for each in ids}
@@ -84,26 +111,13 @@ def of_incidents(db: Session, ids: Sequence[int]) -> dict[int, list[Flag]]:
     if not wanted:
         return found
     for agent, run in latest(db):
-        if agent.template != catalog.THREAT_HUNTER.key or run.finished_at is None:
+        if agent.template != catalog.THREAT_HUNTER.key:
             continue
         for item in run.findings:
-            if item.get("severity") not in WORTH:
-                continue
-            raised = Flag(
-                agent.id,
-                agent.name,
-                run.id,
-                run.finished_at,
-                str(item.get("severity")),
-                str(item.get("title", "")),
-                str(item.get("action") or ""),
-                str(item.get("confidence") or "medium"),
-            )
-            cites = item.get("cites")
-            for cite in cast("list[object]", cites) if isinstance(cites, list) else []:
-                named = cast("dict[str, str]", cite) if isinstance(cite, dict) else {}
-                if named.get("kind") == KIND and named.get("key") in wanted:
-                    found[int(named["key"])].append(raised)
+            raised = _flag(agent, run, item)
+            if raised is not None:
+                for incident_id in _named(item, wanted):
+                    found[incident_id].append(raised)
     return found
 
 

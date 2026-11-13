@@ -414,6 +414,20 @@ def _lookup(item: object, template: Template) -> Lookup | None:
     )
 
 
+def _said(value: object, limit: int) -> str:
+    """What the model wrote as text, cleaned and cut to length, or nothing if it is not text."""
+    return (audit.clean(value, limit) or "") if isinstance(value, str) else ""
+
+
+def _lines_of_evidence(value: object) -> list[str]:
+    """The lines of evidence the model wrote, as many as are kept, each cleaned and cut."""
+    return [
+        line
+        for item in _items(value)[:MAX_EVIDENCE]
+        if isinstance(item, str) and (line := audit.clean(item, MAX_EVIDENCE_LINE))
+    ]
+
+
 def _finding(item: object) -> Raised | None:
     fields = _fields(item)
     if fields is None:
@@ -422,27 +436,17 @@ def _finding(item: object) -> Raised | None:
     if not isinstance(title, str) or not title.strip():
         return None
     severity = fields.get("severity")
-    detail = fields.get("detail")
-    cites = fields.get("cites")
-    action = fields.get("action")
     confidence = fields.get("confidence")
-    evidence = fields.get("evidence")
-    verify = fields.get("verify")
-    benign = fields.get("benign")
     return Raised(
         severity if isinstance(severity, str) and severity in probe.SEVERITIES else "info",
         audit.clean(title, MAX_TITLE) or "",
-        (audit.clean(detail, MAX_DETAIL) or "") if isinstance(detail, str) else "",
-        [cite for cite in _items(cites) if isinstance(cite, str)],
-        (audit.clean(action, MAX_ACTION) or "") if isinstance(action, str) else "",
+        _said(fields.get("detail"), MAX_DETAIL),
+        [cite for cite in _items(fields.get("cites")) if isinstance(cite, str)],
+        _said(fields.get("action"), MAX_ACTION),
         confidence if isinstance(confidence, str) and confidence in CONFIDENCE else "medium",
-        [
-            line
-            for item in _items(evidence)[:MAX_EVIDENCE]
-            if isinstance(item, str) and (line := audit.clean(item, MAX_EVIDENCE_LINE))
-        ],
-        (audit.clean(verify, MAX_VERIFY) or "") if isinstance(verify, str) else "",
-        (audit.clean(benign, MAX_VERIFY) or "") if isinstance(benign, str) else "",
+        _lines_of_evidence(fields.get("evidence")),
+        _said(fields.get("verify"), MAX_VERIFY),
+        _said(fields.get("benign"), MAX_VERIFY),
     )
 
 

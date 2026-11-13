@@ -831,7 +831,7 @@ def test_the_evidence_a_model_gives_is_kept_short_and_only_as_text() -> None:
 def test_every_agent_is_asked_for_the_evidence_a_finding_rests_on() -> None:
     for template in (catalog.THREAT_HUNTER, catalog.HEALTH_WATCH):
         assert '"evidence"' in graph.system_for(template)
-        properties = cast("dict[str, Any]", graph.schema(template)["properties"])
+        properties = cast(dict[str, Any], graph.schema(template)["properties"])
         required = properties["findings"]["items"]["required"]
         assert {"evidence", "verify", "benign"} <= set(required)
 
