@@ -344,7 +344,7 @@ None of them throws anything away: the logs and the incidents are always there.
 1. **Raise how sure it has to be** (Settings > Threat detection). Each step up sends the weakest
    threats to *suspects*. The page shows what saving would move before you save.
 2. **Let the AI set harmless incidents aside**, and give it a usage level that judges often enough
-   to keep up (Settings > AI). It judges each *kind* of incident once, so a sweep of 400 addresses
+   to keep up (the slider on the **AI usage** page). It judges each *kind* of incident once, so a sweep of 400 addresses
    costs one answer.
 3. **Tell it about your network** (what is open to the internet, and anything else in your own
    words). The same scan means little behind a shut firewall.
