@@ -49,6 +49,16 @@ Every release's notes are here, newest first. The format follows
   also told to the AI when it judges it. See
   [Threats](DOCS/threats.md#learning-from-what-you-decide).
 
+### Changed
+
+- **Trusting something, and giving a verdict, is faster.** Saying that an address, a program or an
+  alert is safe, or a real threat, judges the incidents it can make a difference to again, and on
+  a network with thousands of incidents that is what made it slow. Those incidents are now read and
+  written in batches, one whose signals are judged just as they were is left as it is, and what a
+  signal is about is worked out once however many decisions you have. Trusting a device on a
+  network with 2000 incidents took about 4.9 seconds and now takes about 2.3. What is said of an
+  incident is unchanged.
+
 ## 0.1.5
 
 ### Added

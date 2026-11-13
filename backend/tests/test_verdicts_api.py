@@ -455,9 +455,9 @@ class TestOnlyWhatItCouldChangeIsJudged:
         subjects: list[str] = []
         original = engine.__dict__["_rebuild"]
 
-        def spy(db: Session, incident: Incident, *rest: Any) -> None:
+        def spy(db: Session, incident: Incident, *rest: Any, **how: Any) -> None:
             subjects.append(incident.subject)
-            original(db, incident, *rest)
+            original(db, incident, *rest, **how)
 
         monkeypatch.setattr(engine, "_rebuild", spy)
         return subjects

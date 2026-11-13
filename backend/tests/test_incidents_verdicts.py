@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address, ip_network
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.incidents import verdicts
@@ -144,6 +145,36 @@ class TestWhichRuleDecides:
 
         assert verdicts.judge(signal(), [broad, narrow]) is narrow
         assert verdicts.judge(signal(), [narrow, broad]) is narrow
+
+    def test_what_a_signal_is_about_is_worked_out_once_however_many_rules_there_are(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        asked: list[IncidentSignal] = []
+        about = verdicts._about  # pyright: ignore[reportPrivateUsage]
+
+        def counting(found: IncidentSignal) -> set[str]:
+            asked.append(found)
+            return about(found)
+
+        monkeypatch.setattr(verdicts, "_about", counting)
+        many = [rule(address=f"8.8.8.{n}") for n in range(1, 6)]
+        many.append(rule(source="wazuh"))
+        wanted = rule("threat", address=ATTACKER)
+        wanted.id = 2
+
+        assert verdicts.judge(signal(), [*many, wanted]) is wanted
+        assert len(asked) == 1
+
+    def test_it_is_not_worked_out_at_all_when_no_rule_names_an_address(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+
+        def refusing(found: IncidentSignal) -> set[str]:
+            pytest.fail(f"asked about {found}")
+
+        monkeypatch.setattr(verdicts, "_about", refusing)
+
+        assert verdicts.judge(signal(), [rule(source="wazuh")]) is not None
 
     def test_a_general_rule_gives_way_to_a_specific_one_that_says_the_opposite(self) -> None:
         everything_here = rule("threat", address=ATTACKER)
