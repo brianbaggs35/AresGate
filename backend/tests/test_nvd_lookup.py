@@ -149,7 +149,9 @@ def test_a_rating_nvd_gives_that_cvss_has_no_word_for_is_rated_by_its_score() ->
 def test_a_cve_without_a_usable_score_has_none(metrics: Any) -> None:
     found = record_of(cve(metrics=metrics))
 
-    assert (found.cvss_version, found.score, found.severity, found.vector) == (None,) * 4
+    scores = (found.cvss_version, found.score, found.severity, found.vector)
+
+    assert scores == (None, None, None, None)
 
 
 def test_a_cve_not_yet_analysed_has_a_record_and_no_score() -> None:
@@ -385,5 +387,6 @@ def test_call_failed_is_what_a_dropped_connection_raises(serve: Serve) -> None:
         async with ApiClient(where, keep, HOME_NETWORK_AND_LOOPBACK) as client:
             await lookup.look_up(client, where, LOG4SHELL, NOW)
 
+    asking = go()
     with pytest.raises(CallFailed):
-        asyncio.run(go())
+        asyncio.run(asking)

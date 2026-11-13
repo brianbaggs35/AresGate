@@ -33,7 +33,8 @@ function unsettled(item: Vulnerability): string {
   if (item.state === 'unknown') {
     return 'NVD has no record of it yet, so how severe it is is not known.'
   }
-  return `NVD has not scored it yet${item.status ? ` (${item.status})` : ''}.`
+  const status = item.status ? ` (${item.status})` : ''
+  return `NVD has not scored it yet${status}.`
 }
 </script>
 
