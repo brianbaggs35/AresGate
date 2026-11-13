@@ -64,6 +64,40 @@ describe('FamilyView', () => {
     expect(find('why').text()).toContain('92% sure this kind is a probe')
   })
 
+  it('says nothing of a change when the kind is as it was judged', async () => {
+    const { find } = await open()
+
+    expect(find('changed').exists()).toBe(false)
+  })
+
+  it('says how a kind has changed since it was judged, and that the AI will look again', async () => {
+    const { find, wrapper } = await open(
+      familyDetail({
+        changed_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+        changes: ['It now reaches destination ports it did not before: 3389.'],
+      }),
+    )
+
+    expect(find('changed').text()).toContain('It has changed since it was judged')
+    expect(wrapper.findAll('[data-test="change"]').map((item) => item.text())).toEqual([
+      'It now reaches destination ports it did not before: 3389.',
+    ])
+    expect(find('changed').text()).toContain('First noticed 10 minutes ago')
+    expect(find('changed').text()).toContain('The AI will be asked about it again')
+  })
+
+  it('says that your word stands on a kind you called that has changed', async () => {
+    const { find } = await open(
+      familyDetail({
+        owner_call: 'background',
+        changed_at: new Date().toISOString(),
+        changes: ['It comes from many more addresses: 4 when it was judged, 40 now.'],
+      }),
+    )
+
+    expect(find('changed').text()).toContain('Your word on it stands')
+  })
+
   it('leaves out the reasons when there are none', async () => {
     const { find } = await open(familyDetail({ why: [] }))
 

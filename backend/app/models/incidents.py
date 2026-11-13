@@ -299,6 +299,17 @@ class IncidentFamily(Base):
     # with it (app/review).
     review: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto")
     reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # What its incidents were like when it was judged (app/threats/drift.py): the stages, the
+    # destination ports, the devices and the number of addresses, to tell when it has changed since.
+    judged_profile: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), default=None
+    )
+    # What is different about it now compared with ``judged_profile``, and when that was first
+    # noticed: none while it is as it was. The AI is asked about it again, and the owner told.
+    changes: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), default=None)
+    changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # When it was last compared, so that it is looked at no more often than needed.
+    drift_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
 
 
 class ThreatSettings(Base):

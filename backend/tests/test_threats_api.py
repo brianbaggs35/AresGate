@@ -240,6 +240,30 @@ class TestOneKind:
             "The AI judged it noise, 70% sure."
         ]
 
+    def test_it_says_when_and_how_it_changed_after_it_was_judged(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        found = kind(session, 2, "ET SCAN changing")
+        listed = client.get(f"{BASE}/families/{found.id}").json()
+        assert (listed["changed_at"], listed["changes"]) == (None, [])
+
+        found.changed_at = utcnow()
+        found.changes = {"stages": ["foothold"], "ports": [3389]}
+        session.commit()
+
+        body = client.get(f"{BASE}/families/{found.id}").json()
+        assert body["changed_at"] is not None
+        assert body["changes"] == [
+            "It has a stage of an attack it did not have before: sign it worked.",
+            "It now reaches destination ports it did not before: 3389.",
+        ]
+        [item] = [
+            each
+            for each in client.get(f"{BASE}/families").json()["items"]
+            if each["id"] == found.id
+        ]
+        assert item["changes"] == body["changes"]
+
     def test_a_kind_with_nothing_going_on_is_still_there(
         self, client: TestClient, csrf_token: str, session: Session
     ) -> None:

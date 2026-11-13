@@ -381,6 +381,7 @@ class DecisionRequest(BaseModel):
     confidence: int = Field(default=90, ge=0, le=100)
     review: Literal["pending", "auto", "agreed", "disagreed"] = "pending"
     headline: str = Field(default="Routine scanning from the internet.", max_length=160)
+    changed: bool = False
 
 
 class DecisionsRequest(BaseModel):

@@ -112,6 +112,8 @@ export class KindPage {
   readonly takeBack: Locator
   readonly judge: Locator
   readonly why: Locator
+  readonly changed: Locator
+  readonly changes: Locator
   readonly sample: Locator
   readonly cards: Locator
   readonly openInIncidents: Locator
@@ -130,6 +132,8 @@ export class KindPage {
     this.takeBack = page.getByTestId('call-clear')
     this.judge = page.getByTestId('judge')
     this.why = page.getByTestId('why')
+    this.changed = page.getByTestId('changed')
+    this.changes = page.getByTestId('change')
     this.sample = page.getByTestId('sample')
     this.cards = page.getByTestId('incident-card')
     this.openInIncidents = page.getByTestId('sample-all')

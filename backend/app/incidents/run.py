@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.incidents import engine, evidence
 from app.models import utcnow
-from app.threats import chains, families
+from app.threats import chains, drift, families
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,8 @@ def correlate_once(new_session: Callable[[], Session]) -> engine.Result:
         families.assign(db)
         # Incidents that are one attack across two devices are linked into a chain.
         chains.link(db, utcnow())
+        # Kinds of incident that differ from what they were when judged are marked.
+        drift.detect(db, utcnow())
         db.commit()
     if result.events or result.merged:
         logger.info(

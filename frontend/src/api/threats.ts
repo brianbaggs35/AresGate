@@ -54,6 +54,10 @@ export interface Family extends FamilyBrief {
   threats: number
   suspects: number
   background: number
+  /** When it was first seen to differ from what it was when it was judged. */
+  changed_at: string | null
+  /** How, in words, a line each: none while it is as it was. */
+  changes: string[]
 }
 
 export interface Overview {

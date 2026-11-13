@@ -288,6 +288,8 @@ export interface DecisionRequest {
   confidence?: number
   review?: 'pending' | 'auto' | 'agreed' | 'disagreed'
   headline?: string
+  /** For a kind: its incidents are different now from when it was judged. */
+  changed?: boolean
 }
 
 /** How many decisions `createDecisions()` made. */

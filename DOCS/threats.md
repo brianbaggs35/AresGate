@@ -247,6 +247,27 @@ anyone reading it, and why seventy thousand alerts cost a few questions.
   aside, whatever the AI says, and *Never set aside* keeps the AI from ever setting one aside.
   *Take my word back* undoes either.
 
+### When a kind changes after it was judged
+
+A kind that was harmless last month can come to include an exploit attempt, or reach a device it
+never reached. So when a kind is judged, AresGate keeps what its incidents were like (their stages
+of an attack, the destination ports, which of your devices they touch and how many addresses are
+behind them), and compares it with what they are like now every few minutes, while the kind has
+incidents going on. It counts as changed when:
+
+- its incidents have a **stage of an attack** (looking around, trying to get in, a sign it worked) that
+  they did not have,
+- they reach a **destination port** or target a **device of yours** that they did not, but only for a
+  kind that touched few (20 or fewer): one that already touches every port is not news,
+- or there are **three times as many addresses** behind it, and at least 20 more.
+
+A changed kind says so, with the reasons in words, on its card and at the top of its page. At the
+next opportunity your usage level allows (any level but *Very low*, and never sooner than 15 minutes
+after it was last judged) the AI is asked about it again, ahead of kinds that are only bigger, and is
+told what changed and what it said before. A kind you have called stays yours: it is not judged
+again, but its page says that it changed, so you can look again at your word on it. A kind with a
+chain in it is never set aside, as before.
+
 ## Reviewing what the AI decided
 
 The AI may sound an alarm on its own, but setting something aside is a decision you may want to
@@ -314,7 +335,7 @@ The API, all under `/api` and signed in:
 | --- | --- |
 | `GET /threats/overview?window=24h\|7d` | The funnel, how many kinds the AI has judged, and the kinds with background incidents. |
 | `GET /threats/families` | The kinds, narrowed by `lane`, `judged` (`ai`, `owner`, `waiting`) and `q`, a page at a time. |
-| `GET /threats/families/{id}` | One kind: what is thought of it, why its incidents are where they are, and a sample. |
+| `GET /threats/families/{id}` | One kind: what is thought of it, why its incidents are where they are, and a sample. A kind carries `changed_at` and `changes` when it has changed since it was judged. |
 | `PUT /threats/families/{id}/call` | Your word on a kind: `background`, `watch` or `null` to take it back. |
 | `POST /threats/families/{id}/judge` | Has the AI judge the kind now. |
 | `GET` and `PUT /threat-settings`, `POST /threat-settings/preview` | The settings, and what saving them would do. |
@@ -332,7 +353,7 @@ or `dns`) and each conversation a `purpose`, and the log list `twin_of` and `als
 The assistant and the agents can ask `who_is` (an address's reverse name) and `attack_chains`.
 
 The code is in `app/threats/` (`families.py`, `stages.py`, `calls.py`, `explain.py`, `overview.py`,
-`settings.py`, and `chains.py`, which links the incidents of an attack across two devices on
+`settings.py`, `drift.py`, which notices a kind that changed since it was judged, and `chains.py`, which links the incidents of an attack across two devices on
 every run of the engine), `app/events/twins.py` (the same alert from two programs), `app/incidents/hops.py`, `names.py` and
 `purpose.py` (how it travelled, what an address is called and what the traffic was for), `app/incidents/occurrences.py`
 (repeats and confirmations), `app/incidents/evidence.py` and `insights.py` (what the programs said), `app/incidents/attention.py` (the lanes) and `app/ai/families.py` (the AI's judgement of
