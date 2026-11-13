@@ -1237,7 +1237,7 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      await expect(integration.collectors).toHaveCount(9)
+      await expect(integration.collectors).toHaveCount(8)
       await expect(integration.collectors.nth(6)).toContainText('Suricata alerts')
       await expect(integration.collectorStates).toHaveText(new Array(8).fill('Working'))
       await expect(integration.collectorErrors).toHaveCount(0)

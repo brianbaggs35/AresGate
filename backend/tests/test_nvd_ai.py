@@ -112,7 +112,8 @@ class TestTheCvesNamed:
         named = said.named_in(session, list(session.query(IncidentSignal)))
 
         assert [cve_id for cve_id, _ in named] == [LOG4SHELL, BLUEKEEP]
-        assert named[0][1] is not None and named[0][1].cve_id == row.cve_id
+        assert named[0][1] is not None
+        assert named[0][1].cve_id == row.cve_id
         assert named[1][1] is None
 
     def test_no_more_than_the_most_are_given(self, session: Session) -> None:

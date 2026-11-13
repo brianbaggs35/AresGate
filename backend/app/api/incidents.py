@@ -1034,26 +1034,43 @@ def _vulnerabilities(db: Db, seen: list[IncidentSignal]) -> list[VulnerabilityOu
 
 
 def _vulnerability(cve_id: str, row: NvdCve | None) -> VulnerabilityOut:
-    found = row is not None and row.state == nvd_store.FOUND
+    link = nvd_lookup.link_of(cve_id)
+    if row is None:
+        return VulnerabilityOut(
+            id=cve_id,
+            link=link,
+            state="pending",
+            status=None,
+            cvss_version=None,
+            score=None,
+            severity=None,
+            vector=None,
+            description=None,
+            weaknesses=[],
+            exploited=False,
+            exploited_on=None,
+            action_due=None,
+            required_action=None,
+            kev_name=None,
+            published_at=None,
+        )
     return VulnerabilityOut(
         id=cve_id,
-        link=nvd_lookup.link_of(cve_id),
-        state="pending" if row is None else "found" if found else "unknown",
-        status=row.status if row else None,
-        cvss_version=row.cvss_version if row else None,
-        score=row.score if row else None,
-        severity=cast("Literal['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] | None", row.severity)
-        if row
-        else None,
-        vector=row.vector if row else None,
-        description=row.description if row else None,
-        weaknesses=list(row.weaknesses) if row else [],
-        exploited=row.exploited if row else False,
-        exploited_on=row.exploited_on if row else None,
-        action_due=row.action_due if row else None,
-        required_action=row.required_action if row else None,
-        kev_name=row.kev_name if row else None,
-        published_at=row.published_at if row else None,
+        link=link,
+        state="found" if row.state == nvd_store.FOUND else "unknown",
+        status=row.status,
+        cvss_version=row.cvss_version,
+        score=row.score,
+        severity=cast("Literal['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] | None", row.severity),
+        vector=row.vector,
+        description=row.description,
+        weaknesses=list(row.weaknesses),
+        exploited=row.exploited,
+        exploited_on=row.exploited_on,
+        action_due=row.action_due,
+        required_action=row.required_action,
+        kev_name=row.kev_name,
+        published_at=row.published_at,
     )
 
 
