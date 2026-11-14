@@ -388,9 +388,9 @@ class TestHostDetails:
 
         assert found.lines == [
             "web1 (192.168.1.20): runs Linux; network: AS64512, Example ISP, CA; fingerprints: "
-            "2 TLS (JA4), 1 flagged malicious, 1 SSH (HASSH), a TCP fingerprint",
+            + "2 TLS (JA4), 1 flagged malicious, 1 SSH (HASSH), a TCP fingerprint",
             "unnamed (192.168.1.41): runs an unknown system; network: unknown; fingerprints: "
-            "none seen",
+            + "none seen",
         ]
         assert found.summary == "2 hosts"
 
