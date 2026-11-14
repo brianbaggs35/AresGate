@@ -23,7 +23,7 @@ from app.collectors.registry import COLLECTORS
 from app.collectors.store import Wanted
 from app.config import Settings
 from app.integrations import service
-from app.integrations.client import ApiClient, CallFailed, Recorder, Target
+from app.integrations.client import ApiClient, CallFailed, Recorder, Target, calling
 from app.integrations.netguard import AddressPolicy, Refused
 from app.models import IntegrationConnection, utcnow
 
@@ -179,10 +179,13 @@ class Scheduler:
                 # A service on the internet is reached with the policy of that one service, as
                 # everywhere else, never looked for on the home network.
                 policy = service.policy_for(item.connection, self._policy)
-                async with ApiClient(target, self._recorder, policy) as client:
-                    outcome = await collector.collect(
-                        Context(target, client, started, version, self._new_session, self._settings)
-                    )
+                with calling(f"{item.definition.key} collector {collector.key}"):
+                    async with ApiClient(target, self._recorder, policy) as client:
+                        outcome = await collector.collect(
+                            Context(
+                                target, client, started, version, self._new_session, self._settings
+                            )
+                        )
         except (CollectorFailed, service.Incomplete, Refused, CallFailed) as failure:
             return str(failure), None
         except TimeoutError:

@@ -5,7 +5,7 @@ import { ApiError } from '@/api/client'
 import * as integrationsApi from '@/api/integrations'
 import type { Call, CallPage } from '@/api/integrations'
 import ApiLog from '@/components/ApiLog.vue'
-import { call } from '@/test/integrations'
+import { call, callFull } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 const page = (calls: Call[], next: number | null = null): CallPage => ({
@@ -300,6 +300,117 @@ describe('ApiLog', () => {
       const { useSessionStore } = await import('@/stores/session')
       expect(useSessionStore(pinia).expired).toBe(true)
       expect(find('log-error').text()).toContain('Sign in first.')
+    })
+  })
+
+  describe('opening a request', () => {
+    const inSheet = (selector: string) =>
+      document.querySelector<HTMLElement>(`[data-test="${selector}"]`)
+    const title = () =>
+      [...(inSheet('sheet-title')?.children ?? [])].map((part) => part.textContent).join(' ')
+    const NEWEST = call({ id: 3, path: '/newest' })
+    const MIDDLE = call({ id: 2, path: '/middle' })
+    const OLDEST = call({ id: 1, path: '/oldest' })
+
+    async function opened(first: CallPage = page([NEWEST, MIDDLE, OLDEST])) {
+      const shown = await open(first, { connections: TWO })
+      const fetchCall = vi
+        .spyOn(integrationsApi, 'fetchCall')
+        .mockImplementation((_key, id) => Promise.resolve(callFull({ id })))
+      const press = async (key: string) => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+        await flushPromises()
+      }
+      const sheetClick = async (selector: string) => {
+        inSheet(selector)?.click()
+        await flushPromises()
+      }
+      return { ...shown, fetchCall, press, sheetClick }
+    }
+
+    it('makes each request a button that says it opens a dialog', async () => {
+      const { rows } = await opened()
+
+      expect(rows().map((row) => row.element.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON'])
+      expect(rows()[0]?.attributes('aria-haspopup')).toBe('dialog')
+      expect(rows()[0]?.attributes('type')).toBe('button')
+    })
+
+    it('opens the request that is clicked, with its connection named', async () => {
+      const { rows, fetchCall } = await opened()
+
+      await rows()[1]?.trigger('click')
+      await flushPromises()
+
+      expect(fetchCall).toHaveBeenCalledWith('ntopng', 2)
+      expect(title()).toBe('GET /middle')
+      expect(inSheet('sheet-connection')?.textContent).toBe('OPNsense API')
+    })
+
+    it('goes to the older and the newer, and stops at the ends of the list', async () => {
+      const { rows, sheetClick, press } = await opened()
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+      expect(inSheet('sheet-newer')?.hasAttribute('disabled')).toBe(true)
+
+      await sheetClick('sheet-older')
+      expect(title()).toBe('GET /middle')
+      await press('j')
+      expect(title()).toBe('GET /oldest')
+      expect(inSheet('sheet-older')?.hasAttribute('disabled')).toBe(true)
+      await press('k')
+      await sheetClick('sheet-newer')
+      expect(title()).toBe('GET /newest')
+    })
+
+    it('asks for the next page when the oldest it has is reached and goes on into it', async () => {
+      const { rows, sheetClick, fetch } = await opened(page([NEWEST], 3))
+      fetch.mockResolvedValue(page([call({ id: 2, path: '/older-page' })]))
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+      expect(inSheet('sheet-older')?.hasAttribute('disabled')).toBe(false)
+
+      await sheetClick('sheet-older')
+
+      expect(fetch).toHaveBeenLastCalledWith('ntopng', { limit: 25, before: 3 })
+      expect(title()).toBe('GET /older-page')
+      expect(inSheet('sheet-older')?.hasAttribute('disabled')).toBe(true)
+    })
+
+    it('stays where it is when there was nothing older after all', async () => {
+      const { rows, sheetClick, fetch } = await opened(page([NEWEST], 3))
+      fetch.mockResolvedValue(page([]))
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+
+      await sheetClick('sheet-older')
+
+      expect(title()).toBe('GET /newest')
+    })
+
+    it('closes when a reload no longer has the request', async () => {
+      const { rows, find, fetch } = await opened()
+      await rows()[1]?.trigger('click')
+      await flushPromises()
+      expect(inSheet('call-sheet')).not.toBeNull()
+
+      fetch.mockResolvedValue(page([NEWEST]))
+      await find('log-refresh').trigger('click')
+      await flushPromises()
+
+      expect(inSheet('call-sheet')).toBeNull()
+    })
+
+    it('stays open when a reload still has it', async () => {
+      const { rows, find, fetch } = await opened()
+      await rows()[1]?.trigger('click')
+      await flushPromises()
+
+      fetch.mockResolvedValue(page([call({ id: 4, path: '/new' }), NEWEST, MIDDLE, OLDEST]))
+      await find('log-refresh').trigger('click')
+      await flushPromises()
+
+      expect(title()).toBe('GET /middle')
     })
   })
 

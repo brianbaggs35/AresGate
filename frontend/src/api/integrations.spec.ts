@@ -1,6 +1,7 @@
 import * as client from '@/api/client'
 import {
   disconnectIntegration,
+  fetchCall,
   fetchCalls,
   fetchIntegration,
   fetchIntegrations,
@@ -125,6 +126,12 @@ describe('integrations', () => {
   })
 
   describe('the API log', () => {
+    it('opens one request', async () => {
+      const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ id: 7 })
+      await expect(fetchCall('opnsense', 7)).resolves.toEqual({ id: 7 })
+      expect(get).toHaveBeenCalledWith('/integrations/opnsense/calls/7')
+    })
+
     it('asks for the newest calls when not told anything else', async () => {
       const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ calls: [], next_before: null })
       await expect(fetchCalls('opnsense')).resolves.toEqual({ calls: [], next_before: null })

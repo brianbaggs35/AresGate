@@ -1148,7 +1148,9 @@ it with the setup code from the log.
   `ARESGATE_AUDIT_RETENTION_DAYS` (1 to 3650) in `.env`, then `make up` or `make restart`. The API
   deletes older events when it starts and every six hours after that.
 - **What an integration was asked.** Each integration's page has an API log of every request
-  AresGate made to it, without secrets or query strings. It keeps 30 days; change that with
+  AresGate made to it, with no secret in it. Click one to see all that was kept of it: where it went,
+  what it carried, how it was answered and the start of the answer, which is kept for the requests
+  that failed and the latest 10 that worked on each connection. It keeps 30 days; change that with
   `ARESGATE_API_LOG_RETENTION_DAYS` (1 to 365) in `.env`, then `make up` or `make restart`
   ([Integrations](integrations.md)).
 - **Adding the second step.** In Settings, on the Account page, Two-step verification, choose

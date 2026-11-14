@@ -262,6 +262,8 @@ def test_a_check_that_works_is_kept_and_marks_the_connection_connected(
         "/v1/decisions",
         200,
     )
+    assert call.detail is not None
+    assert call.detail["caller"] == "crowdsec collector connection-check"
 
 
 def test_a_check_that_fails_says_why_and_is_tried_again_sooner_each_time(

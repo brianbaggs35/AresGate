@@ -1456,7 +1456,42 @@ Each integration's page ends with the requests AresGate made to it: the time, th
 path, the status, how long it took and, if it failed, why. It can be filtered by result, method,
 connection and time, and shows older requests on request.
 
-- Secrets and query strings are never recorded, only the path.
+Each request is a button. It opens a sheet (the whole screen on a phone) with everything that was
+kept of that request, and `j` and `k`, or the arrows at the top of the sheet, go to the next older
+or newer request without closing it. Closing it, with Escape or its button, gives the keyboard
+back to the request that opened it.
+
+- **Where it went and what it carried.** The address (scheme, host, port and path), the query as
+  names and values, the headers sent as names and values, which collector or page made it (a
+  request made from somewhere that says nothing of itself shows "Not recorded"), the connection,
+  and when it started.
+- **How it was answered.** The status line, the headers, the size of the answer, whether it was
+  cut at the most that was asked for, its content type, the address it came from, and for an
+  `https` request the certificate it presented (subject, issuer, fingerprint and expiry).
+- **How long it took.** Until the answer began and for the whole request. The time to connect and
+  to set up the secure connection is not kept apart, because a connection that is already open
+  is reused and would have none.
+- **The start of the answer.** The first 4,096 characters, laid out for reading when it is
+  JSON and always shown as plain text, never as markup. It is kept for every request that failed
+  and for the latest 10 that worked on each connection, so the log does not grow without bound.
+  The retention below still applies, and nothing is kept of an answer that is not text, such as
+  a packet capture.
+- **Copy buttons** for the address, the start of the answer, and the request as a `curl` command.
+  The command has a `<NAME>` wherever a credential was, which you fill in. A request's body is
+  not kept, so a request that sent one needs it added.
+- A request made before AresGate kept this shows what it has and says that the rest was not kept.
+
+What is never kept:
+
+- A header or query parameter whose name says it holds a credential (`Authorization`,
+  `X-Api-Key`, `Cookie`, `Set-Cookie`, `token`, `password`, and so on) is listed by its name, and
+  its value is shown as hidden.
+- The secrets a connection holds are replaced wherever they turn up, in the address, the headers
+  and the answer.
+- In the start of an answer, the value under a key that names a credential (a login's `token`,
+  say), a web token and a `Bearer` credential are left out, since a login answers with one before
+  AresGate has put it among the secrets to hide.
+- The path of a Discord webhook, which holds its token, is replaced as it is in the entry itself.
 - What the other system answered is untrusted text, so it is only ever shown as plain text.
 - Requests are deleted automatically after `ARESGATE_API_LOG_RETENTION_DAYS` days (30 by
   default; see [`.env.example`](../.env.example)).

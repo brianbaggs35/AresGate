@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import { fetchCalls, type Call, type CallQuery } from '@/api/integrations'
+import ApiCallDialog from '@/components/ApiCallDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -11,9 +12,9 @@ import { formatTimestamp } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * Every request AresGate made to an integration, newest first. Only what is safe to keep is
- * recorded (no secret, no query string), and what the system answered is its own text, so it is
- * shown as plain text and nothing more.
+ * Every request AresGate made to an integration, newest first. Each is a button that opens all
+ * that was kept of it (`ApiCallDialog`). Nothing that is a secret is recorded, and what the system
+ * answered is its own text, so it is shown as plain text and nothing more.
  */
 const props = defineProps<{
   integration: string
@@ -127,6 +128,36 @@ function mark(call: Call) {
 
 const outcome = (call: Call) => (call.status_code === null ? 'No answer' : String(call.status_code))
 
+/** The request the sheet shows, by its id, so that the list can be reloaded behind it. */
+const selected = ref<number | null>(null)
+const sheet = ref(false)
+const at = computed(() => calls.value?.findIndex((one) => one.id === selected.value) ?? -1)
+const shown = computed(() => (at.value >= 0 ? (calls.value?.[at.value] ?? null) : null))
+const hasNewer = computed(() => at.value > 0)
+const hasOlder = computed(
+  () => at.value >= 0 && (at.value < (calls.value?.length ?? 0) - 1 || more.value !== null),
+)
+
+function show(call: Call) {
+  selected.value = call.id
+  sheet.value = true
+}
+
+/** Goes to the next older or newer request, asking for the next page when the list ends. */
+async function step(direction: 'older' | 'newer') {
+  const list = calls.value ?? []
+  if (direction === 'newer') {
+    selected.value = list[at.value - 1]?.id ?? selected.value
+    return
+  }
+  if (at.value === list.length - 1 && more.value !== null) await load(more.value)
+  selected.value = calls.value?.[at.value + 1]?.id ?? selected.value
+}
+
+// A reload that no longer has the request leaves nothing to show.
+watch(shown, (now) => {
+  if (!now) sheet.value = false
+})
 watch(filters, () => load())
 watch(
   () => props.refresh,
@@ -138,7 +169,7 @@ onMounted(() => load())
 <template>
   <SectionCard
     title="API log"
-    description="Every request AresGate makes to this system, newest first. Secrets and query strings are never recorded, and what the system answered is shown as plain text, since it can't be trusted. Old requests are deleted automatically."
+    description="Every request AresGate makes to this system, newest first. Open one to see all that was kept of it. Secrets are never recorded, and what the system answered is shown as plain text, since it can't be trusted. Old requests are deleted automatically."
     data-test="api-log"
   >
     <template #actions>
@@ -200,36 +231,47 @@ onMounted(() => load())
     />
     <template v-if="calls?.length">
       <ul class="api-log__calls" data-test="log-calls">
-        <li v-for="call in calls" :key="call.id" class="api-call" data-test="log-call">
-          <v-icon
-            :icon="mark(call).icon"
-            :color="mark(call).color"
-            :aria-label="mark(call).label"
-            role="img"
-            :aria-hidden="false"
-          />
-          <div class="api-call__text">
-            <div class="text-body-large">
-              <span class="api-call__method" data-test="call-method">{{ call.method }}</span>
-              <code class="api-call__path" data-test="call-path">{{ call.path }}</code>
-            </div>
-            <div class="text-body-medium text-medium-emphasis" data-test="call-detail">
-              <time :datetime="call.occurred_at">{{ formatTimestamp(call.occurred_at) }}</time>
-              · {{ outcome(call) }} · {{ call.duration_ms }} ms<template
-                v-if="connections.length > 1"
+        <li v-for="call in calls" :key="call.id">
+          <button
+            type="button"
+            class="api-call"
+            aria-haspopup="dialog"
+            data-test="log-call"
+            @click="show(call)"
+          >
+            <v-icon
+              :icon="mark(call).icon"
+              :color="mark(call).color"
+              :aria-label="mark(call).label"
+              role="img"
+              :aria-hidden="false"
+            />
+            <span class="api-call__text">
+              <span class="api-call__line text-body-large">
+                <span class="api-call__method" data-test="call-method">{{ call.method }}</span>
+                <code class="api-call__path" data-test="call-path">{{ call.path }}</code>
+              </span>
+              <span
+                class="api-call__line text-body-medium text-medium-emphasis"
+                data-test="call-detail"
               >
-                · {{ labels.get(call.connection) ?? call.connection }}</template
+                <time :datetime="call.occurred_at">{{ formatTimestamp(call.occurred_at) }}</time>
+                · {{ outcome(call) }} · {{ call.duration_ms }} ms<template
+                  v-if="connections.length > 1"
+                >
+                  · {{ labels.get(call.connection) ?? call.connection }}</template
+                >
+              </span>
+              <span
+                v-if="call.error"
+                class="api-call__line text-body-medium"
+                :class="limited(call) ? 'text-medium-emphasis' : 'text-error'"
+                data-test="call-error"
               >
-            </div>
-            <div
-              v-if="call.error"
-              class="text-body-medium"
-              :class="limited(call) ? 'text-medium-emphasis' : 'text-error'"
-              data-test="call-error"
-            >
-              {{ said(call) }}
-            </div>
-          </div>
+                {{ said(call) }}
+              </span>
+            </span>
+          </button>
         </li>
       </ul>
       <div v-if="more !== null" class="mt-2">
@@ -256,6 +298,17 @@ onMounted(() => load())
         Clear the filters
       </v-btn>
     </EmptyState>
+    <ApiCallDialog
+      v-model="sheet"
+      :integration="integration"
+      :call="shown"
+      :connection="
+        connections.length > 1 && shown ? (labels.get(shown.connection) ?? shown.connection) : null
+      "
+      :has-older="hasOlder"
+      :has-newer="hasNewer"
+      @step="step"
+    />
   </SectionCard>
 </template>
 
@@ -276,11 +329,31 @@ onMounted(() => load())
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  padding: 0.75rem 0;
+  width: 100%;
+  padding: 0.75rem 0.5rem;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
-.api-call + .api-call {
+.api-call:hover {
+  background: rgba(var(--v-theme-on-surface), var(--v-hover-opacity));
+}
+
+.api-call:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
+
+.api-log__calls li + li {
   border-top: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
+}
+
+.api-call__line {
+  display: block;
 }
 
 .api-call__text {

@@ -237,6 +237,53 @@ test.describe('integrations', () => {
       await expect(integrations.count).toHaveText('1 of 9 set up')
     })
 
+    test('opens a request of the log to see all that was kept of it, and never a secret', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await integration.logRefresh.click()
+      await expect(integration.logCalls.first()).toBeVisible()
+
+      const entry = integration.logCalls.last()
+      await entry.click()
+
+      await expect(integration.callSheet).toBeVisible()
+      await expect(integration.sheetTitle).toContainText('/lua/rest/v2/get/ntopng/interfaces.lua')
+      await expect(integration.sheetAddress).toContainText(
+        `${ntopng.url}/lua/rest/v2/get/ntopng/interfaces.lua`,
+      )
+      await expect(integration.sheetAnswer).toContainText('200')
+      await expect(integration.sheetAnswer).toContainText('127.0.0.1')
+      await expect(integration.sheetRequestHeaders).toContainText('accept')
+      await expect(integration.sheetExcerpt).toContainText('"rc"')
+      await expect(
+        integration.sheetAddress.getByRole('button', { name: 'Copy as a curl command' }),
+      ).toBeVisible()
+      // The token went in a header, and the sheet names the header and hides its value.
+      await expect(integration.callSheet).not.toContainText(TOKEN)
+      await expect(integration.sheetNewer).toBeEnabled()
+      await expect(integration.sheetOlder).toBeDisabled()
+
+      // The arrows and the keys go on to the next request without closing it.
+      const title = await integration.sheetTitle.textContent()
+      await integration.sheetNewer.click()
+      await expect(integration.sheetTitle).not.toHaveText(title ?? '')
+      await page.keyboard.press('j')
+      await expect(integration.sheetTitle).toHaveText(title ?? '')
+
+      // Closing it gives the keyboard back to the request that opened it.
+      await page.keyboard.press('Escape')
+      await expect(integration.callSheet).toBeHidden()
+      await expect(entry).toBeFocused()
+    })
+
     test('names the interfaces before anything is saved, and says which has seen nothing', async ({
       page,
       harness,

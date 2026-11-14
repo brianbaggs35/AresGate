@@ -707,6 +707,8 @@ def test_a_lookup_asks_the_connection_what_it_lists_and_logs_the_calls(
     assert result.ok
     assert [entry.value for entry in result.entries] == ["0", "1"]
     assert calls[0].path == "/lua/rest/v2/get/ntopng/interfaces.lua"
+    assert calls[0].detail is not None
+    assert calls[0].detail["caller"] == "Field lookup"
 
 
 VIRUSTOTAL = registry.VIRUSTOTAL

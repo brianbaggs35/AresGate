@@ -213,6 +213,52 @@ class CallOut(BaseModel):
     error: str | None
 
 
+class PairOut(BaseModel):
+    name: str
+    # None where the value is a credential, which is never kept.
+    value: str | None
+
+
+class PresentedOut(BaseModel):
+    """The certificate a system presented for a request."""
+
+    subject: str
+    issuer: str
+    fingerprint: str
+    not_after: datetime
+
+
+class CallDetailOut(BaseModel):
+    """What was kept of where a request went and what it carried, and how it was answered."""
+
+    scheme: str
+    host: str
+    port: int
+    path: str
+    query: list[PairOut]
+    request_headers: list[PairOut]
+    # Which collector or page made the request, if that was known.
+    caller: str | None = None
+    # What follows is only there if there was an answer.
+    first_byte_ms: int | None = None
+    status_line: str | None = None
+    response_headers: list[PairOut] = []
+    size: int | None = None
+    cut: bool = False
+    content_type: str | None = None
+    certificate: PresentedOut | None = None
+    address: str | None = None
+
+
+class CallFullOut(CallOut):
+    """A call with everything that was kept of it. ``detail`` is None for a call made before
+    that was kept, and ``excerpt`` for one whose answer wasn't (the ones that worked are kept
+    for only the latest few) or isn't text."""
+
+    detail: CallDetailOut | None
+    excerpt: str | None
+
+
 class CallPage(BaseModel):
     calls: list[CallOut]
     # Pass it back as ``before`` for the next page of older calls. Missing on the last page.
@@ -604,6 +650,16 @@ def look_up_certificate(
         accepted=found.accepted,
         verdict=found.verdict,
     )
+
+
+@router.get("/{key}/calls/{call_id}")
+def get_call(key: Key, call_id: int, db: Db) -> CallFullOut:
+    """One request made to an integration, with everything that was kept of it."""
+    _definition(key)
+    call = apilog.get_call(db, key, call_id)
+    if call is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no such request.")
+    return CallFullOut.model_validate(call)
 
 
 @router.get("/{key}/calls")

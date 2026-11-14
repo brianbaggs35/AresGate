@@ -1,5 +1,7 @@
 import type {
   Call,
+  CallDetail,
+  CallFull,
   CertificateReview,
   Connection,
   ConnectionDefinition,
@@ -359,6 +361,47 @@ export function fingerbank(overrides: Partial<Integration> = {}): Integration {
     ],
     ...overrides,
   })
+}
+
+export function callDetail(overrides: Partial<CallDetail> = {}): CallDetail {
+  return {
+    scheme: 'https',
+    host: '192.168.1.1',
+    port: 8443,
+    path: '/lua/rest/v2/get/ntopng/interfaces.lua',
+    query: [
+      { name: 'ifid', value: '0' },
+      { name: 'token', value: null },
+    ],
+    request_headers: [
+      { name: 'accept', value: 'application/json' },
+      { name: 'authorization', value: null },
+    ],
+    caller: 'ntopng collector interfaces',
+    first_byte_ms: 30,
+    status_line: 'HTTP/1.1 200 OK',
+    response_headers: [{ name: 'content-type', value: 'application/json' }],
+    size: 2048,
+    cut: false,
+    content_type: 'application/json',
+    certificate: {
+      subject: 'CN=ntopng',
+      issuer: 'CN=Home CA',
+      fingerprint: 'AA:BB:CC',
+      not_after: '2027-01-01T00:00:00Z',
+    },
+    address: '192.168.1.1',
+    ...overrides,
+  }
+}
+
+export function callFull(overrides: Partial<CallFull> = {}): CallFull {
+  return {
+    ...call(),
+    detail: callDetail(),
+    excerpt: '{\n  "rc": 0\n}',
+    ...overrides,
+  }
 }
 
 export function call(overrides: Partial<Call> = {}): Call {

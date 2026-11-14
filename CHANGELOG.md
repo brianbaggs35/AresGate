@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Click a request in an integration's API log to see everything about it.** Each entry is now a
+  button that opens a sheet (the whole screen on a phone) with the full address, the query and the
+  headers sent, which collector or page made it, how long it took, the status line, the answer's
+  headers, size and type, the certificate it presented, the address it came from and the start of
+  the answer, with the arrows or `j` and `k` to go to the next request and copy buttons for the
+  address, the answer and the request as a `curl` command. The values of credentials are never
+  kept, and the start of an answer is kept for the requests that failed and the latest 10 that
+  worked on each connection. Requests from before this show what they have. See
+  [the API log](DOCS/integrations.md#the-api-log).
 - **The assistant's answer is shown as it is written.** Instead of waiting up to a few minutes for
   the whole answer, the Assistant page and the panel show what it has looked up as each lookup runs,
   then the answer as the provider writes it, so a slow local model feels alive and a long answer can
