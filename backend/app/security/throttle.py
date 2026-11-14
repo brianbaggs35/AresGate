@@ -30,6 +30,9 @@ _MOST_DOUBLINGS = 6
 class Scope(StrEnum):
     ACCOUNT = "account"
     ADDRESS = "address"
+    # Wrong passkey answers, counted for the address apart from wrong passwords, so one kind of
+    # guessing never keeps anyone out of the other kind of sign-in.
+    PASSKEY = "passkey"
     SETUP = "setup"
 
 

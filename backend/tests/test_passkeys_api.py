@@ -16,12 +16,11 @@ from app.audit import Action, Outcome
 from app.config import Settings, get_settings
 from app.models import LoginThrottle, Passkey, PasskeyChallenge, User, utcnow
 from app.security import passkeys as passkeys_module
-from app.security import sessions
+from app.security import sessions, throttle
 from e2e import factories
 from tests.helpers import (
     ACCOUNT_PASSWORD,
     ACCOUNT_USERNAME,
-    ORIGIN,
     OTHER_ORIGIN,
     SERVER_NAME,
     turn_on_two_factor,
@@ -669,7 +668,7 @@ def test_a_sign_in_clears_the_failures_counted_against_the_address(
 ) -> None:
     for _ in range(2):
         assert sign_in(client, device, sign_with=SoftAuthenticator()).status_code == 401
-    assert throttled(session) == [("address", 2)]
+    assert throttled(session) == [("passkey", 2)]
 
     assert sign_in(client, device).status_code == 200
     assert throttled(session) == []
@@ -753,7 +752,8 @@ def test_a_wrong_answer_is_refused_and_uses_up_the_challenge(
     assert retried.status_code == 401
     assert retried.json() == {"detail": TIMED_OUT}
     assert COOKIE not in client.cookies
-    assert throttled(session) == [("address", 2)]
+    # Only the wrong answer counts. The second try found a challenge already used up.
+    assert throttled(session) == [("passkey", 1)]
     first, second = audit_events(session, Action.LOGIN_FAILED)
     assert first.outcome == Outcome.FAILURE.value
     assert first.username == (ACCOUNT_USERNAME if known else None)
@@ -846,28 +846,25 @@ def test_a_challenge_nobody_gave_is_refused_when_signing_in(
 # ---- Guessing ----------------------------------------------------------------------------
 
 
-def test_failed_sign_ins_lock_the_address_but_not_the_account(
-    app: FastAPI, client: TestClient, session: Session, device: SoftAuthenticator
+def test_failed_sign_ins_lock_passkeys_at_the_address_but_not_passwords_or_the_account(
+    client: TestClient, session: Session, device: SoftAuthenticator
 ) -> None:
     for _ in range(5):
         assert sign_in(client, device, sign_with=SoftAuthenticator()).status_code == 401
 
     options = client.post(f"{BASE}/login/passkey/options")
+    password = client.post(
+        f"{BASE}/login", json={"username": ACCOUNT_USERNAME, "password": ACCOUNT_PASSWORD}
+    )
 
     assert options.status_code == 429
     assert math.ceil(int(options.headers["Retry-After"]) / 60) == 1
-    assert throttled(session) == [("address", 5)]
-    with TestClient(
-        app, base_url=ORIGIN, headers={"Origin": ORIGIN}, client=("192.0.2.9", 50000)
-    ) as elsewhere:
-        password = elsewhere.post(
-            f"{BASE}/login", json={"username": ACCOUNT_USERNAME, "password": ACCOUNT_PASSWORD}
-        )
+    assert throttled(session) == [("passkey", 5)]
     assert password.status_code == 200
 
 
 def test_a_locked_address_is_refused_even_a_right_passkey(
-    client: TestClient, session: Session, device: SoftAuthenticator
+    client: TestClient, device: SoftAuthenticator
 ) -> None:
     started = sign_in_options(client)
     credential = device.sign_in(started["options"])
@@ -878,6 +875,40 @@ def test_a_locked_address_is_refused_even_a_right_passkey(
 
     assert response.status_code == 429
     assert COOKIE not in client.cookies
+
+
+def test_wrong_passwords_at_the_address_dont_keep_a_right_passkey_out(
+    client: TestClient, session: Session, device: SoftAuthenticator
+) -> None:
+    for _ in range(5):
+        wrong = client.post(
+            f"{BASE}/login", json={"username": "nobody", "password": "not the password"}
+        )
+        assert wrong.status_code == 401
+    locked = client.post(
+        f"{BASE}/login", json={"username": ACCOUNT_USERNAME, "password": ACCOUNT_PASSWORD}
+    )
+
+    response = sign_in(client, device)
+
+    assert locked.status_code == 429
+    assert response.status_code == 200
+    assert ("address", 5) in throttled(session)
+
+
+def test_a_challenge_that_ran_out_counts_against_nobody(
+    client: TestClient, session: Session, device: SoftAuthenticator
+) -> None:
+    started = sign_in_options(client)
+    credential = device.sign_in(started["options"])
+    session.execute(update(PasskeyChallenge).values(expires_at=utcnow() - timedelta(seconds=1)))
+    session.commit()
+
+    for _ in range(throttle.ATTEMPTS_BEFORE_LOCKOUT + 1):
+        assert answer(client, started["challenge_id"], credential).status_code == 401
+
+    assert throttled(session) == []
+    assert sign_in(client, device).status_code == 200
 
 
 # ---- Where the page is served from -------------------------------------------------------

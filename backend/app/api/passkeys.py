@@ -171,7 +171,7 @@ def remove_passkey(
 def start_passkey_sign_in(request: Request, db: Db, settings: SettingsDep) -> Challenge:
     """What the browser asks a device to sign. Nobody has said who they are yet."""
     now = utcnow()
-    if wait := throttle.remaining_lockout(db, Scope.ADDRESS, client_address(request), now):
+    if wait := throttle.remaining_lockout(db, Scope.PASSKEY, client_address(request), now):
         raise too_many_attempts(wait)
     challenge_id, options = passkeys.begin_sign_in(db, settings, now)
     db.commit()
@@ -187,11 +187,13 @@ def log_in_with_passkey(
     settings: SettingsDep,
 ) -> SessionInfo:
     """Signs in with the device's answer. A passkey is the password and the second step in one:
-    the device unlocks it with a fingerprint, a face or a PIN. Failures count against the
-    address only, since nobody has said whose account they are after."""
+    the device unlocks it with a fingerprint, a face or a PIN. A wrong answer counts against the
+    address, in a count of its own that wrong passwords don't touch, and against no account,
+    since nobody has said whose account they are after. A challenge that ran out is nobody's
+    fault, so it counts against no one."""
     now = utcnow()
     address = client_address(request)
-    if wait := throttle.remaining_lockout(db, Scope.ADDRESS, address, now):
+    if wait := throttle.remaining_lockout(db, Scope.PASSKEY, address, now):
         raise too_many_attempts(wait)
     try:
         passkey = passkeys.finish_sign_in(db, settings, body.challenge_id, body.credential, now)
@@ -199,7 +201,8 @@ def log_in_with_passkey(
         reason = error.reason if isinstance(error, passkeys.Rejected) else "challenge_gone"
         owner = error.user_id if isinstance(error, passkeys.Rejected) else None
         user = db.get(User, owner) if owner else None
-        throttle.record_failure(db, Scope.ADDRESS, address, now)
+        if isinstance(error, passkeys.Rejected):
+            throttle.record_failure(db, Scope.PASSKEY, address, now)
         record_audit(
             db,
             request,
@@ -216,7 +219,7 @@ def log_in_with_passkey(
             else "That passkey didn't work.",
         ) from error
     user = db.get_one(User, passkey.user_id)
-    throttle.clear(db, Scope.ADDRESS, address)
+    throttle.clear(db, Scope.PASSKEY, address)
     record_audit(
         db,
         request,
