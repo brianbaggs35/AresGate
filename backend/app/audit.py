@@ -108,12 +108,17 @@ class Action(StrEnum):
     EVENTS_PURGED = "audit.events_purged"
 
 
+def plain(value: str) -> str:
+    """Text with its control characters, line breaks included, turned into spaces."""
+    return _CONTROL.sub(" ", value)
+
+
 def clean(value: str | None, limit: int) -> str | None:
     """Text from a client, made safe to keep: control characters become spaces, and it's cut to
     fit. Nothing left means nothing to keep."""
     if value is None:
         return None
-    return _CONTROL.sub(" ", value).strip()[:limit] or None
+    return plain(value).strip()[:limit] or None
 
 
 def record(

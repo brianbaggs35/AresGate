@@ -2,15 +2,10 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { fetchAi } from '@/api/ai'
-import {
-  askInConversation,
-  retryConversation,
-  startConversation,
-  type Conversation,
-  type PageContext,
-} from '@/api/aiChat'
+import { askAndFollow, retryConversation, type Conversation, type PageContext } from '@/api/aiChat'
 import { errorMessage } from '@/api/client'
 import { MAX_QUESTION } from '@/chat'
+import { useAnswerProgress } from '@/chatProgress'
 import { useSessionStore } from '@/stores/session'
 
 /**
@@ -20,6 +15,8 @@ import { useSessionStore } from '@/stores/session'
  */
 export const useAssistantStore = defineStore('assistant', () => {
   const session = useSessionStore()
+  /** What the answer has looked at and written so far, while it is made. */
+  const { looked, writing, reset: clearProgress, follow } = useAnswerProgress()
 
   const open = ref(false)
   const current = ref<Conversation | null>(null)
@@ -76,6 +73,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     sending.value = true
     pending.value = sent
     failure.value = null
+    clearProgress()
     try {
       current.value = await session.change(request)
       if (sent !== null) draft.value = ''
@@ -85,6 +83,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     } finally {
       sending.value = false
       pending.value = null
+      clearProgress()
     }
   }
 
@@ -93,11 +92,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     if (!canSend.value) return
     const text = draft.value.trim()
     const open = current.value
-    await answer(
-      (token) =>
-        open ? askInConversation(open.id, text, token, page) : startConversation(text, token, page),
-      text,
-    )
+    await answer((token) => askAndFollow(open?.id ?? null, text, token, page, follow), text)
   }
 
   /** Asks again after a failed answer, which only the button on the last one can do. */
@@ -114,6 +109,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     pending.value = null
     failure.value = null
     ready.value = null
+    clearProgress()
   }
 
   return {
@@ -122,6 +118,8 @@ export const useAssistantStore = defineStore('assistant', () => {
     draft,
     sending,
     pending,
+    looked,
+    writing,
     failure,
     ready,
     tooLong,

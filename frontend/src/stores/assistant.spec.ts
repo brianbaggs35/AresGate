@@ -61,8 +61,7 @@ describe('assistant store', () => {
   })
 
   it('starts a conversation with the page it is asked from, then carries it on', async () => {
-    const start = vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
-    const ask = vi.spyOn(chatApi, 'askInConversation').mockResolvedValue(conversation())
+    const start = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
     const assistant = store()
     const page = { kind: 'incident', id: 3 } as const
 
@@ -72,7 +71,7 @@ describe('assistant store', () => {
     expect(assistant.pending).toBe('Is this bad?')
     await sent
 
-    expect(start).toHaveBeenCalledWith('Is this bad?', 'token', page)
+    expect(start).toHaveBeenCalledWith(null, 'Is this bad?', 'token', page, expect.any(Function))
     expect(assistant.current?.id).toBe(5)
     expect(assistant.draft).toBe('')
     expect(assistant.sending).toBe(false)
@@ -80,17 +79,42 @@ describe('assistant store', () => {
 
     assistant.draft = 'And?'
     await assistant.send(null)
-    expect(ask).toHaveBeenCalledWith(5, 'And?', 'token', null)
+    expect(start).toHaveBeenLastCalledWith(5, 'And?', 'token', null, expect.any(Function))
+  })
+
+  it('keeps what the answer has looked at and written while it is made, and clears it after', async () => {
+    let finish: (found: chatApi.Conversation) => void = () => undefined
+    let follow: (event: chatApi.AnswerEvent) => void = () => undefined
+    vi.spyOn(chatApi, 'askAndFollow').mockImplementation((_id, _text, _token, _page, onEvent) => {
+      follow = onEvent
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    })
+    const assistant = store()
+    assistant.draft = 'Hello'
+    const sent = assistant.send(null)
+
+    follow({ kind: 'looked', lookup: { tool: 'open_incidents', summary: '2 open incidents' } })
+    follow({ kind: 'wrote', text: 'Start ' })
+    follow({ kind: 'wrote', text: 'with 3.' })
+    expect(assistant.looked).toEqual([{ tool: 'open_incidents', summary: '2 open incidents' }])
+    expect(assistant.writing).toBe('Start with 3.')
+
+    finish(conversation())
+    await sent
+    expect(assistant.looked).toEqual([])
+    expect(assistant.writing).toBe('')
   })
 
   it('does nothing where it may not send', async () => {
-    const start = vi.spyOn(chatApi, 'startConversation')
+    const start = vi.spyOn(chatApi, 'askAndFollow')
     await store().send(null)
     expect(start).not.toHaveBeenCalled()
   })
 
   it('keeps the question in the box when it could not be answered', async () => {
-    vi.spyOn(chatApi, 'startConversation').mockRejectedValue(
+    vi.spyOn(chatApi, 'askAndFollow').mockRejectedValue(
       new ApiError(0, "Can't reach AresGate.", 'offline'),
     )
     const assistant = store()
@@ -131,7 +155,9 @@ describe('assistant store', () => {
     assistant.current = conversation()
     assistant.draft = 'x'
     assistant.ready = true
+    assistant.writing = 'half an answer'
     assistant.reset()
+    expect(assistant.writing).toBe('')
     expect(assistant.open).toBe(false)
     expect(assistant.current).toBeNull()
     expect(assistant.draft).toBe('')

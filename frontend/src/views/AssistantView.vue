@@ -6,22 +6,23 @@ import { useDisplay } from 'vuetify'
 
 import { fetchAi } from '@/api/ai'
 import {
-  askInConversation,
+  askAndFollow,
   deleteConversation,
   fetchConversation,
   fetchConversations,
   retryConversation,
-  startConversation,
   type ChatMessage as Message,
   type Conversation,
   type ConversationSummary,
 } from '@/api/aiChat'
 import { ApiError, errorMessage } from '@/api/client'
 import { MAX_QUESTION, questionAbout, STARTERS } from '@/chat'
+import { useAnswerProgress } from '@/chatProgress'
 import AiCallDialog from '@/components/AiCallDialog.vue'
 import AppPage from '@/components/AppPage.vue'
 import ChatConversations from '@/components/ChatConversations.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
+import ChatWriting from '@/components/ChatWriting.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -46,6 +47,8 @@ const draft = ref('')
  * answer comes. */
 const sending = ref(false)
 const pending = ref<string | null>(null)
+/** What the answer has looked at and written so far, while it is made. */
+const { looked, writing, reset: clearProgress, follow } = useAnswerProgress()
 const failure = ref<string | null>(null)
 const loadError = ref<string | null>(null)
 const notFound = ref(false)
@@ -81,9 +84,11 @@ const confirming = computed({
   },
 })
 
-function scrollToEnd() {
+/** Scrolls to the newest word. An answer that is being written is followed at once, since a
+ * smooth scroll would always be behind it. */
+function scrollToEnd(instant = false) {
   void nextTick(() => {
-    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const calm = instant || window.matchMedia('(prefers-reduced-motion: reduce)').matches
     window.scrollTo({
       top: document.documentElement.scrollHeight,
       behavior: calm ? 'auto' : 'smooth',
@@ -148,6 +153,11 @@ onBeforeUnmount(() => {
   latest += 1
 })
 
+// The answer is followed as it is written.
+watch(writing, () => {
+  scrollToEnd(true)
+})
+
 // Another conversation was chosen (or a new one begun) from the list or the address.
 watch(id, (wanted) => {
   failure.value = null
@@ -166,6 +176,7 @@ async function answer(request: (token: string) => Promise<Conversation>, sent: s
   sending.value = true
   pending.value = sent
   failure.value = null
+  clearProgress()
   scrollToEnd()
   // The conversation this began, if it began one: its page is opened once the answer is shown.
   let began: number | null = null
@@ -182,6 +193,7 @@ async function answer(request: (token: string) => Promise<Conversation>, sent: s
   } finally {
     sending.value = false
     pending.value = null
+    clearProgress()
     scrollToEnd()
   }
   if (began !== null) await router.replace({ name: 'assistant-chat', params: { id: began } })
@@ -191,10 +203,7 @@ function send() {
   if (!canSend.value) return
   const text = draft.value.trim()
   const open = current.value
-  void answer(
-    (token) => (open ? askInConversation(open.id, text, token) : startConversation(text, token)),
-    text,
-  )
+  void answer((token) => askAndFollow(open?.id ?? null, text, token, null, follow), text)
 }
 
 /** Asks again after a failed answer, which only the button on the last one can do. */
@@ -336,10 +345,7 @@ function showCall(call: number) {
           <article v-if="pending !== null" class="assistant__pending" data-test="chat-pending">
             <p class="text-body-large">{{ pending }}</p>
           </article>
-          <output v-if="sending" class="assistant__busy text-body-large" data-test="chat-busy">
-            <v-progress-circular indeterminate size="20" width="2" aria-hidden="true" />
-            Looking into it. This can take a minute.
-          </output>
+          <ChatWriting v-if="sending" :looked="looked" :text="writing" data-test="chat-writing" />
         </div>
 
         <v-alert v-if="failure" type="error" variant="tonal" role="alert" data-test="chat-failure">
@@ -458,12 +464,6 @@ function showCall(call: number) {
 
 .assistant__pending p {
   margin: 0;
-}
-
-.assistant__busy {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 .assistant__starters {

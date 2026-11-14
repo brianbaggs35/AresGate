@@ -401,3 +401,38 @@ class Redactor:
             return self._written.get(row.value, row.value)
 
         return _STAND_IN.sub(back, answer)
+
+
+_WORD_CHARACTER = re.compile(r"\w")
+
+
+def _word_start(text: str) -> int:
+    """Where the word at the end of ``text`` begins, or its length if it does not end in one."""
+    start = len(text)
+    while start and _WORD_CHARACTER.match(text[start - 1]):
+        start -= 1
+    return start
+
+
+class RevealStream:
+    """``Redactor.reveal`` for an answer that comes in pieces. A stand-in (``HOST_12``) can be cut
+    between two pieces, so the last word of what has come is held back until what follows shows it
+    is whole: everything before it ends at a character that can't be part of a stand-in, so the
+    stand-ins in it are whole and the real values go back in them. ``flush`` gives the held word
+    when there is nothing more to come."""
+
+    def __init__(self, redactor: Redactor) -> None:
+        self._redactor = redactor
+        self._held = ""
+
+    def feed(self, piece: str, final: bool = False) -> str:
+        """The real text of what has come so far that can't change, with the next piece. With
+        ``final`` the piece is the last, and nothing is held back."""
+        text = self._held + piece
+        cut = len(text) if final else _word_start(text)
+        self._held = text[cut:]
+        return self._redactor.reveal(text[:cut])
+
+    def flush(self) -> str:
+        """What is still held, with the real values in it."""
+        return self.feed("", final=True)

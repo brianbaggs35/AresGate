@@ -20,7 +20,8 @@ all three for the API's own threads.
 """
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -286,6 +287,47 @@ async def send(prepared: Prepared, context: Context) -> Sent:
     except (CallFailed, wire.AiFailed) as failure:
         return Sent(None, str(failure), _milliseconds(started))
     return Sent(completion, None, _milliseconds(started))
+
+
+async def stream(prepared: Prepared, context: Context) -> AsyncGenerator[str | Sent]:
+    """Sends a prepared question and gives the answer as it is written: each piece of the text, as
+    the provider wrote it (so with any stand-ins still in it), and last a ``Sent`` that says how it
+    ended, which ``record`` takes. Needs no database. Use it inside ``contextlib.aclosing``."""
+    started = time.monotonic()
+    question = prepared.question
+    completion: wire.Completion | None = None
+    try:
+        async with (
+            ApiClient(
+                prepared.target,
+                context.recorder,
+                context.policy_for(prepared.definition),
+                deadline=DEADLINE,
+                read_timeout=READ_TIMEOUT,
+            ) as client,
+            aclosing(
+                wire.stream(
+                    client,
+                    prepared.definition,
+                    prepared.model,
+                    prepared.target.secrets.get(service.API_KEY),
+                    system=prepared.system,
+                    prompt=prepared.prompt,
+                    schema=question.schema,
+                    max_tokens=question.max_tokens,
+                    cache_key=question.purpose,
+                )
+            ) as pieces,
+        ):
+            async for piece in pieces:
+                if isinstance(piece, wire.Completion):
+                    completion = piece
+                else:
+                    yield piece
+    except (CallFailed, wire.AiFailed) as failure:
+        yield Sent(None, str(failure), _milliseconds(started))
+        return
+    yield Sent(completion, None, _milliseconds(started))
 
 
 def _milliseconds(started: float) -> int:

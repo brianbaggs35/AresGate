@@ -41,7 +41,7 @@ export class AssistantPage {
     this.thread = page.getByTestId('chat-thread')
     this.ownerMessages = page.getByTestId('message-owner')
     this.answers = page.getByLabel('The assistant answered')
-    this.busy = page.getByTestId('chat-busy')
+    this.busy = page.getByTestId('chat-writing')
     this.off = page.getByTestId('chat-off')
     this.failure = page.getByTestId('chat-failure')
     this.failedAnswer = page.getByTestId('message-failed')

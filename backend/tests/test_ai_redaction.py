@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai import redaction
-from app.ai.redaction import Kind, Level, Redactor
+from app.ai.redaction import Kind, Level, Redactor, RevealStream
 from app.models import AiAlias
 
 NOW = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
@@ -431,3 +431,49 @@ class TestReadingAddresses:
     def test_a_mac_address_has_one_form(self) -> None:
         assert redaction.read_mac("AABB.CCDD.EEFF") == "aa:bb:cc:dd:ee:ff"
         assert redaction.read_mac("nonsense") is None
+
+
+class TestRevealingAnswerThatComesInPieces:
+    def written(self, session: Session) -> tuple[Redactor, str]:
+        """A redactor that has given out a dozen stand-ins, and an answer that uses the last two
+        (so their numbers have more than one digit) and ends in a word."""
+        mine = redactor(session, names=["Sam's Laptop"])
+        hosts = [mine.address(f"192.168.1.{number}") for number in range(20, 32)]
+        name = mine.name("Sam's Laptop")
+        session.commit()
+        return mine, f"Check {hosts[-1]}, then {hosts[-2]} ({name}); {hosts[0]} is fine. Done"
+
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 5, 7, 11, 1000])
+    def test_it_is_the_same_whatever_way_the_pieces_cut_it(
+        self, session: Session, size: int
+    ) -> None:
+        mine, answer = self.written(session)
+        stream = RevealStream(mine)
+
+        got = "".join(stream.feed(answer[at : at + size]) for at in range(0, len(answer), size))
+        got += stream.flush()
+
+        assert got == mine.reveal(answer)
+        assert "HOST_" not in got
+
+    def test_a_stand_in_cut_in_two_is_held_until_it_is_whole(self, session: Session) -> None:
+        mine, answer = self.written(session)
+        host = answer.split()[1].rstrip(",")
+        stream = RevealStream(mine)
+
+        first = stream.feed(f"Check {host[:-1]}")
+        second = stream.feed(f"{host[-1]}, then")
+
+        assert first == "Check "
+        assert second == f"{mine.reveal(host)}, "
+
+    def test_the_last_piece_lets_go_of_what_is_held(self, session: Session) -> None:
+        mine, _ = self.written(session)
+        stream = RevealStream(mine)
+
+        assert stream.feed("It is fine") == "It is "
+        assert stream.feed(" really", final=True) == "fine really"
+        assert stream.flush() == ""
+
+    def test_with_nothing_held_there_is_nothing_to_flush(self, session: Session) -> None:
+        assert RevealStream(redactor(session)).flush() == ""

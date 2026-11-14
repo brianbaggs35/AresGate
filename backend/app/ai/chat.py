@@ -341,7 +341,7 @@ PAGE_KINDS: Final = ("incident", "device", "logs", "incidents", "other")
 _TOOLS: Final = {tool.name: tool for tool in tools.TOOLS}
 
 
-def _page_lookups(db: Session, page: Page | None) -> list[Lookup]:
+def page_lookups(db: Session, page: Page | None) -> list[Lookup]:
     """What the page the owner is on is about, looked up before the model is asked anything, so
     that "this incident" and "this device" mean what they are looking at."""
     if page is None:
@@ -381,7 +381,7 @@ def _looking_at(redactor: Redactor, page: Page | None) -> str | None:
     return f"The owner is on the {title} page." if title else None
 
 
-def _question(
+def build_question(
     db: Session,
     conversation: AiConversation,
     earlier: list[AiMessage],
@@ -536,6 +536,37 @@ def _looked_at(ran: list[tuple[Lookup, Found]]) -> list[dict[str, str]]:
     return [{"tool": lookup.tool.name, "summary": found.summary} for lookup, found in ran]
 
 
+def settle(
+    outcome: gateway.Answer | Unavailable,
+    ran: list[tuple[Lookup, Found]],
+    call_ids: list[int],
+    *,
+    last: bool,
+) -> Reply | list[Lookup]:
+    """What came of one round: the reply, if it is decided (an answer, or why there is none), or
+    else the lookups the model wants made before it answers. ``call_ids`` gets the request's."""
+    if isinstance(outcome, Unavailable):
+        return _failed(outcome.reason, call_ids)
+    call_ids.append(outcome.call_id)
+    if not outcome.ok:
+        return _failed(outcome.reason or "The AI did not answer.", call_ids)
+    step = parse(outcome.text)
+    if step is None:
+        return _failed("The AI's answer could not be read. Ask again.", call_ids)
+    if step.lookups and not last:
+        return step.lookups
+    if step.answer:
+        return Reply(
+            True,
+            step.answer,
+            _looked_at(ran),
+            _cited(step.cites, ran),
+            call_ids,
+            _proposed(step.actions, ran),
+        )
+    return _failed("The AI did not give an answer. Ask again.", call_ids)
+
+
 def reply_to(
     db: Session,
     context: Context,
@@ -548,35 +579,18 @@ def reply_to(
     """Answers a question, asking the model up to ``MAX_ROUNDS`` times: each time it may ask for
     more to be looked up, and the last time it has to answer. For one of the API's own threads.
     The page the owner is on, if they said, is looked up first. The caller commits."""
-    asked: list[Lookup] = _page_lookups(db, page)
+    asked: list[Lookup] = page_lookups(db, page)
     call_ids: list[int] = []
     for number in range(1, MAX_ROUNDS + 1):
         ran: list[tuple[Lookup, Found]] = []
-        question = _question(
-            db, conversation, earlier, text, asked, ran, now, last=number == MAX_ROUNDS, page=page
+        last = number == MAX_ROUNDS
+        question = build_question(
+            db, conversation, earlier, text, asked, ran, now, last=last, page=page
         )
-        outcome = gateway.ask(db, context, question, now)
-        if isinstance(outcome, Unavailable):
-            return _failed(outcome.reason, call_ids)
-        call_ids.append(outcome.call_id)
-        if not outcome.ok:
-            return _failed(outcome.reason or "The AI did not answer.", call_ids)
-        step = parse(outcome.text)
-        if step is None:
-            return _failed("The AI's answer could not be read. Ask again.", call_ids)
-        if step.lookups and number < MAX_ROUNDS:
-            asked += [lookup for lookup in step.lookups if lookup not in asked]
-            continue
-        if step.answer:
-            return Reply(
-                True,
-                step.answer,
-                _looked_at(ran),
-                _cited(step.cites, ran),
-                call_ids,
-                _proposed(step.actions, ran),
-            )
-        return _failed("The AI did not give an answer. Ask again.", call_ids)
+        settled = settle(gateway.ask(db, context, question, now), ran, call_ids, last=last)
+        if isinstance(settled, Reply):
+            return settled
+        asked += [lookup for lookup in settled if lookup not in asked]
     raise AssertionError("unreachable")  # pragma: no cover - the last round returns above
 
 
@@ -606,6 +620,36 @@ def _remember(history: list[AiMessage]) -> list[AiMessage]:
     return [message for message in history if message.ok][-HISTORY:]
 
 
+def store(db: Session, conversation: AiConversation, answer: Reply, now: datetime) -> AiMessage:
+    """Adds the assistant's answer (or why there is none) to a conversation. The caller commits."""
+    message = AiMessage(
+        conversation_id=conversation.id,
+        role="assistant",
+        text=answer.text,
+        ok=answer.ok,
+        lookups=answer.lookups,
+        cites=answer.cites,
+        actions=answer.actions,
+        call_ids=answer.call_ids,
+        created_at=now,
+    )
+    db.add(message)
+    conversation.updated_at = now
+    db.flush()
+    return message
+
+
+def put_question(
+    db: Session, conversation: AiConversation, text: str, now: datetime
+) -> list[AiMessage]:
+    """Adds the owner's question to a conversation, and gives what was said before it, which is
+    what the model is shown. The caller commits."""
+    earlier = _remember(messages(db, conversation))
+    db.add(AiMessage(conversation_id=conversation.id, role="user", text=text, created_at=now))
+    db.flush()
+    return earlier
+
+
 def say(
     db: Session,
     context: Context,
@@ -616,22 +660,5 @@ def say(
 ) -> None:
     """Adds the owner's question to a conversation and the assistant's answer to it (or why there
     is none). ``page`` is where the owner is when they ask. The caller commits."""
-    earlier = _remember(messages(db, conversation))
-    db.add(AiMessage(conversation_id=conversation.id, role="user", text=text, created_at=now))
-    db.flush()
-    answer = reply_to(db, context, conversation, earlier, text, now, page)
-    db.add(
-        AiMessage(
-            conversation_id=conversation.id,
-            role="assistant",
-            text=answer.text,
-            ok=answer.ok,
-            lookups=answer.lookups,
-            cites=answer.cites,
-            actions=answer.actions,
-            call_ids=answer.call_ids,
-            created_at=now,
-        )
-    )
-    conversation.updated_at = now
-    db.flush()
+    earlier = put_question(db, conversation, text, now)
+    store(db, conversation, reply_to(db, context, conversation, earlier, text, now, page), now)
