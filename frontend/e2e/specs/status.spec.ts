@@ -96,11 +96,16 @@ test.describe('status page', () => {
     await expect(status.collectorNames).toHaveText([
       'Collector worker',
       'ntopng: Connection check',
+      'ntopng: Alert counts',
       'ntopng: Alerts',
+      'ntopng: Suspicious flows',
+      'ntopng: Host details',
       'ntopng: Hosts',
       'ntopng: Interface traffic',
+      'ntopng: Interface, network, device and system alerts',
+      'ntopng: Application protocols',
     ])
-    await expect(status.collectorStates).toHaveText(new Array(5).fill('Working'))
+    await expect(status.collectorStates).toHaveText(new Array(10).fill('Working'))
     await expect(status.collector('ntopng: Connection check')).toContainText('Last worked just now')
     await expect(status.fine).toBeVisible()
 
@@ -124,7 +129,7 @@ test.describe('status page', () => {
     await harness.setWorker('running')
     await harness.runCollectors()
     await dashboard.goto()
-    await expect(dashboard.collectionTile).toContainText('4 collectors')
+    await expect(dashboard.collectionTile).toContainText('9 collectors')
 
     await integration.goto('ntopng')
     await integration.disconnect.click()
