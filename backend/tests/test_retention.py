@@ -198,6 +198,10 @@ class FakePurge:
         return 0
 
 
+def no_quota(new_session: Callable[[], Session]) -> None:
+    return None
+
+
 def run_until_called(settings: Settings, purge: FakePurge, times: int) -> None:
     """Runs the loop, with its purge swapped for the fake, until it has been called that many
     times, then cancels it."""
@@ -213,6 +217,7 @@ def run_until_called(settings: Settings, purge: FakePurge, times: int) -> None:
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(retention, "purge_once", purge)
+        patch.setattr(retention, "enforce_quota", no_quota)
         asyncio.run(run())
 
 

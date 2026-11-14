@@ -9,7 +9,7 @@ import { settingsSections } from '@/settings'
   <AppPage>
     <PageHeader
       title="Settings"
-      description="Your account, what you have told AresGate, which AI it and its agents may ask and how long its data is kept."
+      description="Your account, what you have told AresGate, which AI it and its agents may ask and how long its data is kept and how big its database may get."
     />
     <div class="settings">
       <SettingsNav :sections="settingsSections" />

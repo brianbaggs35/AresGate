@@ -13,6 +13,7 @@ export class SettingsPage {
   readonly aiLink: Locator
   readonly agentsLink: Locator
   readonly dataLink: Locator
+  readonly retentionLink: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -26,6 +27,7 @@ export class SettingsPage {
     this.aiLink = page.getByTestId('settings-nav-ai')
     this.agentsLink = page.getByTestId('settings-nav-agents')
     this.dataLink = page.getByTestId('settings-nav-data')
+    this.retentionLink = page.getByTestId('settings-nav-retention')
   }
 
   async goto(): Promise<void> {

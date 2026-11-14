@@ -13,12 +13,15 @@ from sqlalchemy import ColumnElement, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import SQLColumnExpression
 
+from app import retention_policy
 from app.config import Settings
 from app.models import Base, SourceRetention
 from app.partitions import Weekly
 
 MIN_DAYS = 1
 MAX_DAYS = 3650
+# What "forever" is, for the days a source keeps its rows: a hundred years.
+FOREVER_DAYS = 36500
 
 
 @dataclass(frozen=True)
@@ -69,8 +72,14 @@ class Retained:
     tidy: Callable[[Session], None] | None = None
 
     def load(self, db: Session, settings: Settings) -> Retention:
+        """How long each source keeps its rows: as its own setting says, else the default of the
+        table's setting, or of the Retention page where the owner manages retention there. Where
+        they keep everything forever, so does every source, whatever it was set to."""
+        chosen = retention_policy.load(db)
+        if chosen.managed and chosen.keep_forever:
+            return Retention(FOREVER_DAYS, {})
         own = {row.source: row.days for row in db.scalars(select(self.policy))}
-        return Retention(self.default_days(settings), own)
+        return Retention(self.default_days(chosen.apply(settings)), own)
 
     def set_days(self, db: Session, source: str, days: int | None) -> None:
         """Keeps a source's rows for this many days, or for the default again when ``days`` is

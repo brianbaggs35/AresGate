@@ -293,6 +293,11 @@ export const routes: RouteRecordRaw[] = [
         name: 'settings-data',
         component: () => import('@/views/DataView.vue'),
       },
+      {
+        path: 'retention',
+        name: 'settings-retention',
+        component: () => import('@/views/RetentionSettingsView.vue'),
+      },
     ],
   },
   // The Security page became the Settings area's Account page.

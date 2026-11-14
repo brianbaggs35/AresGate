@@ -301,6 +301,36 @@ isn't a number is left out. So far the collectors that store metrics are OPNsens
 - **If the clock is wrong.** A sample dated more than five minutes ahead of AresGate's clock is
   stored as of now.
 
+### Retention and the size of the database
+
+**Settings**, then **Retention**, is one place to say how long AresGate keeps what it collects and
+how big its database may get. It starts switched off, and while it is off nothing changes: each
+kind of data is kept for the time of its own setting (30 days for events, measurements, the API
+log and the alert log, 90 for the record of AI requests, and 365 for the activity log), and the
+page lists them. Switch **Manage how long data is kept** on to use what you choose instead:
+
+- **Keep it for a number of days** (1 to 3650, 30 by default) sets one time for events,
+  measurements, the API log, the record of AI requests and the log of alerts sent. An integration
+  that you gave its own time on the **Data** page keeps that time. The activity log, which is the
+  record of what was done in AresGate, keeps its own period (`ARESGATE_AUDIT_RETENTION_DAYS`).
+- **Keep everything forever** deletes nothing because of its age or the size of the database, the
+  activity log included, and stores events and measurements however old they are. The database
+  takes more room the longer AresGate runs, so keep an eye on the disk.
+- **Limit the size of the database** (1 gigabyte or more, off by default) keeps the database under
+  that size. Every fifteen minutes AresGate measures it, and when it is over the limit it drops
+  the oldest week of events or measurements, a whole table at a time, which gives the disk back at
+  once, until it is under 95% of the limit. Storing is never refused because of the limit, so
+  nothing that arrives is lost to it. The week being collected is never dropped, and nothing else
+  is deleted: if only that week is left and the database is still over (the limit is smaller than a
+  week of data and everything else AresGate keeps), the page says so and the limit has to be
+  raised. The incidents, devices, verdicts and settings are not touched.
+
+A clean-up of what is past its time still happens when the API starts and every six hours, and
+shortening the time takes effect at the next one. All of it is safe to repeat: the same weeks are
+never dropped twice, and a clean-up that fails (the database was restarting, say) is logged and
+tried again at the next. Each change of these settings is in the audit log. The same settings are `GET` and `PUT` at
+`/api/retention-settings`, which is how the AI analyst and scripts can read them.
+
 ### Stored devices
 
 The devices the collectors see on the network are kept in two tables: `devices`, with one row

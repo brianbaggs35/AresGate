@@ -67,7 +67,7 @@ from app.models.interfaces import Interface, InterfaceFeed
 from app.models.metrics import MetricRetention, MetricSample, MetricSeries
 from app.models.nvd import NvdCve
 from app.models.passkeys import Passkey, PasskeyChallenge
-from app.models.retention import SourceRetention
+from app.models.retention import RetentionSettings, SourceRetention
 from app.models.review import ANSWERS, REVIEW_MODES, ReviewFeedback, ReviewSettings
 from app.models.searches import SavedSearch
 from app.models.system import SystemInfo
@@ -134,6 +134,7 @@ __all__ = [
     "Passkey",
     "PasskeyChallenge",
     "RecoveryCode",
+    "RetentionSettings",
     "ReviewFeedback",
     "ReviewSettings",
     "SavedSearch",

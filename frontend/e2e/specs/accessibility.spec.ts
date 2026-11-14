@@ -499,6 +499,24 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the retention settings have no WCAG 2.2 AA problems', async ({
+      page,
+      retentionSettings,
+      shell,
+    }) => {
+      await retentionSettings.goto()
+      await expect(retentionSettings.managed).toBeVisible()
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await expectAccessible(page)
+
+      // Switched on, with a number of days and a limit on the size of the database.
+      await retentionSettings.managed.check()
+      await retentionSettings.limited.check()
+      await expect(retentionSettings.quota).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the threat detection settings have no WCAG 2.2 AA problems', async ({
       page,
       harness,

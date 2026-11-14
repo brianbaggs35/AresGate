@@ -135,6 +135,7 @@ describe('router', () => {
       ['/settings/verdicts', 'settings-verdicts'],
       ['/settings/ai', 'settings-ai'],
       ['/settings/data', 'settings-data'],
+      ['/settings/retention', 'settings-retention'],
     ] as const) {
       const page = await visit(path)
       expect(page.name).toBe(name)
