@@ -303,7 +303,7 @@ async def take(
             "connection's settings."
         )
     if reply.status >= HTTPStatus.BAD_REQUEST:
-        problem = probes.problem(reply, PRODUCT)
+        problem = probes.ntopng_problem(reply)
         raise CaptureFailed(
             problem.message if problem else f"{PRODUCT} answered HTTP {reply.status}."
         )

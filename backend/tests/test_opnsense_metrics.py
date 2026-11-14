@@ -302,7 +302,9 @@ class TestSystemHealth:
     ) -> None:
         run(session, settings, engine, serve, SystemHealth(), answering({}, status=403))
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            health(session).last_error or ""
+        )
 
 
 class TestCpuUsageRun:
@@ -336,7 +338,9 @@ class TestCpuUsageRun:
     ) -> None:
         run(session, settings, engine, serve, CpuUsage(), answering({}, status=403))
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            health(session).last_error or ""
+        )
 
 
 class TestInterfaceTrafficRun:
@@ -396,7 +400,9 @@ class TestInterfaceTrafficRun:
     ) -> None:
         run(session, settings, engine, serve, InterfaceTraffic(), answering({}, status=403))
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            health(session).last_error or ""
+        )
 
 
 class TestGatewayStatusRun:
@@ -498,4 +504,6 @@ class TestGatewayStatusRun:
     ) -> None:
         run(session, settings, engine, serve, GatewayStatus(), answering({}, status=403))
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            health(session).last_error or ""
+        )

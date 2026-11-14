@@ -174,8 +174,9 @@ def test_opnsense_without_a_version_still_answers(serve: Serve) -> None:
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        (Answer(status=401), "OPNsense didn't accept the credentials, or the user isn't allowed"),
-        (Answer(status=403), "(HTTP 403)"),
+        (Answer(status=401), "OPNsense didn't accept the API key and secret (HTTP 401"),
+        (Answer(status=403), "accepted the key and secret, but the user isn't allowed to read"),
+        (Answer(status=403), "(HTTP 403, Forbidden)"),
         (Answer(status=404), "OPNsense answered 404"),
         (Answer(status=502), "OPNsense answered HTTP 502."),
         (Answer(status=302, headers={"Location": "/ui"}), "redirected the request"),
@@ -640,7 +641,8 @@ def test_ntopng_that_refuses_a_login_redirects_to_its_login_page(serve: Serve) -
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        (Answer(status=403), "ntopng didn't accept the credentials"),
+        (Answer(status=401), "accepted the sign-in, but the user isn't allowed to read this"),
+        (Answer(status=403), "whose allowed interface is one it doesn't have"),
         (Answer(body="[]"), "doesn't look like ntopng's"),
         (Answer(body='{"rc": 0}'), "doesn't look like ntopng's"),
         (Answer(body="nope"), "doesn't look like ntopng's"),
@@ -766,7 +768,7 @@ def test_ntopng_with_no_interfaces_says_so(serve: Serve) -> None:
             Answer(status=302, headers={"Location": "/lua/login.lua"}),
             "redirected to its login page",
         ),
-        (Answer(status=403), "ntopng didn't accept the credentials"),
+        (Answer(status=401), "(HTTP 401, NOT_GRANTED)"),
         (Answer(body="nope"), "doesn't look like ntopng's"),
         (Answer(drop=True), "broke, or it isn't a web server"),
     ],
@@ -1173,7 +1175,11 @@ def test_crowdsec_accepts_the_key_whether_or_not_anyone_is_banned(serve: Serve, 
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        (Answer(status=403, body='{"message": "access forbidden"}'), "CrowdSec didn't accept"),
+        (
+            Answer(status=403, body='{"message": "access forbidden"}'),
+            "CrowdSec's local API answered access forbidden (HTTP 403)",
+        ),
+        (Answer(status=401), "CrowdSec didn't accept the credentials, or the user isn't allowed"),
         (Answer(body="<html>"), "doesn't look like CrowdSec's"),
         (Answer(body='{"a": 1}'), "doesn't look like CrowdSec's"),
     ],

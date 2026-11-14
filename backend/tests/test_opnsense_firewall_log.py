@@ -535,10 +535,12 @@ class TestRunningAgainstTheFirewall:
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
     ) -> None:
         certificate = make_certificate()
-        server = serve(lambda seen: Answer(status=403, body="{}"), certificate)
+        server = serve(lambda seen: Answer(status=401, body="{}"), certificate)
         connect(session, settings, server.url, certificate)
 
         collect(settings, engine)
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "didn't accept the API key and secret (HTTP 401" in (
+            health(session).last_error or ""
+        )
         assert stored_events(session) == []

@@ -31,6 +31,14 @@ Every release's notes are here, newest first. The format follows
 
 - **The button on the Interfaces page that looks for what your programs report now says Find
   interfaces,** not Find feeds, so it says what you are looking for.
+- **The connection tests and the status page now say whether OPNsense, ntopng or CrowdSec
+  refused the sign-in or the user.** Each uses 401 and 403 in its own way, and the one sentence
+  that covered both hid which it was. OPNsense says whether the key and secret are wrong or the
+  user lacks the privilege for the page (and names the page), ntopng says the user isn't granted
+  the capability or has an allowed interface it doesn't have, and CrowdSec says its bouncer key
+  isn't known. Zenarmor keeps the one sentence, since its documentation couldn't be read. The
+  official sources are listed in
+  [What a refusal means](DOCS/integrations.md#what-a-refusal-means).
 
 ### Fixed
 

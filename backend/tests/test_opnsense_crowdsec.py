@@ -444,7 +444,8 @@ class TestRunningBansAgainstTheFirewall:
         record = health(session)
         assert record.consecutive_failures == 1
         assert record.last_error is not None
-        assert "isn't allowed to read this (HTTP 403)" in record.last_error
+        assert "user isn't allowed to read" in record.last_error
+        assert "(HTTP 403, Forbidden)" in record.last_error
 
     def test_a_plugin_that_isnt_installed_is_a_404(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve

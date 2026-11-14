@@ -72,7 +72,7 @@ async def _rows(context: Context) -> list[object]:
         query={"origins": ORIGINS},
         headers={"X-Api-Key": context.target.secrets["api_key"]},
     )
-    if bad := probes.problem(reply, PRODUCT):
+    if bad := probes.crowdsec_problem(reply):
         raise CollectorFailed(bad.message)
     if reply.text.strip() == "null":
         return []
