@@ -78,7 +78,7 @@ export class AssetPage {
     this.noIncidents = page.getByTestId('asset-no-incidents')
     this.verdicts = page.getByTestId('asset-verdict')
     this.noVerdicts = page.getByTestId('asset-no-verdicts')
-    this.capture = page.getByTestId('asset-capture')
+    this.capture = page.getByTestId('asset-capture-section')
     this.captureStart = page.getByTestId('capture-start')
     this.captureSummary = page.getByTestId('capture-summary')
     this.capturePackets = page.getByTestId('capture-packet')
