@@ -46,7 +46,8 @@ describe('ChatMessage', () => {
         cites: [
           { kind: 'incident', key: '3', label: 'Incident 3' },
           { kind: 'integration', key: 'ntopng', label: 'ntopng' },
-          { kind: 'device', key: '9', label: 'A device' },
+          { kind: 'device', key: '9', label: 'vault' },
+          { kind: 'mystery', key: '1', label: 'Something with no page' },
         ],
       }),
     )
@@ -55,12 +56,13 @@ describe('ChatMessage', () => {
       '2 open incidents',
       '3 integrations, 0 collectors failing',
     ])
-    // A thing with no page of its own is not offered as a link.
+    // A device links to its page, and a thing with no page of its own is not offered as a link.
     const cites = wrapper.findAll('[data-test="message-cite"]')
-    expect(cites.map((chip) => chip.text())).toEqual(['Incident 3', 'ntopng'])
+    expect(cites.map((chip) => chip.text())).toEqual(['Incident 3', 'ntopng', 'vault'])
     expect(cites.map((chip) => chip.attributes('href'))).toEqual([
       '/incidents/3',
       '/integrations/ntopng',
+      '/assets/device-9',
     ])
     expect(find('message-lookups').exists()).toBe(true)
   })

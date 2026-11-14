@@ -24,6 +24,9 @@ Every release's notes are here, newest first. The format follows
   (10 points by default) and how much higher for guests and IoT devices (0), with the preview of
   what each would change. The AI is told which devices matter, and no longer told a local
   device's hardware address. See [Which devices matter](DOCS/threats.md#which-devices-matter).
+- **The assistant cites devices too.** When it looks up a device, or the new ones, its answer can
+  name it as `[device 12]` and cite it, and the page links both to that device's page, the way an
+  incident links to the incident. A citation still has to be something a lookup returned.
 
 ### Fixed
 

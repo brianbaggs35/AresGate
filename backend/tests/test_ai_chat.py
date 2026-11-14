@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.ai import chat, tools
 from app.ai.gateway import Context
 from app.config import Settings
-from app.models import AiCall, AiConversation, AiMessage, IntegrationConnection
+from app.models import AiCall, AiConversation, AiMessage, Device, IntegrationConnection
 from tests.stubs import Answer as Reply
 from tests.stubs import Handler, Seen, Serve
 from tests.test_ai_gateway import Log, anthropic_says, context
@@ -226,6 +226,33 @@ class TestAnswering:
         calls = session.scalars(select(AiCall).order_by(AiCall.id)).all()
         assert [call.about for call in calls] == [f"chat {row.id}"] * 2
         assert assistant.call_ids == [call.id for call in calls]
+
+    def test_a_device_it_looked_up_can_be_cited_but_one_it_did_not_see_cannot(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        nas = Device(
+            mac="aa:bb:cc:00:00:01",
+            hostname="vault",
+            first_seen_at=NOW,
+            last_seen_at=NOW,
+        )
+        session.add(nas)
+        session.commit()
+        provider = Scripted(
+            reply(lookups=[look("device", name="vault")], answer=""),
+            reply(
+                answer=f"It is [device {nas.id}].",
+                cites=[f"device {nas.id}", "device 999", f"Device {nas.id}"],
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider, "What is vault?")
+
+        assert history[1].cites == [{"kind": "device", "key": str(nas.id), "label": "vault"}]
+        # The provider is shown the device's number and a stand-in for its name, never the name.
+        assert f"[device {nas.id}] NAME_" in provider.prompts[1]
+        assert "vault" not in provider.prompts[1]
+        assert "[device 12]" in chat.SYSTEM
 
     def test_the_same_lookup_asked_twice_is_run_once(
         self, session: Session, settings: Settings, serve: Serve

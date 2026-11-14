@@ -69,8 +69,9 @@ asked again with what was found, and may look up more once. Fill "id", "name", "
 {_TOOL_LIST}
 
 When you have what you need, put the answer in "answer" and leave "lookups" empty. Write an \
-incident as [incident 3]. In "cites" list what you based the answer on, as "incident 3" or \
-"integration opnsense", only things that appeared in what you were given.
+incident as [incident 3] and a device as [device 12]. In "cites" list what you based the answer \
+on, as "incident 3", "device 12" or "integration opnsense", only things that appeared in what you \
+were given.
 
 Answer only with the JSON you are asked for.\
 """
