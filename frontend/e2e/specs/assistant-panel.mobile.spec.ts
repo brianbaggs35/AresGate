@@ -1,5 +1,5 @@
 import type { IncidentRequest } from '../support'
-import { expect, test, turnOnAi } from '../support'
+import { expect, test, turnOnAi, waitForMotion } from '../support'
 
 const SCAN: IncidentRequest = {
   address: '93.184.216.34',
@@ -23,6 +23,8 @@ test.describe('the assistant panel on a phone', () => {
     await assistantPanel.opener.click()
 
     await expect(assistantPanel.panel).toBeVisible()
+    // The sheet rises from the bottom, so it is measured once it has arrived.
+    await waitForMotion(page)
     const view = page.viewportSize()
     const box = await assistantPanel.input.boundingBox()
     expect(box).not.toBeNull()

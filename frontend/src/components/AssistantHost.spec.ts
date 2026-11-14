@@ -46,9 +46,18 @@ describe('AssistantHost', () => {
     expect(wrapper.find('[data-test="assistant-drawer"]').exists()).toBe(false)
     const sheet = document.body.querySelector('.host__sheet')
     expect(sheet).not.toBeNull()
+    expect(sheet?.querySelector('[data-test="assistant-panel"]')).not.toBeNull()
     // Pressing outside it, or swiping it away, closes it.
     wrapper.findComponent(VBottomSheet).vm.$emit('update:modelValue', false)
     expect(useAssistantStore().open).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('draws nothing of the panel in a sheet that is closed, on a phone', async () => {
+    const { assistant, wrapper } = await open(400)
+    assistant.open = false
+    await flushPromises()
+    expect(document.body.querySelector('[data-test="assistant-panel"]')).toBeNull()
     wrapper.unmount()
   })
 
