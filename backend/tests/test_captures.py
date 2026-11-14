@@ -275,8 +275,9 @@ def test_raw_ip_and_linux_cooked_captures_are_read() -> None:
 def test_what_is_not_a_capture_is_refused_in_words() -> None:
     with pytest.raises(CaptureFailed, match="only 3 bytes"):
         captures.parse(b"abc")
+    pcapng = bytes.fromhex("0a0d0d0a") + bytes(40)
     with pytest.raises(CaptureFailed, match="classic pcap"):
-        captures.parse(bytes.fromhex("0a0d0d0a") + bytes(40))
+        captures.parse(pcapng)
     other_link = pcap_file([], link=105)
     with pytest.raises(CaptureFailed, match="type 105"):
         captures.parse(other_link)
