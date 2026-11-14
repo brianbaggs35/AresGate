@@ -649,9 +649,11 @@ class TestTesting:
         serve: Serve,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(service, "LOAD_DEADLINE", 0.2)
-        monkeypatch.setattr(service, "LOAD_READ_TIMEOUT", 0.1)
-        server = serve(stand_ins.ollama("", {"llama3.2:3b"}, load_seconds=1.0))
+        # Seconds, not tenths: a busy computer can take longer than that to answer the first
+        # request, which is not what is tested. Only the load is slower than the read timeout.
+        monkeypatch.setattr(service, "LOAD_DEADLINE", 5.0)
+        monkeypatch.setattr(service, "LOAD_READ_TIMEOUT", 1.0)
+        server = serve(stand_ins.ollama("", {"llama3.2:3b"}, load_seconds=2.0))
         row = saved(session, settings, catalog.OLLAMA, model="llama3.2:3b", base_url=server.url)
         target = service.load_target(session, settings, catalog.OLLAMA, row, {})
 
