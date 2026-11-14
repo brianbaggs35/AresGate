@@ -134,9 +134,9 @@ function notesOf(found: Capture): string {
       </v-btn>
     </div>
 
-    <p v-if="running" class="text-body-medium text-medium-emphasis mt-3" role="status">
+    <output v-if="running" class="listening text-body-medium text-medium-emphasis mt-3">
       Listening for {{ seconds }} seconds…
-    </p>
+    </output>
 
     <v-alert
       v-if="failure"
@@ -206,6 +206,10 @@ function notesOf(found: Capture): string {
 
 .controls__address {
   max-width: 260px;
+}
+
+.listening {
+  display: block;
 }
 
 .result {
