@@ -44,8 +44,10 @@ DEFAULT_DETAIL = "standard"
 # Why a message was sent: an incident the destination had not heard of, one it had that got worse,
 # one that was reopened after it was dealt with, or a summary of what was held back (``limit``: too
 # many an hour, ``quiet``: it came in during quiet hours). ``retract`` is not a message but a
-# correction to one already sent, made when the incident turns out not to be a threat.
-DELIVERY_REASONS = ("new", "worse", "reopened", "limit", "quiet", "retract")
+# correction to one already sent, made when the incident turns out not to be a threat. A watchdog
+# message is about no incident: ``silent`` says a collector stopped reporting, ``back`` that it
+# reports again.
+DELIVERY_REASONS = ("new", "worse", "reopened", "limit", "quiet", "retract", "silent", "back")
 # Where a message is: waiting (``queued``, ``held`` for quiet hours to end, ``retrying`` after a
 # failure, ``limited`` until a summary tells of it), told in a summary (``summarized``), ``sent``,
 # given up on (``failed``), or no longer worth sending (``dropped``).
@@ -144,9 +146,10 @@ class AlertDelivery(Base):
 
     __tablename__ = "alert_deliveries"
     __table_args__ = (
-        CheckConstraint("kind IN ('incident', 'summary', 'update')", name="kind"),
+        CheckConstraint("kind IN ('incident', 'summary', 'update', 'watchdog')", name="kind"),
         CheckConstraint(
-            "reason IN ('new', 'worse', 'reopened', 'limit', 'quiet', 'retract')", name="reason"
+            "reason IN ('new', 'worse', 'reopened', 'limit', 'quiet', 'retract', 'silent', 'back')",
+            name="reason",
         ),
         CheckConstraint(
             "state IN ('queued', 'held', 'retrying', 'limited', 'summarized', 'sent', 'failed', "
@@ -172,7 +175,8 @@ class AlertDelivery(Base):
         BigInteger, ForeignKey("incidents.id", ondelete=SET_NULL), default=None
     )
     # ``incident``: a message about one. ``summary``: one message for several. ``update``: an edit
-    # to a message already sent (``target_id``), which says it has been stood down.
+    # to a message already sent (``target_id``), which says it has been stood down. ``watchdog``: a
+    # collector went quiet, or is back (see app/alerts/watchdog.py).
     kind: Mapped[str] = mapped_column(String(8), default="incident")
     reason: Mapped[str] = mapped_column(String(8))
     key: Mapped[str] = mapped_column(String(40))

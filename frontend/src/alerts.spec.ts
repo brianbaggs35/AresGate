@@ -136,6 +136,16 @@ describe('deliveryTitle', () => {
       'Stood down: A scan',
     )
   })
+
+  it('says a message about a collector is that it went quiet, or is back', () => {
+    const base = { kind: 'watchdog', title: 'OPNsense · Connection check', covers: 0 } as const
+    expect(deliveryTitle({ ...base, reason: 'silent' })).toBe(
+      'OPNsense · Connection check has gone quiet',
+    )
+    expect(deliveryTitle({ ...base, reason: 'back' })).toBe(
+      'OPNsense · Connection check is reporting again',
+    )
+  })
 })
 
 describe('the words of the log', () => {
@@ -148,6 +158,8 @@ describe('the words of the log', () => {
       'limit',
       'quiet',
       'retract',
+      'silent',
+      'back',
     ])
     expect(DELIVERY_STATES.sent.waiting).toBe(false)
     expect(DELIVERY_STATES.held.waiting).toBe(true)

@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Alerts now tell you when a collector goes quiet.** A collector that has not worked for
+  fifteen minutes (or three of its own intervals, if that is longer) is told to every destination
+  that is on, once for each stretch of silence, with when it last worked and what its last attempt
+  said, and again when it works. It follows quiet hours and is not held back by the limit on
+  messages an hour. A stopped worker still cannot alert. See
+  [When a collector goes quiet](DOCS/alerts.md#when-a-collector-goes-quiet).
 - **An Incident response page, right under Incidents in the menu.** It says in one sentence
   whether any incident still waits for a response, then lists the incidents of the last 24 hours,
   7 days or 30 days in the one group that says what was done about each: **needs a response**
