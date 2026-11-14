@@ -176,7 +176,6 @@ describe('ApiCallDialog', () => {
     const excerpt = inSheet('sheet-excerpt')
     expect(excerpt?.textContent).toBe('<img src=x onerror=alert(1)>')
     expect(excerpt?.querySelector('img')).toBeNull()
-    expect(excerpt?.getAttribute('tabindex')).toBe('0')
     expect(document.querySelector('[aria-label="Copy the answer"]')).not.toBeNull()
   })
 

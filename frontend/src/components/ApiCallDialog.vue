@@ -340,16 +340,9 @@ onBeforeUnmount(() => {
               Start of the answer
               <CopyButton v-if="full?.excerpt" :text="full.excerpt" label="the answer" />
             </h4>
-            <pre
-              v-if="full?.excerpt"
-              class="api-detail__excerpt"
-              role="textbox"
-              aria-readonly="true"
-              aria-multiline="true"
-              aria-label="Start of the answer"
-              tabindex="0"
-              data-test="sheet-excerpt"
-              >{{ full.excerpt }}</pre>
+            <pre v-if="full?.excerpt" class="api-detail__excerpt" data-test="sheet-excerpt">{{
+              full.excerpt
+            }}</pre>
             <p v-else class="text-body-medium text-medium-emphasis" data-test="sheet-no-excerpt">
               No answer was kept. AresGate keeps the start of the answer to a request that failed,
               and of the latest few that worked, and nothing of an answer that is not text.
@@ -454,10 +447,8 @@ onBeforeUnmount(() => {
 }
 
 .api-detail__excerpt {
-  max-height: 18rem;
   margin: 0.5rem 0 0;
   padding: 0.75rem 1rem;
-  overflow: auto;
   border-radius: 8px;
   background: rgb(var(--v-theme-surface-variant), 0.4);
   font-size: 0.8125rem;
