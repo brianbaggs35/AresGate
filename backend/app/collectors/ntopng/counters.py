@@ -1,21 +1,25 @@
-"""How many alerts ntopng has raised in the last day, by how serious and by what kind, as metrics,
-so the baselines can learn how many a quiet day has and a flood stands out.
+"""How many alerts ntopng holds, by how serious and by what kind, as metrics, so the baselines can
+learn how many a quiet day has and a flood stands out.
 
 ``GET /lua/rest/v2/get/alert/severity/counters.lua`` and ``.../alert/type/counters.lua`` take the
 interface (``ifid``) and answer with an array in ``rsp`` with an object for each group: its
 ``count``, the ``entity_label`` of what the alert was about (``Flow``, ``Host``, ``Interface``),
 the ``alert_id`` and its ``name``: the severity's, for the first, and the kind's, for the second.
 They count the alerts of every sort ntopng keeps, the flow and host ones that ``alerts.py`` reads
-among them. The window (``epoch_begin``, ``epoch_end``) is passed the way the alert lists take it.
+among them.
 
-A count is a gauge, not a rising counter: it is how many alerts the last day holds when it is read.
-A severity or a kind with none has no reading, so a chart sees it as a gap, not a zero; the
-``name`` is in ntopng's language, which is English unless it has been changed.
+A count is a gauge, not a rising counter: it is how many alerts ntopng's alert database holds when
+it is read, which is as far back as ntopng keeps them. The scripts take only the interface: they
+never read a time range (they make their store without the request's filters), so the window that
+is still sent is for a ntopng that does read it, and the counts are not "the last day". A severity
+or a kind with none has no reading, so a chart sees it as a gap, not a zero; the ``name`` is in
+ntopng's language, which is English unless it has been changed.
 
-Read from ntopng's source (``scripts/lua/rest/v2/get/alert/{severity,type}/counters.lua``), which
-the documentation has no page for. The time window is inferred from the alert stores, which read the
-same two parameters; the lists take them in seconds. Not tried against a live ntopng. The user must
-be allowed to see alerts."""
+Read from ntopng's source (``scripts/lua/rest/v2/get/alert/{severity,type}/counters.lua`` and
+``alert_store/all_alert_store.lua``), which the documentation has no page for. Not tried against a
+live ntopng. The user must be allowed to see alerts. The scripts ask ntopng's own alert database
+and fail, in ntopng, if that can't answer; ntopng then redirects to its error page, which
+``probes.ntopng_redirected`` tells from a refused login and reports with what the script said."""
 
 from datetime import timedelta
 
@@ -35,8 +39,8 @@ class AlertCounters(Collector):
     key = "ntopng-alert-counters"
     title = "Alert counts"
     summary = (
-        "Reads how many alerts ntopng raised in the last day, by severity and by kind, every five "
-        "minutes, as metrics."
+        "Reads how many alerts ntopng holds, by severity and by kind, every five minutes, as "
+        "metrics."
     )
     interval = timedelta(minutes=5)
     timeout = timedelta(minutes=1)

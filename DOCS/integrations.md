@@ -350,12 +350,19 @@ interfaces are read.
 
 ### How many alerts there are
 
-Every five minutes the number of alerts ntopng raised in the last day, by severity
-(`alerts.by_severity`) and by kind (`alerts.by_kind`), as metrics labelled with the interface, the
-sort of thing the alert was about (`Flow`, `Host`, `Interface`) and the severity's or kind's name
-in ntopng's language. A count is a gauge: it is how many alerts the last day holds when it is
-read. ntopng counts a severity once for each kind of alert that has it, so the groups of one name
-are added up. The time window is passed the way the alert lists take it; that is inferred.
+Every five minutes the number of alerts ntopng holds, by severity (`alerts.by_severity`) and by
+kind (`alerts.by_kind`), as metrics labelled with the interface, the sort of thing the alert was
+about (`Flow`, `Host`, `Interface`) and the severity's or kind's name in ntopng's language. A count
+is a gauge: it is how many alerts ntopng's alert database holds when it is read, as far back as
+ntopng keeps them. ntopng's two scripts read no time range (they take only the interface), so the
+counts are not for the last day; the window AresGate still sends is for a ntopng that reads one.
+ntopng counts a severity once for each kind of alert that has it, so the groups of one name are
+added up.
+
+The scripts ask ntopng's own alert database, and when it can't answer they fail inside ntopng. ntopng
+then redirects to its error page, which is **not** a refused login: the Collection card says
+`ntopng's own script … failed` and quotes what the script said, so the real cause (the alert
+database, the edition or the version) is in front of you.
 
 ### Application protocols
 
@@ -510,6 +517,12 @@ alert is stored once however often it is read, by its document's id in the index
   `indices:data/read/search`; the test passes on that name and nothing else the indexer said.
   The usual causes are a user that isn't mapped to its role (Mapped users) and an index pattern
   that doesn't match `wazuh-alerts-*`.
+- **A user made before the vulnerabilities and the inventory were read.** Its role has only
+  `wazuh-alerts-*`, so the alerts still arrive and the two collectors that read `wazuh-states-*`
+  fail with HTTP 403. The test makes that search too and, when it is refused, still passes (the
+  alerts are what the connection is for) and says what to add: open the user's role (Indexer
+  management, Security, Roles), add an index permission for `wazuh-states-*` with `read`, and check
+  the user is mapped to the role (Mapped users). Nothing else changes.
 - **A gap.** An alert that reaches the indexer more than half an hour after it was raised, such
   as after the indexer was down, is not read. A manager that raises more than 500 alerts in half
   an hour is read from the newest.
@@ -1434,7 +1447,7 @@ shows the same sentence for a collector) says what that product's answer means:
 | Product | 401 | 403 | Read in |
 | --- | --- | --- | --- |
 | OPNsense | The key and secret aren't known (`Authentication Failed`). | The key and secret are right, but the user's privileges don't include the page asked for (`Forbidden`). The message names the page. | [`ApiControllerBase.php`](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Base/ApiControllerBase.php), `beforeExecuteRoute` |
-| ntopng | The user is signed in but isn't granted the capability (`NOT_GRANTED`, rc -3): alerts need the capability to see them, and a capture the permission to download PCAP files. A login it refuses is redirected to its login page (302) instead. | A user whose allowed interface doesn't exist. | [`rest_utils.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/modules/rest_utils.lua), [`flow/alert/list.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/flow/alert/list.lua), [`HTTPserver.cpp`](https://github.com/ntop/ntopng/blob/dev/src/HTTPserver.cpp) |
+| ntopng | The user is signed in but isn't granted the capability (`NOT_GRANTED`, rc -3): alerts need the capability to see them, and a capture the permission to download PCAP files. A login it refuses is redirected to its login page (302) instead; a page it doesn't have, one only in Pro or Enterprise and a script that failed are redirected to its error page (`/lua/http_status_code.lua?message=not_found`, `pro_only`, `enterprise_only` or `internal_error`, which carries the script's message), and the test and the status page say which it was. | A user whose allowed interface doesn't exist. | [`rest_utils.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/modules/rest_utils.lua), [`flow/alert/list.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/flow/alert/list.lua), [`HTTPserver.cpp`](https://github.com/ntop/ntopng/blob/dev/src/HTTPserver.cpp) |
 | CrowdSec (local API) | Not used for a bouncer key. | `access forbidden`: the bouncer key isn't known, which is how it refuses a wrong one. A bouncer has no permission to lack. | [`api_key.go`](https://github.com/crowdsecurity/crowdsec/blob/master/pkg/apiserver/middlewares/v1/api_key.go), whose own comment asks whether it should be 401 |
 | Zenarmor | Said as before: it didn't accept the credentials, or the user isn't allowed. | The same. | Not read: its documentation couldn't be reached when this was written. |
 

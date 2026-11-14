@@ -12,6 +12,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
+from urllib.parse import parse_qs, urlsplit
 
 from app import audit
 from app.integrations.client import ApiClient, CallFailed, Reply, Target, clean_path
@@ -266,6 +267,46 @@ NTOPNG_LOGIN_REFUSED = (
     "ntopng redirected to its login page, which it does when the login is refused. "
     "Check the token, or the username and password."
 )
+# ntopng also redirects, to its error page, a page it doesn't have, one that is only in a paid
+# edition, and a script that failed while it ran (HTTP server source, ``redirect_to_error_page``).
+# Only the redirect to the login page is a refused login.
+NTOPNG_ERROR_PAGE = "/lua/http_status_code.lua"
+NTOPNG_PAID = {"pro_only": "ntopng Pro", "enterprise_only": "ntopng Enterprise"}
+
+
+def ntopng_redirected(reply: Reply, path: str = "") -> str:
+    """What a redirect from ntopng means, for the page of its REST API that was asked for. The
+    login is only refused when it is sent to the login page: its error page, which a page it
+    doesn't have, one that needs a paid edition and a script that failed are all sent to, says
+    which of them it was, and for a failed script, what the script said."""
+    target = urlsplit(reply.headers.get("location", ""))
+    if not target.path.endswith(NTOPNG_ERROR_PAGE):
+        return NTOPNG_LOGIN_REFUSED
+    query = parse_qs(target.query)
+    reason = fact(next(iter(query.get("message", [])), ""), 40)
+    asked = f" for {fact(path, 100)}" if path else ""
+    if reason == "not_found":
+        return (
+            f"ntopng has no page{asked}, so this is a version or an edition of ntopng that "
+            "doesn't have it. The login was accepted."
+        )
+    if reason in NTOPNG_PAID:
+        return (
+            f"The page{asked} is only in {NTOPNG_PAID[reason]}. The login was accepted, and "
+            "ntopng won't answer this one without that edition."
+        )
+    if reason == "internal_error":
+        said = next(iter(query.get("error_message", [])), "")
+        return (
+            f"ntopng's own script{asked} failed, which is a fault inside ntopng and not with "
+            f"the login, which was accepted. It said: {fact(said, 200)}"
+            if said
+            else f"ntopng's own script{asked} failed, which is a fault inside ntopng and not "
+            "with the login, which was accepted."
+        )
+    return (
+        f"ntopng sent the request{asked} to its error page ({reason}), which isn't a refused login."
+    )
 
 
 async def ntopng_get(
@@ -401,7 +442,7 @@ async def ntopng_interfaces(client: ApiClient, target: Target) -> list[NtopngInt
     couldn't be read. ntopng answers a login it refuses with a redirect to its login page."""
     reply = await ntopng_get(client, target, NTOPNG_INTERFACES)
     if 300 <= reply.status < 400:
-        return Verdict(False, NTOPNG_LOGIN_REFUSED)
+        return Verdict(False, ntopng_redirected(reply, NTOPNG_INTERFACES))
     if bad := ntopng_problem(reply):
         return bad
     data = as_object(reply.json())
@@ -673,6 +714,7 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
 WAZUH_INDEXER = "The Wazuh indexer"
 THE_INDEXER = "the Wazuh indexer"
 WAZUH_ALERTS = "/wazuh-alerts-*/_search"
+WAZUH_STATES = "/wazuh-states-*/_search"
 # The index patterns a user has to be allowed to read, for what each is about.
 ALERT_INDICES = "wazuh-alerts-*"
 STATE_INDICES = "wazuh-states-*"
@@ -710,6 +752,13 @@ def indexer_forbidden(reply: Reply, indices: str = ALERT_INDICES) -> str:
         message += f" It says the user has no permission for {fact(permission, 80)}."
     if permission and permission.startswith("cluster:"):
         return f"{message} Add it under the user's role, in Cluster permissions."
+    if indices == STATE_INDICES:
+        return (
+            f"{message} Give the user's role the index permission read on {indices}, and map "
+            "the user to the role (Mapped users). A user made before AresGate read the "
+            "vulnerabilities and the inventory has no such permission yet: its role is under "
+            "Indexer management, Security, Roles."
+        )
     return (
         f"{message} Give the user's role the index permission read on {indices}, and map "
         "the user to the role (Mapped users)."
@@ -763,11 +812,25 @@ def _stored(total: object) -> str:
     return f" It holds {count:,} {'alert' if count == 1 else 'alerts'}."
 
 
+async def _states_gap(client: ApiClient, target: Target) -> str:
+    """What to add to a passing test when the user may search the alerts but not what the agents
+    report (``wazuh-states-*``), which the vulnerabilities and the inventory are read from: a user
+    made before they were read has only the alerts. Only a refusal of the permission is said: the
+    alerts are what the connection is for, so any other answer is left to the collectors."""
+    reply = await wazuh_search(client, target, WAZUH_STATES, {"size": 0})
+    if reply.status != 403:
+        return ""
+    gap = indexer_forbidden(reply, STATE_INDICES)
+    return f" It can't read the vulnerabilities and the inventory yet. {gap}"
+
+
 async def wazuh_indexer(client: ApiClient, target: Target) -> Verdict:
     """Searches the alerts the way the collector does, but asks for none of them. That is the
     one thing AresGate needs the user to be allowed: the root page, which names the version, is
     forbidden to a user that has read access to the alerts and no cluster permission, such as
-    one with Wazuh's own read-only example role."""
+    one with Wazuh's own read-only example role. What the agents report is searched the same way
+    and, if the user is refused it, the test still passes and says what to add, since the alerts
+    don't need it."""
     reply = await wazuh_alerts_search(client, target, {"size": 0})
     if bad := indexer_problem(reply):
         return bad
@@ -778,7 +841,7 @@ async def wazuh_indexer(client: ApiClient, target: Target) -> Verdict:
     return Verdict(
         True,
         f"{WAZUH_INDEXER} answered, and the user can search the alerts."
-        f"{_stored(found.get('total'))}",
+        f"{_stored(found.get('total'))}{await _states_gap(client, target)}",
     )
 
 

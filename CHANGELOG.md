@@ -146,6 +146,16 @@ Every release's notes are here, newest first. The format follows
   bare "HTTP 503".** Testing one of them now asks again after three seconds when it answers
   502, 503 or 504, and if it is still down says so: that it is unavailable, that this is on its
   side and not a problem with the key or AresGate, and that AresGate asks again on its own.
+- **ntopng's error page is no longer called a refused login.** ntopng redirects to its login page
+  when a login is refused, but also to its error page for a page it doesn't have, one that is only
+  in Pro or Enterprise, and a script that failed. AresGate called all of them a refused login, so
+  a fault inside ntopng could be reported as "check the token". The test, the collectors and
+  the packet capture now say which it was and, for a script that failed, what it said. The Alert
+  counts are what ntopng's alert database holds, not the last day: ntopng's scripts read no time
+  range.
+- **Wazuh users made before the vulnerabilities and the inventory.** The indexer test now also
+  searches `wazuh-states-*` and, if the user may not, says to add `read` on it to the user's role
+  (the setup steps say so too). The alerts keep arriving either way.
 
 ## 0.1.6
 

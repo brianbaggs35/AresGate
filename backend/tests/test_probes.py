@@ -638,6 +638,47 @@ def test_ntopng_that_refuses_a_login_redirects_to_its_login_page(serve: Serve) -
     assert len(server.seen) == 1
 
 
+def test_ntopng_that_sends_a_script_that_failed_to_its_error_page_is_not_a_refused_login(
+    serve: Serve,
+) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        lambda seen: Answer(
+            status=302,
+            headers={
+                "Location": "/lua/http_status_code.lua?message=internal_error"
+                "&error_message=attempt%20to%20index%20a%20nil%20value"
+            },
+        ),
+        options={"auth": "token", "interface_id": 0},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert not result.ok
+    assert "login page" not in result.message
+    assert "ntopng's own script for /lua/rest/v2/get/ntopng/interfaces.lua failed" in result.message
+    assert "It said: attempt to index a nil value" in result.message
+
+
+def test_ntopng_that_has_no_page_says_so_and_that_the_login_was_accepted(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve,
+        "ntopng",
+        "api",
+        lambda seen: Answer(
+            status=302, headers={"Location": "/lua/http_status_code.lua?message=not_found"}
+        ),
+        options={"auth": "token", "interface_id": 0},
+        secrets={"token": "tok-abcdef"},
+    )
+
+    assert not result.ok
+    assert "has no page for /lua/rest/v2/get/ntopng/interfaces.lua" in result.message
+    assert "The login was accepted." in result.message
+
+
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
@@ -977,16 +1018,21 @@ def lacking(permission: str) -> Answer:
     )
 
 
-def indexer_security(allowed: set[str], total: object = None) -> Router:
+def indexer_security(allowed: set[str], total: object = None, *, states: bool = True) -> Router:
     """An indexer whose user holds these permissions. It answers as OpenSearch does: 401 to a user
-    it doesn't know, 403 naming the permission to one who lacks it, and for a search the hits."""
+    it doesn't know, 403 naming the permission to one who lacks it, and for a search the hits. The
+    user may search ``wazuh-states-*`` too unless ``states`` is false, as one made before the
+    vulnerabilities and the inventory were read may not."""
 
     def route(seen: Seen) -> Answer:
         if basic(seen) != ("reader", "pw-123456"):
             return Answer(status=401, body="Unauthorized")
-        searching = (seen.method, seen.path) == ("POST", "/wazuh-alerts-*/_search")
+        searching = seen.method == "POST" and seen.path in (
+            "/wazuh-alerts-*/_search",
+            "/wazuh-states-*/_search",
+        )
         needed = SEARCH_NEEDS if searching else ROOT_NEEDS
-        if needed not in allowed:
+        if needed not in allowed or (seen.path == "/wazuh-states-*/_search" and not states):
             return lacking(needed)
         if searching:
             hits: dict[str, object] = {"max_score": None, "hits": []}
@@ -1022,11 +1068,16 @@ def test_the_wazuh_indexer_is_asked_to_search_the_alerts_the_way_the_collector_d
         True,
         "The Wazuh indexer answered, and the user can search the alerts. It holds 1,204 alerts.",
     )
-    [asked] = server.seen
+    asked, states = server.seen
     assert (asked.method, asked.path) == ("POST", "/wazuh-alerts-*/_search")
     assert json.loads(asked.body) == {"size": 0}
     assert basic(asked) == ("reader", "pw-123456")
-    assert [(call.method, call.path) for call in log.calls] == [("POST", "/wazuh-alerts-*/_search")]
+    assert (states.method, states.path) == ("POST", "/wazuh-states-*/_search")
+    assert json.loads(states.body) == {"size": 0}
+    assert [(call.method, call.path) for call in log.calls] == [
+        ("POST", "/wazuh-alerts-*/_search"),
+        ("POST", "/wazuh-states-*/_search"),
+    ]
 
 
 def test_a_user_who_may_only_search_the_alerts_passes_without_the_root_page(
@@ -1039,7 +1090,10 @@ def test_a_user_who_may_only_search_the_alerts_passes_without_the_root_page(
     result, server, _ = indexer(serve, indexer_security({SEARCH_NEEDS}))
 
     assert result.ok
-    assert [seen.path for seen in server.seen] == ["/wazuh-alerts-*/_search"]
+    assert [seen.path for seen in server.seen] == [
+        "/wazuh-alerts-*/_search",
+        "/wazuh-states-*/_search",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1093,6 +1147,45 @@ def test_a_user_who_may_not_search_the_alerts_is_told_which_permission_to_give(
         "(HTTP 403). It says the user has no permission for indices:data/read/search. Give the "
         "user's role the index permission read on wazuh-alerts-*, and map the user to the role "
         "(Mapped users).",
+    )
+
+
+def test_a_user_who_may_search_the_alerts_but_not_what_the_agents_report_is_told_what_to_add(
+    serve: Serve,
+) -> None:
+    """A user made before the vulnerabilities and the inventory were read has only the alerts: the
+    test passes, since the alerts are what the connection is for, and says what to add."""
+    result, _, _ = indexer(
+        serve, indexer_security({SEARCH_NEEDS}, {"value": 7, "relation": "eq"}, states=False)
+    )
+
+    assert result == Verdict(
+        True,
+        "The Wazuh indexer answered, and the user can search the alerts. It holds 7 alerts. "
+        "It can't read the vulnerabilities and the inventory yet. The Wazuh indexer accepted "
+        "the sign-in, but the user isn't allowed to read what the agents report (HTTP 403). It "
+        "says the user has no permission for indices:data/read/search. Give the user's role the "
+        "index permission read on wazuh-states-*, and map the user to the role (Mapped users). "
+        "A user made before AresGate read the vulnerabilities and the inventory has no such "
+        "permission yet: its role is under Indexer management, Security, Roles.",
+    )
+
+
+@pytest.mark.parametrize("status", [404, 500, 503])
+def test_an_answer_about_what_the_agents_report_that_is_not_a_refusal_changes_nothing(
+    serve: Serve, status: int
+) -> None:
+    """Only a refusal of the permission is said: the collectors say the rest."""
+
+    def route(seen: Seen) -> Answer:
+        if seen.path == "/wazuh-states-*/_search":
+            return Answer(status=status)
+        return indexer_security({SEARCH_NEEDS})(seen)
+
+    result, _, _ = indexer(serve, route)
+
+    assert result == Verdict(
+        True, "The Wazuh indexer answered, and the user can search the alerts."
     )
 
 

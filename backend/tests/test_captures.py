@@ -429,6 +429,13 @@ LOGIN = Answer(status=302, headers={"Location": "/lua/login.lua"})
     ("reply", "said"),
     [
         (LOGIN, "login page"),
+        (
+            Answer(
+                status=302,
+                headers={"Location": "/lua/http_status_code.lua?message=pro_only"},
+            ),
+            "only in ntopng Pro",
+        ),
         (Answer(status=400, body="{}"), "HTTP 400"),
         (Answer(status=401), "download PCAP files"),
         (Answer(status=500, body="no"), "HTTP 500"),
