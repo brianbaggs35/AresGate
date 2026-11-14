@@ -296,7 +296,7 @@ async def take(
     except CallFailed as failure:
         raise CaptureFailed(str(failure)) from None
     if 300 <= reply.status < 400:
-        raise CaptureFailed(probes.NTOPNG_LOGIN_REFUSED)
+        raise CaptureFailed(probes.ntopng_redirected(reply, PATH))
     if reply.status == HTTPStatus.BAD_REQUEST:
         raise CaptureFailed(
             "ntopng refused the request (HTTP 400). Check the interfaces chosen in the "

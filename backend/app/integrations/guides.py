@@ -531,7 +531,10 @@ WAZUH = Guide(
                         "Click Create role and give it a name, such as aresgate_alerts. Add an "
                         "index permission with the index patterns wazuh-alerts-* and "
                         "wazuh-states-* and the read permission. Leave Cluster permissions "
-                        "empty: AresGate only searches those indices."
+                        "empty: AresGate only searches those indices. Made this role before "
+                        "AresGate read the vulnerabilities and the inventory? Open it and add "
+                        "the second pattern, wazuh-states-*: the Test button says when it is "
+                        "missing."
                     ),
                     menu=(INDEXER, "Security", "Roles"),
                     fills=(

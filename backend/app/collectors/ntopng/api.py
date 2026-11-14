@@ -47,7 +47,7 @@ async def read(context: Context, path: str, query: Mapping[str, str]) -> object:
     something else."""
     reply = await probes.ntopng_get(context.client, context.target, path, query)
     if 300 <= reply.status < 400:
-        raise CollectorFailed(probes.NTOPNG_LOGIN_REFUSED)
+        raise CollectorFailed(probes.ntopng_redirected(reply, path))
     if reply.status == HTTPStatus.BAD_REQUEST:
         raise CollectorFailed(await _refused(context, query.get("ifid", "")))
     if bad := probes.ntopng_problem(reply):
