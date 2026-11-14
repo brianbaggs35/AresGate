@@ -38,15 +38,43 @@ What each provider's API takes and answers is from its own documentation:
   schema) and ``options``; the text is ``message.content`` and the tokens are
   ``prompt_eval_count`` and ``eval_count``. GET /api/tags lists the models, on the computer or,
   with a bearer key, in Ollama's cloud.
+
+Streaming (``stream``) asks each provider to send the answer as it is written. Each streams
+differently:
+
+- Anthropic: ``"stream": true`` makes the answer server-sent events, each with an ``event:`` name
+  and a ``data:`` line whose JSON repeats it as ``type``. ``message_start`` holds the message with
+  ``usage`` (the input tokens, and the cache reads and writes); each ``content_block_delta`` of
+  ``delta.type`` ``text_delta`` has the next ``delta.text``; ``message_delta`` has
+  ``delta.stop_reason`` and ``usage.output_tokens``, which is cumulative; ``message_stop`` ends it.
+  ``ping`` events come at any time, an ``error`` event can come in the middle of a stream (an
+  ``overloaded_error``, for one), and new kinds of event may be added, so what isn't known is
+  ignored. From the streaming page of the Messages API guide. With a JSON schema the text of the
+  answer is the JSON, in the same ``text_delta`` events.
+- OpenAI: ``"stream": true`` on /v1/responses makes server-sent events whose ``data:`` JSON has a
+  ``type``. ``response.output_text.delta`` has the next ``delta``; ``response.refusal.delta`` is a
+  refusal being written; ``response.completed``, ``response.incomplete`` and ``response.failed``
+  each hold the whole ``response`` as it ends, with its ``usage``, and an ``error`` event has a
+  ``message``. The streaming guide names these events; the fields are from the API reference's
+  event types (``ResponseTextDeltaEvent``, ``ResponseCompletedEvent`` and its kin, and
+  ``ResponseErrorEvent``).
+- Ollama: ``"stream": true`` (its default) makes /api/chat answer a stream of JSON objects, one to
+  a line, each with ``message.content``, the next of the text, and ``done: false``; the last has
+  ``done: true``, the counts (``prompt_eval_count`` and ``eval_count``) and the ``done_reason``.
+  From the API's ``docs/api.md``. A line that is an ``error`` is what Ollama sends when it fails in
+  the middle of one.
 """
 
+import json
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator, Iterator, Mapping
+from contextlib import aclosing
+from dataclasses import dataclass, replace
 from typing import TypeIs, cast
 
 from app.ai.catalog import Caching, ModelDef, ProviderDef, Wire
-from app.integrations.client import ApiClient, Reply
+from app.integrations.client import ApiClient, NotSuccess, Reply
 
 ANTHROPIC_VERSION = "2023-06-01"
 # OpenAI won't take fewer than this many output tokens in a request.
@@ -347,6 +375,189 @@ async def complete(
         body["keep_alive"] = keep_alive
     reply = await client.request("POST", path, json_body=body, headers=headers)
     return read_completion(provider, reply)
+
+
+# -- the answer as it is written
+
+
+class _Reader(ABC):
+    """Reads a provider's streamed answer a line at a time: what ``feed`` is given gives the next
+    of the text, and ``completion`` says what the whole of it counted once it has ended."""
+
+    def __init__(self) -> None:
+        self.parts: list[str] = []
+        self.finished = False
+
+    @abstractmethod
+    def feed(self, line: str) -> Iterator[str]: ...
+
+    @abstractmethod
+    def completion(self) -> Completion: ...
+
+    def _write(self, text: str) -> Iterator[str]:
+        if text:
+            self.parts.append(text)
+            yield text
+
+    def written(self) -> str:
+        return "".join(self.parts)
+
+
+def _event(line: str) -> dict[str, object] | None:
+    """The JSON of a ``data:`` line of a server-sent stream. A line that is anything else (an
+    ``event:`` name, a comment, an empty line that ends an event) is nothing to read."""
+    if not line.startswith("data:"):
+        return None
+    try:
+        loaded = json.loads(line.removeprefix("data:").strip())
+    except ValueError:
+        return None
+    return loaded if _is_object(loaded) else None
+
+
+class _AnthropicReader(_Reader):
+    def __init__(self) -> None:
+        super().__init__()
+        self._usage: dict[str, int] = {}
+        self._stop: object = None
+
+    def _count_usage(self, usage: dict[str, object]) -> None:
+        for name in (
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ):
+            if name in usage:
+                self._usage[name] = _count(usage[name])
+
+    def feed(self, line: str) -> Iterator[str]:
+        event = _event(line)
+        kind = event.get("type") if event else None
+        if event is None:
+            return
+        if kind == "message_start":
+            self._count_usage(_object(_object(event.get("message")).get("usage")))
+        elif kind == "content_block_delta":
+            delta = _object(event.get("delta"))
+            if delta.get("type") == "text_delta":
+                yield from self._write(_text(delta.get("text")) or "")
+        elif kind == "message_delta":
+            self._stop = _object(event.get("delta")).get("stop_reason") or self._stop
+            self._count_usage(_object(event.get("usage")))
+        elif kind == "message_stop":
+            self.finished = True
+        elif kind == "error":
+            raise AiFailed("The model stopped answering part of the way through.")
+
+    def completion(self) -> Completion:
+        if self._stop == "refusal":
+            raise AiFailed("The model declined to answer.")
+        usage = self._usage
+        read = usage.get("cache_read_input_tokens", 0)
+        written = usage.get("cache_creation_input_tokens", 0)
+        return Completion(
+            text=self.written(),
+            input_tokens=usage.get("input_tokens", 0) + read + written,
+            output_tokens=usage.get("output_tokens", 0),
+            cached_tokens=read,
+            cache_write_tokens=written,
+            truncated=self._stop == "max_tokens",
+        )
+
+
+class _OpenAiReader(_Reader):
+    def __init__(self) -> None:
+        super().__init__()
+        self._ended: dict[str, object] | None = None
+
+    def feed(self, line: str) -> Iterator[str]:
+        event = _event(line)
+        kind = event.get("type") if event else None
+        if event is None:
+            return
+        if kind == "response.output_text.delta":
+            yield from self._write(_text(event.get("delta")) or "")
+        elif kind == "response.refusal.delta":
+            raise AiFailed("The model declined to answer.")
+        elif kind in ("response.completed", "response.incomplete"):
+            self._ended = _object(event.get("response"))
+            self.finished = True
+        elif kind in ("response.failed", "error"):
+            raise AiFailed("The model couldn't answer.")
+
+    def completion(self) -> Completion:
+        ended = _openai(self._ended or {})
+        # What it said as a whole is what it counted, so it is the text to keep if it has any.
+        return replace(ended, text=ended.text or self.written())
+
+
+class _OllamaReader(_Reader):
+    def __init__(self) -> None:
+        super().__init__()
+        self._last: dict[str, object] = {}
+
+    def feed(self, line: str) -> Iterator[str]:
+        try:
+            loaded = json.loads(line)
+        except ValueError:
+            return
+        if not _is_object(loaded):
+            return
+        if loaded.get("error"):
+            raise AiFailed("The model stopped answering part of the way through.")
+        yield from self._write(_text(_object(loaded.get("message")).get("content")) or "")
+        if loaded.get("done") is True:
+            self._last = loaded
+            self.finished = True
+
+    def completion(self) -> Completion:
+        return replace(_ollama(self._last), text=self.written())
+
+
+_READERS_OF_STREAMS = {
+    Wire.ANTHROPIC: _AnthropicReader,
+    Wire.OPENAI: _OpenAiReader,
+    Wire.OLLAMA: _OllamaReader,
+}
+
+
+async def stream(
+    client: ApiClient,
+    provider: ProviderDef,
+    model: str,
+    key: str | None,
+    *,
+    system: str,
+    prompt: str,
+    schema: Mapping[str, object] | None = None,
+    max_tokens: int = 1024,
+    cache_key: str | None = None,
+    keep_alive: str | None = None,
+) -> AsyncGenerator[str | Completion]:
+    """Asks a model for an answer and gives it back as it is written: each piece of the text as a
+    ``str``, then, when it has ended, the ``Completion`` with what it counted. The rest is as for
+    ``complete``. Raises ``AiFailed`` (also for an answer that stops short of its end), or
+    ``CallFailed`` when nothing came back."""
+    path, headers, body = _request(
+        provider, model, key, system, prompt, schema, max_tokens, cache_key
+    )
+    body["stream"] = True
+    if keep_alive is not None and provider.wire is Wire.OLLAMA:
+        body["keep_alive"] = keep_alive
+    if provider.wire is not Wire.OLLAMA:
+        headers = {**headers, "Accept": "text/event-stream"}
+    reader = _READERS_OF_STREAMS[provider.wire]()
+    try:
+        async with aclosing(client.stream("POST", path, json_body=body, headers=headers)) as lines:
+            async for line in lines:
+                for piece in reader.feed(line):
+                    yield piece
+    except NotSuccess as refused:
+        raise AiFailed(explain(refused.status, provider), refused.status) from None
+    if not reader.finished:
+        raise AiFailed(f"{provider.label} stopped before the answer was finished.")
+    yield reader.completion()
 
 
 async def load_model(

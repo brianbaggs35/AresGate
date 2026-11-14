@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The assistant's answer is shown as it is written.** Instead of waiting up to a few minutes for
+  the whole answer, the Assistant page and the panel show what it has looked up as each lookup runs,
+  then the answer as the provider writes it, so a slow local model feels alive and a long answer can
+  be read while it is still coming. Anthropic, OpenAI and Ollama each stream in their own way and
+  are all read; a stand-in that arrives cut in two is turned back into the real address only once it
+  is whole; and if the connection breaks, the page says so and keeps your question. Nothing changes
+  in what the provider is sent or what is kept. See [The assistant](DOCS/operations.md).
 - **The assistant on any page.** A sparkles button in the app bar opens the assistant over the page
   you are on: a drawer at the side of a wide screen, a sheet from the bottom of a phone, with a
   button to close it and the box to type in kept above the keyboard. It knows what you are looking

@@ -1,4 +1,14 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, errorMessage } from '@/api/client'
+import {
+  ApiError,
+  apiDelete,
+  apiGet,
+  apiPatch,
+  apiPost,
+  apiPut,
+  apiStream,
+  errorMessage,
+  type StreamEvent,
+} from '@/api/client'
 
 function respond(body: unknown, init: ResponseInit = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body)
@@ -230,5 +240,119 @@ describe('errorMessage', () => {
 
   it('stringifies anything else', () => {
     expect(errorMessage('boom')).toBe('boom')
+  })
+})
+
+/** A response whose body arrives in these pieces, as a server that sends as it goes would. */
+function stream(pieces: string[], failAfter = false) {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const piece of pieces) controller.enqueue(encoder.encode(piece))
+      if (failAfter) controller.error(new TypeError('network error'))
+      else controller.close()
+    },
+  })
+  vi.mocked(fetch).mockResolvedValue(new Response(body, { status: 200 }))
+}
+
+async function events(call: Promise<void>, seen: StreamEvent[]) {
+  await call
+  return seen
+}
+
+describe('apiStream', () => {
+  it('asks for a stream with the security token, and hands over each event as it comes', async () => {
+    stream(['event: looked\ndata: {"tool":"alerts"}\n\n', 'event: wrote\ndata: {"text":"Hi"}\n\n'])
+    const seen: StreamEvent[] = []
+
+    await events(
+      apiStream('/ai/conversations/stream', { text: 'Hello' }, 'a-token', (event) =>
+        seen.push(event),
+      ),
+      seen,
+    )
+
+    expect(seen).toEqual([
+      { name: 'looked', data: { tool: 'alerts' } },
+      { name: 'wrote', data: { text: 'Hi' } },
+    ])
+    expect(fetch).toHaveBeenCalledWith('/api/ai/conversations/stream', {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': 'a-token',
+      },
+      body: '{"text":"Hello"}',
+      credentials: 'same-origin',
+    })
+  })
+
+  it('puts together an event that arrives cut in pieces, even in the middle of a character', async () => {
+    const bytes = new TextEncoder().encode('event: wrote\ndata: {"text":"é"}\n\n')
+    const cut = bytes.indexOf(0xc3) + 1
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, 5))
+        controller.enqueue(bytes.slice(5, cut))
+        controller.enqueue(bytes.slice(cut))
+        controller.close()
+      },
+    })
+    vi.mocked(fetch).mockResolvedValue(new Response(body, { status: 200 }))
+    const seen: StreamEvent[] = []
+
+    await apiStream('/x', {}, 't', (event) => seen.push(event))
+
+    expect(seen).toEqual([{ name: 'wrote', data: { text: 'é' } }])
+  })
+
+  it('leaves out what is not an event: comments, data that is not JSON, and an event with none', async () => {
+    stream([': a comment\n\n', 'event: x\ndata: not json\n\n', 'event: y\n\n', 'data: {"a":1}\n\n'])
+    const seen: StreamEvent[] = []
+
+    await apiStream('/x', {}, 't', (event) => seen.push(event))
+
+    expect(seen).toEqual([{ name: 'message', data: { a: 1 } }])
+  })
+
+  it('reads the data of an event that is on more than one line as one', async () => {
+    stream(['event: x\ndata: {"a":\ndata: 1}\n\n'])
+    const seen: StreamEvent[] = []
+
+    await apiStream('/x', {}, 't', (event) => seen.push(event))
+
+    expect(seen).toEqual([{ name: 'x', data: { a: 1 } }])
+  })
+
+  it("uses the API's words for a refusal, before anything is streamed", async () => {
+    respond({ detail: 'There is no such conversation.' }, { status: 404 })
+
+    const error = await failure(apiStream('/x', {}, 't', vi.fn()))
+
+    expect(error).toMatchObject({ status: 404, code: 'not_found' })
+    expect(error).toHaveProperty('message', 'There is no such conversation.')
+  })
+
+  it('says AresGate cannot be reached when there is no answer', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'))
+
+    expect(await failure(apiStream('/x', {}, 't', vi.fn()))).toMatchObject({
+      status: 0,
+      code: 'offline',
+    })
+  })
+
+  it('says so when the connection breaks in the middle', async () => {
+    stream(['event: x\ndata: {}\n\n'], true)
+
+    const error = await failure(apiStream('/x', {}, 't', vi.fn()))
+
+    expect(error).toMatchObject({
+      status: 0,
+      code: 'offline',
+      message: 'The connection broke before the answer was finished.',
+    })
   })
 })

@@ -536,7 +536,7 @@ def test_no_one_but_the_gateway_and_the_connection_test_asks_a_model() -> None:
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "complete"
+                and node.func.attr in ("complete", "stream")
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "wire"
             ):

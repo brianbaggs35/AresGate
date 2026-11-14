@@ -102,6 +102,77 @@ async function send<T>(path: string, { method, body, csrfToken }: Request): Prom
   return answer as T
 }
 
+/** One event of a stream the API sends as it goes (server-sent events): its name, and what its
+ * data says. */
+export interface StreamEvent {
+  name: string
+  data: unknown
+}
+
+const CUT_OFF = 'The connection broke before the answer was finished.'
+
+/** The event in a block of a stream's lines, or null for a block that is only a comment or has no
+ * data (or data that isn't JSON). */
+function readEvent(block: string): StreamEvent | null {
+  let name = 'message'
+  const data: string[] = []
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) name = line.slice('event:'.length).trim()
+    else if (line.startsWith('data:')) data.push(line.slice('data:'.length).trim())
+  }
+  try {
+    return data.length ? { name, data: JSON.parse(data.join('\n')) } : null
+  } catch {
+    return null
+  }
+}
+
+/** Asks the API to change something, as `apiPost` does, and hands over what it reports as it goes
+ * (the answer is sent in pieces, as server-sent events) until it has said all of it. Throws
+ * `ApiError` for a refusal, which is answered before any piece is, and for a connection that
+ * breaks in the middle. */
+export async function apiStream(
+  path: string,
+  body: unknown,
+  csrfToken: string,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  let reader: ReadableStreamDefaultReader<Uint8Array>
+  try {
+    const response = await fetch(`/api${path}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+      body: JSON.stringify(body),
+      credentials: 'same-origin',
+    })
+    if (!response.ok) throw toError(response.status, await readBody(response))
+    reader = (response.body as ReadableStream<Uint8Array>).getReader()
+  } catch (error) {
+    throw error instanceof ApiError ? error : new ApiError(0, OFFLINE, 'offline')
+  }
+  const decoder = new TextDecoder()
+  let pending = ''
+  try {
+    for (;;) {
+      // Each piece is read after the one before it has been handled, which is the point.
+      const { done, value } = await reader.read()
+      pending += decoder.decode(value, { stream: !done })
+      for (let end = pending.indexOf('\n\n'); end !== -1; end = pending.indexOf('\n\n')) {
+        const event = readEvent(pending.slice(0, end))
+        pending = pending.slice(end + 2)
+        if (event) onEvent(event)
+      }
+      if (done) return
+    }
+  } catch {
+    throw new ApiError(0, CUT_OFF, 'offline')
+  }
+}
+
 /** Calls the API on the same origin, like every page of the web app does. */
 export function apiGet<T>(path: string): Promise<T> {
   return send<T>(path, { method: 'GET' })

@@ -7,6 +7,7 @@ import { useDisplay } from 'vuetify'
 import { MAX_QUESTION } from '@/chat'
 import AiCallDialog from '@/components/AiCallDialog.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
+import ChatWriting from '@/components/ChatWriting.vue'
 import { looking, pageOf, startersFor } from '@/pageContext'
 import { useAssistantStore } from '@/stores/assistant'
 
@@ -38,7 +39,10 @@ function scrollToEnd() {
 }
 
 // The newest word is in view, and the box is ready to type in when the panel opens.
-watch(() => [messages.value.length, assistant.pending, assistant.sending], scrollToEnd)
+watch(
+  () => [messages.value.length, assistant.pending, assistant.sending, assistant.writing],
+  scrollToEnd,
+)
 watch(
   () => assistant.open,
   (open) => {
@@ -163,10 +167,12 @@ defineExpose({ send })
         <article v-if="assistant.pending !== null" class="panel__pending" data-test="panel-pending">
           <p class="text-body-large">{{ assistant.pending }}</p>
         </article>
-        <output v-if="assistant.sending" class="panel__busy text-body-large" data-test="panel-busy">
-          <v-progress-circular indeterminate size="20" width="2" aria-hidden="true" />
-          Looking into it. This can take a minute.
-        </output>
+        <ChatWriting
+          v-if="assistant.sending"
+          :looked="assistant.looked"
+          :text="assistant.writing"
+          data-test="panel-writing"
+        />
       </template>
 
       <v-alert
@@ -287,12 +293,6 @@ defineExpose({ send })
 
 .panel__pending p {
   margin: 0;
-}
-
-.panel__busy {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 /* The box to type in stays below the conversation, clear of a phone's home bar and, with the
