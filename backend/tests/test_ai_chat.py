@@ -5,6 +5,7 @@ told to, one reply for each request."""
 import json
 import re
 from collections.abc import Callable
+from ipaddress import ip_address
 
 import anyio
 import anyio.to_thread
@@ -15,7 +16,14 @@ from sqlalchemy.orm import Session
 from app.ai import chat, tools
 from app.ai.gateway import Context
 from app.config import Settings
-from app.models import AiCall, AiConversation, AiMessage, Device, IntegrationConnection
+from app.models import (
+    AiCall,
+    AiConversation,
+    AiMessage,
+    Device,
+    DeviceAddress,
+    IntegrationConnection,
+)
 from tests.stubs import Answer as Reply
 from tests.stubs import Handler, Seen, Serve
 from tests.test_ai_gateway import Log, anthropic_says, context
@@ -61,21 +69,32 @@ def conversation(session: Session) -> AiConversation:
     return row
 
 
-def say(session: Session, where: Context, row: AiConversation, text: str) -> list[AiMessage]:
+def say(
+    session: Session,
+    where: Context,
+    row: AiConversation,
+    text: str,
+    page: chat.Page | None = None,
+) -> list[AiMessage]:
     async def from_a_thread() -> None:
-        await anyio.to_thread.run_sync(chat.say, session, where, row, text, NOW)
+        await anyio.to_thread.run_sync(chat.say, session, where, row, text, NOW, page)
 
     anyio.run(from_a_thread)
     return chat.messages(session, row)
 
 
 def talk(
-    session: Session, settings: Settings, serve: Serve, provider: Handler, text: str = "Anything?"
+    session: Session,
+    settings: Settings,
+    serve: Serve,
+    provider: Handler,
+    text: str = "Anything?",
+    page: chat.Page | None = None,
 ) -> tuple[AiConversation, list[AiMessage]]:
     server = serve(provider)
     ready(session, settings)
     row = conversation(session)
-    return row, say(session, context(settings, Log(), server.url), row, text)
+    return row, say(session, context(settings, Log(), server.url), row, text, page)
 
 
 class TestReadingAReply:
@@ -423,3 +442,302 @@ class TestTheConversationSoFar:
         assert "line 5" not in shown
         assert "line 6" in shown
         assert "line 11" in shown
+
+
+def suggest(
+    kind: str, target: str, value: str | None = None, note: str | None = None
+) -> dict[str, str | None]:
+    return {"kind": kind, "target": target, "value": value, "note": note}
+
+
+class TestSuggestingWhatToDo:
+    """The assistant may suggest what the owner could do, and the owner presses the button."""
+
+    def test_a_suggestion_names_what_it_is_about_and_says_what_it_would_do(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = incident(session, severity=3)
+        session.commit()
+        provider = Scripted(
+            reply(lookups=[look("incident", id=found.id)], answer=""),
+            reply(
+                answer="Dismiss it.",
+                actions=[
+                    suggest("open", f"incident {found.id}"),
+                    suggest("status", f"[incident {found.id}]", "Dismissed"),
+                    suggest(
+                        "verdict", f"incident {found.id}", "not_suspicious", "A known scanner."
+                    ),
+                    suggest("open", "logs", " ET SCAN "),
+                ],
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        assert history[1].actions == [
+            {
+                "kind": "open",
+                "target_kind": "incident",
+                "target_key": str(found.id),
+                "value": None,
+                "note": None,
+                "label": f"Open Incident {found.id}",
+            },
+            {
+                "kind": "status",
+                "target_kind": "incident",
+                "target_key": str(found.id),
+                "value": "dismissed",
+                "note": None,
+                "label": f"Dismiss Incident {found.id}",
+            },
+            {
+                "kind": "verdict",
+                "target_kind": "incident",
+                "target_key": str(found.id),
+                "value": "not_suspicious",
+                "note": "A known scanner.",
+                "label": f"Call Incident {found.id} not suspicious",
+            },
+        ]
+
+    def test_at_most_three_and_each_once(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = incident(session, severity=3)
+        session.commit()
+        name = f"incident {found.id}"
+        provider = Scripted(
+            reply(lookups=[look("incident", id=found.id)], answer=""),
+            reply(
+                actions=[
+                    suggest("status", name, "resolved"),
+                    suggest("status", name, "resolved"),
+                    suggest("status", name, "investigating"),
+                    suggest("status", name, "open"),
+                    suggest("status", name, "dismissed"),
+                ]
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        assert [item["value"] for item in history[1].actions] == [
+            "resolved",
+            "investigating",
+            "open",
+        ]
+
+    @pytest.mark.parametrize(
+        "suggestion",
+        [
+            suggest("status", "incident 999", "dismissed"),
+            suggest("status", "device 1", "dismissed"),
+            suggest("status", "INCIDENT", "dismissed"),
+            suggest("verdict", "incident 999", "threat"),
+            suggest("verdict", "incident @", "unknown"),
+            suggest("verdict", "incident @", None),
+            suggest("status", "incident @", "deleted"),
+            suggest("open", "logs", None),
+            suggest("open", "logs", "   "),
+            suggest("open", "incident 999"),
+            suggest("delete", "incident @", "all"),
+        ],
+        ids=[
+            "an incident it did not see",
+            "a status on a device",
+            "no number",
+            "a verdict on one it did not see",
+            "a verdict that is not one",
+            "no verdict",
+            "a status that is not one",
+            "a search of nothing",
+            "a search of spaces",
+            "opening what it did not see",
+            "a kind that is not offered",
+        ],
+    )
+    def test_anything_it_may_not_suggest_is_dropped(
+        self,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+        suggestion: dict[str, str | None],
+    ) -> None:
+        found = incident(session, severity=3)
+        session.commit()
+        # The incident the model was shown, named as the model names it.
+        target = (suggestion["target"] or "").replace("@", str(found.id))
+        suggestion = {**suggestion, "target": target}
+        provider = Scripted(
+            reply(lookups=[look("incident", id=found.id)], answer=""),
+            reply(actions=[suggestion]),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        assert history[1].actions == []
+
+    def test_a_reply_that_says_nothing_of_actions_suggests_none(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        _, history = talk(session, settings, serve, Scripted(reply()))
+
+        assert history[1].actions == []
+
+    def test_a_reply_with_odd_actions_is_still_read(self) -> None:
+        step = chat.parse(
+            reply(actions=["x", {"kind": 3, "target": "a"}, {"kind": "open", "target": "logs"}])
+        )
+
+        assert step is not None
+        assert step.actions == [chat.Suggestion("open", "logs", None, None)]
+        assert chat.parse(reply(actions="none")) == chat.Step(
+            lookups=[], answer="All quiet.", cites=[], actions=[]
+        )
+
+
+class TestThePageTheOwnerIsOn:
+    def test_the_incident_on_screen_is_looked_up_before_anything_is_asked(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = incident(session, severity=3, title="Guessing at ssh")
+        session.commit()
+        provider = Scripted(reply(answer="It is a scan."))
+
+        _, history = talk(
+            session,
+            settings,
+            serve,
+            provider,
+            "What is this?",
+            chat.Page("incident", id=found.id),
+        )
+
+        (prompt,) = provider.prompts
+        assert f"The owner has the page of incident {found.id} open." in prompt
+        assert f'<data label="incident id {found.id}">' in prompt
+        assert "Guessing at ssh" in prompt
+        assert history[1].lookups == [{"tool": "incident", "summary": f"incident {found.id}"}]
+
+    def test_it_can_be_cited_and_suggested_about_without_asking_for_it(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = incident(session, severity=3)
+        session.commit()
+        provider = Scripted(
+            reply(
+                answer="Close it.",
+                cites=[f"incident {found.id}"],
+                actions=[suggest("status", f"incident {found.id}", "resolved")],
+            )
+        )
+
+        _, history = talk(
+            session, settings, serve, provider, "Close this?", chat.Page("incident", id=found.id)
+        )
+
+        assert [item["key"] for item in history[1].cites] == [str(found.id)]
+        assert [item["label"] for item in history[1].actions] == [
+            f"Mark Incident {found.id} as resolved"
+        ]
+
+    def test_the_device_on_screen_is_found_by_its_address(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        nas = Device(mac="aa:bb:cc:00:00:01", hostname="vault", first_seen_at=NOW, last_seen_at=NOW)
+        session.add(nas)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=nas.id, address=ip_address(DEVICE), first_seen_at=NOW, last_seen_at=NOW
+            )
+        )
+        session.commit()
+        provider = Scripted(reply())
+
+        talk(session, settings, serve, provider, "Is it ok?", chat.Page("device", address=DEVICE))
+
+        (prompt,) = provider.prompts
+        assert f'<data label="device id {nas.id}">' in prompt
+        assert f"[device {nas.id}]" in prompt
+        assert DEVICE not in prompt
+        assert "vault" not in prompt
+
+    def test_the_device_on_screen_is_found_by_its_number_too(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        nas = Device(mac="aa:bb:cc:00:00:01", hostname="vault", first_seen_at=NOW, last_seen_at=NOW)
+        session.add(nas)
+        session.commit()
+        provider = Scripted(reply())
+
+        talk(session, settings, serve, provider, "Is it ok?", chat.Page("device", id=nas.id))
+
+        assert f'<data label="device id {nas.id}">' in provider.prompts[0]
+
+    @pytest.mark.parametrize(
+        "page",
+        [
+            chat.Page("device", address="not an address"),
+            chat.Page("device", address="10.9.9.9"),
+            chat.Page("device"),
+            chat.Page("incident"),
+            chat.Page("logs"),
+        ],
+        ids=["a bad address", "an address no device has", "no device", "no incident", "the logs"],
+    )
+    def test_a_page_that_names_nothing_to_look_up_looks_up_nothing(
+        self, session: Session, settings: Settings, serve: Serve, page: chat.Page
+    ) -> None:
+        provider = Scripted(reply())
+
+        _, history = talk(session, settings, serve, provider, "What is this?", page)
+
+        assert "<data" not in provider.prompts[0]
+        assert history[1].lookups == []
+
+    def test_the_search_on_screen_is_told_to_the_model_without_the_names_it_may_not_see(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        session.add(
+            Device(mac="aa:bb:cc:00:00:01", hostname="vault", first_seen_at=NOW, last_seen_at=NOW)
+        )
+        session.commit()
+        provider = Scripted(reply(), reply(), reply(), reply())
+        page = chat.Page("logs", query="source:wazuh vault")
+
+        talk(session, settings, serve, provider, "Why so many?", page)
+        talk(
+            session,
+            settings,
+            serve,
+            provider,
+            "And?",
+            chat.Page("incidents", query="severity:high"),
+        )
+        talk(session, settings, serve, provider, "And?", chat.Page("logs"))
+        talk(session, settings, serve, provider, "And?", chat.Page("other", title="Assets"))
+
+        first, second, third, fourth = provider.prompts
+        assert "The owner is on the Logs page, searching for: source:wazuh NAME_" in first
+        assert "vault" not in first
+        assert "The owner is on the list of incidents, searching for: severity:high." in second
+        assert "The owner is on the Logs page." in third
+        assert "The owner is on the Assets page." in fourth
+
+    @pytest.mark.parametrize(
+        "page",
+        [None, chat.Page("incident"), chat.Page("other"), chat.Page("mystery", title="x")],
+        ids=["none", "incident with no number", "other with no title", "a kind it does not know"],
+    )
+    def test_without_a_page_that_says_something_it_says_nothing(
+        self, session: Session, settings: Settings, serve: Serve, page: chat.Page | None
+    ) -> None:
+        provider = Scripted(reply())
+
+        talk(session, settings, serve, provider, "Anything?", page)
+
+        assert "owner has the page" not in provider.prompts[0]
+        assert "The owner is on" not in provider.prompts[0]

@@ -86,6 +86,7 @@ def test_a_conversation_begins_with_a_question_and_the_answer_comes_with_it(
     assert assistant["cites"] == [
         {"kind": "incident", "key": str(found.id), "label": f"Incident {found.id}"}
     ]
+    assert assistant["actions"] == []
     assert len(assistant["call_ids"]) == 2
     assert KEY not in response.text
     assert client.get(f"{BASE}/{body['id']}").json() == body
@@ -175,6 +176,83 @@ def test_another_question_goes_on_in_the_same_conversation(
         "Two.",
     ]
     assert "Owner: One?" in scripted.prompts[1]
+
+
+def test_a_question_asked_from_a_page_is_answered_about_what_is_on_it_and_may_suggest_what_to_do(
+    client: TestClient,
+    csrf_token: str,
+    app: FastAPI,
+    serve: Serve,
+    session: Session,
+    settings: Settings,
+) -> None:
+    ready(session, settings)
+    found = incident(session, severity=3, title="Guessing at ssh")
+    session.commit()
+    scripted = Scripted(
+        reply(
+            answer="It is a scan.",
+            actions=[
+                {
+                    "kind": "status",
+                    "target": f"incident {found.id}",
+                    "value": "resolved",
+                    "note": None,
+                }
+            ],
+        ),
+        reply(answer="Fine."),
+    )
+    provider(app, serve, scripted)
+
+    started = client.post(
+        BASE,
+        headers=headers(csrf_token),
+        json={"text": "What is this?", "page": {"kind": "incident", "id": found.id}},
+    ).json()
+    asked_again = client.post(
+        f"{BASE}/{started['id']}/messages",
+        headers=headers(csrf_token),
+        json={"text": "And here?", "page": {"kind": "logs", "query": "source:wazuh"}},
+    )
+
+    assert f"The owner has the page of incident {found.id} open." in scripted.prompts[0]
+    assert "Guessing at ssh" in scripted.prompts[0]
+    assert started["messages"][1]["actions"] == [
+        {
+            "kind": "status",
+            "target_kind": "incident",
+            "target_key": str(found.id),
+            "value": "resolved",
+            "note": None,
+            "label": f"Mark Incident {found.id} as resolved",
+        }
+    ]
+    assert asked_again.status_code == 200
+    assert "searching for: source:wazuh" in scripted.prompts[1]
+    assert client.get(f"{BASE}/{started['id']}").json()["messages"][1]["actions"] != []
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        {"kind": "mystery"},
+        {"kind": "incident", "id": 0},
+        {"kind": "incident", "id": "x"},
+        {"kind": "logs", "query": "x" * (chat.MAX_SEARCH + 1)},
+        {"kind": "other", "title": "x" * (chat.MAX_TITLE + 1)},
+        {"kind": "device", "address": "x" * 46},
+        {"kind": "logs", "surprise": True},
+    ],
+)
+def test_a_page_that_makes_no_sense_is_refused(
+    client: TestClient, csrf_token: str, page: dict[str, Any]
+) -> None:
+    response = client.post(
+        BASE, headers=headers(csrf_token), json={"text": "What is this?", "page": page}
+    )
+
+    assert response.status_code == 422
 
 
 def test_a_conversation_that_has_got_long_is_asked_to_begin_again(

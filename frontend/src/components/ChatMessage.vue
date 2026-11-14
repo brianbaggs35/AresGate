@@ -4,6 +4,7 @@ import { computed } from 'vue'
 
 import type { ChatCite, ChatMessage } from '@/api/aiChat'
 import { blocks, citeRoute } from '@/chat'
+import ChatActions from '@/components/ChatActions.vue'
 import ChatText from '@/components/ChatText.vue'
 import { formatAgo } from '@/format'
 
@@ -17,7 +18,7 @@ const props = defineProps<{
   /** Whether a failed answer can be asked again now: it is the last one and nothing is under way. */
   canRetry?: boolean
 }>()
-const emit = defineEmits<{ retry: []; 'show-call': [id: number] }>()
+const emit = defineEmits<{ retry: []; 'show-call': [id: number]; opened: [] }>()
 
 const fromOwner = computed(() => props.message.role === 'user')
 const parts = computed(() => blocks(props.message.text))
@@ -80,6 +81,12 @@ function callLabel(index: number): string {
         <p v-else class="text-body-large"><ChatText :text="block.paragraph" /></p>
       </template>
     </div>
+
+    <ChatActions
+      v-if="message.ok && message.actions.length"
+      :actions="message.actions"
+      @opened="emit('opened')"
+    />
 
     <section
       v-if="message.ok && message.lookups.length"

@@ -1097,6 +1097,18 @@ AresGate works without it. A test sends only the words "Say OK."
   again, `POST .../{id}/retry` to ask the last question again after an answer that could not be
   made, and `DELETE`. Asking can take a minute or two, and nginx waits up to 400 seconds for it.
 
+  The panel that opens over any page hands each question the page it was asked from (`page` on the
+  two POSTs: `kind` of `incident`, `device`, `logs`, `incidents` or `other`, with an `id`, an
+  `address`, a search `query` or a `title`). For an incident or a device the answer starts with
+  that lookup already done, so "this" means what is on screen, and a search is passed through the
+  same privacy level as everything else. An answer may also suggest up to three actions
+  (`actions` on the message): to open an incident, a device, an integration or a search of the
+  logs, to set an incident's status, or to give it a verdict of `not_suspicious`, `low_priority` or
+  `threat`. Each is checked against what the lookups returned, so it can only name something the
+  assistant was really shown, and it is only ever a suggestion: the assistant never writes. The
+  owner presses the button, and the page makes the same audited request it would for a change the
+  owner made themselves, with *Undo*.
+
 ## Signing in
 
 AresGate has one account. [Quick start](quick-start.md#set-up-your-account) shows how to create

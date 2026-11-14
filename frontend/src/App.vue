@@ -5,10 +5,12 @@ import { useDisplay, useTheme } from 'vuetify'
 
 import AppBar from '@/components/AppBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
+import AssistantHost from '@/components/AssistantHost.vue'
 import BottomNavigation from '@/components/BottomNavigation.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import StartupError from '@/components/StartupError.vue'
 import { usePolling } from '@/polling'
+import { useAssistantStore } from '@/stores/assistant'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -18,6 +20,7 @@ const theme = useTheme()
 const themeStore = useThemeStore()
 const session = useSessionStore()
 const palette = usePaletteStore()
+const assistant = useAssistantStore()
 const review = useReviewStore()
 const route = useRoute()
 const router = useRouter()
@@ -34,7 +37,11 @@ const chrome = computed(() => session.signedIn && !route.meta.public)
 
 // The palette is for someone who is signed in, so signing out puts it away.
 watch(chrome, (shown) => {
-  if (!shown) palette.open = false
+  if (!shown) {
+    palette.open = false
+    // What was said to the assistant is for whoever was signed in.
+    assistant.reset()
+  }
 })
 
 // How many decisions wait for the owner is asked for when the menu appears and every minute.
@@ -101,6 +108,7 @@ function skipToContent() {
       <AppDrawer v-if="!phone" />
       <AppBar />
       <CommandPalette v-model="palette.open" />
+      <AssistantHost />
     </template>
     <v-main id="main-content" tabindex="-1">
       <StartupError v-if="session.error" :message="session.error" :busy="retrying" @retry="retry" />
