@@ -3,7 +3,8 @@
 Nothing is stored until the owner first saves; until then every number is the default. The AI
 watching or not is part of it, because with the AI watching a threat is one it agrees with."""
 
-from dataclasses import dataclass, field, replace
+from copy import replace
+from dataclasses import dataclass, field
 from typing import Final
 
 from sqlalchemy.orm import Session
