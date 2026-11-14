@@ -3,6 +3,7 @@
 Nothing is stored until the owner first saves; until then every number is the default. The AI
 watching or not is part of it, because with the AI watching a threat is one it agrees with."""
 
+from copy import replace
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -15,6 +16,9 @@ DEFAULT_THREAT_FROM: Final = rules.HIGH_FROM
 DEFAULT_CLEAR_FROM: Final = 80
 MIN_CLEAR_FROM: Final = 50
 EXPOSURES: Final = ("none", "some", "unknown")
+DEFAULT_IMPORTANT_DROP: Final = 10
+DEFAULT_LOW_RAISE: Final = 0
+MAX_SHIFT: Final = 30
 MAX_NOTES: Final = 500
 MAX_PORTS: Final = 20
 # The usage level at which the AI reads nothing by itself, and so isn't watching.
@@ -33,20 +37,25 @@ class Tuning:
     exposure: str = "unknown"
     exposed_ports: tuple[int, ...] = field(default_factory=tuple[int, ...])
     notes: str = ""
+    # How many points less sure than the floor an incident that touched an important device may be
+    # and still be asked about, and how many more it takes when it touched only guest or IoT
+    # devices (``app/threats/importance.py``).
+    important_drop: int = DEFAULT_IMPORTANT_DROP
+    low_raise: int = DEFAULT_LOW_RAISE
     confirming: bool = False
 
     def confirming_when(self, confirming: bool) -> Tuning:
         """These settings, with the AI's agreement needed for a threat or not."""
-        return Tuning(
-            self.threat_from,
-            self.ai_may_clear,
-            self.clear_from,
-            self.ai_confirms,
-            self.exposure,
-            self.exposed_ports,
-            self.notes,
-            confirming,
-        )
+        return replace(self, confirming=confirming)
+
+    def shift(self, importance: int | None) -> int:
+        """How far the floor moves for an incident of that importance (none for one that has not
+        been saved yet): down for one that touched an important or critical device, up for one
+        that touched only guests and IoT devices."""
+        importance = importance or 0
+        if importance > 0:
+            return -self.important_drop
+        return self.low_raise if importance < 0 else 0
 
 
 def watching(db: Session) -> bool:
@@ -72,6 +81,8 @@ def _stored(db: Session) -> Tuning:
         row.exposure,
         tuple(row.exposed_ports),
         row.notes,
+        row.important_drop,
+        row.low_raise,
     )
 
 
@@ -97,6 +108,8 @@ def save(db: Session, tuning: Tuning) -> bool:
     row.exposure = tuning.exposure
     row.exposed_ports = list(tuning.exposed_ports)
     row.notes = tuning.notes
+    row.important_drop = tuning.important_drop
+    row.low_raise = tuning.low_raise
     db.flush()
     return True
 

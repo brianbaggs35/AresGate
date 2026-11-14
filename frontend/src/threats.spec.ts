@@ -2,6 +2,7 @@ import {
   BASIS,
   EXPOSURE_CHOICES,
   clearSentence,
+  importanceSentence,
   callSentence,
   coverageSentence,
   draftOf,
@@ -160,6 +161,22 @@ describe('what is thought of a kind', () => {
   })
 })
 
+describe('importanceSentence', () => {
+  it('says what moving the bar for important devices means', () => {
+    expect(importanceSentence('drop', 0)).toContain('same bar as any other')
+    expect(importanceSentence('drop', 1)).toBe(
+      'An incident that touched an important device is shown when AresGate is 1 point less sure than usual.',
+    )
+    expect(importanceSentence('drop', 10)).toContain('10 points less sure')
+  })
+
+  it('says what moving the bar for guests and gadgets means, and what it never hides', () => {
+    expect(importanceSentence('raise', 0)).toContain('same bar as any other')
+    expect(importanceSentence('raise', 15)).toContain('needs 15 points more before it is shown')
+    expect(importanceSentence('raise', 15)).toContain('chain of attacks is shown regardless')
+  })
+})
+
 describe('the settings page', () => {
   it('starts from what is kept, and notices any difference', () => {
     const kept = threatSettings({ exposed_ports: [22, 443] })
@@ -176,6 +193,8 @@ describe('the settings page', () => {
       { notes: 'A web server' },
       { exposed_ports: [22] },
       { exposed_ports: [22, 80] },
+      { important_drop: 20 },
+      { low_raise: 5 },
     ]) {
       expect(sameDraft({ ...draft, ...change }, draftOf(kept))).toBe(false)
     }

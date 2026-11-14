@@ -61,6 +61,7 @@ KINDS: Final = (
     Kind("camera", "Camera or doorbell", "home"),
     Kind("printer", "Printer", "home"),
     Kind("smart_home", "Smart home device", "home"),
+    Kind("guest", "Guest's device", "other"),
     Kind("other", "Something else", "other"),
 )
 BY_KEY: Final = {kind.key: kind for kind in KINDS}
@@ -85,6 +86,11 @@ _GUESSES: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("smart_home", ("espressif", "tuya", "shelly", "signify", "ecobee", "esp32", "esp8266")),
 )
 _SHORT: Final = 6
+# What the AI is told of an asset the owner says matters: a clause after what it is.
+MATTERS: Final = {
+    "important": "; it matters to the owner",
+    "critical": "; it is critical to the owner",
+}
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,8 @@ class Profile:
     kind: str
     purpose: str | None
     updated_at: datetime
+    # How much it matters to the owner: ``normal``, ``important`` or ``critical``.
+    importance: str = "normal"
 
     @property
     def label(self) -> str:
@@ -120,7 +128,7 @@ def suggest(hostname: str | None, vendor: str | None) -> str | None:
 def load(db: Session) -> dict[str, Profile]:
     """Every profile, by the key of the asset it is about."""
     return {
-        row.key: Profile(row.kind, row.purpose, row.updated_at)
+        row.key: Profile(row.kind, row.purpose, row.updated_at, row.importance)
         for row in db.scalars(select(AssetProfile))
     }
 
@@ -131,7 +139,7 @@ def for_devices(db: Session, ids: Iterable[int]) -> dict[int, Profile]:
     if not keys:
         return {}
     return {
-        keys[row.key]: Profile(row.kind, row.purpose, row.updated_at)
+        keys[row.key]: Profile(row.kind, row.purpose, row.updated_at, row.importance)
         for row in db.scalars(select(AssetProfile).where(AssetProfile.key.in_(keys)))
     }
 
@@ -143,21 +151,26 @@ def describe(said: Profile | None, clean: Callable[[str, int], str]) -> str:
     if said is None:
         return ""
     purpose = f" ({clean(said.purpose, MAX_PURPOSE)})" if said.purpose else ""
-    return f", which the owner says is a {said.label.lower()}{purpose}"
+    matters = MATTERS.get(said.importance, "")
+    return f", which the owner says is a {said.label.lower()}{purpose}{matters}"
 
 
-def save(db: Session, key: str, kind: str, purpose: str | None, now: datetime) -> Profile:
-    """Says what an asset is, replacing what was said before. The caller commits."""
+def save(
+    db: Session, key: str, kind: str, purpose: str | None, now: datetime, importance: str = "normal"
+) -> Profile:
+    """Says what an asset is and how much it matters, replacing what was said before. The caller
+    commits."""
     said = (purpose or "").strip() or None
     row = db.get(AssetProfile, key)
     if row is None:
-        row = AssetProfile(key=key, kind=kind, purpose=said, updated_at=now)
+        row = AssetProfile(key=key, kind=kind, purpose=said, importance=importance, updated_at=now)
         db.add(row)
     else:
         row.kind = kind
         row.purpose = said
+        row.importance = importance
         row.updated_at = now
-    return Profile(kind, said, now)
+    return Profile(kind, said, now, importance)
 
 
 def clear(db: Session, key: str) -> bool:

@@ -18,12 +18,21 @@ export interface ThreatDraft {
   exposed_ports: number[]
   /** Anything about the network that tells what is normal there. */
   notes: string
+  /** How many points less sure than the bar an incident that touched an important device may be
+   * and still be shown to you. */
+  important_drop: number
+  /** How many points more sure it has to be when it touched only guest or IoT devices. */
+  low_raise: number
 }
 
 export interface ThreatSettings extends ThreatDraft {
   /** What each is until it is changed, and the lowest the AI's bar can be. */
   default_threat_from: number
   default_clear_from: number
+  default_important_drop: number
+  default_low_raise: number
+  /** The most either may move the bar. */
+  max_shift: number
   min_clear_from: number
   max_notes: number
   max_ports: number

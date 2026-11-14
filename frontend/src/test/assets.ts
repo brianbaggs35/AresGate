@@ -126,6 +126,7 @@ export const profile = (overrides: Partial<AssetProfile> = {}): AssetProfile => 
   carries: false,
   purpose: 'Watches the front door',
   updated_at: '2026-11-12T10:00:00Z',
+  importance: 'normal',
   ...overrides,
 })
 
@@ -135,13 +136,44 @@ export const kindGroups = (): AssetKindGroup[] => [
     key: 'network',
     label: 'The network',
     kinds: [
-      { key: 'router', label: 'Router', group: 'network', carries: true },
-      { key: 'switch', label: 'Network switch', group: 'network', carries: true },
+      {
+        key: 'router',
+        label: 'Router',
+        group: 'network',
+        carries: true,
+        importance: 'critical',
+        lowers: false,
+      },
+      {
+        key: 'switch',
+        label: 'Network switch',
+        group: 'network',
+        carries: true,
+        importance: 'normal',
+        lowers: false,
+      },
     ],
   },
   {
     key: 'home',
     label: 'Around the home',
-    kinds: [{ key: 'camera', label: 'Camera or doorbell', group: 'home', carries: false }],
+    kinds: [
+      {
+        key: 'camera',
+        label: 'Camera or doorbell',
+        group: 'home',
+        carries: false,
+        importance: 'important',
+        lowers: false,
+      },
+      {
+        key: 'smart_home',
+        label: 'Smart home device',
+        group: 'home',
+        carries: false,
+        importance: 'normal',
+        lowers: true,
+      },
+    ],
   },
 ]

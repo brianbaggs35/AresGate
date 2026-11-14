@@ -150,6 +150,8 @@ describe('ThreatSettingsView', () => {
         exposure: 'unknown',
         exposed_ports: [],
         notes: '',
+        important_drop: 10,
+        low_raise: 0,
       },
       'a-security-token',
     )
@@ -199,6 +201,26 @@ describe('ThreatSettingsView', () => {
       expect.objectContaining({ clear_from: 90, exposure: 'some', exposed_ports: [22, 443] }),
       'a-security-token',
     )
+  })
+
+  it('takes a change to how far the devices that matter move the bar', async () => {
+    const { ask, wait, sliders, save, find } = await open(
+      threatSettings({ important_drop: 10, low_raise: 0 }),
+    )
+
+    expect(sliders()[2]?.props('modelValue')).toBe(10)
+    expect(sliders()[3]?.props('modelValue')).toBe(0)
+    sliders()[2]?.vm.$emit('update:modelValue', 20)
+    sliders()[3]?.vm.$emit('update:modelValue', 5)
+    await settle()
+    await wait()
+
+    expect(ask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ important_drop: 20, low_raise: 5 }),
+      'a-security-token',
+    )
+    expect(find('threat-importance-card').exists()).toBe(true)
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('takes a change to any of the settings', async () => {

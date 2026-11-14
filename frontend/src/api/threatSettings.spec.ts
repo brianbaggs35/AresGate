@@ -14,6 +14,8 @@ const DRAFT: ThreatDraft = {
   exposure: 'some',
   exposed_ports: [443],
   notes: 'A web server',
+  important_drop: 15,
+  low_raise: 5,
 }
 
 describe('threat settings', () => {

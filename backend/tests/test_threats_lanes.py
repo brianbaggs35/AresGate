@@ -23,6 +23,8 @@ TUNINGS = [
     Tuning(ai_may_clear=False, confirming=True),
     Tuning(threat_from=90, clear_from=95),
     Tuning(threat_from=40, clear_from=50, confirming=True),
+    Tuning(important_drop=20, low_raise=20),
+    Tuning(important_drop=0, low_raise=30, confirming=True),
 ]
 
 
@@ -127,6 +129,40 @@ class TestWhichLane:
         assert attention.needs_you(incident(confidence=50))
 
 
+class TestWhatTheDevicesMatter:
+    @pytest.mark.parametrize(
+        ("importance", "confidence", "lane"),
+        [
+            (0, 30, Lane.BACKGROUND),
+            (1, 30, Lane.SUSPECT),
+            (2, 30, Lane.SUSPECT),
+            (1, 20, Lane.BACKGROUND),
+            (0, 40, Lane.SUSPECT),
+            (-1, 40, Lane.BACKGROUND),
+            (-1, 50, Lane.SUSPECT),
+            (None, 30, Lane.BACKGROUND),
+        ],
+    )
+    def test_the_bar_to_be_asked_about_moves_with_what_the_incident_touched(
+        self, importance: int | None, confidence: int, lane: Lane
+    ) -> None:
+        moved = Tuning(important_drop=10, low_raise=10)
+
+        found = attention.lane_of(incident(confidence=confidence, importance=importance), 35, moved)
+
+        assert found is lane
+
+    def test_a_chain_is_asked_about_whatever_it_touched(self) -> None:
+        found = incident(confidence=10, importance=-1, stages=["recon", "access"])
+
+        assert attention.lane_of(found, 35, Tuning(low_raise=30)) is Lane.THREAT
+
+    def test_a_shift_is_nothing_for_an_incident_that_is_not_saved_yet(self) -> None:
+        assert Tuning(important_drop=10, low_raise=5).shift(None) == 0
+        assert Tuning(important_drop=10, low_raise=5).shift(2) == -10
+        assert Tuning(important_drop=10, low_raise=5).shift(-1) == 5
+
+
 class TestTheSqlSaysTheSame:
     def grid(self) -> list[Incident]:
         found: list[Incident] = []
@@ -165,6 +201,18 @@ class TestTheSqlSaysTheSame:
             )
             for number, (status, verdict, confidence, (kind, sure)) in enumerate(
                 product(("open", "resolved"), (None, "low_priority"), (10, 80), calls)
+            )
+        )
+        found.extend(
+            incident(
+                subject=f"weighed{number}",
+                confidence=confidence,
+                importance=importance,
+                severity=severity,
+                stages=stages,
+            )
+            for number, (confidence, importance, severity, stages) in enumerate(
+                product((10, 15, 25, 35, 45, 55, 65, 75), (-1, 0, 1, 2), (2, 4), ([], ["recon"]))
             )
         )
         return found

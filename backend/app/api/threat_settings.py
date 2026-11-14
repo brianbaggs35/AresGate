@@ -30,9 +30,16 @@ class ThreatSettingsOut(BaseModel):
     exposure: Exposure
     exposed_ports: list[int]
     notes: str
+    # How many points the bar to be shown moves for an incident that touched an important device
+    # (down) and one that touched only guest or IoT devices (up).
+    important_drop: int
+    low_raise: int
     # What each is until it is changed, and the lowest the AI's bar can be.
     default_threat_from: int
     default_clear_from: int
+    default_important_drop: int
+    default_low_raise: int
+    max_shift: int
     min_clear_from: int
     max_notes: int
     max_ports: int
@@ -54,6 +61,10 @@ class ThreatSettingsIn(BaseModel):
         default_factory=list[int], max_length=settings.MAX_PORTS
     )
     notes: str = Field(default="", max_length=settings.MAX_NOTES)
+    important_drop: int = Field(
+        default=settings.DEFAULT_IMPORTANT_DROP, ge=0, le=settings.MAX_SHIFT
+    )
+    low_raise: int = Field(default=settings.DEFAULT_LOW_RAISE, ge=0, le=settings.MAX_SHIFT)
 
     @field_validator("notes")
     @classmethod
@@ -88,6 +99,8 @@ def _tuning(body: ThreatSettingsIn) -> Tuning:
         exposure=body.exposure,
         exposed_ports=tuple(sorted(set(body.exposed_ports))),
         notes=body.notes,
+        important_drop=body.important_drop,
+        low_raise=body.low_raise,
     )
 
 
@@ -102,8 +115,13 @@ def _shown(db: Db) -> ThreatSettingsOut:
         exposure=cast(Exposure, tuning.exposure),
         exposed_ports=list(tuning.exposed_ports),
         notes=tuning.notes,
+        important_drop=tuning.important_drop,
+        low_raise=tuning.low_raise,
         default_threat_from=settings.DEFAULT_THREAT_FROM,
         default_clear_from=settings.DEFAULT_CLEAR_FROM,
+        default_important_drop=settings.DEFAULT_IMPORTANT_DROP,
+        default_low_raise=settings.DEFAULT_LOW_RAISE,
+        max_shift=settings.MAX_SHIFT,
         min_clear_from=settings.MIN_CLEAR_FROM,
         max_notes=settings.MAX_NOTES,
         max_ports=settings.MAX_PORTS,
@@ -128,7 +146,15 @@ def _facts(was: Tuning, now: Tuning) -> dict[str, str | int | bool]:
     """What the audit log says of a change: each setting that changed, and what it was. What the
     owner wrote in their notes is not quoted."""
     facts: dict[str, str | int | bool] = {}
-    for name in ("threat_from", "ai_may_clear", "clear_from", "ai_confirms", "exposure"):
+    for name in (
+        "threat_from",
+        "ai_may_clear",
+        "clear_from",
+        "ai_confirms",
+        "exposure",
+        "important_drop",
+        "low_raise",
+    ):
         before, after = getattr(was, name), getattr(now, name)
         if before != after:
             facts[name] = after

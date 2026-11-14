@@ -155,10 +155,16 @@ class AssetProfile(Base):
     the owner's word: nothing a program lists changes it."""
 
     __tablename__ = "asset_profiles"
+    __table_args__ = (
+        CheckConstraint("importance IN ('normal', 'important', 'critical')", name="importance"),
+    )
 
     key: Mapped[str] = mapped_column(String(24), primary_key=True)
     # A key of ``app.assets.profile.KINDS``.
     kind: Mapped[str] = mapped_column(String(24))
     # In the owner's words: "Dad's work laptop", "Streams the news in the kitchen".
     purpose: Mapped[str | None] = mapped_column(String(200), default=None)
+    # How much it matters to the owner: ``normal``, ``important`` or ``critical``. It ranks the
+    # threats that touch it (see ``app/threats/importance.py``).
+    importance: Mapped[str] = mapped_column(String(10), default="normal", server_default="normal")
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
