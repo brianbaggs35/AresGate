@@ -83,7 +83,7 @@ const emit = defineEmits<{ toggle: [term: string] }>()
   gap: 0.375rem;
   min-height: 32px;
   padding: 0 0.75rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 999px;
   background: transparent;
   color: rgb(var(--v-theme-on-surface));

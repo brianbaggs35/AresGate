@@ -64,7 +64,7 @@ const tokens = computed(() => jsonTokens(text.value))
   display: block;
   margin-top: 0.5rem;
   padding: 0.75rem 1rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.75rem;
   background: rgba(var(--v-theme-on-surface), 0.04);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

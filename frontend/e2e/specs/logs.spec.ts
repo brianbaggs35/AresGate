@@ -332,6 +332,8 @@ test.describe('logs', () => {
 
       await expect(logs.drawer).toBeVisible()
       await expect(logs.drawerTitle).toHaveText(FAILED_LOGIN)
+      // A border drawn with a colour the theme lacks is dropped, so the header would have none.
+      await expect(logs.drawer.locator('.log-drawer__head')).toHaveCSS('border-bottom-width', '1px')
       await expect(logs.field('severity')).toContainText('High')
       await expect(logs.field('source')).toContainText('Wazuh')
       await expect(logs.field('kind')).toContainText('alert')
