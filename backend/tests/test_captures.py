@@ -277,8 +277,9 @@ def test_what_is_not_a_capture_is_refused_in_words() -> None:
         captures.parse(b"abc")
     with pytest.raises(CaptureFailed, match="classic pcap"):
         captures.parse(bytes.fromhex("0a0d0d0a") + bytes(40))
+    other_link = pcap_file([], link=105)
     with pytest.raises(CaptureFailed, match="type 105"):
-        captures.parse(pcap_file([], link=105))
+        captures.parse(other_link)
 
 
 def test_it_says_if_an_address_is_one() -> None:

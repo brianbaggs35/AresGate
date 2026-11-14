@@ -169,6 +169,10 @@ def _ipv6(data: bytes) -> _Segment | None:
     return _transport(following, source, destination, rest)
 
 
+# What an ARP request or reply is, by its operation number.
+_ARP_OPERATIONS: Final = {1: "who has", 2: "is at"}
+
+
 def _arp(data: bytes) -> _Segment | None:
     """Who asks for whom: the sender's and the target's address of an Ethernet and IPv4 request."""
     if len(data) < 28 or data[4] != 6 or data[5] != 4:
@@ -177,7 +181,7 @@ def _arp(data: bytes) -> _Segment | None:
         "ARP",
         str(ipaddress.IPv4Address(data[14:18])),
         str(ipaddress.IPv4Address(data[24:28])),
-        flags="who has" if data[7] == 1 else "is at" if data[7] == 2 else "",
+        flags=_ARP_OPERATIONS.get(data[7], ""),
     )
 
 
