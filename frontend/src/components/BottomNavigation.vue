@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import NavIcon from '@/components/NavIcon.vue'
 import { bottomBar, navItems, type NavItem } from '@/navigation'
+import { useAssistantStore } from '@/stores/assistant'
 
 /**
  * The menu of a phone, along the bottom. Only so many places fit in it, so the rest are behind a
@@ -15,6 +16,9 @@ const { items = navItems } = defineProps<{ items?: readonly NavItem[] }>()
 const { bar, more } = bottomBar(items)
 const route = useRoute()
 const router = useRouter()
+// The assistant's sheet rises over this menu, and while it is open the places behind it are not
+// to be reached by keyboard, by a screen reader or by assistive checks of what is covered.
+const assistant = useAssistantStore()
 
 const sheet = ref(false)
 /** A place is open when the page belongs to the same top route, whichever of its pages it is. */
@@ -24,7 +28,15 @@ const inMore = computed(() =>
 </script>
 
 <template>
-  <v-bottom-navigation tag="nav" aria-label="Main" grow color="primary" border="t" :elevation="0">
+  <v-bottom-navigation
+    tag="nav"
+    aria-label="Main"
+    grow
+    color="primary"
+    border="t"
+    :elevation="0"
+    :inert="assistant.open ? '' : undefined"
+  >
     <v-btn
       v-for="item in bar"
       :key="item.route"

@@ -1,4 +1,5 @@
 import BottomNavigation from '@/components/BottomNavigation.vue'
+import { useAssistantStore } from '@/stores/assistant'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 const open = (route: string) =>
@@ -8,6 +9,19 @@ describe('BottomNavigation', () => {
   it('names the menu', async () => {
     const { wrapper } = await open('/')
     expect(wrapper.find('nav').attributes('aria-label')).toBe('Main')
+  })
+
+  it('is out of reach while the assistant is open over it', async () => {
+    const { wrapper } = await open('/')
+    expect(wrapper.find('nav').attributes('inert')).toBeUndefined()
+
+    useAssistantStore().open = true
+    await flushPromises()
+    expect(wrapper.find('nav').attributes('inert')).toBeDefined()
+
+    useAssistantStore().open = false
+    await flushPromises()
+    expect(wrapper.find('nav').attributes('inert')).toBeUndefined()
   })
 
   it('lists the places, and marks the one that is open', async () => {
