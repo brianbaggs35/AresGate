@@ -19,6 +19,14 @@ Every release's notes are here, newest first. The format follows
   it is over with nothing more it may remove. See
   [Retention and the size of the database](DOCS/operations.md#retention-and-the-size-of-the-database).
 
+- **Raw packets from ntopng, on a device's page.** The **Packets** card under a device's traffic
+  has ntopng listen to the device's address for 5 to 30 seconds and shows what it saw: for each
+  packet when it came, who sent it to whom with the ports, the protocol and the flags of a TCP
+  segment, how big it was and its first bytes. Nothing of the capture is kept or sent to an AI, it
+  is in the audit log with the host it was about, and only one runs at a time. The user AresGate
+  signs in to ntopng as needs ntopng's permission to download PCAP files. See
+  [Packets](DOCS/integrations.md#packets-of-a-host).
+
 ### Fixed
 
 - **A busy NVD, OTX, GreyNoise or Fingerbank is no longer reported as a failed connection with a

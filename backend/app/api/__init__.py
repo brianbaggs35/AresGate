@@ -12,6 +12,7 @@ from app.api import (
     assets,
     audit,
     auth,
+    captures,
     chains,
     collectors,
     credentials,
@@ -51,6 +52,7 @@ api_router.include_router(passkeys.router)
 api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(interfaces.router)
+api_router.include_router(captures.router)
 api_router.include_router(assets.router)
 api_router.include_router(devices.router)
 api_router.include_router(agents.router)

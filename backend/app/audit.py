@@ -83,6 +83,7 @@ class Action(StrEnum):
     REVIEW_AGREED_ALL = "review.agreed_all"
     REVIEW_SETTINGS_CHANGED = "review.settings_changed"
     ASSET_CLASSIFIED = "asset.classified"
+    CAPTURE_TAKEN = "capture.taken"
     ASSET_CLASSIFICATION_CLEARED = "asset.classification_cleared"
     THREATS_SETTINGS_CHANGED = "threats.settings_changed"
     THREATS_FAMILY_CALLED = "threats.family_called"

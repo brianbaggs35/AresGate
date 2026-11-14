@@ -217,15 +217,27 @@ NTOPNG_LOGIN_REFUSED = (
 
 
 async def ntopng_get(
-    client: ApiClient, target: Target, path: str, query: Mapping[str, str] | None = None
+    client: ApiClient,
+    target: Target,
+    path: str,
+    query: Mapping[str, str] | None = None,
+    *,
+    keep_bytes: int | None = None,
 ) -> Reply:
     """A GET of ntopng's REST API, signed in the way the connection says: with an authentication
-    token, or with HTTP basic authentication."""
+    token, or with HTTP basic authentication. ``keep_bytes`` is for an answer that is data, not
+    text, such as a packet capture."""
     if target.options.get("auth") == "basic":
         credentials = (str(target.options["username"]), target.secrets["password"])
-        return await client.request("GET", path, query=query, auth=credentials)
+        return await client.request(
+            "GET", path, query=query, auth=credentials, keep_bytes=keep_bytes
+        )
     return await client.request(
-        "GET", path, query=query, headers={"Authorization": f"Token {target.secrets['token']}"}
+        "GET",
+        path,
+        query=query,
+        headers={"Authorization": f"Token {target.secrets['token']}"},
+        keep_bytes=keep_bytes,
     )
 
 

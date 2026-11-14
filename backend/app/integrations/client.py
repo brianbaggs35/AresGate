@@ -83,6 +83,10 @@ class Reply:
     text: str
     # What it said in its headers, with the names in lower case.
     headers: Mapping[str, str] = field(default_factory=dict[str, str])
+    # The body as it came, for a request that asked for bytes (a packet capture), where ``text``
+    # is empty. ``cut`` says it was stopped at the most that was asked for.
+    content: bytes = b""
+    cut: bool = False
 
     @property
     def ok(self) -> bool:
@@ -206,15 +210,18 @@ class ApiClient:
         json_body: object = None,
         headers: Mapping[str, str] | None = None,
         auth: tuple[str, str] | None = None,
+        keep_bytes: int | None = None,
     ) -> Reply:
         """Sends a request and returns what came back, whatever its status. Raises
-        ``CallFailed`` if nothing came back. Either way the call is logged."""
+        ``CallFailed`` if nothing came back. Either way the call is logged. ``keep_bytes`` is for
+        an answer that isn't text: the body is kept as it is in ``Reply.content``, and what comes
+        after that many bytes is left unread instead of being an error."""
         started = time.monotonic()
         occurred_at = utcnow()
         status: int | None = None
         error: str | None = None
         try:
-            reply = await self._send(method, path, query, json_body, headers, auth)
+            reply = await self._send(method, path, query, json_body, headers, auth, keep_bytes)
             status = reply.status
             if 300 <= status < 400:
                 error = "Redirected to another address, which AresGate doesn't follow."
@@ -246,6 +253,7 @@ class ApiClient:
         json_body: object,
         headers: Mapping[str, str] | None,
         auth: tuple[str, str] | None,
+        keep_bytes: int | None,
     ) -> Reply:
         if self._policy.read_only and method.upper() != "GET":
             raise CallFailed(
@@ -258,14 +266,22 @@ class ApiClient:
             ) as response,
         ):
             body = bytearray()
+            cut = False
+            limit = MAX_BODY if keep_bytes is None else keep_bytes
             async for chunk in response.aiter_bytes():
                 body += chunk
-                if len(body) > MAX_BODY:
-                    raise CallFailed("It answered with more than AresGate reads.")
+                if len(body) > limit:
+                    if keep_bytes is None:
+                        raise CallFailed("It answered with more than AresGate reads.")
+                    del body[limit:]
+                    cut = True
+                    break
             return Reply(
                 response.status_code,
-                body.decode("utf-8", errors="replace"),
+                body.decode("utf-8", errors="replace") if keep_bytes is None else "",
                 {name.lower(): value for name, value in response.headers.items()},
+                bytes(body) if keep_bytes is not None else b"",
+                cut,
             )
 
     async def _log(self, call: Call) -> None:
