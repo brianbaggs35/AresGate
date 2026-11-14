@@ -49,7 +49,8 @@ test.describe('a verdict the AI gave', () => {
       { verdict: 'not_suspicious', address: ATTACKER, note: 'The scanner you run.', by_ai: true },
     ])
 
-    await page.goto('/incidents?view=all')
+    // What a verdict quiets is left out of the list unless asked for.
+    await page.goto('/incidents?view=all&quieted=1')
     await expect(page.getByTestId('incident-cleared-by-ai')).toContainText(
       'Given by the AI, 91% sure',
     )
@@ -67,7 +68,8 @@ test.describe('a verdict the AI gave', () => {
     await verdicts.confirm.click()
 
     await expect(verdicts.empty).toBeVisible()
-    await page.goto('/incidents?view=all')
+    await page.goto('/incidents?view=all&quieted=1')
+    await expect(page.getByTestId('incident')).toHaveCount(1)
     await expect(page.getByTestId('incident-cleared-by-ai')).toHaveCount(0)
   })
 })
