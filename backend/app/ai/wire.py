@@ -70,7 +70,8 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Iterator, Mapping
 from contextlib import aclosing
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from typing import TypeIs, cast
 
 from app.ai.catalog import Caching, ModelDef, ProviderDef, Wire
@@ -84,6 +85,7 @@ OPENAI_MIN_OUTPUT = 16
 # except that it isn't cached, so a start that may be too short isn't marked.
 CHARS_PER_TOKEN = 4
 MAX_MODELS = 500
+DECLINED = "The model declined to answer."
 MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
 
 
@@ -283,7 +285,7 @@ def _anthropic(data: dict[str, object]) -> Completion:
     )
     stop = data.get("stop_reason")
     if stop == "refusal":
-        raise AiFailed("The model declined to answer.")
+        raise AiFailed(DECLINED)
     read = _count(usage.get("cache_read_input_tokens"))
     written = _count(usage.get("cache_creation_input_tokens"))
     return Completion(
@@ -308,7 +310,7 @@ def _openai(data: dict[str, object]) -> Completion:
         for part in _list(_object(item).get("content"))
     ]
     if any(part.get("type") == "refusal" for part in parts):
-        raise AiFailed("The model declined to answer.")
+        raise AiFailed(DECLINED)
     text = "".join(
         _text(part.get("text")) or "" for part in parts if part.get("type") == "output_text"
     )
@@ -389,10 +391,12 @@ class _Reader(ABC):
         self.finished = False
 
     @abstractmethod
-    def feed(self, line: str) -> Iterator[str]: ...
+    def feed(self, line: str) -> Iterator[str]:
+        """The text, if any, that one line of the provider's stream gives."""
 
     @abstractmethod
-    def completion(self) -> Completion: ...
+    def completion(self) -> Completion:
+        """What the whole answer counted, once the stream has ended."""
 
     def _write(self, text: str) -> Iterator[str]:
         if text:
@@ -452,7 +456,7 @@ class _AnthropicReader(_Reader):
 
     def completion(self) -> Completion:
         if self._stop == "refusal":
-            raise AiFailed("The model declined to answer.")
+            raise AiFailed(DECLINED)
         usage = self._usage
         read = usage.get("cache_read_input_tokens", 0)
         written = usage.get("cache_creation_input_tokens", 0)
@@ -479,7 +483,7 @@ class _OpenAiReader(_Reader):
         if kind == "response.output_text.delta":
             yield from self._write(_text(event.get("delta")) or "")
         elif kind == "response.refusal.delta":
-            raise AiFailed("The model declined to answer.")
+            raise AiFailed(DECLINED)
         elif kind in ("response.completed", "response.incomplete"):
             self._ended = _object(event.get("response"))
             self.finished = True

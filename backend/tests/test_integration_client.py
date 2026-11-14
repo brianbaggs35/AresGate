@@ -461,9 +461,10 @@ def test_a_streamed_request_that_is_not_a_success_says_so_and_is_logged(
 ) -> None:
     server = serve(lambda seen: Answer(status=status, body="no"))
     log = Log()
+    connection = target(server)
 
     with pytest.raises(client_module.NotSuccess) as raised:
-        lines_of(target(server), log, "POST", "/x")
+        lines_of(connection, log, "POST", "/x")
 
     assert raised.value.status == status
     assert str(raised.value) == f"HTTP {status}"
@@ -476,9 +477,10 @@ def test_a_streamed_answer_that_is_too_long_is_not_read(
     monkeypatch.setattr(client_module, "MAX_BODY", 100)
     server = serve(lambda seen: Answer(body="\n".join("x" * 20 for _ in range(30))))
     log = Log()
+    connection = target(server)
 
     with pytest.raises(CallFailed, match="more than AresGate reads"):
-        lines_of(target(server), log, "POST", "/x")
+        lines_of(connection, log, "POST", "/x")
 
     assert "more than AresGate reads" in str(log.calls[0].error)
 
@@ -486,9 +488,10 @@ def test_a_streamed_answer_that_is_too_long_is_not_read(
 def test_a_stream_that_gets_no_answer_fails_like_a_request(serve: Serve) -> None:
     server = serve(lambda seen: Answer(drop=True))
     log = Log()
+    connection = target(server)
 
     with pytest.raises(CallFailed, match="broke, or it isn't a web server"):
-        lines_of(target(server), log, "POST", "/x")
+        lines_of(connection, log, "POST", "/x")
 
     assert log.calls[0].status_code is None
 
@@ -497,8 +500,9 @@ def test_a_service_that_is_only_read_is_not_streamed_a_change(serve: Serve) -> N
     server = serve(lambda seen: Answer())
     log = Log()
     reading = replace(HOME_NETWORK_AND_LOOPBACK, read_only=True)
+    connection = target(server)
 
     with pytest.raises(CallFailed, match="only read"):
-        lines_of(target(server), log, "POST", "/x", policy=reading)
+        lines_of(connection, log, "POST", "/x", policy=reading)
 
     assert server.seen == []
