@@ -5,9 +5,10 @@ else, and forgotten with the machine."""
 
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
+from typing import Any
 
 from sqlalchemy import BigInteger, ForeignKeyConstraint, PrimaryKeyConstraint, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, INET
+from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime
@@ -80,3 +81,29 @@ class HostPackage(Base):
     version: Mapped[str] = mapped_column(String(128), default="")
     architecture: Mapped[str] = mapped_column(String(32), default="")
     kind: Mapped[str] = mapped_column(String(16), default="")
+
+
+class HostTrait(Base):
+    """What ntopng knows about a host on the network from watching it: its operating system, the
+    network it belongs to and where in the world that is, and the fingerprints of how it talks
+    (TLS, SSH and TCP). It is kept by address, since ntopng sees hosts by address, and replaced on
+    every read; a host ntopng no longer lists is forgotten."""
+
+    __tablename__ = "host_traits"
+    __table_args__ = (PrimaryKeyConstraint("source", "connection", "address"),)
+
+    source: Mapped[str] = mapped_column(String(32))
+    connection: Mapped[str] = mapped_column(String(32))
+    address: Mapped[IPv4Address | IPv6Address] = mapped_column(INET)
+    hostname: Mapped[str | None] = mapped_column(String(253), default=None)
+    # The operating system as ntopng names it (``Linux``, ``Windows``), or the longer text it has
+    # for it when it has one.
+    os_name: Mapped[str | None] = mapped_column(String(128), default=None)
+    # The autonomous system the address belongs to: its number and its name.
+    asn: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    as_name: Mapped[str | None] = mapped_column(String(128), default=None)
+    country: Mapped[str | None] = mapped_column(String(64), default=None)
+    # ``{"ja4": [{"value", "app", "uses", "malicious"}], "hassh": [...], "tcp": "..."}``: what
+    # ntopng saw of how the host opens connections. A member it saw nothing for is left out.
+    fingerprints: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    read_at: Mapped[datetime] = mapped_column(UTCDateTime)

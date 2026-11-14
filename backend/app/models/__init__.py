@@ -50,7 +50,7 @@ from app.models.devices import (
     HostListing,
 )
 from app.models.events import Event, EventRetention
-from app.models.hosts import HostPackage, HostPort, HostSystem
+from app.models.hosts import HostPackage, HostPort, HostSystem, HostTrait
 from app.models.incidents import STATUSES as INCIDENT_STATUSES
 from app.models.incidents import (
     AddressName,
@@ -119,6 +119,7 @@ __all__ = [
     "HostPackage",
     "HostPort",
     "HostSystem",
+    "HostTrait",
     "Incident",
     "IncidentChain",
     "IncidentFamily",

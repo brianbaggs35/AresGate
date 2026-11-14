@@ -144,7 +144,7 @@ def _event(
         source=SOURCE,
         connection=CONNECTION,
         kind="alert",
-        severity=_severity(_whole(alert, "severity")),
+        severity=severity_of(_whole(alert, "severity")),
         occurred_at=datetime.fromtimestamp(began, UTC),
         identity=(family, *seen.identity(facts)),
         summary=_summary(
@@ -161,7 +161,7 @@ def _event(
     )
 
 
-def _severity(level: int | None) -> Severity:
+def severity_of(level: int | None) -> Severity:
     """How serious AresGate treats ntopng's severity, which it works out from an alert's score:
     none, debug and info are information, a notice is low, a warning medium, an error high and
     critical and emergency critical. The grouping is AresGate's."""

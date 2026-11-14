@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine
@@ -9,16 +10,31 @@ from sqlalchemy.orm import Session
 
 from app.collectors.base import Collector
 from app.collectors.ntopng.alerts import Alerts
+from app.collectors.ntopng.counters import AlertCounters
+from app.collectors.ntopng.flows import Flows
+from app.collectors.ntopng.host_details import HostDetails
 from app.collectors.ntopng.hosts import Hosts
 from app.collectors.ntopng.interface import InterfaceTraffic
+from app.collectors.ntopng.notices import Notices
+from app.collectors.ntopng.protocols import Protocols
 from app.config import Settings
 from app.integrations import probes
-from e2e.stand_ins import Answer, Seen, ntopng
+from e2e.stand_ins import Answer, Seen, ntopng, sample_ntopng_extras
 from tests.ntopng import TOKEN, connect
 from tests.opnsense import collect, health
 from tests.stubs import Serve
 
-COLLECTORS = [Hosts, InterfaceTraffic, Alerts]
+NOW = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+COLLECTORS = [
+    Hosts,
+    InterfaceTraffic,
+    Alerts,
+    Notices,
+    AlertCounters,
+    Protocols,
+    Flows,
+    HostDetails,
+]
 
 
 def refusing(seen: Seen) -> Answer:
@@ -105,7 +121,15 @@ class TestWhenNtopngRefuses:
         serve: Serve,
         make: Callable[[], Collector],
     ) -> None:
-        said = run(session, settings, engine, serve, make(), ntopng(TOKEN), interface_id=7)
+        said = run(
+            session,
+            settings,
+            engine,
+            serve,
+            make(),
+            ntopng(TOKEN, extras=sample_ntopng_extras(NOW)),
+            interface_id=7,
+        )
 
         assert said == (
             "ntopng has no interface 7, so it refused the request. It has: ID 0: eth0, "

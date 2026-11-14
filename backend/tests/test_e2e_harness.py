@@ -187,6 +187,7 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
         "host_packages": 0,
         "host_ports": 0,
         "host_systems": 0,
+        "host_traits": 0,
         "event_retention": 0,
         "events": 0,
         "incident_chains": 0,
@@ -284,6 +285,7 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "integration_connections",
             "integration_api_calls",
             "incident_chains",
+            "host_traits",
             "host_systems",
             "host_listings",
             "events",
@@ -548,23 +550,37 @@ def test_the_collectors_read_the_hosts_interface_and_alerts_of_the_ntopng_stand_
     records = {item.collector: item for item in session.scalars(select(CollectorHealth))}
     assert sorted(records) == [
         "connection-check",
+        "ntopng-alert-counters",
         "ntopng-alerts",
+        "ntopng-flows",
+        "ntopng-host-details",
         "ntopng-hosts",
         "ntopng-interface",
+        "ntopng-notices",
+        "ntopng-protocols",
     ]
     assert {item.consecutive_failures for item in records.values()} == {0}
     # The second run read the same alerts and found them stored already; it listed the three
     # local hosts again and measured the interface again.
     assert {key: item.last_items for key, item in records.items() if key != "connection-check"} == {
+        "ntopng-alert-counters": 4,
         "ntopng-alerts": 0,
+        "ntopng-flows": 0,
+        "ntopng-host-details": 2,
         "ntopng-hosts": 3,
         "ntopng-interface": 12,
+        "ntopng-notices": 0,
+        "ntopng-protocols": 9,
     }
     counts = e2e.get("/api/__test__/database/counts").json()
-    # Two flow alerts and two host alerts of the last half hour, and none of the older one.
-    assert counts["events"] == 4
-    # Five readings of each of three hosts and twelve of the interface, taken twice.
-    assert (counts["metric_series"], counts["metric_samples"]) == (27, 54)
+    # Two flow alerts and two host alerts of the last half hour, and none of the older one, two
+    # flows that have a score and four notices of other kinds.
+    assert counts["events"] == 10
+    # Five readings of each of three hosts, twelve of the interface, four alert counts and nine
+    # protocols, taken twice.
+    assert (counts["metric_series"], counts["metric_samples"]) == (40, 80)
+    # The two hosts ntopng has details of.
+    assert counts["host_traits"] == 2
     # The two hosts in the broadcast domain.
     assert counts["devices"] == 2
 

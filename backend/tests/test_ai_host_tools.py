@@ -13,8 +13,9 @@ from app.ai.tools import Args
 from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
-from app.hostinfo import store
+from app.hostinfo import store, traits
 from app.hostinfo.store import NewPackage, NewPort, NewSystem
+from app.hostinfo.traits import NewTrait
 from app.models import Device
 from tests.test_ai_service import NOW
 from tests.test_ai_tools import HOUR, redactor, run
@@ -346,3 +347,89 @@ class TestADevice:
         session.commit()
 
         assert "runs" not in run(session, "device", Args(name="plug")).lines[0]
+
+
+class TestHostDetails:
+    @staticmethod
+    def seen(session: Session) -> None:
+        traits.record(
+            session,
+            [
+                NewTrait(
+                    ip_address(WEB),
+                    hostname="web1",
+                    os_name="Linux",
+                    asn=64512,
+                    as_name="Example ISP",
+                    country="CA",
+                    fingerprints={
+                        "ja4": [
+                            {"value": "a", "malicious": False},
+                            {"value": "b", "malicious": True},
+                        ],
+                        "hassh": [{"value": "c", "malicious": False}],
+                        "tcp": "2:128",
+                    },
+                ),
+                NewTrait(ip_address("192.168.1.41")),
+            ],
+            NOW,
+            source="ntopng",
+            connection="api",
+        )
+        session.commit()
+
+    def test_each_host_says_what_it_runs_where_it_is_and_how_it_connects(
+        self, session: Session
+    ) -> None:
+        self.seen(session)
+
+        found = run(session, "host_details")
+
+        assert found.lines == [
+            "web1 (192.168.1.20): runs Linux; network: AS64512, Example ISP, CA; fingerprints: "
+            "2 TLS (JA4), 1 flagged malicious, 1 SSH (HASSH), a TCP fingerprint",
+            "unnamed (192.168.1.41): runs an unknown system; network: unknown; fingerprints: "
+            "none seen",
+        ]
+        assert found.summary == "2 hosts"
+
+    def test_a_host_is_found_by_its_name_or_its_address(self, session: Session) -> None:
+        self.seen(session)
+
+        by_name = run(session, "host_details", Args(name="web"))
+        by_address = run(session, "host_details", Args(name="192.168.1.41"))
+
+        assert [line.split(" ")[0] for line in by_name.lines] == ["web1"]
+        assert [line.split(" ")[0] for line in by_address.lines] == ["unnamed"]
+
+    def test_a_blank_name_means_every_host_and_one_that_is_only_wildcards_means_none(
+        self, session: Session
+    ) -> None:
+        self.seen(session)
+
+        assert run(session, "host_details", Args(name="  ")).summary == "2 hosts"
+        assert run(session, "host_details", Args(name="%_")).summary == "no such host"
+
+    def test_when_ntopng_has_told_nothing_it_says_so(self, session: Session) -> None:
+        found = run(session, "host_details")
+
+        assert found.lines == ["ntopng has told nothing of a host that matches."]
+
+    def test_the_limit_is_how_many_hosts_are_listed(self, session: Session) -> None:
+        self.seen(session)
+
+        assert run(session, "host_details", Args(limit=1)).summary == "1 host"
+
+    def test_a_provider_that_must_not_see_addresses_sees_stand_ins_and_can_name_one_back(
+        self, session: Session
+    ) -> None:
+        self.seen(session)
+        shown = redactor(session, Level.BALANCED)
+        stand_in = shown.address(WEB)
+
+        found = run(session, "host_details", Args(name=stand_in), shown=shown)
+
+        assert found.summary == "1 host"
+        assert WEB not in " ".join(found.lines)
+        assert stand_in in " ".join(found.lines)

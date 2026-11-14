@@ -140,6 +140,7 @@ class TestTheList:
             "open_ports",
             "installed_software",
             "host_vulnerabilities",
+            "host_details",
             "integrations",
             "reputation",
             "vulnerability",
