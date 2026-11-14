@@ -85,8 +85,8 @@ const wanted = computed<RetentionDraft | null>(() => {
 const changed = computed(() => {
   const was = kept.value as RetentionSettings
   const now = wanted.value
+  if (now === null) return true
   return (
-    now === null ||
     was.managed !== now.managed ||
     was.keep_forever !== now.keep_forever ||
     was.days !== now.days ||
