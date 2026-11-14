@@ -27,6 +27,11 @@ Every release's notes are here, newest first. The format follows
   signs in to ntopng as needs ntopng's permission to download PCAP files. See
   [Packets](DOCS/integrations.md#packets-of-a-host).
 
+### Changed
+
+- **The button on the Interfaces page that looks for what your programs report now says Find
+  interfaces,** not Find feeds, so it says what you are looking for.
+
 ### Fixed
 
 - **A busy NVD, OTX, GreyNoise or Fingerbank is no longer reported as a failed connection with a

@@ -167,6 +167,7 @@ test.describe('interfaces', () => {
     await harness.createActivity({ traffic: { igc0: 8 } })
     await interfaces.goto()
     await expect(interfaces.heroTitle).toHaveText('No interfaces yet')
+    await expect(interfaces.find).toHaveText('Find interfaces')
 
     await interfaces.find.click()
 

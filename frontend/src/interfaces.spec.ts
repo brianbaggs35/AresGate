@@ -39,6 +39,7 @@ describe('hero', () => {
     expect(hero(listing())).toMatchObject({
       tone: 'primary',
       title: 'No interfaces yet',
+      detail: expect.stringMatching(/^Find interfaces to see/),
       mood: 'idle',
       level: 0,
     })
