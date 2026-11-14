@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from '@/api/client'
+import { ApiError, apiDelete, apiGet, apiPost, apiStream } from '@/api/client'
 
 /** What an answer looked at to make it, and what it found, in a few words. */
 export interface ChatLookup {
@@ -75,27 +75,35 @@ export function fetchConversation(id: number): Promise<Conversation> {
   return apiGet(`/ai/conversations/${id.toString()}`)
 }
 
-/** Begins a conversation with a question. It answers in the same breath, which can take a minute
- * or two: the assistant may look things up and ask the provider more than once. */
-export function startConversation(
-  text: string,
-  csrfToken: string,
-  page?: PageContext | null,
-): Promise<Conversation> {
-  return apiPost('/ai/conversations', { text, ...(page ? { page } : {}) }, csrfToken)
-}
+/** What happens while the assistant answers: a lookup it has run, and what it found in a few
+ * words, then the answer as it is written. `dropped` says that what was written was not the answer
+ * after all (the assistant went to look something up, or failed). */
+export type AnswerEvent =
+  { kind: 'looked'; lookup: ChatLookup } | { kind: 'wrote'; text: string } | { kind: 'dropped' }
 
-export function askInConversation(
-  id: number,
+/** Asks a question, in a conversation or (with no `id`) to begin one, and tells what happens as it
+ * happens. Resolves with the conversation as it is kept, once the answer has ended; a connection
+ * that broke before that is an error, and nothing was kept. */
+export async function askAndFollow(
+  id: number | null,
   text: string,
   csrfToken: string,
-  page?: PageContext | null,
+  page: PageContext | null,
+  onEvent: (event: AnswerEvent) => void,
 ): Promise<Conversation> {
-  return apiPost(
-    `/ai/conversations/${id.toString()}/messages`,
-    { text, ...(page ? { page } : {}) },
-    csrfToken,
-  )
+  const result: { conversation?: Conversation } = {}
+  const path =
+    id === null ? '/ai/conversations/stream' : `/ai/conversations/${id.toString()}/stream`
+  await apiStream(path, { text, ...(page ? { page } : {}) }, csrfToken, ({ name, data }) => {
+    if (name === 'done') result.conversation = data as Conversation
+    else if (name === 'looked') onEvent({ kind: 'looked', lookup: data as ChatLookup })
+    else if (name === 'wrote') onEvent({ kind: 'wrote', text: (data as { text: string }).text })
+    else if (name === 'dropped') onEvent({ kind: 'dropped' })
+  })
+  if (result.conversation === undefined) {
+    throw new ApiError(0, 'The answer was cut off before the end. Ask again.', 'cut_off')
+  }
+  return result.conversation
 }
 
 /** Asks the last question again after an answer that could not be made. */

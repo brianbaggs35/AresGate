@@ -414,3 +414,91 @@ def test_the_log_entry_carries_when_it_happened(serve: Serve) -> None:
 
 def test_unused_seen_helper_exposes_the_path() -> None:
     assert Seen("GET", "/a?b=1", {}, b"").path == "/a"
+
+
+# -- streaming
+
+
+def lines_of(
+    where: Target,
+    log: Log,
+    *args: Any,
+    policy: netguard.AddressPolicy = HOME_NETWORK_AND_LOOPBACK,
+    **kwargs: Any,
+) -> list[str]:
+    async def go() -> list[str]:
+        async with ApiClient(where, log, policy) as client:
+            return [line async for line in client.stream(*args, **kwargs)]
+
+    return asyncio.run(go())
+
+
+def test_a_streamed_answer_comes_a_line_at_a_time_and_is_logged_once(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(body="one\ntwo\n\nthree"))
+    log = Log()
+
+    got = lines_of(
+        target(server), log, "post", "/v1/messages?key=secret", json_body={"stream": True}
+    )
+
+    assert got == ["one", "two", "", "three"]
+    [call] = log.calls
+    assert (call.method, call.path, call.status_code, call.error) == (
+        "POST",
+        "/v1/messages",
+        200,
+        None,
+    )
+    assert server.seen[0].body == b'{"stream":true}'
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [(401, "Unauthorized"), (302, "Redirected to another address")],
+)
+def test_a_streamed_request_that_is_not_a_success_says_so_and_is_logged(
+    serve: Serve, status: int, error: str
+) -> None:
+    server = serve(lambda seen: Answer(status=status, body="no"))
+    log = Log()
+
+    with pytest.raises(client_module.NotSuccess) as raised:
+        lines_of(target(server), log, "POST", "/x")
+
+    assert raised.value.status == status
+    assert str(raised.value) == f"HTTP {status}"
+    assert (log.calls[0].status_code, error in str(log.calls[0].error)) == (status, True)
+
+
+def test_a_streamed_answer_that_is_too_long_is_not_read(
+    serve: Serve, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(client_module, "MAX_BODY", 100)
+    server = serve(lambda seen: Answer(body="\n".join("x" * 20 for _ in range(30))))
+    log = Log()
+
+    with pytest.raises(CallFailed, match="more than AresGate reads"):
+        lines_of(target(server), log, "POST", "/x")
+
+    assert "more than AresGate reads" in str(log.calls[0].error)
+
+
+def test_a_stream_that_gets_no_answer_fails_like_a_request(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(drop=True))
+    log = Log()
+
+    with pytest.raises(CallFailed, match="broke, or it isn't a web server"):
+        lines_of(target(server), log, "POST", "/x")
+
+    assert log.calls[0].status_code is None
+
+
+def test_a_service_that_is_only_read_is_not_streamed_a_change(serve: Serve) -> None:
+    server = serve(lambda seen: Answer())
+    log = Log()
+    reading = replace(HOME_NETWORK_AND_LOOPBACK, read_only=True)
+
+    with pytest.raises(CallFailed, match="only read"):
+        lines_of(target(server), log, "POST", "/x", policy=reading)
+
+    assert server.seen == []

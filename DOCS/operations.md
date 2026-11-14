@@ -1097,6 +1097,28 @@ AresGate works without it. A test sends only the words "Say OK."
   again, `POST .../{id}/retry` to ask the last question again after an answer that could not be
   made, and `DELETE`. Asking can take a minute or two, and nginx waits up to 400 seconds for it.
 
+  **The answer is shown as it is written.** The web app asks with `POST /api/ai/conversations/stream`
+  (to begin one) or `POST .../{id}/stream`, which take what the two POSTs above take and answer
+  with server-sent events (`text/event-stream`) instead of waiting: `conversation` (its id), a
+  `looked` for each lookup as it has run (`tool` and what it found, in words), `wrote` for each
+  piece of the answer as the provider writes it, `dropped` when what was written was not the
+  answer after all (the model went to look something up), and last `done`, with the conversation
+  as it is kept, which is what the page keeps. A stream that ends without `done` was cut off and
+  nothing was kept (the page says so and keeps the question in the box). Nothing is stored until
+  the answer has ended, and the answer that is stored is the same as without streaming. Each
+  provider is asked with its own kind of streaming (`wire.stream`): Anthropic's and OpenAI's
+  server-sent events and Ollama's lines of JSON, read as the documentation of each describes (the
+  pages are named in `app/ai/wire.py`). The answer is a JSON reply, so `AnswerReader` reads the
+  text of its `answer` out of the JSON as it comes, with the escapes undone however the pieces cut
+  them, and an answer that is written before the model asks for a lookup is taken back. A stand-in
+  (`HOST_12`) can arrive cut in two, so `RevealStream` holds back the last word of what has come
+  until what follows shows it is whole, and only then turns stand-ins back into what they stood
+  for; what goes to the page has the real values, and what the provider was sent and answered is
+  recorded as before. nginx passes these through as they come (`proxy_buffering off` for
+  `/api/ai/conversations/stream` and `.../{id}/stream`, and the API sends `X-Accel-Buffering: no`
+  too), and the API log holds one entry for each request to the provider, written when its answer
+  has ended.
+
   The panel that opens over any page hands each question the page it was asked from (`page` on the
   two POSTs: `kind` of `incident`, `device`, `logs`, `incidents` or `other`, with an `id`, an
   `address`, a search `query` or a `title`). For an incident or a device the answer starts with

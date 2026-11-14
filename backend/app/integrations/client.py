@@ -16,7 +16,7 @@ import json
 import logging
 import ssl
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
@@ -42,6 +42,7 @@ READ_TIMEOUT = 10.0
 MAX_PATH = 256
 MAX_ERROR = 500
 HIDDEN = "***"
+REDIRECTED = "Redirected to another address, which AresGate doesn't follow."
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,15 @@ class Reply:
 
 class CallFailed(Exception):
     """No answer came. The message says why, and holds no secret."""
+
+
+class NotSuccess(Exception):
+    """A streamed request was answered with a status that isn't a success, so there is nothing to
+    stream. ``status`` is what it answered with."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"HTTP {status}")
+        self.status = status
 
 
 def in_chain[E: BaseException](error: BaseException, kind: type[E]) -> E | None:
@@ -224,10 +234,65 @@ class ApiClient:
             reply = await self._send(method, path, query, json_body, headers, auth, keep_bytes)
             status = reply.status
             if 300 <= status < 400:
-                error = "Redirected to another address, which AresGate doesn't follow."
+                error = REDIRECTED
             elif status >= 400:
                 error = _phrase(status)
             return reply
+        except Exception as problem:
+            error = self._scrub(await self._explain(problem))
+            raise CallFailed(error) from None
+        finally:
+            await self._log(
+                Call(
+                    occurred_at=occurred_at,
+                    integration=self._target.integration,
+                    connection=self._target.connection,
+                    method=method.upper()[:8],
+                    path=clean_path(path),
+                    status_code=status,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    error=error,
+                )
+            )
+
+    async def stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: object = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> AsyncGenerator[str]:
+        """Sends a request and gives back the lines of its answer as they come, for a system that
+        sends one in pieces (an AI provider writing an answer). Raises ``NotSuccess`` if the
+        answer is not a success, and ``CallFailed`` if nothing came or what came is too long.
+        Like ``request`` it is logged, once, when the answer has ended or failed. Use it inside
+        ``contextlib.aclosing`` so that a reader that stops early closes the connection."""
+        started = time.monotonic()
+        occurred_at = utcnow()
+        status: int | None = None
+        error: str | None = None
+        try:
+            if self._policy.read_only and method.upper() != "GET":
+                raise CallFailed(
+                    "This service is only read, so AresGate sends it nothing that changes."
+                )
+            async with (
+                asyncio.timeout(self._deadline),
+                self._http.stream(method, path, json=json_body, headers=headers) as response,
+            ):
+                status = response.status_code
+                if not 200 <= status < 300:
+                    error = REDIRECTED if 300 <= status < 400 else _phrase(status)
+                    raise NotSuccess(status)
+                read = 0
+                async for line in response.aiter_lines():
+                    read += len(line) + 1
+                    if read > MAX_BODY:
+                        raise CallFailed("It answered with more than AresGate reads.")
+                    yield line
+        except NotSuccess:
+            raise
         except Exception as problem:
             error = self._scrub(await self._explain(problem))
             raise CallFailed(error) from None

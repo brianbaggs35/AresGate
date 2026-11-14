@@ -4,13 +4,19 @@ or AresGate's settings, only the conversations themselves. What it suggests the 
 as ``actions``, which the owner approves by pressing a button that makes the same request the
 page for it would."""
 
+import json
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
-from app.ai import chat
+from app.ai import chat, chat_stream
 from app.api.ai import AiContext
 from app.api.deps import Db, signed_in
 from app.models import AiConversation, AiMessage, utcnow
@@ -157,14 +163,77 @@ def list_conversations(db: Db) -> list[SummaryOut]:
     ]
 
 
+def _sse(event: str, data: object) -> str:
+    """One server-sent event. The JSON has no line break in it, so it is one ``data:`` line."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _committed(db: Db, conversation: AiConversation) -> ConversationOut:
+    out = _out(db, conversation)
+    db.commit()
+    return out
+
+
+async def _events(
+    db: Db,
+    context: AiContext,
+    conversation: AiConversation,
+    body: QuestionIn,
+    now: datetime,
+) -> AsyncGenerator[str]:
+    """What happens while the assistant answers, as server-sent events: the ``conversation`` it is
+    in, each lookup it ``looked`` at, the answer as it is ``wrote``, ``dropped`` when what was
+    written was not the answer after all, and last ``done`` with the conversation as it is stored,
+    which is what the page keeps. A stream that ends without ``done`` was cut off, and nothing was
+    stored."""
+    yield _sse("conversation", {"id": conversation.id})
+    page = body.page.known() if body.page else None
+    async with aclosing(
+        chat_stream.say_stream(db, context, conversation, body.text, now, page)
+    ) as events:
+        async for event in events:
+            if isinstance(event, chat_stream.Looked):
+                yield _sse("looked", {"tool": event.tool, "summary": event.summary})
+            elif isinstance(event, chat_stream.Wrote):
+                yield _sse("wrote", {"text": event.text})
+            elif isinstance(event, chat_stream.Dropped):
+                yield _sse("dropped", {})
+            else:
+                out = await run_in_threadpool(_committed, db, conversation)
+                yield _sse("done", out.model_dump(mode="json"))
+
+
+def _streaming(events: AsyncGenerator[str]) -> StreamingResponse:
+    return StreamingResponse(
+        events,
+        media_type="text/event-stream",
+        # Nothing is kept, and nginx is not to hold it back (docker/nginx/templates/aresgate.conf).
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+def _begun(db: Db, text: str, now: datetime) -> AiConversation:
+    conversation = AiConversation(title=chat.title_of(text), created_at=now, updated_at=now)
+    db.add(conversation)
+    db.flush()
+    return conversation
+
+
+@router.post("/stream")
+async def start_stream(body: QuestionIn, db: Db, context: AiContext) -> StreamingResponse:
+    """Begins a conversation with a question, as ``POST`` on the list does, and answers it as it
+    is written: the lookups as they run, then the answer as the provider writes it."""
+    now = utcnow()
+    conversation = await run_in_threadpool(_begun, db, body.text, now)
+    return _streaming(_events(db, context, conversation, body, now))
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def start(body: QuestionIn, db: Db, context: AiContext) -> ConversationOut:
     """Begins a conversation with a question and answers it. This can take a minute or two: the
     assistant may look things up and ask the provider more than once."""
     now = utcnow()
-    conversation = AiConversation(title=chat.title_of(body.text), created_at=now, updated_at=now)
-    db.add(conversation)
-    db.flush()
+    conversation = _begun(db, body.text, now)
     chat.say(db, context, conversation, body.text, now, body.page.known() if body.page else None)
     out = _out(db, conversation)
     db.commit()
@@ -176,17 +245,33 @@ def get_conversation(conversation_id: ConversationId, db: Db) -> ConversationOut
     return _out(db, _found(db, conversation_id))
 
 
-@router.post("/{conversation_id}/messages")
-def ask(
-    conversation_id: ConversationId, body: QuestionIn, db: Db, context: AiContext
-) -> ConversationOut:
-    """Asks another question in a conversation and answers it."""
+def _open_to_ask(db: Db, conversation_id: int) -> AiConversation:
+    """The conversation, if another question may be asked in it."""
     conversation = _found(db, conversation_id)
     if len(chat.messages(db, conversation)) >= chat.MAX_MESSAGES:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "This conversation has got long. Begin a new one to keep the answers sharp.",
         )
+    return conversation
+
+
+@router.post("/{conversation_id}/stream")
+async def ask_stream(
+    conversation_id: ConversationId, body: QuestionIn, db: Db, context: AiContext
+) -> StreamingResponse:
+    """Asks another question in a conversation, as ``messages`` does, and answers it as it is
+    written."""
+    conversation = await run_in_threadpool(_open_to_ask, db, conversation_id)
+    return _streaming(_events(db, context, conversation, body, utcnow()))
+
+
+@router.post("/{conversation_id}/messages")
+def ask(
+    conversation_id: ConversationId, body: QuestionIn, db: Db, context: AiContext
+) -> ConversationOut:
+    """Asks another question in a conversation and answers it."""
+    conversation = _open_to_ask(db, conversation_id)
     chat.say(
         db, context, conversation, body.text, utcnow(), body.page.known() if body.page else None
     )

@@ -172,7 +172,7 @@ describe('AssistantView', () => {
       const { wrapper } = await open({ route: '/assistant', conversations: [] })
       vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
       const jump = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
-      vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+      vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
       await type(wrapper, 'Anything?')
 
       await wrapper.find('[data-test="chat-form"]').trigger('submit')
@@ -187,7 +187,7 @@ describe('AssistantView', () => {
         .spyOn(window, 'matchMedia')
         .mockReturnValue({ matches: true } as MediaQueryList)
       const jump = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
-      vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+      vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
       await type(wrapper, 'Anything?')
 
       await wrapper.find('[data-test="chat-form"]').trigger('submit')
@@ -259,7 +259,7 @@ describe('AssistantView', () => {
     it('sends a question, shows it at once and then the answer, and moves to the conversation', async () => {
       const { wrapper, find, router } = await open({ route: '/assistant', conversations: [] })
       let finish: (found: chatApi.Conversation) => void = () => undefined
-      const start = vi.spyOn(chatApi, 'startConversation').mockImplementation(
+      const start = vi.spyOn(chatApi, 'askAndFollow').mockImplementation(
         () =>
           new Promise((resolve) => {
             finish = resolve
@@ -270,9 +270,15 @@ describe('AssistantView', () => {
       await find('chat-form').trigger('submit')
       await flushPromises()
 
-      expect(start).toHaveBeenCalledWith('What needs me?', 'a-security-token')
+      expect(start).toHaveBeenCalledWith(
+        null,
+        'What needs me?',
+        'a-security-token',
+        null,
+        expect.any(Function),
+      )
       expect(find('chat-pending').text()).toBe('What needs me?')
-      expect(find('chat-busy').exists()).toBe(true)
+      expect(find('chat-writing').exists()).toBe(true)
       expect(find('chat-empty').exists()).toBe(false)
       const sendButton = find('chat-send').element as HTMLButtonElement
       expect(sendButton.disabled).toBe(true)
@@ -281,7 +287,7 @@ describe('AssistantView', () => {
       await flushPromises()
 
       expect(find('chat-pending').exists()).toBe(false)
-      expect(find('chat-busy').exists()).toBe(false)
+      expect(find('chat-writing').exists()).toBe(false)
       await vi.waitFor(() => {
         expect(router.currentRoute.value.fullPath).toBe('/assistant/5')
       })
@@ -290,9 +296,41 @@ describe('AssistantView', () => {
       expect(box.value).toBe('')
     })
 
+    it('shows what the answer has looked at and written as it comes, and then the answer', async () => {
+      const { wrapper, find } = await open({ route: '/assistant', conversations: [] })
+      let finish: (found: chatApi.Conversation) => void = () => undefined
+      let follow: (event: chatApi.AnswerEvent) => void = () => undefined
+      vi.spyOn(chatApi, 'askAndFollow').mockImplementation((_id, _text, _token, _page, onEvent) => {
+        follow = onEvent
+        return new Promise((resolve) => {
+          finish = resolve
+        })
+      })
+      await type(wrapper, 'What needs me?')
+      await find('chat-form').trigger('submit')
+      await flushPromises()
+      expect(find('chat-writing').text()).toContain('Looking into it')
+
+      follow({ kind: 'looked', lookup: { tool: 'open_incidents', summary: '2 open incidents' } })
+      follow({ kind: 'wrote', text: 'Start with ' })
+      await flushPromises()
+      expect(find('chat-writing').text()).toContain('2 open incidents')
+      expect(find('chat-writing').text()).toContain('Start with')
+      expect(find('chat-writing').text()).not.toContain('Looking into it')
+
+      follow({ kind: 'wrote', text: 'incident 3.' })
+      await flushPromises()
+      expect(find('chat-writing').text()).toContain('Start with incident 3.')
+
+      finish(conversation())
+      await flushPromises()
+      expect(find('chat-writing').exists()).toBe(false)
+      expect(find('chat-thread').text()).toContain('Start with incident 3')
+    })
+
     it('asks the list again so the new conversation is in it', async () => {
       const { wrapper, find, list } = await open({ route: '/assistant', conversations: [] })
-      vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+      vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
       list.mockResolvedValue([summary()])
       await type(wrapper, 'Anything?')
 
@@ -311,20 +349,26 @@ describe('AssistantView', () => {
           answer({ id: 4 }),
         ],
       })
-      const ask = vi.spyOn(chatApi, 'askInConversation').mockResolvedValue(more)
+      const ask = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(more)
       await type(wrapper, 'And now?')
 
       await find('chat-form').trigger('submit')
       await flushPromises()
 
-      expect(ask).toHaveBeenCalledWith(5, 'And now?', 'a-security-token')
+      expect(ask).toHaveBeenCalledWith(
+        5,
+        'And now?',
+        'a-security-token',
+        null,
+        expect.any(Function),
+      )
       expect(wrapper.findAll('[data-test="message-owner"]')).toHaveLength(2)
       expect(router.currentRoute.value.fullPath).toBe('/assistant/5')
     })
 
     it('sends on Enter, and breaks the line on Shift+Enter', async () => {
       const { wrapper } = await open({ route: '/assistant', conversations: [] })
-      const start = vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+      const start = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
       await type(wrapper, 'Hello')
       const box = wrapper.find('[data-test="chat-input"] textarea')
 
@@ -341,7 +385,7 @@ describe('AssistantView', () => {
 
     it('sends nothing for an empty question or one that is too long', async () => {
       const { wrapper, find } = await open({ route: '/assistant', conversations: [] })
-      const start = vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+      const start = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
 
       await type(wrapper, '   ')
       await find('chat-form').trigger('submit')
@@ -357,14 +401,14 @@ describe('AssistantView', () => {
 
     it('says what went wrong and keeps the question in the box', async () => {
       const { wrapper, find, text } = await open({ route: '/assistant', conversations: [] })
-      vi.spyOn(chatApi, 'startConversation').mockRejectedValue(offline())
+      vi.spyOn(chatApi, 'askAndFollow').mockRejectedValue(offline())
       await type(wrapper, 'Anything?')
 
       await find('chat-form').trigger('submit')
       await flushPromises()
 
       expect(text('chat-failure')).toContain("Can't reach AresGate.")
-      expect(find('chat-busy').exists()).toBe(false)
+      expect(find('chat-writing').exists()).toBe(false)
       expect(find('chat-pending').exists()).toBe(false)
       const box = wrapper.find('[data-test="chat-input"] textarea').element as HTMLTextAreaElement
       expect(box.value).toBe('Anything?')

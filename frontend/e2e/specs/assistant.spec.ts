@@ -72,6 +72,28 @@ test.describe('the assistant', () => {
     await expect(page).toHaveURL(/\/incidents\/\d+$/)
   })
 
+  test('says so when the answer is cut off, and keeps the question to ask again', async ({
+    assistant,
+    page,
+  }) => {
+    // The stream stops after a few words, as when the connection breaks, with nothing kept.
+    await page.route('**/api/ai/conversations/stream', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: 'event: conversation\ndata: {"id": 1}\n\nevent: wrote\ndata: {"text": "Start with"}\n\n',
+      }),
+    )
+    await assistant.goto()
+
+    await assistant.ask(ATTENTION)
+
+    await expect(assistant.failure).toContainText('cut off')
+    await expect(assistant.input).toHaveValue(ATTENTION)
+    await expect(assistant.busy).toHaveCount(0)
+    await expect(assistant.answers).toHaveCount(0)
+  })
+
   test('looks up a device, and links to its page', async ({
     harness,
     aiSettings,

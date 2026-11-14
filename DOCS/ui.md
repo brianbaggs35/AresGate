@@ -228,7 +228,12 @@ row of chips, a *Based on* row of chips that link, and a button for each request
 opens `AiCallDialog`). An answer that could not be made is a warning with a link to Settings > AI and
 *Ask again*. The box to type in sticks to the bottom of the screen, above a phone's bottom bar
 (`--v-layout-bottom`); Enter sends and Shift+Enter breaks the line. While it answers, the question
-is shown at once and a spinner says it can take a minute. Wording and the starting questions are in
+is shown at once and then the answer as it is written (`ChatWriting`): a spinner says it can take a
+minute until there is something to show, the lookups it has run appear as chips, and the text grows
+as the provider writes it. It is not read out word by word (`aria-live="off"`); the answer that
+replaces it when it has ended is. If the connection breaks first, the page says the answer was cut
+off and keeps the question in the box (`askAndFollow` in `src/api/aiChat.ts` reads the stream, and
+`useAnswerProgress` in `src/chatProgress.ts` holds what has come). Wording and the starting questions are in
 `src/chat.ts`.
 
 **The assistant panel** (`AssistantHost`, `AssistantPanel`, the `assistant` store) opens from the

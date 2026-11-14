@@ -309,6 +309,17 @@ def _json(body: object, status: int = 200) -> Answer:
     )
 
 
+def _pieces(text: str, size: int = 12) -> list[str]:
+    """A text cut into the pieces a model writes it in."""
+    return [text[at : at + size] for at in range(0, len(text), size)] or [""]
+
+
+def _events(*events: tuple[str, object]) -> Answer:
+    """Server-sent events, as Anthropic and OpenAI answer a request that asks for a stream."""
+    body = "".join(f"event: {name}\ndata: {json.dumps(data)}\n\n" for name, data in events)
+    return Answer(body=body, headers={"Content-Type": "text/event-stream"})
+
+
 def _basic(user: str, password: str) -> str:
     return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
 
@@ -1654,6 +1665,35 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
             or _answer_of_an_agent(asked)
             or _answer_of_the_assistant(asked)
         )
+        stop = "end_turn" if reading else "max_tokens"
+        if asked.get("stream"):
+            return _events(
+                (
+                    "message_start",
+                    {"type": "message_start", "message": {"usage": {"input_tokens": 14}}},
+                ),
+                ("ping", {"type": "ping"}),
+                *(
+                    (
+                        "content_block_delta",
+                        {
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "text_delta", "text": piece},
+                        },
+                    )
+                    for piece in _pieces(reading or "OK")
+                ),
+                (
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": stop},
+                        "usage": {"output_tokens": 120 if reading else 1},
+                    },
+                ),
+                ("message_stop", {"type": "message_stop"}),
+            )
         return _json(
             {
                 "id": "msg_stand_in",
@@ -1661,7 +1701,7 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
                 "role": "assistant",
                 "model": asked["model"],
                 "content": [{"type": "text", "text": reading or "OK"}],
-                "stop_reason": "end_turn" if reading else "max_tokens",
+                "stop_reason": stop,
                 "usage": {"input_tokens": 14, "output_tokens": 120 if reading else 1},
             }
         )
@@ -1689,22 +1729,30 @@ def openai(api_key: str, models: Collection[str] = ()) -> Handler:
         reasoning = cast("dict[str, object]", asked.get("reasoning") or {})
         if reasoning.get("effort") == "none" and asked["model"] in {"gpt-6-astra", "gpt-6.1-sol"}:
             return _json({"error": {"type": "invalid_request_error"}}, 400)
-        return _json(
-            {
-                "id": "resp_stand_in",
-                "object": "response",
-                "status": "completed",
-                "model": asked["model"],
-                "output": [
-                    {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [{"type": "output_text", "text": "OK"}],
-                    }
-                ],
-                "usage": {"input_tokens": 16, "output_tokens": 2, "total_tokens": 18},
-            }
-        )
+        response = {
+            "id": "resp_stand_in",
+            "object": "response",
+            "status": "completed",
+            "model": asked["model"],
+            "output": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "OK"}],
+                }
+            ],
+            "usage": {"input_tokens": 16, "output_tokens": 2, "total_tokens": 18},
+        }
+        if asked.get("stream"):
+            return _events(
+                ("response.created", {"type": "response.created", "response": {}}),
+                (
+                    "response.output_text.delta",
+                    {"type": "response.output_text.delta", "delta": "OK"},
+                ),
+                ("response.completed", {"type": "response.completed", "response": response}),
+            )
+        return _json(response)
 
     return handle
 
@@ -1809,16 +1857,27 @@ def ollama(
                     headers={"Content-Type": "application/json"},
                     delay=waited,
                 )
-            return _json(
-                {
-                    "model": asked["model"],
-                    "message": {"role": "assistant", "content": "OK"},
-                    "done": True,
-                    "done_reason": "length",
-                    "prompt_eval_count": 12,
-                    "eval_count": 1,
-                }
-            )
+            last = {
+                "model": asked["model"],
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "done_reason": "length",
+                "prompt_eval_count": 12,
+                "eval_count": 1,
+            }
+            if asked.get("stream"):
+                written = [
+                    {
+                        "model": asked["model"],
+                        "message": {"role": "assistant", "content": "OK"},
+                        "done": False,
+                    }
+                ]
+                return Answer(
+                    body="".join(f"{json.dumps(line)}\n" for line in [*written, last]),
+                    headers={"Content-Type": "application/x-ndjson"},
+                )
+            return _json({**last, "message": {"role": "assistant", "content": "OK"}})
         return _json({"error": "not found"}, 404)
 
     return handle

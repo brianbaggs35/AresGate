@@ -41,7 +41,7 @@ describe('AssistantPanel', () => {
 
   it('asks the question from the page it is on, and shows it at once', async () => {
     let release: (value: chatApi.Conversation) => void = () => undefined
-    const start = vi.spyOn(chatApi, 'startConversation').mockReturnValue(
+    const start = vi.spyOn(chatApi, 'askAndFollow').mockReturnValue(
       new Promise((resolve) => {
         release = resolve
       }),
@@ -51,21 +51,46 @@ describe('AssistantPanel', () => {
     await find('panel-form').trigger('submit')
     await flushPromises()
 
-    expect(start).toHaveBeenCalledWith('Is this bad?', 'a-security-token', {
-      kind: 'incident',
-      id: 4,
-    })
+    expect(start).toHaveBeenCalledWith(
+      null,
+      'Is this bad?',
+      'a-security-token',
+      { kind: 'incident', id: 4 },
+      expect.any(Function),
+    )
     expect(find('panel-pending').text()).toBe('Is this bad?')
-    expect(find('panel-busy').exists()).toBe(true)
+    expect(find('panel-writing').exists()).toBe(true)
 
     release(conversation())
     await flushPromises()
-    expect(find('panel-busy').exists()).toBe(false)
+    expect(find('panel-writing').exists()).toBe(false)
     expect(wrapper.findAll('article').length).toBeGreaterThan(1)
   })
 
+  it('shows what the answer has looked at and written as it comes', async () => {
+    let follow: (event: chatApi.AnswerEvent) => void = () => undefined
+    vi.spyOn(chatApi, 'askAndFollow').mockImplementation((_id, _text, _token, _page, onEvent) => {
+      follow = onEvent
+      return new Promise(() => undefined)
+    })
+    const { wrapper, find } = await open()
+    await wrapper.find('[data-test="panel-input"] textarea').setValue('Hello')
+    await find('panel-form').trigger('submit')
+    await flushPromises()
+
+    follow({ kind: 'looked', lookup: { tool: 'open_incidents', summary: '2 open incidents' } })
+    follow({ kind: 'wrote', text: 'Start with incident 3.' })
+    await flushPromises()
+    expect(find('panel-writing').text()).toContain('2 open incidents')
+    expect(find('panel-writing').text()).toContain('Start with incident 3.')
+
+    follow({ kind: 'dropped' })
+    await flushPromises()
+    expect(find('panel-writing').text()).not.toContain('Start with')
+  })
+
   it('sends with Enter and not with Shift+Enter or while an input method is composing', async () => {
-    const start = vi.spyOn(chatApi, 'startConversation').mockResolvedValue(conversation())
+    const start = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(conversation())
     const { wrapper } = await open()
     const input = wrapper.find('[data-test="panel-input"] textarea')
     await input.setValue('Hello')
@@ -92,7 +117,7 @@ describe('AssistantPanel', () => {
   })
 
   it('shows the failure, and keeps the question', async () => {
-    vi.spyOn(chatApi, 'startConversation').mockRejectedValue(
+    vi.spyOn(chatApi, 'askAndFollow').mockRejectedValue(
       new ApiError(0, "Can't reach AresGate.", 'offline'),
     )
     const { wrapper, find, assistant } = await open()
