@@ -12,6 +12,10 @@ services:
       args:
         COMMIT: ${ARESGATE_BUILD_COMMIT:-}
         BUILT_AT: ${ARESGATE_BUILD_TIME:-}
+        # `make up` gives today's date, so the packages are upgraded again once a day (see the
+        # Dockerfile) and the Status page shows the Python and nginx that Wolfi has published.
+        APK_REFRESH: ${ARESGATE_APK_REFRESH:-}
+        IMAGE_REFRESH: ${ARESGATE_APK_REFRESH:-}
     image: ${ARESGATE_IMAGE:-aresgate}:${ARESGATE_VERSION:-latest}
     container_name: aresgate
     restart: unless-stopped
