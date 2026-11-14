@@ -425,5 +425,7 @@ class TestRunningAgainstTheFirewall:
 
         collect(settings, engine)
 
-        assert "didn't accept the credentials" in (health(session).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            health(session).last_error or ""
+        )
         assert stored_events(session) == []

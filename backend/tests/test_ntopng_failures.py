@@ -57,8 +57,17 @@ class TestWhenNtopngRefuses:
 
         assert refused == probes.NTOPNG_LOGIN_REFUSED
 
-    @pytest.mark.parametrize("status", [401, 403])
-    def test_a_login_it_says_no_to_is_not_accepted(
+    @pytest.mark.parametrize(
+        ("status", "meaning"),
+        [
+            (
+                401,
+                "(HTTP 401, NOT_GRANTED)",
+            ),
+            (403, "whose allowed interface is one it doesn't have"),
+        ],
+    )
+    def test_a_user_it_says_no_to_is_told_which_way(
         self,
         session: Session,
         settings: Settings,
@@ -66,11 +75,12 @@ class TestWhenNtopngRefuses:
         serve: Serve,
         make: Callable[[], Collector],
         status: int,
+        meaning: str,
     ) -> None:
         said = run(session, settings, engine, serve, make(), lambda seen: Answer(status=status))
 
         assert said is not None
-        assert "didn't accept the credentials" in said
+        assert meaning in said
 
     def test_an_error_in_its_answer_is_named(
         self,

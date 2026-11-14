@@ -430,6 +430,7 @@ LOGIN = Answer(status=302, headers={"Location": "/lua/login.lua"})
     [
         (LOGIN, "login page"),
         (Answer(status=400, body="{}"), "HTTP 400"),
+        (Answer(status=401), "download PCAP files"),
         (Answer(status=500, body="no"), "HTTP 500"),
         (Answer(body=json.dumps({"error": "Not allowed"}), headers=JSON), "Not allowed"),
         (Answer(body="not json", headers=JSON), "sent a message instead of a capture"),

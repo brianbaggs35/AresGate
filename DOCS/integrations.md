@@ -1290,6 +1290,30 @@ after saving, the field says "Saved", and leaving it empty keeps the saved value
 
 **Disconnect** asks first, then forgets the address and the secrets. The API log stays.
 
+### What a refusal means
+
+HTTP 401 and 403 mean different things in each product, so the test (and the status page, which
+shows the same sentence for a collector) says what that product's answer means:
+
+| Product | 401 | 403 | Read in |
+| --- | --- | --- | --- |
+| OPNsense | The key and secret aren't known (`Authentication Failed`). | The key and secret are right, but the user's privileges don't include the page asked for (`Forbidden`). The message names the page. | [`ApiControllerBase.php`](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Base/ApiControllerBase.php), `beforeExecuteRoute` |
+| ntopng | The user is signed in but isn't granted the capability (`NOT_GRANTED`, rc -3): alerts need the capability to see them, and a capture the permission to download PCAP files. A login it refuses is redirected to its login page (302) instead. | A user whose allowed interface doesn't exist. | [`rest_utils.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/modules/rest_utils.lua), [`flow/alert/list.lua`](https://github.com/ntop/ntopng/blob/dev/scripts/lua/rest/v2/get/flow/alert/list.lua), [`HTTPserver.cpp`](https://github.com/ntop/ntopng/blob/dev/src/HTTPserver.cpp) |
+| CrowdSec (local API) | Not used for a bouncer key. | `access forbidden`: the bouncer key isn't known, which is how it refuses a wrong one. A bouncer has no permission to lack. | [`api_key.go`](https://github.com/crowdsecurity/crowdsec/blob/master/pkg/apiserver/middlewares/v1/api_key.go), whose own comment asks whether it should be 401 |
+| Zenarmor | Said as before: it didn't accept the credentials, or the user isn't allowed. | The same. | Not read: its documentation couldn't be reached when this was written. |
+
+The Wazuh indexer has had its own wording since it was added, and the services on the internet
+say what their own documentation says of a key they refuse.
+
+What is **inferred**, not read in a product's own words: that the OPNsense 401 also covers a key
+whose user was removed or disabled (the source only says the check failed), that a deleted
+CrowdSec bouncer is refused the same way as a mistyped key (its key is looked up by hash), that
+a CrowdSec bouncer has no permissions of its own (the middleware has none to check), and that
+the ntopng 403 for an allowed interface that is gone is the one a user with a token meets, since
+the source shows it at sign-in. None of it was tried against a running OPNsense, ntopng or
+CrowdSec: no Docker was available where this was written. The tests use stand-ins that answer
+as the source above does, so please open an issue if a real one answers differently.
+
 ## The API log
 
 Each integration's page ends with the requests AresGate made to it: the time, the method, the

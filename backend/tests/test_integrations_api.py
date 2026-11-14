@@ -389,7 +389,9 @@ def test_a_test_that_fails_says_why_and_marks_the_problem(
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is False
-    assert "CrowdSec didn't accept the credentials" in body["checks"][0]["message"]
+    assert (
+        "CrowdSec's local API answered access forbidden (HTTP 403)" in body["checks"][0]["message"]
+    )
     assert body["integration"]["status"] == "problem"
     assert body["integration"]["last_error"] == body["checks"][0]["message"]
     # Nothing to do with a certificate, so nothing to review.

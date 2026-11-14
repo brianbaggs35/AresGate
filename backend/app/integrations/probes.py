@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from app import audit
-from app.integrations.client import ApiClient, CallFailed, Reply, Target
+from app.integrations.client import ApiClient, CallFailed, Reply, Target, clean_path
 from app.integrations.registry import (
     MAX_CHOSEN,
     OPNSENSE_MODULES,
@@ -105,6 +105,57 @@ def unexpected(product: str) -> Verdict:
     return Verdict(False, f"It answered, but the answer doesn't look like {product}'s.")
 
 
+# Which of 401 and 403 a product uses for a sign-in it refuses, and which for a user it won't
+# allow, differs from one to the next, so each says what its own answer means. Read from each
+# product's source, which says where the documentation doesn't; the pages are listed in
+# DOCS/integrations.md ("What a refusal means").
+OPNSENSE_REFUSED = (
+    "OPNsense didn't accept the API key and secret (HTTP 401, Authentication Failed). Check both: "
+    "the secret is shown only once, when the key is made, so make a new key for the user if it "
+    "is lost."
+)
+CROWDSEC_REFUSED = (
+    "CrowdSec's local API answered access forbidden (HTTP 403), which is how it refuses an API "
+    "key it doesn't know: it was mistyped, or the bouncer was deleted. Check the key, or make a "
+    "new one with `cscli bouncers add`."
+)
+NTOPNG_NOT_GRANTED = (
+    "ntopng accepted the sign-in, but the user isn't allowed to read this (HTTP 401, "
+    "NOT_GRANTED). A login it refuses is redirected to its login page instead. Check the user's "
+    "role under Manage Users: alerts need the capability to see them, and a packet capture "
+    "the permission to download PCAP files."
+)
+NTOPNG_NO_INTERFACE = (
+    "ntopng refused the user (HTTP 403), which it does for a user whose allowed interface is "
+    "one it doesn't have. Check the user's Allowed Interface under Manage Users."
+)
+
+
+def opnsense_problem(reply: Reply, path: str) -> Verdict | None:
+    """Why OPNsense's answer isn't a good one. It answers 401 to a key and secret it doesn't
+    know, and 403 to a user that is signed in but whose privileges don't include the page."""
+    forbidden = None
+    if reply.status == 403:
+        forbidden = (
+            "OPNsense accepted the key and secret, but the user isn't allowed to read "
+            f"{clean_path(path)} (HTTP 403, Forbidden). Give the user the privilege for that "
+            "page under System, Access, Users."
+        )
+    return problem(reply, "OPNsense", refused=OPNSENSE_REFUSED, forbidden=forbidden)
+
+
+def crowdsec_problem(reply: Reply) -> Verdict | None:
+    """Why CrowdSec's answer isn't a good one: a bouncer key it doesn't know is a 403."""
+    return problem(reply, "CrowdSec", forbidden=CROWDSEC_REFUSED)
+
+
+def ntopng_problem(reply: Reply) -> Verdict | None:
+    """Why ntopng's answer isn't a good one: 401 is what it says to a user who is signed in
+    and lacks the permission (NOT_GRANTED), and 403 to one allowed only an interface it
+    doesn't have."""
+    return problem(reply, "ntopng", refused=NTOPNG_NOT_GRANTED, forbidden=NTOPNG_NO_INTERFACE)
+
+
 # What a service on the internet answers when it is busy or down: the same request often works a
 # moment later, so a probe of one asks once more after ``RETRY_PAUSE`` seconds before it says so.
 UNAVAILABLE = (502, 503, 504)
@@ -159,14 +210,15 @@ def service_state(reply: Reply) -> ModuleState:
     return ModuleState.INSTALLED
 
 
+SYSTEM_INFORMATION = "/api/diagnostics/system/system_information"
+
+
 async def opnsense(client: ApiClient, target: Target) -> Verdict:
     """OPNsense's system information, read with the key and secret as HTTP basic authentication,
     and then which of the services that run on it are installed, each from its status request."""
     credentials = (target.secrets["api_key"], target.secrets["api_secret"])
-    reply = await client.request(
-        "GET", "/api/diagnostics/system/system_information", auth=credentials
-    )
-    if bad := problem(reply, "OPNsense"):
+    reply = await client.request("GET", SYSTEM_INFORMATION, auth=credentials)
+    if bad := opnsense_problem(reply, SYSTEM_INFORMATION):
         return bad
     data = as_object(reply.json())
     if data is None:
@@ -350,7 +402,7 @@ async def ntopng_interfaces(client: ApiClient, target: Target) -> list[NtopngInt
     reply = await ntopng_get(client, target, NTOPNG_INTERFACES)
     if 300 <= reply.status < 400:
         return Verdict(False, NTOPNG_LOGIN_REFUSED)
-    if bad := problem(reply, "ntopng"):
+    if bad := ntopng_problem(reply):
         return bad
     data = as_object(reply.json())
     listed = as_array(data.get("rsp")) if data else None
@@ -726,7 +778,7 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
         query={"ip": DOCUMENTATION_ADDRESS},
         headers={"X-Api-Key": target.secrets["api_key"]},
     )
-    if bad := problem(reply, "CrowdSec"):
+    if bad := crowdsec_problem(reply):
         return bad
     if reply.text.strip() != "null" and not isinstance(reply.json(), list):
         return unexpected("CrowdSec")

@@ -50,7 +50,7 @@ async def read(context: Context, path: str, query: Mapping[str, str]) -> object:
         raise CollectorFailed(probes.NTOPNG_LOGIN_REFUSED)
     if reply.status == HTTPStatus.BAD_REQUEST:
         raise CollectorFailed(await _refused(context, query.get("ifid", "")))
-    if bad := probes.problem(reply, PRODUCT):
+    if bad := probes.ntopng_problem(reply):
         raise CollectorFailed(bad.message)
     answer = probes.as_object(reply.json())
     if answer is None or "rsp" not in answer:

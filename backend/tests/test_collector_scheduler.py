@@ -275,7 +275,7 @@ def test_a_check_that_fails_says_why_and_is_tried_again_sooner_each_time(
     first = the_health(session)
     assert first.consecutive_failures == 1
     assert first.last_error is not None
-    assert "CrowdSec didn't accept the credentials" in first.last_error
+    assert "CrowdSec's local API answered access forbidden (HTTP 403)" in first.last_error
     assert first.last_success_at is None
     assert first.last_finished_at is not None
     assert first.next_run_at == first.last_finished_at + timedelta(seconds=30)

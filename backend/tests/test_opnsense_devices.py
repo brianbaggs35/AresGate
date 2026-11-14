@@ -221,7 +221,9 @@ class TestTheArpTableRun:
     ) -> None:
         run(session, settings, engine, serve, ArpTable(), answering({}, status=403))
 
-        assert "didn't accept the credentials" in (record_of(session, ArpTable()).last_error or "")
+        assert "accepted the key and secret, but the user isn't allowed to read" in (
+            record_of(session, ArpTable()).last_error or ""
+        )
 
 
 class TestTheLeasesRead:
@@ -310,7 +312,7 @@ class TestTheDnsmasqLeasesRun:
         run(session, settings, engine, serve, DnsmasqLeases(), answering({}, status=403))
 
         error = record_of(session, DnsmasqLeases()).last_error or ""
-        assert "didn't accept the credentials" in error
+        assert "accepted the key and secret, but the user isn't allowed to read" in error
 
 
 class TestTheKeaLeasesRun:
@@ -340,4 +342,4 @@ class TestTheKeaLeasesRun:
         run(session, settings, engine, serve, KeaLeases(), answering({}, status=403))
 
         error = record_of(session, KeaLeases()).last_error or ""
-        assert "didn't accept the credentials" in error
+        assert "accepted the key and secret, but the user isn't allowed to read" in error

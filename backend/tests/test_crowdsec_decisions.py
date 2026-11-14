@@ -283,7 +283,7 @@ class TestRunningAgainstCrowdsec:
         record = health(session)
         assert record.consecutive_failures == 1
         assert record.last_error is not None
-        assert "didn't accept the credentials" in record.last_error
+        assert "answered access forbidden (HTTP 403)" in record.last_error
 
     def test_it_keeps_no_more_than_a_thousand_a_run(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve

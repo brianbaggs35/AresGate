@@ -20,7 +20,7 @@ async def read(
     reply = await context.client.request(
         "GET" if body is None else "POST", path, query=query, json_body=body, auth=credentials
     )
-    if bad := probes.problem(reply, PRODUCT):
+    if bad := probes.opnsense_problem(reply, path):
         raise CollectorFailed(bad.message)
     data = reply.json()
     if data is None:
