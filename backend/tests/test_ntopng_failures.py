@@ -74,6 +74,80 @@ class TestWhenNtopngRefuses:
         assert refused == probes.NTOPNG_LOGIN_REFUSED
 
     @pytest.mark.parametrize(
+        ("location", "said"),
+        [
+            (
+                "/lua/http_status_code.lua?message=not_found&referer=%2Flua%2Frest",
+                "ntopng has no page for /lua/rest/v2/get/",
+            ),
+            (
+                "/lua/http_status_code.lua?message=pro_only",
+                "is only in ntopng Pro. The login was accepted",
+            ),
+            (
+                "/lua/http_status_code.lua?message=enterprise_only",
+                "is only in ntopng Enterprise. The login was accepted",
+            ),
+            (
+                "/lua/http_status_code.lua?message=internal_error&error_message=bad%20argument",
+                "script for /lua/rest/v2/get/",
+            ),
+            (
+                "/lua/http_status_code.lua?message=forbidden",
+                "to its error page (forbidden), which isn't a refused login.",
+            ),
+            (
+                "/lua/http_status_code.lua",
+                "to its error page (unknown), which isn't a refused login.",
+            ),
+        ],
+    )
+    def test_a_page_it_sends_to_its_error_page_is_not_a_refused_login(
+        self,
+        session: Session,
+        settings: Settings,
+        engine: Engine,
+        serve: Serve,
+        make: Callable[[], Collector],
+        location: str,
+        said: str,
+    ) -> None:
+        def handle(seen: Seen) -> Answer:
+            if seen.path.endswith("interfaces.lua"):
+                return Answer(body=json.dumps({"rc": 0, "rc_str": "OK", "rsp": [{"ifid": 0}]}))
+            return Answer(status=302, headers={"Location": location})
+
+        failed = run(session, settings, engine, serve, make(), handle)
+
+        assert failed is not None
+        assert said in failed
+        assert "login page" not in failed
+
+    def test_a_script_that_failed_says_what_it_said(
+        self,
+        session: Session,
+        settings: Settings,
+        engine: Engine,
+        serve: Serve,
+        make: Callable[[], Collector],
+    ) -> None:
+        location = (
+            "/lua/http_status_code.lua?message=internal_error"
+            "&error_message=bad%20argument%20%231%20to%20%27ipairs%27%20%28table%20expected%29"
+        )
+
+        def handle(seen: Seen) -> Answer:
+            if seen.path.endswith("interfaces.lua"):
+                return Answer(body=json.dumps({"rc": 0, "rc_str": "OK", "rsp": [{"ifid": 0}]}))
+            return Answer(status=302, headers={"Location": location})
+
+        failed = run(session, settings, engine, serve, make(), handle)
+
+        assert failed is not None
+        assert "which is a fault inside ntopng and not with the login" in failed
+        assert "It said: bad argument #1 to 'ipairs' (table expected)" in failed
+
+    @pytest.mark.parametrize(
         ("status", "meaning"),
         [
             (
