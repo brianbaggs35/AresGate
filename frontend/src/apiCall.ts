@@ -43,14 +43,17 @@ export function fullAddressOf(detail: CallDetail): string {
 export function curlOf(method: string, detail: CallDetail): string {
   const query = detail.query
     .map(({ name, value }) => {
-      const shown = value === null ? placeholder(name) : value
+      const shown = value ?? placeholder(name)
       return `${encodeURIComponent(name)}=${encodeURIComponent(shown)}`
     })
     .join('&')
   const address = quoted(query ? `${addressOf(detail)}?${query}` : addressOf(detail))
   const headers = detail.request_headers
     .filter(({ name }) => !SELF_MADE.has(name.toLowerCase()))
-    .map(({ name, value }) => `-H ${quoted(`${name}: ${value ?? placeholder(name)}`)}`)
+    .map(({ name, value }) => {
+      const line = `${name}: ${value ?? placeholder(name)}`
+      return `-H ${quoted(line)}`
+    })
   return ['curl', '-X', method, ...headers, address].join(' ')
 }
 
