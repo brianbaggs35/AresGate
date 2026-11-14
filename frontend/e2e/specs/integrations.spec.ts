@@ -522,17 +522,22 @@ test.describe('integrations', () => {
       await integration.collectionRefresh.click()
 
       await expect(integration.collectionWorker).toHaveCount(0)
-      await expect(integration.collectors).toHaveCount(4)
+      await expect(integration.collectors).toHaveCount(9)
       await expect(integration.collectors).toContainText([
         'Connection check',
+        'Alert counts',
         'Alerts',
+        'Suspicious flows',
+        'Host details',
         'Hosts',
         'Interface traffic',
+        'Interface, network, device and system alerts',
+        'Application protocols',
       ])
-      await expect(integration.collectorStates).toHaveText(new Array(4).fill('Working'))
+      await expect(integration.collectorStates).toHaveText(new Array(9).fill('Working'))
       await expect(integration.collectorTimings.first()).toContainText('Last ran just now')
       await expect(integration.collectorTimings.first()).toContainText('next run in 5 minutes')
-      await expect(integration.collectorTimings.nth(1)).toContainText('next run within a minute')
+      await expect(integration.collectorTimings.nth(2)).toContainText('next run within a minute')
       await expect(integration.collectorErrors).toHaveCount(0)
       // The collectors' requests are in the log with the ones made from this page: the check
       // (the interfaces, then what each has seen, from the page, again for the list under
@@ -540,7 +545,7 @@ test.describe('integrations', () => {
       // no interface chosen each asks which ntopng has, and the alerts collector asks again for
       // the names it keeps with each alert.
       await integration.logRefresh.click()
-      await expect(integration.logCalls).toHaveCount(21)
+      await expect(integration.logCalls).toHaveCount(41)
     })
 
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({
@@ -558,14 +563,17 @@ test.describe('integrations', () => {
       await harness.runCollectors()
 
       // Two alerts for flows and two for hosts of the last half hour; the older one is left out.
-      expect((await harness.rowCounts()).events).toBe(4)
-      // Five readings of each of the three local hosts, and twelve of the interface.
-      expect((await harness.rowCounts()).metric_samples).toBe(27)
+      // The alerts it keeps for its interface, network, devices and itself are four more, and
+      // the suspicious flows two.
+      expect((await harness.rowCounts()).events).toBe(10)
+      // Five readings of each of the three local hosts, twelve of the interface, four counts of
+      // alerts and nine of the application protocols.
+      expect((await harness.rowCounts()).metric_samples).toBe(40)
       // The two hosts in the broadcast domain, and not the one behind the router.
       expect((await harness.rowCounts()).devices).toBe(2)
       await harness.runCollectors()
-      expect((await harness.rowCounts()).events).toBe(4)
-      expect((await harness.rowCounts()).metric_samples).toBe(54)
+      expect((await harness.rowCounts()).events).toBe(10)
+      expect((await harness.rowCounts()).metric_samples).toBe(80)
       expect((await harness.rowCounts()).devices).toBe(2)
     })
 
@@ -585,9 +593,9 @@ test.describe('integrations', () => {
       await integration.collectionRefresh.click()
 
       await expect(integration.collectionWorker).toContainText('has stopped reporting in')
-      await expect(integration.collectorStates).toHaveText(new Array(4).fill('Problem'))
+      await expect(integration.collectorStates).toHaveText(new Array(9).fill('Problem'))
       await expect(integration.collectorErrors).toContainText(
-        new Array(4).fill('ntopng redirected to its login page'),
+        new Array(9).fill('ntopng redirected to its login page'),
       )
     })
 
@@ -615,7 +623,7 @@ test.describe('integrations', () => {
       await integration.collectionRetry.click()
 
       await expect(integration.collectionError).toHaveCount(0)
-      await expect(integration.collectors).toHaveCount(4)
+      await expect(integration.collectors).toHaveCount(9)
     })
 
     test('fixing the token and saving again makes it work', async ({ harness, integration }) => {
