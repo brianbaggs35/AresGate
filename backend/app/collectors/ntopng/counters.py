@@ -60,18 +60,22 @@ class AlertCounters(Collector):
                 rows = probes.as_array(await read(context, path, query))
                 if rows is None:
                     raise CollectorFailed(probes.unexpected(PRODUCT).message)
-                # ntopng counts a severity once for each kind of alert that has it, so the groups
-                # that share a name are added up.
-                totals: dict[tuple[str, str], float] = {}
-                for row in rows[:MAX_KINDS]:
-                    group = probes.as_object(row)
-                    count = number(group.get("count")) if group else None
-                    if group is None or count is None:
-                        continue
-                    name = traffic.text(group, "name")
-                    entity = traffic.text(group, "entity_label") or "Other"
-                    if name:
-                        totals[entity, name] = totals.get((entity, name), 0.0) + count
-                for (entity, name), count in totals.items():
+                for (entity, name), count in _totals(rows).items():
                     readings.add(metric, count, interface=port, entity=entity, **{label: name})
         return Outcome(items=await readings.save())
+
+
+def _totals(rows: list[object]) -> dict[tuple[str, str], float]:
+    """The count for each entity and name. ntopng counts a severity once for each kind of alert
+    that has it, so the groups that share a name are added up."""
+    totals: dict[tuple[str, str], float] = {}
+    for row in rows[:MAX_KINDS]:
+        group = probes.as_object(row)
+        count = number(group.get("count")) if group else None
+        if group is None or count is None:
+            continue
+        name = traffic.text(group, "name")
+        entity = traffic.text(group, "entity_label") or "Other"
+        if name:
+            totals[entity, name] = totals.get((entity, name), 0.0) + count
+    return totals
