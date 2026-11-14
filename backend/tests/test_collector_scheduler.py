@@ -1,8 +1,10 @@
 import asyncio
+import ipaddress
 import logging
 from collections.abc import Callable
 from datetime import timedelta
 
+import httpcore2
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -892,3 +894,63 @@ def test_a_metered_connection_is_not_tested_on_the_timer(
     row = service.rows_for(session, "virustotal")["api"]
     session.refresh(row)
     assert row.last_attempt_at is None
+
+
+# ---- A service on the internet ---------------------------------------------------------------
+
+
+def test_a_service_on_the_internet_is_reached_at_its_own_address_not_the_home_network(
+    session: Session, settings: Settings, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fingerbank, OTX and NVD are on the internet: the timer's check reaches them with the policy
+    of that one service, and does not refuse them for not being on the home network."""
+    saved_row(
+        session,
+        "fingerbank",
+        "api",
+        base_url="https://api.fingerbank.org",
+        options={},
+    )
+    origin = netguard.parse_origin("https://api.fingerbank.org", allow_http=False)
+    where = Target(
+        integration="fingerbank",
+        connection="api",
+        origin=origin,
+        tls_mode="system",
+        tls_ca_pem=None,
+        tls_fingerprint=None,
+        options={},
+        secrets={"api_key": "fb-key"},
+    )
+
+    def load(*args: object, **kwargs: object) -> Target:
+        del args, kwargs
+        return where
+
+    monkeypatch.setattr(service, "load_target", load)
+    reached: list[tuple[str, int]] = []
+
+    async def lookup(host: str, port: int) -> list[netguard.IPAddress]:
+        reached.append((host, port))
+        return [ipaddress.ip_address("172.105.2.53")]
+
+    async def connect(self: object, host: str, port: int, *args: object, **kwargs: object) -> None:
+        reached.append((host, port))
+        raise httpcore2.ConnectError("nothing answers in the test")
+
+    monkeypatch.setattr(netguard, "lookup_async", lookup)
+    monkeypatch.setattr(httpcore2.AnyIOBackend, "connect_tcp", connect)
+    scheduler = Scheduler(
+        settings,
+        sessionmaker(bind=engine, expire_on_commit=False),
+        ApiLogRecorder(sessionmaker(bind=engine, expire_on_commit=False)),
+        netguard.HOME_NETWORK,
+        collectors=(Unreachable(),),
+    )
+
+    asyncio.run(scheduler.run_once())
+
+    error = the_health(session).last_error
+    assert error is not None
+    assert "private network address" not in error
+    assert reached == [("api.fingerbank.org", 443), ("172.105.2.53", 443)]

@@ -59,6 +59,14 @@ Every release's notes are here, newest first. The format follows
   network with 2000 incidents took about 4.9 seconds and now takes about 2.3. What is said of an
   incident is unchanged.
 
+### Fixed
+
+- **Fingerbank, OTX and NVD are no longer reported as "not a private network address".** The
+  test you press reached them correctly, but the check AresGate repeats every five minutes looked
+  for them on your home network, so their status turned to failed and said, for example, that
+  api.fingerbank.org "isn't a private network address". Every service on the internet is now
+  checked at its own address, like everywhere else.
+
 ## 0.1.5
 
 ### Added
