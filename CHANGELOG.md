@@ -84,6 +84,8 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **The CVEs one alert names are looked up in the order they were stored.** Two signals stored
+  at the same moment could swap places, and so the order NVD was asked about their CVEs.
 - **A busy NVD, OTX, GreyNoise or Fingerbank is no longer reported as a failed connection with a
   bare "HTTP 503".** Testing one of them now asks again after three seconds when it answers
   502, 503 or 504, and if it is still down says so: that it is unavailable, that this is on its
