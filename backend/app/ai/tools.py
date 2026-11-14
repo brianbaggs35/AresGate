@@ -196,6 +196,12 @@ def _end(redactor: Redactor, address: object, port: int | None) -> str:
     return f"{shown}:{port}" if port else shown
 
 
+def _listening_on(redactor: Redactor, address: object, port: int) -> str:
+    """``address:port``, with an IPv6 address in brackets so the port can be told from it."""
+    shown = redactor.address(str(address))
+    return f"[{shown}]:{port}" if ":" in shown else f"{shown}:{port}"
+
+
 def _window(now: datetime, hours: int | None) -> tuple[Window, int]:
     length = _between(hours, DEFAULT_HOURS, 1, MAX_HOURS)
     # The buckets are not used by the lookups: they only need a window to read.
@@ -362,7 +368,7 @@ def open_ports(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
             .order_by(HostPort.port, HostPort.transport, HostPort.address)
         ).all()
         listening = [
-            f"{port.transport} {redactor.address(str(port.address))}:{port.port}"
+            f"{port.transport} {_listening_on(redactor, port.address, port.port)}"
             + (f" ({redactor.text(port.process, 60)})" if port.process else "")
             for port in ports[:MAX_PORTS]
         ]
