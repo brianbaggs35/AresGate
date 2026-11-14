@@ -80,6 +80,10 @@ export interface AssetIdentity {
   checked_at: string
 }
 
+/** How much an asset matters to the owner: it ranks the threats that touch it. */
+export const IMPORTANCES = ['normal', 'important', 'critical'] as const
+export type Importance = (typeof IMPORTANCES)[number]
+
 /** What the owner said an asset is, and what it is for. */
 export interface AssetProfile {
   kind: string
@@ -88,6 +92,7 @@ export interface AssetProfile {
   carries: boolean
   purpose: string | null
   updated_at: string
+  importance: Importance
 }
 
 /** One kind of asset the owner can pick. */
@@ -96,6 +101,10 @@ export interface AssetKind {
   label: string
   group: string
   carries: boolean
+  /** How much an asset of this kind usually matters, offered when it is picked. */
+  importance: Importance
+  /** Whether a threat that touched only assets of this kind takes more proof (guests, IoT). */
+  lowers: boolean
 }
 
 /** The kinds that go together, such as the pieces of the network. */
@@ -336,16 +345,18 @@ export function fetchKinds(): Promise<AssetKindGroup[]> {
   return apiGet<AssetKindGroup[]>('/assets/kinds')
 }
 
-/** Says what an asset is and what it is for, in place of what was said before. */
+/** Says what an asset is, what it is for and how much it matters, in place of what was said
+ * before. */
 export function classifyAsset(
   key: string,
   kind: string,
   purpose: string | null,
+  importance: Importance,
   csrfToken: string,
 ): Promise<AssetProfile> {
   return apiPut<AssetProfile>(
     `/assets/${encodeURIComponent(key)}/profile`,
-    { kind, purpose },
+    { kind, purpose, importance },
     csrfToken,
   )
 }

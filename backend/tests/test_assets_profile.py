@@ -52,6 +52,43 @@ class TestGuessing:
         assert profile.suggest("box-17", "Example Devices Inc.") is None
 
 
+class TestHowMuchItMatters:
+    def test_it_is_kept_with_what_the_owner_said_and_read_back(self, session: Session) -> None:
+        said = profile.save(session, "device-1", "nas", None, NOW, "critical")
+        session.commit()
+
+        assert said.importance == "critical"
+        assert profile.load(session)["device-1"].importance == "critical"
+        assert profile.for_devices(session, [1])[1].importance == "critical"
+
+        profile.save(session, "device-1", "nas", None, NOW, "important")
+        session.commit()
+
+        assert profile.load(session)["device-1"].importance == "important"
+
+    def test_it_is_normal_until_said(self, session: Session) -> None:
+        assert profile.save(session, "device-2", "tv", None, NOW).importance == "normal"
+
+    def test_the_ai_is_told_what_matters_and_nothing_where_it_is_normal(self) -> None:
+
+        def clean(text: str, limit: int) -> str:
+            return text[:limit]
+
+        critical = profile.Profile("nas", "Holds the backups", NOW, "critical")
+        important = profile.Profile("camera", None, NOW, "important")
+
+        assert profile.describe(critical, clean) == (
+            ", which the owner says is a storage (nas) (Holds the backups); it is critical to "
+            "the owner"
+        )
+        assert profile.describe(important, clean) == (
+            ", which the owner says is a camera or doorbell; it matters to the owner"
+        )
+        assert profile.describe(profile.Profile("tv", None, NOW), clean) == (
+            ", which the owner says is a tv"
+        )
+
+
 class TestWhatTheOwnerSaid:
     def test_it_is_kept_and_read_back(self, session: Session) -> None:
         said = profile.save(session, "device-1", "camera", "  Watches the front door ", NOW)
