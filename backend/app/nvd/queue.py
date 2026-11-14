@@ -43,7 +43,12 @@ def named(db: Session, now: datetime) -> list[str]:
         select(IncidentSignal.summary, IncidentSignal.signature, IncidentSignal.evidence)
         .join(Incident, Incident.id == IncidentSignal.incident_id)
         .where(Incident.last_seen_at >= now - RECENT)
-        .order_by(Incident.last_seen_at.desc(), IncidentSignal.occurred_at.desc())
+        .order_by(
+            Incident.last_seen_at.desc(),
+            IncidentSignal.occurred_at.desc(),
+            # Signals stored at the same moment keep the order they were stored in.
+            IncidentSignal.id,
+        )
         .limit(SIGNALS)
     )
     return cves.merge(cves.named_by(*row) for row in rows)
