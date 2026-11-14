@@ -47,17 +47,7 @@ class Hosts(Collector):
     connection = "api"
 
     async def collect(self, context: Context) -> Outcome:
-        found: list[Mapping[str, object]] = []
-        for ifid in await interfaces(context):
-            query = {"ifid": str(ifid), "mode": "local", "all": "true"}
-            answer = probes.as_object(await read(context, PATH, query))
-            rows = probes.as_array(answer.get("data")) if answer else None
-            if rows is None:
-                raise CollectorFailed(probes.unexpected(PRODUCT).message)
-            hosts = [host for row in rows[:LIMIT] if (host := probes.as_object(row)) is not None]
-            if rows and not hosts:
-                raise CollectorFailed("It answered, but the hosts aren't in a form AresGate reads.")
-            found.extend(hosts)
+        found = await active(context)
         readings = Readings(context)
         for host in found:
             if address := traffic.text(host, "ip"):
@@ -66,6 +56,31 @@ class Hosts(Collector):
         await readings.save()
         await context.record_devices(sightings(found, context.now), HOSTS)
         return Outcome(items=len(found))
+
+
+async def active(context: Context) -> list[Mapping[str, object]]:
+    """The hosts of the local networks on every interface the connection reads, as ntopng gives
+    them. Raises ``CollectorFailed`` for an answer
+    AresGate can't read."""
+    found: list[Mapping[str, object]] = []
+    for ifid in await interfaces(context):
+        found.extend(await on_interface(context, ifid))
+    return found
+
+
+async def on_interface(context: Context, ifid: int) -> list[Mapping[str, object]]:
+    """The hosts of the local networks on one interface."""
+    query = {"ifid": str(ifid), "mode": "local", "all": "true"}
+    answer = probes.as_object(await read(context, PATH, query))
+    rows = probes.as_array(answer.get("data")) if answer else None
+    if rows is None:
+        raise CollectorFailed(probes.unexpected(PRODUCT).message)
+    hosts: list[Mapping[str, object]] = [
+        host for row in rows[:LIMIT] if (host := probes.as_object(row)) is not None
+    ]
+    if rows and not hosts:
+        raise CollectorFailed("It answered, but the hosts aren't in a form AresGate reads.")
+    return hosts
 
 
 def _member(host: Mapping[str, object], key: str) -> Mapping[str, object]:
@@ -93,7 +108,7 @@ def sightings(hosts: Sequence[Mapping[str, object]], seen_at: datetime) -> list[
             traffic.text(host, "mac"),
             seen_at,
             address=traffic.text(host, "ip"),
-            hostname=_name(host),
+            hostname=name_of(host),
         )
         for host in hosts
         if host.get("is_broadcast_domain") is True
@@ -101,7 +116,7 @@ def sightings(hosts: Sequence[Mapping[str, object]], seen_at: datetime) -> list[
     return [sighting for sighting in found if sighting is not None]
 
 
-def _name(host: Mapping[str, object]) -> str | None:
+def name_of(host: Mapping[str, object]) -> str | None:
     """The name ntopng has for a host. It adds the label it would show for the address in
     brackets when that differs from the name, and uses the address when it has no name."""
     address = traffic.text(host, "ip")

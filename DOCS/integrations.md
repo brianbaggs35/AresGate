@@ -8,7 +8,7 @@ connect it, change its settings, test it or disconnect it.
 | Integration | What it gives AresGate | How it connects |
 | ----------- | ---------------------- | --------------- |
 | OPNsense | Health, interfaces and traffic, gateways, the firewall log, ARP and DHCP, and the services that run on it: Suricata, CrowdSec, OpenVPN, WireGuard, IPsec, Unbound, Dnsmasq, Kea, the ntopng and Wazuh agent plugins, and Zenarmor | API key and secret |
-| ntopng | Traffic of each host and of the interface, the devices it sees, and its alerts | Authentication token, or user name and password |
+| ntopng | Traffic of each host and of the interface, the application protocols they use, suspicious flows, the devices it sees, what it knows of each host, and its alerts | Authentication token, or user name and password |
 | Wazuh | Alerts, vulnerabilities and each machine's ports and software from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
@@ -332,8 +332,62 @@ that is still engaged is the same event on every run.
   ports and the protocol. A host alert is about one host: it is the source if ntopng calls it the
   attacker, and otherwise the destination, so it can be matched with the firewall's and Wazuh's
   events about that host.
-- **Not read.** ntopng also keeps alerts for the interface, for networks, devices (MAC
-  addresses), its own system and monitored hosts. AresGate doesn't read those yet.
+- **Other kinds.** ntopng also keeps alerts for the interface, for networks, for devices (MAC
+  addresses) and for itself. They are read as [notices](#interface-network-device-and-system-alerts).
+  It has no REST list for monitored hosts (active monitoring) or SNMP devices, so those are not
+  read.
+
+### Interface, network, device and system alerts
+
+Every minute the same window of the alerts ntopng keeps for an interface, a network, a device and
+for itself (a process restarted, the disk filling) become events of the kind **notice**, with the
+interface, network or device they are about in the summary. They are not alerts: the incident
+engine only groups alerts, so a notice can never become an incident, and it shows on the events
+page. They are a collector of their own so that an account that may not see one kind still has the
+flow and host alerts, and the others: a kind it is refused is skipped, and the run fails only when
+it is refused all of them. A system alert belongs to ntopng, so it is asked for once however many
+interfaces are read.
+
+### How many alerts there are
+
+Every five minutes the number of alerts ntopng raised in the last day, by severity
+(`alerts.by_severity`) and by kind (`alerts.by_kind`), as metrics labelled with the interface, the
+sort of thing the alert was about (`Flow`, `Host`, `Interface`) and the severity's or kind's name
+in ntopng's language. A count is a gauge: it is how many alerts the last day holds when it is
+read. ntopng counts a severity once for each kind of alert that has it, so the groups of one name
+are added up. The time window is passed the way the alert lists take it; that is inferred.
+
+### Application protocols
+
+Every five minutes the bytes of each application protocol (L7, as nDPI names it: `DNS`, `TLS`,
+`YouTube`) as metrics: `interface.l7_bytes` for the interface and `host.l7_bytes` for each of the
+40 hosts that have moved the most bytes, labelled with the protocol, so the baselines can learn
+what a device normally talks and a protocol that is new to it stands out. ntopng collapses the
+small protocols into `Other` unless asked not to, which would hide the very protocol that is new,
+so AresGate asks it not to; the 60 largest protocols of each are kept. The counters rise, so a
+chart takes the difference between two readings. A host ntopng has forgotten between the list and
+the question is skipped; the run fails only when none can be read. The unit of ntopng's `value`
+(bytes) is inferred from the way its own pages use the same function.
+
+### Suspicious flows
+
+Every minute the 100 active flows with the highest flow score become events of the kind **flow**
+(not `alert`, so never part of an incident by themselves): who talked to whom, over what
+protocol, and how long it lasted. They are there so an alert can be matched with the flow behind
+it. A flow ntopng scored 0 is left out, and a flow is kept as it was when it was first seen. The
+sort (`sortColumn=column_score`) is read from ntopng's source; the documentation doesn't give it.
+
+### What ntopng knows of a host
+
+Every half hour, for the same busy hosts, the operating system ntopng guesses (`os`, or the longer
+`os_detail`), the autonomous system and country of the address, and the fingerprints of how the
+host connects: **JA4** (TLS) and **HASSH** (SSH), with how often each was used and whether ntopng
+flags it malicious, and the TCP fingerprint. They are kept by address, replaced on every read, and
+forgotten with the host, and the analyst can ask for them (`host_details`). JA3, which older
+ntopng versions gave, is not asked for: current versions give JA4 instead. These member names are
+read from ntopng's source (`Host.cpp`, `LocalHost.cpp`) and nDPI's operating-system numbers; none
+of it was tried against a live ntopng, and ntopng only has fingerprints for hosts in a local
+network.
 
 ### Packets of a host
 

@@ -6,8 +6,13 @@ from app.collectors.base import Collector
 from app.collectors.connection_check import ConnectionCheck
 from app.collectors.crowdsec.decisions import Decisions
 from app.collectors.ntopng.alerts import Alerts as NtopngAlerts
+from app.collectors.ntopng.counters import AlertCounters
+from app.collectors.ntopng.flows import Flows
+from app.collectors.ntopng.host_details import HostDetails
 from app.collectors.ntopng.hosts import Hosts
 from app.collectors.ntopng.interface import InterfaceTraffic as NtopngInterfaceTraffic
+from app.collectors.ntopng.notices import Notices
+from app.collectors.ntopng.protocols import Protocols
 from app.collectors.opnsense.arp_table import ArpTable
 from app.collectors.opnsense.cpu_usage import CpuUsage
 from app.collectors.opnsense.crowdsec import PluginAlerts, PluginDecisions
@@ -40,6 +45,11 @@ COLLECTORS: Sequence[Collector] = (
     Hosts(),
     NtopngInterfaceTraffic(),
     NtopngAlerts(),
+    Notices(),
+    AlertCounters(),
+    Protocols(),
+    Flows(),
+    HostDetails(),
     Alerts(),
     Agents(),
     Vulnerabilities(),

@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **More from ntopng.** Five new collectors. **Application protocols** keeps the bytes of each
+  protocol (DNS, TLS, streaming) the interface and the 40 busiest hosts use, as metrics, so the
+  baselines can learn what a device normally talks. **Suspicious flows** keeps the 100 active flows
+  with the highest score as events of their own kind, to match an alert with the flow behind it.
+  **Interface, network, device and system alerts** become notices, which are never incidents.
+  **Alert counts** keeps how many alerts there were of each severity and kind. **Host details**
+  keeps each busy host's operating system, network, country and JA4, HASSH and TCP fingerprints,
+  and the analyst can ask for them (`host_details`). See
+  [ntopng](DOCS/integrations.md#application-protocols), which says what could only be inferred.
 - **Wazuh vulnerabilities and each machine's inventory.** Two new collectors read the indexer's
   `wazuh-states-*` indices every 15 minutes. **Vulnerabilities** keeps each flaw Wazuh found as an
   event (the CVE, how serious, the package and the machine), once, when it is first seen; these

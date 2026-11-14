@@ -19,7 +19,9 @@ from app.devices.sighting import NewHost, NewSighting
 from app.events import store as events
 from app.events.event import NewEvent
 from app.hostinfo import store as hostinfo
+from app.hostinfo import traits as traits_store
 from app.hostinfo.store import NewSystem
+from app.hostinfo.traits import NewTrait
 from app.integrations.client import ApiClient, Target
 from app.metrics import store as metrics
 from app.metrics.sample import NewSample
@@ -115,6 +117,16 @@ class Context:
                 source=target.integration,
                 connection=target.connection,
                 complete=complete,
+            )
+        )
+
+    async def record_traits(self, traits: Sequence[NewTrait]) -> int:
+        """Remembers what ntopng said of the hosts it watches, in a session of its own, forgets
+        the hosts it no longer lists, and returns how many there were."""
+        target = self.target
+        return await self.save(
+            lambda db: traits_store.record(
+                db, traits, utcnow(), source=target.integration, connection=target.connection
             )
         )
 

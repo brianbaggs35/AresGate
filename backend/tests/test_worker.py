@@ -67,9 +67,14 @@ def test_a_real_install_collects(
     assert session.scalar(select(WorkerBeat)) is not None
     assert sorted(row.collector for row in session.scalars(select(CollectorHealth))) == [
         "connection-check",
+        "ntopng-alert-counters",
         "ntopng-alerts",
+        "ntopng-flows",
+        "ntopng-host-details",
         "ntopng-hosts",
         "ntopng-interface",
+        "ntopng-notices",
+        "ntopng-protocols",
     ]
 
 

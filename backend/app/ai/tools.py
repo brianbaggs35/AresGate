@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import ColumnElement, and_, false, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -46,6 +46,7 @@ from app.models import (
     HostPackage,
     HostPort,
     HostSystem,
+    HostTrait,
     Incident,
     IncidentChain,
     IntegrationConnection,
@@ -380,6 +381,59 @@ def open_ports(db: Session, redactor: Redactor, args: Args, now: datetime) -> Fo
 
 def _kind_of(package: HostPackage) -> str:
     return ", ".join(fact for fact in (package.kind, package.architecture) if fact) or "no kind"
+
+
+def _trait_filter(redactor: Redactor, name: str) -> ColumnElement[bool]:
+    """Which hosts a name means: an address, or part of the name ntopng has for it."""
+    wanted = redactor.reveal(name).strip()
+    address = read_address(wanted)
+    if address is not None:
+        return HostTrait.address == str(address)
+    plain = wanted.replace("%", "").replace("_", "")
+    return HostTrait.hostname.ilike(f"%{plain}%") if plain else false()
+
+
+def _fingerprints(traits: dict[str, Any]) -> str:
+    """The fingerprints a host has in a few words: how many, and any that ntopng calls
+    malicious."""
+    said: list[str] = []
+    for key, label in (("ja4", "TLS (JA4)"), ("hassh", "SSH (HASSH)")):
+        seen: list[dict[str, Any]] = traits.get(key) or []
+        bad = sum(1 for item in seen if item.get("malicious") is True)
+        if seen:
+            said.append(f"{len(seen)} {label}" + (f", {bad} flagged malicious" if bad else ""))
+    if traits.get("tcp"):
+        said.append("a TCP fingerprint")
+    return ", ".join(said) or "none seen"
+
+
+def host_details(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """What ntopng has learned of the hosts it watches: the operating system it guesses, the
+    network and country of the address and the fingerprints of how it connects."""
+    chosen = (
+        select(HostTrait)
+        .order_by(HostTrait.hostname, HostTrait.address)
+        .limit(_between(args.limit, 5, 1, MAX_ITEMS))
+    )
+    if args.name and args.name.strip():
+        chosen = chosen.where(_trait_filter(redactor, args.name))
+    traits = list(db.scalars(chosen))
+    if not traits:
+        return Found(["ntopng has told nothing of a host that matches."], [], "no such host")
+    lines: list[str] = []
+    for trait in traits:
+        name = redactor.name(trait.hostname) if trait.hostname else "unnamed"
+        network = ", ".join(
+            redactor.text(fact, 100)
+            for fact in (f"AS{trait.asn}" if trait.asn else None, trait.as_name, trait.country)
+            if fact
+        )
+        lines.append(
+            f"{name} ({redactor.address(str(trait.address))}): runs "
+            f"{redactor.text(trait.os_name, 100) if trait.os_name else 'an unknown system'}; "
+            f"network: {network or 'unknown'}; fingerprints: {_fingerprints(trait.fingerprints)}"
+        )
+    return Found(lines, [], _plural(len(traits), "host"))
 
 
 def installed_software(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
@@ -1003,6 +1057,13 @@ TOOLS: Final[Sequence[Tool]] = (
         "first, each with its CVE, the package and the machine. Uses: name, for a CVE or a "
         "machine's name or address, or nothing for all; limit (1-20, default 10).",
         host_vulnerabilities,
+    ),
+    Tool(
+        "host_details",
+        "What ntopng has learned of a host by watching it: the operating system it guesses, "
+        "the network and country of its address and the fingerprints of how it connects. Uses: "
+        "name, for the host's name or address, or nothing for all; limit (1-10, default 5).",
+        host_details,
     ),
     Tool(
         "integrations",

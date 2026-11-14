@@ -323,6 +323,7 @@ def ntopng(
     listed: Sequence[Mapping[str, object]] = (),
     busy_ids: Collection[str] = ("0",),
     capture: bytes | None = None,
+    extras: Mapping[str, NtopngExtra] | None = None,
 ) -> Handler:
     """ntopng's REST API with one authentication token. Given ``capture`` (a pcap file) it also
     sends that as the live capture of a host, as ntopng does. A login it refuses is sent to its
@@ -332,7 +333,10 @@ def ntopng(
     named LAN) has seen nothing. The interfaces whose ID is among ``busy_ids`` carry everything
     given here, and the others have seen nothing. An interface it doesn't have is refused with a
     400, as ntopng does. It gives the hosts of the local network when asked for ``mode=local``, and
-    the alerts that began between the times asked for, newest first and no more than ``length``."""
+    the alerts that began between the times asked for, newest first and no more than ``length``.
+    ``extras`` gives more endpoints by path: each is called with the query and whether the
+    interface is a busy one, and answers with what goes in ``rsp``, or None for a host it doesn't
+    have, which ntopng refuses."""
     interfaces = listed or _NTOPNG_INTERFACES
     known = [[str(item["ifid"])] for item in interfaces]
 
@@ -355,6 +359,8 @@ def ntopng(
                 query, host_alerts if busy else ()
             ),
         }
+        for path, extra in (extras or {}).items():
+            answers[path] = lambda extra=extra: _ntopng_extra(extra, query, busy)
         if capture is not None:
             sent = Answer(body=capture, headers={"Content-Type": "application/vnd.tcpdump.pcap"})
             answers["/lua/rest/v2/get/pcap/live_traffic.lua"] = lambda: sent
@@ -365,6 +371,23 @@ def ntopng(
         return answers[seen.path]()
 
     return handle
+
+
+# What answers a question the stand-in gets for one more endpoint: the query it came with and
+# whether the interface is a busy one, and what goes in ``rsp``.
+NtopngExtra = Callable[[Mapping[str, Sequence[str]], bool], object]
+
+
+def answers(rsp: object) -> NtopngExtra:
+    """An extra endpoint that always answers with ``rsp``, or with a refusal for None."""
+    return lambda _query, _busy: rsp
+
+
+def _ntopng_extra(extra: NtopngExtra, query: Mapping[str, Sequence[str]], busy: bool) -> Answer:
+    found = extra(query, busy)
+    if found is None:
+        return _ntopng_answer({}, "NOT_FOUND", -3, status=404)
+    return _ntopng_answer(found)
 
 
 # The interfaces the stand-in has, as ntopng lists them, and what the quiet one has seen.
@@ -656,6 +679,225 @@ def sample_ntopng_host_alerts(now: datetime) -> list[dict[str, object]]:
         host(4, 52, "Scan Attacker", "192.168.1.41", "attacker"),
         host(6, 51, "Scan Victim", "192.168.1.20", "victim"),
     ]
+
+
+def sample_ntopng_extras(now: datetime) -> dict[str, NtopngExtra]:
+    """What ntopng's other endpoints answer for the hosts of ``sample_ntopng_hosts``, as the
+    source and the REST API v2 examples have them: the application protocols of the interface and
+    of two of the hosts (the printer is one ntopng has forgotten, which it refuses), the active
+    flows, the alerts of an interface, a network, a device and ntopng itself, the alert counters
+    and the details of the two hosts. All of them are of the busy interface only."""
+    protocols = {
+        "192.168.1.20": [("TLS", 41_220_113), ("DNS", 1_204_330), ("SSH", 88_340)],
+        "192.168.1.41": [("YouTube", 512_220_113), ("TLS", 20_220_113), ("DNS", 304_330)],
+    }
+    details = {
+        "192.168.1.20": {
+            "ip": "192.168.1.20",
+            "name": "web1",
+            "os": 4,
+            "os_detail": "",
+            "asn": 0,
+            "asname": "",
+            "country": "",
+            "ja4_fingerprint": {
+                "t13d1516h2_8daaf6152771_b186095e22b6": {
+                    "app_name": "curl",
+                    "num_uses": 41,
+                    "is_malicious": False,
+                }
+            },
+            "hassh_fingerprint": {},
+            "tcp_fingerprint": "2:128:1460:65535:1,3,1,1,4",
+        },
+        "192.168.1.41": {
+            "ip": "192.168.1.41",
+            "name": "192.168.1.41",
+            "os": 1,
+            "os_detail": "Windows 11",
+            "asn": 64512,
+            "asname": "Example Home ISP",
+            "country": "CA",
+            "ja4_fingerprint": {
+                "t13d1517h2_8daaf6152771_b0da82dd1658": {
+                    "app_name": "Chrome",
+                    "num_uses": 310,
+                    "is_malicious": False,
+                },
+                "t13d190900_9dc949149365_97f8aa674fd9": {
+                    "app_name": "",
+                    "num_uses": 4,
+                    "is_malicious": True,
+                },
+            },
+        },
+    }
+
+    def host_of(query: Mapping[str, Sequence[str]]) -> str:
+        return query.get("host", [""])[0]
+
+    def interface_protocols(_query: Mapping[str, Sequence[str]], busy: bool) -> object:
+        sample = [("TLS", 612_340_221), ("QUIC", 204_220_113), ("DNS", 20_120_433)]
+        return _l7(sample if busy else [])
+
+    def host_protocols(query: Mapping[str, Sequence[str]], busy: bool) -> object:
+        found = protocols.get(host_of(query))
+        return None if found is None else _l7(found if busy else [])
+
+    def flows(_query: Mapping[str, Sequence[str]], busy: bool) -> object:
+        data = (
+            [
+                _ntopng_flow(
+                    now, 9001, ("192.168.1.41", 51514), ("203.0.113.9", 443), "TLS", "11.2 K"
+                ),
+                _ntopng_flow(
+                    now, 9002, ("192.168.1.20", 40222), ("198.51.100.30", 8443), "TLS", "320"
+                ),
+                _ntopng_flow(now, 9003, ("192.168.1.20", 53311), ("192.168.1.1", 53), "DNS", "0"),
+            ]
+            if busy
+            else []
+        )
+        return {"perPage": 100, "currentPage": 1, "totalRows": len(data), "data": data}
+
+    def records(found: list[dict[str, object]]) -> NtopngExtra:
+        def listed(query: Mapping[str, Sequence[str]], busy: bool) -> object:
+            return _ntopng_records(query, found if busy else [])
+
+        return listed
+
+    def counters(found: list[dict[str, object]]) -> NtopngExtra:
+        return lambda _query, busy: found if busy else []
+
+    return {
+        "/lua/rest/v2/get/interface/l7/stats.lua": interface_protocols,
+        "/lua/rest/v2/get/host/l7/stats.lua": host_protocols,
+        "/lua/rest/v2/get/flow/active.lua": flows,
+        "/lua/rest/v2/get/host/data.lua": lambda query, busy: (
+            details.get(host_of(query)) if busy else None
+        ),
+        "/lua/rest/v2/get/interface/alert/list.lua": records(
+            [
+                _ntopng_alert(
+                    now,
+                    3,
+                    201,
+                    4,
+                    "Interface Dropped Packets",
+                    subtype={"value": "0", "name": "eth0"},
+                )
+            ]
+        ),
+        "/lua/rest/v2/get/network/alert/list.lua": records(
+            [
+                {
+                    **_ntopng_alert(now, 5, 202, 5, "Network SYN Flood"),
+                    "name": "192.168.1.0/24",
+                    "alias": "LAN",
+                }
+            ]
+        ),
+        "/lua/rest/v2/get/mac/alert/list.lua": records(
+            [
+                {
+                    **_ntopng_alert(now, 7, 203, 3, "Device Connection"),
+                    "address": {"value": "52:54:00:aa:bb:41", "label": "52:54:00:aa:bb:41"},
+                    "name": "laptop",
+                }
+            ]
+        ),
+        "/lua/rest/v2/get/system/alert/list.lua": records(
+            [_ntopng_alert(now, 9, 204, 3, "Process Restarted")]
+        ),
+        "/lua/rest/v2/get/alert/severity/counters.lua": counters(
+            [
+                {
+                    "count": 5,
+                    "entity_id": 1,
+                    "entity_label": "Flow",
+                    "alert_id": 7,
+                    "name": "Error",
+                },
+                {
+                    "count": 2,
+                    "entity_id": 1,
+                    "entity_label": "Flow",
+                    "alert_id": 9,
+                    "name": "Error",
+                },
+                {
+                    "count": 3,
+                    "entity_id": 2,
+                    "entity_label": "Host",
+                    "alert_id": 5,
+                    "name": "Warning",
+                },
+            ]
+        ),
+        "/lua/rest/v2/get/alert/type/counters.lua": counters(
+            [
+                {
+                    "count": 5,
+                    "entity_id": 1,
+                    "entity_label": "Flow",
+                    "alert_id": 7,
+                    "name": "Blacklisted Flow",
+                },
+                {
+                    "count": 3,
+                    "entity_id": 2,
+                    "entity_label": "Host",
+                    "alert_id": 5,
+                    "name": "Scan Attacker",
+                },
+            ]
+        ),
+    }
+
+
+def _l7(found: Sequence[tuple[str, int]]) -> list[dict[str, object]]:
+    return [
+        {"label": label, "value": value, "url": f"/lua/flows_stats.lua?application={label}"}
+        for label, value in found
+    ]
+
+
+def _ntopng_flow(
+    now: datetime,
+    key: int,
+    client: tuple[str, int],
+    server: tuple[str, int],
+    l7: str,
+    score: str,
+) -> dict[str, object]:
+    return {
+        "key": str(key),
+        "hash_id": str(key - 9000),
+        "first_seen": int((now - timedelta(minutes=2)).timestamp()),
+        "last_seen": int(now.timestamp()),
+        "client": {"name": client[0], "ip": client[0], "port": client[1], "country": ""},
+        "server": {"name": server[0], "ip": server[0], "port": server[1], "country": "US"},
+        "vlan": 0,
+        "protocol": {"l4": "TCP", "l7": l7},
+        "duration": 120,
+        "bytes": 48_213,
+        "thpt": {"pps": 3.5, "bps": 8200.0},
+        "breakdown": {"cli2srv": 30, "srv2cli": 70},
+        "score": score,
+    }
+
+
+def _ntopng_records(
+    query: Mapping[str, Sequence[str]], alerts: Sequence[Mapping[str, object]]
+) -> dict[str, object]:
+    """What an alert list answers in ``rsp``, for the alerts the time asked for holds."""
+    begin, end = (int(query.get(key, ["0"])[0]) for key in ("epoch_begin", "epoch_end"))
+    found = sorted(
+        (alert for alert in alerts if begin <= _ntopng_began(alert) <= end),
+        key=_ntopng_began,
+        reverse=True,
+    )
+    return {"records": found[: int(query.get("length", ["100"])[0])], "stats": {}}
 
 
 def crowdsec(api_key: str, decisions: Sequence[Mapping[str, object]] = ()) -> Handler:
@@ -2081,6 +2323,7 @@ class StandIns:
                 listed=_NTOPNG_FIREWALL if firewall else (),
                 busy_ids=("1", "2") if firewall else ("0",),
                 capture=sample_ntopng_capture(),
+                extras=sample_ntopng_extras(now),
             ),
             "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
             "opnsense": opnsense(

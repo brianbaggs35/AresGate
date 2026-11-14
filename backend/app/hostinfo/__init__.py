@@ -1,1 +1,2 @@
-"""What an agent reports about the machine it runs on: see ``store``."""
+"""What agents report about the machines they run on (``store``), and what ntopng knows of the
+hosts it watches (``traits``)."""

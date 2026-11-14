@@ -1081,7 +1081,8 @@ AresGate works without it. A test sends only the words "Say OK."
   address, hardware address or maker, with the operating system its agent reports), `open_ports`
   (what each machine the Wazuh agents watch listens on, and the program), `installed_software`
   (which of them has a package, and which version), `host_vulnerabilities` (the flaws Wazuh found
-  in their software, by CVE, machine or address) and `integrations` (how each connection and its
+  in their software, by CVE, machine or address), `host_details` (what ntopng knows of a host:
+  its system, network, country and fingerprints) and `integrations` (how each connection and its
   collectors are doing). It may look things up twice and has to answer the third time, so one question is at
   most three requests. Every lookup only reads, goes through the privacy level of Settings > AI
   (a provider that must not see an address is given a stand-in, and a stand-in it asks about is
