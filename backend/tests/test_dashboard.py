@@ -118,6 +118,25 @@ class TestAlerts:
 
         assert (found.total, found.previous) == (1, 2)
 
+    def test_the_same_alert_said_again_is_one_in_each_window_and_only_this_one_is_reported(
+        self, session: Session, settings: Settings
+    ) -> None:
+        win = dashboard.window("24h", NOW)
+        store(
+            session,
+            settings,
+            alert(Severity.LOW, NOW - timedelta(minutes=2), "now-1"),
+            alert(Severity.LOW, NOW - timedelta(minutes=1), "now-2"),
+            alert(Severity.LOW, win.start - timedelta(minutes=30), "before-1"),
+            alert(Severity.LOW, win.start - timedelta(minutes=20), "before-2"),
+            alert(Severity.LOW, win.start - timedelta(minutes=10), "before-3"),
+        )
+
+        found = dashboard.alerts(session, win)
+
+        assert (found.total, found.previous) == (1, 1)
+        assert (found.reports, found.duplicates) == (2, 0)
+
     def test_only_alerts_are_alerts(self, session: Session, settings: Settings) -> None:
         win = dashboard.window("24h", NOW)
         store(

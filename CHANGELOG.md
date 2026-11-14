@@ -58,6 +58,13 @@ Every release's notes are here, newest first. The format follows
   signal is about is worked out once however many decisions you have. Trusting a device on a
   network with 2000 incidents took about 4.9 seconds and now takes about 2.3. What is said of an
   incident is unchanged.
+- **The dashboard loads faster.** The alerts and blocked connections of a window were counted in
+  one pass over the stored events, and the window before it, for the comparison, in a second;
+  the alerts needed a third to count the repeats. Each is now counted in a single pass. On a
+  network with 2.2 million events in 15 days, the 24 hour dashboard took about 420 ms to work
+  out and now takes about 320, and the 7 day one went from about 1.8 s to 1.5 s. The numbers are
+  the same as before. The rest of the time is the other questions the page asks of the events,
+  which each read the window once.
 
 ### Fixed
 
