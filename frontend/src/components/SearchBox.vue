@@ -235,7 +235,7 @@ defineExpose({ focus: () => field.value?.focus() })
   min-width: 1.5rem;
   height: 1.5rem;
   margin-inline-end: 0.25rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.375rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font: inherit;
@@ -255,7 +255,7 @@ defineExpose({ focus: () => field.value?.focus() })
   max-height: 22rem;
   padding: 0.75rem 1rem 1rem;
   overflow-y: auto;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.75rem;
   background: rgb(var(--v-theme-surface));
 }

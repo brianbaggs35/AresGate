@@ -157,7 +157,7 @@ const offer = () => props.whole && !props.everything && props.total > props.show
   gap: 0.25rem 0.75rem;
   min-height: 52px;
   padding: 0.25rem 0.75rem 0.25rem 0.5rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.75rem;
   background: rgb(var(--v-theme-surface));
 }

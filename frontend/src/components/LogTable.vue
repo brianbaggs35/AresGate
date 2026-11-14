@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
 .log-table {
   /* `clip`, not `hidden`: the heading sticks to the window, so this must not scroll. */
   overflow: clip;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.75rem;
   background: rgb(var(--v-theme-surface));
 }
@@ -212,7 +212,7 @@ onBeforeUnmount(() => {
   top: var(--v-layout-top, 0px);
   z-index: 2;
   padding: 0.625rem 0.75rem;
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgb(var(--v-theme-surface));
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   text-align: start;
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
 
 .log-table__day td {
   padding-block: 0.5rem;
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgba(var(--v-theme-on-surface), 0.04);
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
@@ -277,7 +277,7 @@ onBeforeUnmount(() => {
 .log-table__pill {
   display: inline-block;
   padding: 0.0625rem 0.5rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 999px;
   font-size: 0.75rem;
 }
