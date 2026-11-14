@@ -480,17 +480,20 @@ def _action(
     }
 
 
+def _search_of_logs(item: Suggestion) -> dict[str, str | None] | None:
+    """The search of the logs a suggestion opens, or None if it names no text to look for."""
+    search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
+    if not search:
+        return None
+    return _action("open", "logs", search, None, f'Search the logs for "{search}"')
+
+
 def _made(item: Suggestion, ref: Ref | None) -> dict[str, str | None] | None:
     """The one thing a suggestion means, or None if it is not something the owner can do."""
     value = item.value.strip().lower() if item.value else None
     note = audit.clean(item.note, 200) if item.note else None
     if item.kind == "open" and item.target.strip().lower() == "logs":
-        search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
-        return (
-            _action("open", "logs", search, None, f'Search the logs for "{search}"')
-            if search
-            else None
-        )
+        return _search_of_logs(item)
     if item.kind == "open" and ref is not None:
         return _action("open", ref, None, None, f"Open {ref.label}")
     if ref is None or ref.kind != "incident" or value is None:
