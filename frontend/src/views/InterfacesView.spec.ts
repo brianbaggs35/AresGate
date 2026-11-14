@@ -89,6 +89,7 @@ describe('InterfacesView', () => {
     const { find, wrapper } = await open(listing())
 
     expect(find('interfaces-hero-title').text()).toBe('No interfaces yet')
+    expect(find('interfaces-find').text()).toBe('Find interfaces')
     for (const section of ['suggestions', 'grid', 'unplaced', 'ignored']) {
       expect(wrapper.find(`[data-test="interfaces-${section}"]`).exists()).toBe(false)
     }

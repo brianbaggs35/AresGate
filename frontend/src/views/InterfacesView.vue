@@ -107,7 +107,7 @@ onMounted(() => board.load())
             data-test="interfaces-find"
             @click="find"
           >
-            Find feeds
+            Find interfaces
           </v-btn>
           <v-btn
             color="primary"

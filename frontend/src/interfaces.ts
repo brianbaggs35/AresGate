@@ -118,7 +118,7 @@ export function hero(listing: Listing): Hero {
     eyebrow: 'Nothing found yet',
     title: 'No interfaces yet',
     detail:
-      'Find feeds to see what your programs report, then name the parts of your network they belong to.',
+      'Find interfaces to see what your programs report, then name the parts of your network they belong to.',
     mood: 'idle',
     level: 0,
   }
