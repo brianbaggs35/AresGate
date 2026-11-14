@@ -543,9 +543,10 @@ test.describe('integrations', () => {
       // (the interfaces, then what each has seen, from the page, again for the list under
       // Interfaces and again from the collector), and for every other collector, its own. With
       // no interface chosen each asks which ntopng has, and the alerts collector asks again for
-      // the names it keeps with each alert.
+      // the names it keeps with each alert. That is 41 requests, and the list shows a page of
+      // the newest 25.
       await integration.logRefresh.click()
-      await expect(integration.logCalls).toHaveCount(41)
+      await expect(integration.logCalls).toHaveCount(25)
     })
 
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({
