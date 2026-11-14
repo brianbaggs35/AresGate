@@ -115,6 +115,11 @@ async def _asked(
     raise AssertionError("The gateway ended a stream without saying how.")  # pragma: no cover
 
 
+def _answers(settled: Reply | list[chat.Lookup]) -> bool:
+    """Whether a round ended with the answer, and not with more to look up or a failure."""
+    return isinstance(settled, Reply) and settled.ok
+
+
 async def reply_stream(
     db: Session,
     context: Context,
@@ -147,7 +152,7 @@ async def reply_stream(
         if settled is None:  # pragma: no cover - ``_asked`` ends with what is settled
             raise AssertionError("A round ended without an outcome.")
         # What was written was not the answer when more is to be looked up, or when there is none.
-        if wrote and not (isinstance(settled, Reply) and settled.ok):
+        if wrote and not _answers(settled):
             yield Dropped()
         if isinstance(settled, Reply):
             yield settled

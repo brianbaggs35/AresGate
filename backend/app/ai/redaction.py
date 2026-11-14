@@ -403,7 +403,15 @@ class Redactor:
         return _STAND_IN.sub(back, answer)
 
 
-_TRAILING_WORD = re.compile(r"\w+$")
+_WORD_CHARACTER = re.compile(r"\w")
+
+
+def _word_start(text: str) -> int:
+    """Where the word at the end of ``text`` begins, or its length if it does not end in one."""
+    start = len(text)
+    while start and _WORD_CHARACTER.match(text[start - 1]):
+        start -= 1
+    return start
 
 
 class RevealStream:
@@ -421,8 +429,7 @@ class RevealStream:
         """The real text of what has come so far that can't change, with the next piece. With
         ``final`` the piece is the last, and nothing is held back."""
         text = self._held + piece
-        word = None if final else _TRAILING_WORD.search(text)
-        cut = word.start() if word else len(text)
+        cut = len(text) if final else _word_start(text)
         self._held = text[cut:]
         return self._redactor.reveal(text[:cut])
 
