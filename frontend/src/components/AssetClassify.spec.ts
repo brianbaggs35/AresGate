@@ -35,10 +35,12 @@ describe('AssetClassify', () => {
       'Router',
       'Network switch',
       'Camera or doorbell',
+      'Smart home device',
     ])
     expect(wrapper.findAll('legend').map((each) => each.text())).toEqual([
       'The network',
       'Around the home',
+      'How much does it matter?',
     ])
   })
 
@@ -62,6 +64,7 @@ describe('AssetClassify', () => {
       'device-4',
       'camera',
       'Watches the door',
+      'important',
       expect.any(String),
     )
     expect(wrapper.emitted('changed')).toHaveLength(1)
@@ -74,7 +77,67 @@ describe('AssetClassify', () => {
     await find('asset-classify-save').trigger('click')
     await flushPromises()
 
-    expect(classify).toHaveBeenCalledWith('device-1', 'router', null, expect.any(String))
+    expect(classify).toHaveBeenCalledWith(
+      'device-1',
+      'router',
+      null,
+      'critical',
+      expect.any(String),
+    )
+  })
+
+  it('offers how much a kind usually matters, and says so', async () => {
+    const { find, choose } = await open()
+
+    expect(find('asset-importance-note').exists()).toBe(false)
+    await choose('Router')
+
+    expect(find('asset-importance-choice-critical').classes()).toContain('v-btn--active')
+    expect(find('asset-importance-note').text()).toContain('critical was filled in for you')
+  })
+
+  it('leaves what the owner chose alone when another kind is picked', async () => {
+    const { find, choose, classify } = await open()
+
+    await choose('Router')
+    await find('asset-importance-choice-important').trigger('click')
+    await choose('Network switch')
+    await find('asset-classify-save').trigger('click')
+    await flushPromises()
+
+    expect(find('asset-importance-choice-important').classes()).toContain('v-btn--active')
+    expect(classify).toHaveBeenCalledWith(
+      'device-1',
+      'switch',
+      null,
+      'important',
+      expect.any(String),
+    )
+  })
+
+  it('says that a gadget takes more proof, until the owner says it matters', async () => {
+    const { find, choose } = await open()
+
+    await choose('Smart home device')
+    expect(find('asset-importance-note').text()).toContain('needs more proof')
+
+    await find('asset-importance-choice-important').trigger('click')
+    expect(find('asset-importance-note').exists()).toBe(false)
+  })
+
+  it('shows how much it matters when it was said, and saves a change of only that', async () => {
+    const { find, classify } = await open(
+      asset({ profile: profile({ importance: 'critical', purpose: null }) }),
+    )
+
+    expect(find('asset-importance-choice-critical').classes()).toContain('v-btn--active')
+    expect(find('asset-classify-save').attributes('disabled')).toBeDefined()
+
+    await find('asset-importance-choice-normal').trigger('click')
+    await find('asset-classify-save').trigger('click')
+    await flushPromises()
+
+    expect(classify).toHaveBeenCalledWith('device-1', 'camera', null, 'normal', expect.any(String))
   })
 
   it('says it was saved, until it is changed again', async () => {

@@ -330,10 +330,37 @@ on now moved between lanes, so you see the effect first.
 | **Let the AI set harmless incidents aside** | On by default. Probes and noise the AI is sure about go to the background instead of your list. They are still kept. |
 | **How sure the AI has to be** | The AI's confidence needed to set one aside (50 to 100, 80 by default). Critical incidents are never set aside. |
 | **A threat needs the AI to agree** | While an AI is on and reading by itself, an incident that only the rules are sure of is a suspect until the AI agrees (unless it is critical). |
+| **Devices that matter** | Two sliders, each 0 to 30 points. How much lower the bar to be shown an incident is when it touched a device you called *important* or *critical* (10 by default), and how much higher it is when it touched only guests' and IoT devices (0 by default). A chain of attacks is shown whatever the bar is. |
 | **What is open to the internet** | Nothing, some services (with their ports, up to 20) or not sure. The same scan means little on a network with nothing open and a lot on one that runs a service. The AI is told. |
 | **Anything else about your network** | Up to 500 characters in your own words (a Plex server, a VPN to the office), which the AI is told too. |
 
 The two AI settings do nothing while no AI is on; the page says so.
+
+### Which devices matter
+
+An attack on the NAS that holds your backups is not the same as one on a smart plug. On the **Assets**
+page you say how much each device matters: *normal*, *important* or *critical*. A kind that usually
+matters (a router, a firewall or a NAS is critical, a server or a camera important) offers its level
+when you pick it, and a *guest's device* or a *smart home device* is of less consequence by its
+kind. Whatever you say about a device stays yours: a program never changes it.
+
+An incident touched the devices that have one of its addresses, and its importance is that of the one
+that matters most (2 for critical, 1 for important, -1 where everything it touched is a guest's or an
+IoT device you did not say matters, otherwise 0). It is filed as the incident changes and again when you
+change what a device is. It does three things:
+
+- **Ranking.** Among incidents of the same severity, each step of importance counts as ten points of
+  certainty, so a surer incident on a plug still comes after a less sure one on the NAS. The
+  *Most serious first* order of the Incidents page and the flags on the dashboard's charts follow it.
+- **The bar.** An incident that touched an important or critical device is a suspect at a lower
+  confidence, and one that touched only guests and IoT devices at a higher one, by the two settings above. They
+  never change a threat's bar, and a chain of attacks is never set aside.
+- **Why.** A card says which device made it matter (*It touched vault, a storage (nas) you marked
+  critical*), in a chip and a sentence, and the incident page lists the same among its reasons.
+
+The AI is told which devices matter, in the words of its kind and nothing else: *which the owner says is a
+storage (nas); it is critical to the owner*, with the device's name and address replaced by stand-ins like
+everything else. A local device's hardware address is not sent to the AI at all, only what it does.
 
 ## If it is still too noisy
 

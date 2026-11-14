@@ -13,6 +13,7 @@ import {
 import LoadError from '@/components/LoadError.vue'
 import ThreatAiCard from '@/components/ThreatAiCard.vue'
 import ThreatEffect from '@/components/ThreatEffect.vue'
+import ThreatImportanceCard from '@/components/ThreatImportanceCard.vue'
 import ThreatLevelCard from '@/components/ThreatLevelCard.vue'
 import ThreatNetworkCard from '@/components/ThreatNetworkCard.vue'
 import { useSessionStore } from '@/stores/session'
@@ -151,6 +152,13 @@ onBeforeUnmount(() => {
       :default-clear-from="kept.default_clear_from"
       :min-clear-from="kept.min_clear_from"
       :watching="kept.watching"
+    />
+    <ThreatImportanceCard
+      v-model:drop="draft.important_drop"
+      v-model:raise="draft.low_raise"
+      :default-drop="kept.default_important_drop"
+      :default-raise="kept.default_low_raise"
+      :max="kept.max_shift"
     />
     <ThreatNetworkCard
       v-model:exposure="draft.exposure"

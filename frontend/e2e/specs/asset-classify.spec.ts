@@ -87,6 +87,34 @@ test.describe('saying what an asset is', () => {
     await expect(page.getByTestId('asset-kind')).toContainText('Camera')
   })
 
+  test('says how much it matters, which ranks the incidents that touched it', async ({
+    harness,
+    page,
+  }) => {
+    await harness.createIncidents([ATTACK])
+    await page.goto('/incidents?view=all')
+    await expect(page.getByTestId('importance-chip')).toHaveCount(0)
+    await page.getByTestId('incident').filter({ hasText: ATTACKER }).click()
+    await page.getByTestId('through-classify').click()
+    const classify = page.getByTestId('asset-classify')
+    await classify.getByTestId('asset-suggestion-use').click()
+
+    // A camera usually matters, which is filled in until the owner chooses.
+    await expect(classify.getByTestId('asset-importance-note')).toContainText(
+      'important was filled in for you',
+    )
+    await classify.getByTestId('asset-importance-choice-critical').click()
+    await classify.getByTestId('asset-classify-save').click()
+    await expect(classify.getByTestId('asset-classify-saved')).toBeVisible()
+
+    await page.goto('/incidents?view=all')
+    const card = page.getByTestId('incident-card').filter({ hasText: ATTACKER })
+    await expect(card.getByTestId('importance-chip')).toHaveText('Critical device')
+    await expect(card.getByTestId('incident-touched')).toHaveText(
+      'It touched Kitchen camera, a camera or doorbell you marked critical.',
+    )
+  })
+
   test('narrows the list to a kind, and to what has none', async ({ harness, page }) => {
     await harness.createAssets({
       devices: [

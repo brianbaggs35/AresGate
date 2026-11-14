@@ -70,6 +70,8 @@ def _text(asset: Asset) -> str:
     parts = [asset.name, asset.hostname or "", asset.vendor or "", *map(str, asset.addresses)]
     if asset.profile is not None:
         parts += [asset.profile.label, asset.profile.purpose or ""]
+        if asset.profile.importance != "normal":
+            parts.append(asset.profile.importance)
     if asset.mac:
         parts += [asset.mac, asset.mac.replace(":", "")]
     parts += [name_of(item.source) for item in asset.listings]

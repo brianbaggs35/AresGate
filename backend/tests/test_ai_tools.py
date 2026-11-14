@@ -394,11 +394,11 @@ class TestDevice:
         by_maker = run(session, "device", Args(name="brother"))
 
         assert by_name.lines == [
-            f"nas (aa:bb:cc:00:00:01), made by Synology; addresses: {DEVICE}; first seen "
+            f"nas, made by Synology; addresses: {DEVICE}; first seen "
             f"{NOW - 30 * HOUR:%Y-%m-%d %H:%M} UTC, last seen {NOW - HOUR:%Y-%m-%d %H:%M} UTC"
         ]
         assert by_name.summary == "1 device"
-        assert by_maker.lines[0].startswith("unnamed (aa:bb:cc:00:00:02), made by Brother;")
+        assert by_maker.lines[0].startswith("unnamed, made by Brother;")
 
     def test_what_the_owner_said_it_is_goes_with_it(self, session: Session) -> None:
         self.devices(session)
@@ -416,9 +416,9 @@ class TestDevice:
     def test_it_is_found_by_an_address_or_a_hardware_address(self, session: Session) -> None:
         self.devices(session)
 
-        assert run(session, "device", Args(name=DEVICE)).lines[0].startswith("nas ")
+        assert run(session, "device", Args(name=DEVICE)).lines[0].startswith("nas,")
         assert (
-            run(session, "device", Args(name="AA-BB-CC-00-00-02")).lines[0].startswith("unnamed ")
+            run(session, "device", Args(name="AA-BB-CC-00-00-02")).lines[0].startswith("unnamed,")
         )
 
     def test_a_percent_sign_is_not_a_wildcard(self, session: Session) -> None:
@@ -739,9 +739,8 @@ class TestNewDevices:
 
         assert found.summary == "2 new devices"
         assert found.lines == [
-            f"unnamed (aa:bb:cc:00:00:03); addresses: none known; first seen "
-            f"{NOW - HOUR:%Y-%m-%d %H:%M} UTC",
-            f"camera (aa:bb:cc:00:00:02), made by Acme; addresses: {HOME}; first seen "
+            f"unnamed; addresses: none known; first seen {NOW - HOUR:%Y-%m-%d %H:%M} UTC",
+            f"camera, made by Acme; addresses: {HOME}; first seen "
             f"{NOW - 2 * HOUR:%Y-%m-%d %H:%M} UTC",
         ]
         assert run(session, "new_devices", Args(hours=48, limit=1)).summary == "1 new device"

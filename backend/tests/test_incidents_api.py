@@ -1974,3 +1974,68 @@ class TestVulnerabilities:
         run(session)
 
         assert self.detail(client)["vulnerabilities"] == []
+
+
+class TestWhatTheDevicesMatter:
+    def nas(self, session: Session, importance: str = "critical") -> None:
+        device = Device(
+            mac="aa:bb:cc:00:00:0a", hostname="vault", first_seen_at=NOW, last_seen_at=NOW
+        )
+        session.add(device)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=device.id,
+                address=ip_address(DEVICE),
+                first_seen_at=NOW,
+                last_seen_at=NOW,
+            )
+        )
+        profile.save(session, f"device-{device.id}", "nas", None, NOW, importance)
+        session.commit()
+
+    def test_an_incident_says_how_much_the_device_it_touched_matters_and_which(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.nas(session)
+        store(session, settings, alert(NOW, n=1, severity=Severity.HIGH))
+        run(session)
+
+        [item] = listed(client)
+        detail = client.get(f"{BASE}/{item['id']}").json()
+
+        assert item["importance"] == "critical"
+        assert item["touched"] == {
+            "name": "vault",
+            "kind": "Storage (NAS)",
+            "importance": "critical",
+            "text": "It touched vault, a storage (nas) you marked critical.",
+        }
+        assert detail["touched"] == item["touched"]
+        assert detail["why"][-1] == item["touched"]["text"]
+
+    def test_an_incident_that_touched_nothing_that_matters_says_nothing(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1))
+        run(session)
+
+        [item] = listed(client)
+
+        assert (item["importance"], item["touched"]) == ("normal", None)
+
+    def test_among_the_same_severity_the_one_that_matters_comes_first_in_priority_order(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        self.nas(session)
+        store(
+            session,
+            settings,
+            alert(NOW, n=1, src_address=OTHER_ATTACKER, dst_address="192.168.1.99"),
+            alert(NOW + MINUTE, n=2),
+        )
+        run(session)
+
+        first, second = listed(client, order="priority")
+
+        assert (first["subject"], second["subject"]) == (ATTACKER, OTHER_ATTACKER)

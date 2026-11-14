@@ -92,9 +92,10 @@ def why(incident: Incident, floor: int, tuning: Tuning) -> list[str]:
     if found is Standing.MUTED:
         return ["You called it not suspicious or low priority, so it never raises an alarm."]
     if found is Standing.UNSURE:
+        asked = floor + tuning.shift(incident.importance)
         return [
             f"AresGate's rules are {incident.confidence}% sure it is a real attack, below the "
-            f"{floor}% you ask for before it is shown to you."
+            f"{asked}% you ask for before it is shown to you."
         ]
     if found is Standing.AI_CLEARED:
         return [

@@ -74,6 +74,8 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     chain_link: null,
     chain_reason: null,
     hunter: [],
+    importance: 'normal',
+    touched: null,
     ...changes,
   }
 }

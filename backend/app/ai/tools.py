@@ -304,7 +304,7 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
         ).first()
         software = f"; runs {_what_runs(runs, redactor)}" if runs else ""
         lines.append(
-            f"{name} ({redactor.mac(str(found.mac))}){maker}{what}{software}; addresses: {where}; "
+            f"{name}{maker}{what}{software}; addresses: {where}; "
             f"first seen {_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
         )
     return Found(lines, [], _plural(len(devices), "device"))
@@ -660,10 +660,7 @@ def new_devices(db: Session, redactor: Redactor, args: Args, now: datetime) -> F
             .limit(3)
         ).all()
         where = ", ".join(redactor.address(str(address)) for address in addresses) or "none known"
-        lines.append(
-            f"{name} ({redactor.mac(str(item.mac))}){maker}; addresses: {where}; first seen "
-            f"{_when(item.first_seen_at)}"
-        )
+        lines.append(f"{name}{maker}; addresses: {where}; first seen {_when(item.first_seen_at)}")
     return Found(lines, [], _plural(len(found), "new device"))
 
 

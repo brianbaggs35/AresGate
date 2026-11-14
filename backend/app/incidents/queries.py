@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.events.event import Severity
 from app.incidents.verdicts import MUTING
 from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Incident, IncidentSignal
+from app.threats import importance
 
 # How far either side of an incident the firewall's blocks of its address still count as part of
 # the picture: it often turns the address away before anything else notices it.
@@ -25,7 +26,7 @@ _ORDERINGS: Final[dict[Order, tuple[ColumnElement[Any], ...]]] = {
     "recent": (Incident.last_seen_at.desc(), Incident.id.desc()),
     "priority": (
         Incident.severity.desc(),
-        Incident.confidence.desc(),
+        importance.rank().desc(),
         Incident.last_seen_at.desc(),
         Incident.id.desc(),
     ),

@@ -10,7 +10,9 @@ An incident has exactly one *standing*, the first of these that is true:
 
 - ``HANDLED``: it is resolved or dismissed already.
 - ``MUTED``: the owner's own verdict calls it not suspicious or low priority.
-- ``UNSURE``: AresGate's confidence in it is below the floor.
+- ``UNSURE``: AresGate's confidence in it is below the floor, which is lower for an incident that
+  touched an important device and higher for one that touched only guest or IoT devices (the
+  owner's settings say by how much; see ``app/threats/importance.py``).
 - ``AI_CLEARED``: it would need the owner, but an AI judged it background (noise or a probe) and
   was sure enough (the owner's settings say how sure), and nothing in it says otherwise.
 - ``NEEDS_YOU``: everything else.
@@ -33,7 +35,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.events.event import Severity
@@ -108,7 +110,7 @@ def standing(
     if incident.verdict in MUTING:
         return Standing.MUTED
     escalated = _escalated(incident, tuning)
-    if incident.confidence < floor and not escalated:
+    if incident.confidence < floor + tuning.shift(incident.importance) and not escalated:
         return Standing.UNSURE
     if not escalated and _cleared(incident, tuning):
         return Standing.AI_CLEARED
@@ -180,7 +182,14 @@ def clauses(
     active = Incident.status.in_(ACTIVE)
     loud = or_(Incident.verdict.is_(None), Incident.verdict.not_in(MUTING))
     escalated = _escalated_clause(tuning)
-    sure = or_(Incident.confidence >= floor, escalated)
+    # An incident that touched an important device is asked about at a lower floor, and one that
+    # touched only guest and IoT devices at a higher one (``Tuning.shift``).
+    moved = case(
+        (Incident.importance > 0, floor - tuning.important_drop),
+        (Incident.importance < 0, floor + tuning.low_raise),
+        else_=floor,
+    )
+    sure = or_(Incident.confidence >= moved, escalated)
     cleared = (
         and_(
             Incident.verdict.is_(None),

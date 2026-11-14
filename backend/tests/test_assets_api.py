@@ -1,3 +1,4 @@
+from ipaddress import ip_address
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from app.models import (
     AuditEvent,
     Device,
     DeviceIdentity,
+    Incident,
     IntegrationConnection,
     Interface,
     User,
@@ -17,6 +19,7 @@ from app.models import (
 )
 from e2e import factories
 from e2e.factories import AssetSpec, HostSpec, Listed
+from tests.test_threats_families import incident as make_incident
 
 BASE = "/api/assets"
 LAPTOP = "00:11:22:0a:0b:0c"
@@ -242,8 +245,16 @@ class TestKinds:
             "label": "Router",
             "group": "network",
             "carries": True,
+            "importance": "critical",
+            "lowers": False,
         }
-        assert groups[-1]["kinds"][0]["key"] == "other"
+        other = {kind["key"]: kind for kind in groups[-1]["kinds"]}
+        assert list(other) == ["guest", "other"]
+        assert (other["guest"]["importance"], other["guest"]["lowers"]) == ("normal", True)
+        smart = next(
+            kind for group in groups for kind in group["kinds"] if kind["key"] == "smart_home"
+        )
+        assert smart["lowers"] is True
 
     def test_it_is_for_someone_signed_in(self, client: TestClient, account: User) -> None:
         assert client.get(f"{BASE}/kinds").status_code == 401
@@ -269,6 +280,68 @@ class TestClassifying:
         assert listed["profile"]["carries"] is False
         detail = client.get(f"{BASE}/{key}").json()["asset"]
         assert detail["profile"]["kind"] == "laptop"
+
+    def test_how_much_it_matters_is_kept_and_listed_and_found_by_a_search(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "laptop")
+
+        normal = client.put(
+            f"{BASE}/{key}/profile", json={"kind": "laptop"}, headers=headers(csrf_token)
+        )
+        response = client.put(
+            f"{BASE}/{key}/profile",
+            json={"kind": "laptop", "importance": "critical"},
+            headers=headers(csrf_token),
+        )
+
+        assert normal.json()["importance"] == "normal"
+        assert response.json()["importance"] == "critical"
+        listed = next(item for item in get(client).json()["items"] if item["key"] == key)
+        assert listed["profile"]["importance"] == "critical"
+        assert [item["key"] for item in get(client, "q=critical").json()["items"]] == [key]
+        said = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
+        assert said is not None
+        assert said.detail == {"asset": key, "kind": "laptop", "importance": "critical"}
+
+    def test_a_level_it_does_not_know_is_refused(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "laptop")
+
+        response = client.put(
+            f"{BASE}/{key}/profile",
+            json={"kind": "laptop", "importance": "vital"},
+            headers=headers(csrf_token),
+        )
+
+        assert response.status_code == 422
+
+    def test_saving_or_taking_back_files_the_incidents_again(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        stock(session)
+        key = key_of(client, "laptop")
+        found = make_incident(session, "203.0.113.9", addresses=[ip_address("192.168.1.20")])
+        session.commit()
+
+        client.put(
+            f"{BASE}/{key}/profile",
+            json={"kind": "laptop", "importance": "important"},
+            headers=headers(csrf_token),
+        )
+        session.expire_all()
+        important = session.get(Incident, found.id)
+        assert important is not None
+        assert important.importance == 1
+
+        client.delete(f"{BASE}/{key}/profile", headers=headers(csrf_token))
+        session.expire_all()
+        back = session.get(Incident, found.id)
+        assert back is not None
+        assert back.importance == 0
 
     def test_a_name_can_suggest_what_it_is_without_saying_it_is(
         self, client: TestClient, csrf_token: str, session: Session

@@ -42,6 +42,24 @@ describe('IncidentCard', () => {
     expect(text('ai-chip')).toBe('AI: Active attack, 88% sure')
   })
 
+  it('says which device that matters it touched, and why that ranks it', async () => {
+    const touched = {
+      name: 'vault',
+      kind: 'Storage (NAS)',
+      importance: 'critical',
+      text: 'It touched vault, a storage (nas) you marked critical.',
+    } as const
+    const { text, wrapper } = await show({ importance: 'critical', touched })
+
+    expect(text('importance-chip')).toBe('Critical device')
+    expect(text('incident-touched')).toBe(touched.text)
+
+    const none = await show()
+    expect(none.wrapper.find('[data-test="importance-chip"]').exists()).toBe(false)
+    expect(none.wrapper.find('[data-test="incident-touched"]').exists()).toBe(false)
+    expect(wrapper.exists()).toBe(true)
+  })
+
   it('says which lane it is in', async () => {
     const { text, wrapper } = await show({ lane: 'suspect' })
     expect(text('lane-chip')).toBe('Suspect')

@@ -22,6 +22,8 @@ EVERYTHING: dict[str, Any] = {
     "exposure": "unknown",
     "exposed_ports": [],
     "notes": "",
+    "important_drop": 10,
+    "low_raise": 0,
 }
 
 
@@ -66,6 +68,9 @@ class TestReadingThem:
             **EVERYTHING,
             "default_threat_from": 65,
             "default_clear_from": 80,
+            "default_important_drop": 10,
+            "default_low_raise": 0,
+            "max_shift": 30,
             "min_clear_from": 50,
             "max_notes": 500,
             "max_ports": 20,
@@ -141,6 +146,21 @@ class TestChangingThem:
         }
         assert "garage" not in str(event.detail)
 
+    def test_how_far_importance_moves_the_bar_is_kept_and_recorded(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        saved = change(client, csrf_token, important_drop=20, low_raise=5)
+
+        assert saved.status_code == 200
+        assert (saved.json()["important_drop"], saved.json()["low_raise"]) == (20, 5)
+        [event] = audited(session)
+        assert event.detail == {
+            "important_drop": 20,
+            "from_important_drop": 10,
+            "low_raise": 5,
+            "from_low_raise": 0,
+        }
+
     def test_saving_what_is_saved_changes_and_records_nothing(
         self, client: TestClient, csrf_token: str, session: Session
     ) -> None:
@@ -163,6 +183,9 @@ class TestChangingThem:
             {"exposed_ports": [65536]},
             {"exposed_ports": list(range(1, 22))},
             {"notes": "x" * 501},
+            {"important_drop": -1},
+            {"important_drop": 31},
+            {"low_raise": 31},
             {"unknown": 1},
         ],
     )
@@ -209,6 +232,19 @@ class TestPreviewingThem:
             "cleared": 0,
             "muted": 1,
         }
+
+    def test_it_says_what_importance_would_move(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        kind(session, 1, "ET SCAN guest", confidence=40, importance=-1)
+        kind(session, 1, "ET SCAN nas", confidence=30, importance=2)
+
+        body = preview(client, csrf_token, important_drop=10, low_raise=10).json()
+
+        assert (body["now"]["suspects"], body["now"]["background"]) == (2, 0)
+        assert (body["after"]["suspects"], body["after"]["background"]) == (1, 1)
+        wide = preview(client, csrf_token, important_drop=0, low_raise=30).json()["after"]
+        assert (wide["suspects"], wide["background"]) == (0, 2)
 
     def test_it_changes_nothing(
         self, client: TestClient, csrf_token: str, session: Session

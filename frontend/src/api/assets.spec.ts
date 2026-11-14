@@ -79,14 +79,14 @@ describe('fetchKinds', () => {
 })
 
 describe('classifyAsset', () => {
-  it('says what the asset is and what it is for, with the security token', async () => {
+  it('says what the asset is, what it is for and how much it matters, with the security token', async () => {
     const put = vi.spyOn(client, 'apiPut').mockResolvedValue({})
 
-    await classifyAsset('device/1', 'camera', 'Watches the door', 'token')
+    await classifyAsset('device/1', 'camera', 'Watches the door', 'critical', 'token')
 
     expect(put).toHaveBeenCalledWith(
       '/assets/device%2F1/profile',
-      { kind: 'camera', purpose: 'Watches the door' },
+      { kind: 'camera', purpose: 'Watches the door', importance: 'critical' },
       'token',
     )
   })

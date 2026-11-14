@@ -70,6 +70,7 @@ class Incident(Base):
         ),
         Index("ix_incidents_subject_last_seen_at", "subject", "last_seen_at"),
         Index("ix_incidents_block_last_seen_at", "block", "last_seen_at"),
+        CheckConstraint("importance BETWEEN -1 AND 2", name="importance"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -145,6 +146,10 @@ class Incident(Base):
     ai_class: Mapped[str | None] = mapped_column(String(12), default=None)
     ai_confidence: Mapped[int | None] = mapped_column(SmallInteger, default=None)
     ai_basis: Mapped[str | None] = mapped_column(String(8), default=None)
+    # How much the most important thing it touched matters to the owner: 2 for a device they
+    # called critical, 1 for important, 0 for the rest and -1 where everything it touched is a
+    # guest or an IoT device (app/threats/importance.py). Kept here so that ranking is a column.
+    importance: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     # When someone last changed the status, and nothing before that.
@@ -329,6 +334,8 @@ class ThreatSettings(Base):
         CheckConstraint("threat_from BETWEEN 1 AND 100", name="threat_from"),
         CheckConstraint("clear_from BETWEEN 50 AND 100", name="clear_from"),
         CheckConstraint("exposure IN ('none', 'some', 'unknown')", name="exposure"),
+        CheckConstraint("important_drop BETWEEN 0 AND 30", name="important_drop"),
+        CheckConstraint("low_raise BETWEEN 0 AND 30", name="low_raise"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
@@ -339,6 +346,11 @@ class ThreatSettings(Base):
     clear_from: Mapped[int] = mapped_column(SmallInteger, default=80)
     # Whether, while the AI is watching, an incident has to be agreed with by it to be a threat.
     ai_confirms: Mapped[bool] = mapped_column(Boolean, default=True)
+    # How many points less sure than the floor an incident may be and still be asked about when it
+    # touched an important device, and how many more it has to be when it touched only guest or
+    # IoT devices.
+    important_drop: Mapped[int] = mapped_column(SmallInteger, default=10, server_default="10")
+    low_raise: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
     # What is reachable from the internet: ``none``, ``some`` (the ports) or ``unknown``.
     exposure: Mapped[str] = mapped_column(String(8), default="unknown")
     exposed_ports: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list)

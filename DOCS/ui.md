@@ -328,7 +328,10 @@ button reproduces it; the words, modes and defaults are in `src/inventory.ts`.
   an `AssetKindChip` (a picture and its words) and the purpose under the name on the card; a *What it
   is* select filters the list (`kind`, or `unclassified`) once anything is said. Where the name or the
   maker suggests a kind it is offered with *Use that*, never applied. What is said goes to the
-  analyst: see [Assets](operations.md#assets).
+  analyst: see [Assets](operations.md#assets). Under the kind, *How much does it matter?* (normal,
+  important or critical, `ChoiceToggle`) offers the level a kind usually has when it is first picked
+  and says so; a guest's device or a smart home device says that a threat that touched only it takes
+  more proof. See [Which devices matter](threats.md#which-devices-matter).
 - **Nothing to show** says why and what to do: nothing narrowed matches (*Clear filters*); no
   asset is in that state; no program that lists devices is connected (leads to Integrations); one
   is connected but has listed nothing yet (leads to Status). More assets than a page are asked for

@@ -39,7 +39,7 @@ from app.incidents import episode, evidence, filters, rules, verdicts
 from app.incidents.filters import Filters
 from app.incidents.subject import Address, Signal, addresses_of, subject_of
 from app.models import Event, Incident, IncidentSignal, SystemInfo, VerdictRule
-from app.threats import families, stages
+from app.threats import families, importance, stages
 
 # The kinds of event that can be part of an incident, and how serious one has to be.
 KINDS: Final = ("alert", "decision")
@@ -605,6 +605,7 @@ def correlate(db: Session, now: datetime) -> Result:
         else:
             _score(incident)
     merged = _consolidate(db, {**{item.id: item for item in old}, **touched}, verdict_rules, noise)
+    importance.refresh(db, [*touched, *(item.id for item in old)])
     if events:
         _move_cursor(db, events[-1].id)
     return Result(

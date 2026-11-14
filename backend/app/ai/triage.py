@@ -48,7 +48,7 @@ from app.models.verdicts import VERDICTS
 from app.nvd import said as nvd_said
 from app.review import service as review
 from app.review import settings as review_settings
-from app.threats import calls, settings
+from app.threats import calls, importance, settings
 
 PURPOSE: Final = "triage"
 MAX_SIGNALS: Final = 30
@@ -720,9 +720,7 @@ def plan(db: Session, now: datetime) -> list[int]:
             ~asked_lately,
             ~skipped,
         )
-        .order_by(
-            Incident.severity.desc(), Incident.confidence.desc(), Incident.last_seen_at.desc()
-        )
+        .order_by(Incident.severity.desc(), importance.rank().desc(), Incident.last_seen_at.desc())
         .limit(room)
     )
     return list(db.scalars(candidates))

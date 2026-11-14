@@ -9,9 +9,11 @@ import {
   type Asset,
   type AssetKindGroup,
   type AssetProfile,
+  type Importance,
 } from '@/api/assets'
 import { errorMessage } from '@/api/client'
 import { kindIcon } from '@/assetKinds'
+import ChoiceToggle from '@/components/ChoiceToggle.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -21,17 +23,27 @@ import { useSessionStore } from '@/stores/session'
  * the front door. What is said is shown wherever the asset is (the Assets list, the devices an
  * incident went through) and goes to the analyst, which reads a camera that calls a stranger
  * differently from a laptop that browses. Where the name or the maker suggests a kind it is
- * offered, never applied.
+ * offered, never applied. How much it matters ranks the threats that touch it: a kind that usually
+ * matters (the NAS that holds the backups, the router) offers its level when it is first picked,
+ * and a guest's device or a gadget says that a threat that touched only it takes more proof.
  */
 const props = defineProps<{ asset: Asset }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const session = useSessionStore()
 const MAX_PURPOSE = 200
+const LEVELS: readonly { key: Importance; label: string }[] = [
+  { key: 'normal', label: 'Normal' },
+  { key: 'important', label: 'Important' },
+  { key: 'critical', label: 'Critical' },
+]
 
 const groups = ref<AssetKindGroup[]>([])
 const kind = ref<string | null>(props.asset.profile?.kind ?? null)
 const purpose = ref(props.asset.profile?.purpose ?? '')
+const importance = ref<Importance>(props.asset.profile?.importance ?? 'normal')
+// Whether the owner has chosen how much it matters, which a kind's own offer then leaves alone.
+const chosen = ref(props.asset.profile !== null)
 const saving = ref(false)
 const failure = ref<string | null>(null)
 const saved = ref(false)
@@ -40,6 +52,8 @@ const saved = ref(false)
 function reset(said: AssetProfile | null) {
   kind.value = said?.kind ?? null
   purpose.value = said?.purpose ?? ''
+  importance.value = said?.importance ?? 'normal'
+  chosen.value = said !== null
 }
 watch(
   () => props.asset.key,
@@ -62,8 +76,34 @@ onMounted(async () => {
 const dirty = computed(
   () =>
     kind.value !== (props.asset.profile?.kind ?? null) ||
-    purpose.value.trim() !== (props.asset.profile?.purpose ?? ''),
+    purpose.value.trim() !== (props.asset.profile?.purpose ?? '') ||
+    importance.value !== (props.asset.profile?.importance ?? 'normal'),
 )
+const picked = computed(() =>
+  groups.value.flatMap((group) => group.kinds).find((item) => item.key === kind.value),
+)
+/** Says what the kind chosen usually means for how much it matters, if it says anything. */
+const note = computed(() => {
+  if (picked.value?.lowers && importance.value === 'normal') {
+    return 'A threat that touched only this kind of device needs more proof to be shown to you, unless you say it matters.'
+  }
+  if (picked.value && picked.value.importance !== 'normal' && !chosen.value) {
+    return `A ${picked.value.label.toLowerCase()} usually matters: ${picked.value.importance} was filled in for you.`
+  }
+  return null
+})
+
+/** Picks a kind, and what usually goes with it for how much it matters, unless that was chosen. */
+function pick(key: string) {
+  kind.value = key
+  const found = groups.value.flatMap((group) => group.kinds).find((item) => item.key === key)
+  if (found && !chosen.value) importance.value = found.importance
+}
+
+function matters(value: Importance) {
+  importance.value = value
+  chosen.value = true
+}
 const suggestion = computed(() =>
   props.asset.profile === null && kind.value === null ? props.asset.suggested_kind : null,
 )
@@ -76,7 +116,7 @@ async function save() {
   try {
     const said = purpose.value.trim() || null
     await session.change((token) =>
-      classifyAsset(props.asset.key, kind.value as string, said, token),
+      classifyAsset(props.asset.key, kind.value as string, said, importance.value, token),
     )
     saved.value = true
     emit('changed')
@@ -127,7 +167,7 @@ async function clear() {
           size="small"
           variant="tonal"
           data-test="asset-suggestion-use"
-          @click="kind = suggestion"
+          @click="pick(suggestion)"
         >
           Use that
         </v-btn>
@@ -157,11 +197,29 @@ async function clear() {
           :aria-pressed="kind === item.key"
           size="small"
           data-test="asset-kind-choice"
-          @click="kind = item.key"
+          @click="pick(item.key)"
         >
           {{ item.label }}
         </v-btn>
       </div>
+    </fieldset>
+
+    <fieldset class="matters" data-test="asset-importance">
+      <legend class="text-label-large text-medium-emphasis">How much does it matter?</legend>
+      <ChoiceToggle
+        :model-value="importance"
+        :options="LEVELS"
+        label="How much it matters"
+        name="asset-importance-choice"
+        @update:model-value="matters"
+      />
+      <p class="text-body-medium text-medium-emphasis mt-2 mb-0">
+        Threats that touch what matters come first, and are shown at a lower bar. The analyst is
+        told too.
+      </p>
+      <p v-if="note" class="text-body-medium mt-1 mb-0" data-test="asset-importance-note">
+        {{ note }}
+      </p>
     </fieldset>
 
     <v-text-field
@@ -222,6 +280,17 @@ async function clear() {
 }
 
 .group legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.matters {
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.matters legend {
   margin-bottom: 0.5rem;
   padding: 0;
 }

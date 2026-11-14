@@ -276,6 +276,8 @@ export function draftOf(kept: ThreatSettings): ThreatDraft {
     exposure: kept.exposure,
     exposed_ports: [...kept.exposed_ports],
     notes: kept.notes,
+    important_drop: kept.important_drop,
+    low_raise: kept.low_raise,
   }
 }
 
@@ -288,6 +290,8 @@ export function sameDraft(one: ThreatDraft, other: ThreatDraft): boolean {
     one.ai_confirms === other.ai_confirms &&
     one.exposure === other.exposure &&
     one.notes === other.notes &&
+    one.important_drop === other.important_drop &&
+    one.low_raise === other.low_raise &&
     one.exposed_ports.length === other.exposed_ports.length &&
     one.exposed_ports.every((port, index) => port === other.exposed_ports[index])
   )
@@ -326,6 +330,20 @@ export function clearSentence(from: number, minimum: number): string {
   const how =
     from <= minimum ? 'As low as it can go.' : 'The surer it has to be, the less it sets aside.'
   return `The AI sets an incident aside when it is at least ${from.toString()}% sure it is harmless or a probe. ${how}`
+}
+
+/** What moving the bar for the devices that matter means, in a sentence. A chain of attacks and
+ * what the AI is sure of are shown whatever the bar is. */
+export function importanceSentence(way: 'drop' | 'raise', points: number): string {
+  if (points === 0) {
+    return way === 'drop'
+      ? 'An incident that touched an important device is shown at the same bar as any other.'
+      : 'An incident that touched only a guest or an IoT device is shown at the same bar as any other.'
+  }
+  const count = `${points.toString()} ${points === 1 ? 'point' : 'points'}`
+  return way === 'drop'
+    ? `An incident that touched an important device is shown when AresGate is ${count} less sure than usual.`
+    : `An incident that touched only a guest or an IoT device needs ${count} more before it is shown. Anything that is a chain of attacks is shown regardless.`
 }
 
 /** The lanes as the rows of a table, now and with the settings as asked. */

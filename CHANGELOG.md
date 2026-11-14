@@ -4,6 +4,19 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Say which devices matter.** On the Assets page, each device is now *normal*, *important* or
+  *critical* (a NAS or a router offers critical, a server or a camera important), and a guest's
+  device is a kind of its own. Incidents are ranked by how bad, how sure and how much the device
+  matters, and a card says why (*It touched vault, a storage (nas) you marked critical*). Under
+  Settings > Threat detection, two sliders say how much lower the bar is for an important device
+  (10 points by default) and how much higher for guests and IoT devices (0), with the preview of
+  what each would change. The AI is told which devices matter, and no longer told a local
+  device's hardware address. See [Which devices matter](DOCS/threats.md#which-devices-matter).
+
 ## 0.1.7
 
 ### Added
