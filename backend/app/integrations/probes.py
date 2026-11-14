@@ -673,6 +673,9 @@ async def wazuh_manager(client: ApiClient, target: Target) -> Verdict:
 WAZUH_INDEXER = "The Wazuh indexer"
 THE_INDEXER = "the Wazuh indexer"
 WAZUH_ALERTS = "/wazuh-alerts-*/_search"
+# The index patterns a user has to be allowed to read, for what each is about.
+ALERT_INDICES = "wazuh-alerts-*"
+STATE_INDICES = "wazuh-states-*"
 INDEXER_REFUSED = (
     f"{WAZUH_INDEXER} didn't accept the credentials (HTTP 401). It has its own users, apart "
     "from the manager API's: Indexer management, Security, Internal users."
@@ -692,12 +695,14 @@ def missing_permission(reply: Reply) -> str | None:
     return found.group(1) if found else None
 
 
-def indexer_forbidden(reply: Reply) -> str:
-    """Why the indexer won't let the user read the alerts, and what to change. It answers 403 to
-    a user who signed in properly but whose roles don't allow the request, and 401 to one who
-    didn't, so this is never a wrong password."""
+def indexer_forbidden(reply: Reply, indices: str = ALERT_INDICES) -> str:
+    """Why the indexer won't let the user read the alerts (or, for ``wazuh-states-*``, what the
+    agents report), and what to change. It answers 403 to a user who signed in properly but whose
+    roles don't allow the request, and 401 to one who didn't, so this is never a wrong
+    password."""
+    what = "the alerts" if indices == ALERT_INDICES else "what the agents report"
     message = (
-        f"{WAZUH_INDEXER} accepted the sign-in, but the user isn't allowed to read the alerts "
+        f"{WAZUH_INDEXER} accepted the sign-in, but the user isn't allowed to read {what} "
         "(HTTP 403)."
     )
     permission = missing_permission(reply)
@@ -706,29 +711,37 @@ def indexer_forbidden(reply: Reply) -> str:
     if permission and permission.startswith("cluster:"):
         return f"{message} Add it under the user's role, in Cluster permissions."
     return (
-        f"{message} Give the user's role the index permission read on wazuh-alerts-*, and map "
+        f"{message} Give the user's role the index permission read on {indices}, and map "
         "the user to the role (Mapped users)."
     )
 
 
-def indexer_problem(reply: Reply) -> Verdict | None:
+def indexer_problem(reply: Reply, indices: str = ALERT_INDICES) -> Verdict | None:
     """Why the indexer's answer to the search isn't a good one, or None if it is."""
-    forbidden = indexer_forbidden(reply) if reply.status == 403 else None
+    forbidden = indexer_forbidden(reply, indices) if reply.status == 403 else None
     return problem(reply, WAZUH_INDEXER, refused=INDEXER_REFUSED, forbidden=forbidden)
+
+
+async def wazuh_search(
+    client: ApiClient, target: Target, path: str, body: Mapping[str, object]
+) -> Reply:
+    """A search of one of the indexer's index patterns (``path`` is its ``/…/_search``), with
+    basic authentication."""
+    return await client.request(
+        "POST",
+        path,
+        json_body=body,
+        auth=(str(target.options["username"]), target.secrets["password"]),
+    )
 
 
 async def wazuh_alerts_search(
     client: ApiClient, target: Target, body: Mapping[str, object]
 ) -> Reply:
-    """A search of the indexer's ``wazuh-alerts-*`` indices, with basic authentication. The test
-    and the collector that reads the alerts both ask this way, so a test that passes means the
-    collector is allowed to do what it does."""
-    return await client.request(
-        "POST",
-        WAZUH_ALERTS,
-        json_body=body,
-        auth=(str(target.options["username"]), target.secrets["password"]),
-    )
+    """A search of the indexer's ``wazuh-alerts-*`` indices. The test and the collector that
+    reads the alerts both ask this way, so a test that passes means the collector is allowed to
+    do what it does."""
+    return await wazuh_search(client, target, WAZUH_ALERTS, body)
 
 
 def _stored(total: object) -> str:

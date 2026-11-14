@@ -18,6 +18,8 @@ from app.devices import store as devices
 from app.devices.sighting import NewHost, NewSighting
 from app.events import store as events
 from app.events.event import NewEvent
+from app.hostinfo import store as hostinfo
+from app.hostinfo.store import NewSystem
 from app.integrations.client import ApiClient, Target
 from app.metrics import store as metrics
 from app.metrics.sample import NewSample
@@ -95,6 +97,23 @@ class Context:
                 source=target.integration,
                 connection=target.connection,
                 via=via,
+                complete=complete,
+            )
+        )
+
+    async def record_systems(self, systems: Sequence[NewSystem], *, complete: bool = False) -> int:
+        """Remembers what agents reported about their machines (the system, the ports and the
+        software), in a session of its own, and returns how many machines there were.
+        ``complete`` says the list is everything the connection has, so a machine it no longer
+        lists is forgotten."""
+        target = self.target
+        return await self.save(
+            lambda db: hostinfo.record(
+                db,
+                systems,
+                utcnow(),
+                source=target.integration,
+                connection=target.connection,
                 complete=complete,
             )
         )

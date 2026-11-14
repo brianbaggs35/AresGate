@@ -3,7 +3,7 @@ import json
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime, timedelta
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -323,6 +323,7 @@ class TestWazuh:
             "a-password",
             stand_ins.sample_wazuh_alerts(self.now),
             stand_ins.sample_wazuh_agents(self.now),
+            stand_ins.sample_wazuh_states(),
         )
 
     def token(self) -> str:
@@ -408,6 +409,81 @@ class TestWazuh:
         answer = self.handler()(Seen("POST", "/wazuh-alerts-%2A/_search", self.login, b""))
 
         assert len(body(answer)["hits"]["hits"]) == 5
+
+    @pytest.mark.parametrize(
+        ("path", "count"),
+        [
+            ("/wazuh-states-vulnerabilities-*/_search", 3),
+            ("/wazuh-states-inventory-system*/_search", 2),
+            ("/wazuh-states-inventory-interfaces*/_search", 3),
+            ("/wazuh-states-inventory-networks*/_search", 4),
+            ("/wazuh-states-inventory-packages*/_search", 3),
+            ("/wazuh-states-inventory-ports*/_search", 4),
+            ("/wazuh-states-inventory-ports%2A/_search", 4),
+        ],
+    )
+    def test_it_searches_the_states_indices_the_way_the_collectors_ask(
+        self, path: str, count: int
+    ) -> None:
+        answer = self.handler()(post(path, {"size": 100, "query": {"match_all": {}}}, **self.login))
+
+        hits = body(answer)["hits"]
+        assert (hits["total"], len(hits["hits"])) == ({"value": count, "relation": "eq"}, count)
+        assert all("_source" in hit for hit in hits["hits"])
+
+    def test_it_gives_no_more_of_a_states_index_than_the_size_asked_for_and_ten_by_default(
+        self,
+    ) -> None:
+        sized = self.handler()(
+            post("/wazuh-states-inventory-ports*/_search", {"size": 1}, **self.login)
+        )
+        unsized = self.handler()(
+            Seen("POST", "/wazuh-states-inventory-ports*/_search", self.login, b"")
+        )
+
+        assert len(body(sized)["hits"]["hits"]) == 1
+        assert body(sized)["hits"]["total"]["value"] == 4
+        assert len(body(unsized)["hits"]["hits"]) == 4
+
+    def test_the_ports_asked_for_by_state_are_those_that_listen(self) -> None:
+        asked = {
+            "size": 100,
+            "query": {"bool": {"filter": [{"terms": {"interface.state": ["listening"]}}]}},
+        }
+
+        answer = self.handler()(post("/wazuh-states-inventory-ports*/_search", asked, **self.login))
+
+        states = [hit["_source"]["interface"]["state"] for hit in body(answer)["hits"]["hits"]]
+        assert states == ["listening"] * 3
+
+    def test_a_states_index_it_was_given_nothing_for_is_empty(self) -> None:
+        handler = stand_ins.wazuh("a-user", "a-password")
+
+        answer = handler(post("/wazuh-states-vulnerabilities-*/_search", {}, **self.login))
+
+        assert body(answer)["hits"]["hits"] == []
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/wazuh-states-inventory-users*/_search",
+            "/wazuh-states-inventory-ports*/_count",
+            "/wazuh-states-*/_search",
+        ],
+    )
+    def test_it_has_no_other_states_index(self, path: str) -> None:
+        assert self.handler()(post(path, {}, **self.login)).status == 404
+
+    def test_the_sample_states_name_the_same_agents_the_manager_lists(self) -> None:
+        agents = {agent["id"] for agent in stand_ins.sample_wazuh_agents(self.now)}
+        states = stand_ins.sample_wazuh_states()
+
+        named = {
+            cast("dict[str, str]", document["agent"])["id"]
+            for documents in states.values()
+            for document in documents
+        }
+        assert named <= agents
 
     def test_it_has_nothing_elsewhere_and_a_search_is_a_post(self) -> None:
         assert self.handler()(seen("/other", **self.login)).status == 404

@@ -11,6 +11,8 @@ def test_only_a_listing_that_can_only_hold_what_is_there_now_is_presence() -> No
     }
     # A lease is given out for a day or more, so it outlasts the device that holds it.
     assert not ways.WAYS[ways.DHCP].presence
+    # What an agent said an hour ago says nothing of whether the machine is on now.
+    assert not ways.WAYS[ways.INVENTORY].presence
 
 
 def test_every_way_has_words_for_a_page() -> None:

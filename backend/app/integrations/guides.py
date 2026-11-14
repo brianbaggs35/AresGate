@@ -506,11 +506,12 @@ WAZUH = Guide(
             ),
         ),
         Part(
-            title="Indexer: the alerts",
+            title="Indexer: the alerts, vulnerabilities and inventory",
             connection="indexer",
             intro=(
-                "The alerts are read from the Wazuh indexer (HTTPS, port 9200) with a user name "
-                "and password, from the wazuh-alerts-* indices. Make a user that can only read "
+                "The alerts, the vulnerabilities and the inventory of each machine are read from "
+                "the Wazuh indexer (HTTPS, port 9200) with a user name and password, from the "
+                "wazuh-alerts-* and wazuh-states-* indices. Make a user that can only read "
                 "those, rather than using admin."
             ),
             steps=(
@@ -527,14 +528,15 @@ WAZUH = Guide(
                 Step(
                     title="Create a read-only role",
                     detail=(
-                        "Click Create role and give it a name, such as aresgate_alerts. Add one "
-                        "index permission: the index pattern wazuh-alerts-* with the read "
-                        "permission. Leave Cluster permissions empty: AresGate only searches "
-                        "the alerts."
+                        "Click Create role and give it a name, such as aresgate_alerts. Add an "
+                        "index permission with the index patterns wazuh-alerts-* and "
+                        "wazuh-states-* and the read permission. Leave Cluster permissions "
+                        "empty: AresGate only searches those indices."
                     ),
                     menu=(INDEXER, "Security", "Roles"),
                     fills=(
                         Fill(label="Index", value="wazuh-alerts-*"),
+                        Fill(label="Index", value="wazuh-states-*"),
                         Fill(label="Index permissions", value="read"),
                     ),
                     watch=(

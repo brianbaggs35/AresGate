@@ -9,7 +9,7 @@ connect it, change its settings, test it or disconnect it.
 | ----------- | ---------------------- | --------------- |
 | OPNsense | Health, interfaces and traffic, gateways, the firewall log, ARP and DHCP, and the services that run on it: Suricata, CrowdSec, OpenVPN, WireGuard, IPsec, Unbound, Dnsmasq, Kea, the ntopng and Wazuh agent plugins, and Zenarmor | API key and secret |
 | ntopng | Traffic of each host and of the interface, the devices it sees, and its alerts | Authentication token, or user name and password |
-| Wazuh | Alerts from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
+| Wazuh | Alerts, vulnerabilities and each machine's ports and software from the indexer, and the health of the agents from the manager | Two connections, each with a user name and password |
 | CrowdSec | The ban decisions CrowdSec has made | A bouncer's API key |
 | VirusTotal | How many security vendors flag each internet address an incident names, and who owns it | An API key, and whether it is a free or a premium key |
 | AlienVault OTX | Which threat reports from the OTX community name each internet address an incident names, and what they say it is part of                                                                                                         | An API key, and how fast to look things up            |
@@ -404,8 +404,10 @@ Wazuh has two connections, each with its own address and sign-in:
   management, Security, Users) and link the `agents_readonly` role to it, rather than using the
   administrator.
 - **Indexer** (port 9200): create an internal user, and a role with the index permission `read`
-  on `wazuh-alerts-*` and no cluster permission, mapped to that user, rather than using `admin`.
-  The indexer's users are separate from the manager API's.
+  on `wazuh-alerts-*` and `wazuh-states-*` and no cluster permission, mapped to that user, rather
+  than using `admin`. The indexer's users are separate from the manager API's. The second pattern
+  is for the vulnerabilities and the inventory: a user that may read only the alerts still gets
+  them, and the two collectors that read the others say what to allow.
 
 Both use HTTPS with a certificate Wazuh made in a default install, so see
 [Certificates are verified](#what-aresgate-will-connect-to) below. A Let's Encrypt certificate on
@@ -441,8 +443,9 @@ alert is stored once however often it is read, by its document's id in the index
   SSH login failed from. Its destination is the one the line names (`dstip`), or else the host
   that raised it, so an alert can be matched with the firewall's and Suricata's events about that
   host.
-- **What the user needs.** Read access to the `wazuh-alerts-*` indices and nothing else: the
-  index permission `read`, and no cluster permission. The manager's API doesn't give alerts, so
+- **What the user needs.** For the alerts, read access to the `wazuh-alerts-*` indices and nothing
+  else: the index permission `read`, and no cluster permission (the vulnerabilities and the
+  inventory below also read `wazuh-states-*`). The manager's API doesn't give alerts, so
   this is the only place AresGate reads them. The connection test makes the same search as the
   collector (asking for no alerts), so a test that passes means the collector is allowed what it
   does. It doesn't ask the indexer's root page for the version, which needs the cluster
@@ -518,11 +521,90 @@ where the decoders put an address (they vary by decoder, so an alert without the
 an address), and that an agent's `lastKeepAlive` always carries a zone, as the specification's
 examples do (one that doesn't is left out).
 
-### What Wazuh has that AresGate doesn't read yet
+### Vulnerabilities
 
-Wazuh also keeps vulnerabilities and an inventory of each host's software, ports and processes
-in the indexer (`wazuh-states-vulnerabilities-*`, `wazuh-states-inventory-*`), and its own
-statistics (`wazuh-statistics-*`). AresGate doesn't read those yet.
+Every 15 minutes AresGate searches `wazuh-states-vulnerabilities-*` for the flaws the manager's
+vulnerability scanner found in the software its agents report. Each is an event of the kind
+`vulnerability`: the CVE as its signature, the package and version, the machine (the agent's name,
+and its address when the manager has listed the agent), and how serious Wazuh rates it, from its
+`Low`, `Medium`, `High` and `Critical` (anything else is info). The summary reads "CVE-2024-13176
+in openssl 3.0.13 on web1 (High, CVSS 7.5)".
+
+- **Once, when first seen.** A flaw is dated by the run that first saw it, not by when Wazuh
+  detected it: a flaw found a month ago isn't news of today, and a date that old would be outside
+  what is kept. It is told by the agent, the CVE and the package with its version, so reading it
+  again changes nothing, a package that is updated and still affected is a new event, and the same
+  flaw on two machines is two. Wazuh removes a flaw it no longer finds; the event stays until it
+  is old enough to be deleted, and is then stored again if the flaw is still there.
+- **Not an incident.** A flaw is not an attack, so these events are never part of an incident and
+  are not on the Dashboard's list of alerts. They are in the [event search](ui.md) (kind
+  `vulnerability`), and the analyst can be asked about them.
+- **A limit.** A run keeps the 1,000 with the highest CVSS score, which a home network doesn't
+  reach.
+
+### Inventory
+
+Every 15 minutes AresGate reads what each agent's inventory module reports, from the indexer's
+`wazuh-states-inventory-system*`, `-interfaces*`, `-networks*`, `-packages*` and `-ports*`:
+
+- **The machines.** Each agent's host name, operating system and version, architecture and
+  kernel, the hardware addresses of its network cards and their IP addresses, the ports that
+  listen (TCP and UDP, the address, the port and the program), and every package installed, kept
+  for the analyst to be asked about: "what does web1 listen on?", "which machines have openssl,
+  and which version?". What an agent says now replaces what it said, and a machine the indexer no
+  longer lists is forgotten with its ports and software.
+- **The devices.** A network card of a machine becomes a device, told apart by its hardware
+  address like every other, with each IP address the card has and the machine's name, so the
+  firewall's ARP table and the agent's inventory are one device, not two. It is listed as
+  **Agent inventory**, which never counts as on the network now: an agent that stopped reporting
+  an hour ago still has the same cards. A card is left out when it is down, has no hardware
+  address, or is a bridge or virtual cable (`lo`, `docker*`, `br-*`, `veth*`, `virbr*`, `cni*`,
+  `flannel*`, `cali*`, `tun*`, `tap*`, `vmnet*`, `vboxnet*`), and so is a loopback or link-local
+  address. The device is dated by when the manager last heard from the agent.
+- **A limit.** A search asks for at most 10,000 documents of each index, so a machine with more
+  than that isn't read in full. When the system index holds more than was read, nothing is
+  forgotten.
+- **The permission.** Read on `wazuh-states-*`. A user without it is refused (HTTP 403) and the
+  Collection card says to add it; the connection test, which only searches the alerts, doesn't
+  check it.
+
+### Where the states come from, and what is inferred
+
+The manager's API had endpoints for the inventory (`GET /syscollector/{agent_id}/…`). Wazuh issue
+[31299](https://github.com/wazuh/wazuh/issues/31299), closed on 1 September 2025 and tracked under
+release 5.0.0, removes them, and says the inventory is stored in the indexer; it names no
+replacement, and was not checked against a running 5.0. So this reads the indexer, which holds the
+same data and is what Wazuh's own dashboard reads, and uses no manager endpoint for it.
+
+The field names are those of the index templates in Wazuh's source at release 4.14.1,
+`src/wazuh_modules/vulnerability_scanner/indexer/template/index-template.json` and
+`src/wazuh_modules/inventory_harvester/indexer/template/wazuh-states-inventory-*.json`: the
+`agent.id` and `agent.name` of each document, `vulnerability.id`, `.severity`, `.score.base`,
+`package.name` and `.version`, `host.os.*`, `host.hostname`, `host.architecture`, `host.mac`,
+`interface.name`, `interface.state`, `network.ip`, `network.transport`, `source.ip`,
+`source.port` and `process.name`. The development branch of Wazuh's indexer plugins (what
+becomes 5.0) puts the agent under `wazuh.agent` instead, so both are read. Wazuh's documentation
+site was not reachable when this was written, so its page of
+[inventory fields](https://documentation.wazuh.com/current/user-manual/capabilities/system-inventory/available-inventory-fields.html)
+was read only in the older form of it in its documentation repository (the agent's own tables,
+`sys_osinfo`, `sys_ports` and so on); the templates are the source of truth here.
+
+What could only be inferred, because no page lists the values:
+
+- That a port that listens has the state `listening` (`LISTEN` is also asked for). A UDP port has
+  no state in an agent's table, so it isn't listed unless Wazuh gives it one.
+- That a port's own end is `source.ip` and `source.port`, and the other end `destination.*`.
+- That an interface that is down has the state `down`.
+- That `vulnerability.severity` is capitalised, as Wazuh's pages write it (it is compared without
+  regard to case), and `vulnerability.score.base` is the CVSS base score.
+- That `host.mac` may be one hardware address or a list, as ECS allows.
+- Which interfaces belong to a bridge or a container, from their names (the list above).
+
+None of it was tried against a live Wazuh. The stand-in answers with documents of the shapes
+above, and tests cover every branch, so an answer that differs shows as an empty list or a
+failed collector with the reason on the Collection card, and the API log has the request.
+
+Wazuh's own statistics (`wazuh-statistics-*`) are not read.
 
 ## CrowdSec
 

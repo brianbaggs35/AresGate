@@ -20,12 +20,15 @@ ARP: Final = "arp"
 DHCP: Final = "dhcp"
 HOSTS: Final = "hosts"
 AGENT: Final = "agent"
+INVENTORY: Final = "inventory"
 
 WAYS: Final[dict[str, Way]] = {
     ARP: Way("ARP table", True),
     DHCP: Way("DHCP leases", False),
     HOSTS: Way("Active hosts", True),
     AGENT: Way("Agent", True),
+    # What an agent's inventory says is on the machine says nothing of whether it is on now.
+    INVENTORY: Way("Agent inventory", False),
 }
 
 
