@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search } from '@lucide/vue'
+import { Search, Sparkles } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -9,14 +9,18 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import { shortcutLabel } from '@/commands'
 import { pageTitle } from '@/router'
+import { useAssistantStore } from '@/stores/assistant'
 import { usePaletteStore } from '@/stores/palette'
 
 const route = useRoute()
 const display = useDisplay()
 const palette = usePaletteStore()
+const assistant = useAssistantStore()
 
 const title = computed(() => pageTitle(route))
 const shortcut = shortcutLabel(navigator.userAgent)
+// The Assistant page is the conversation, so it has no panel to open.
+const ownPage = computed(() => route.name === 'assistant' || route.name === 'assistant-chat')
 </script>
 
 <template>
@@ -50,6 +54,16 @@ const shortcut = shortcutLabel(navigator.userAgent)
         Search
         <kbd class="app-bar__key">{{ shortcut }}</kbd>
       </v-btn>
+      <v-btn
+        v-if="!ownPage"
+        :icon="Sparkles"
+        variant="text"
+        :color="assistant.open ? 'primary' : undefined"
+        aria-label="Assistant"
+        :aria-expanded="assistant.open"
+        data-test="assistant-open"
+        @click="assistant.toggle()"
+      />
       <ThemeToggle />
       <UserMenu />
     </template>

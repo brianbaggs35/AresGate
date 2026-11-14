@@ -5,6 +5,7 @@ import * as dashboardApi from '@/api/dashboard'
 import * as reviewApi from '@/api/review'
 import App from '@/App.vue'
 import { guardRoutes } from '@/router/guard'
+import { useAssistantStore } from '@/stores/assistant'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -86,6 +87,24 @@ describe('App', () => {
     session.expired = false
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('sign-in')
+  })
+
+  describe('the assistant', () => {
+    it('is a panel any page can open, and is forgotten when the sign-in ends', async () => {
+      const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+      await flushPromises()
+      const assistant = useAssistantStore()
+      await wrapper.find('[data-test="assistant-open"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="assistant-panel"]').exists()).toBe(true)
+      assistant.draft = 'half a question'
+
+      useSessionStore().$patch({ username: null })
+      await flushPromises()
+
+      expect(assistant.open).toBe(false)
+      expect(assistant.draft).toBe('')
+    })
   })
 
   describe('the decisions waiting for review', () => {

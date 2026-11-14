@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import text as sql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -223,6 +224,11 @@ class AiMessage(Base):
     # in words without a name or an address in them), and what it cites: {kind, key, label}.
     lookups: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
     cites: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
+    # What an answer suggests the owner do, which they approve with a button (the assistant changes
+    # nothing itself), as {kind, target_kind, target_key, value, note, label}.
+    actions: Mapped[list[dict[str, str | None]]] = mapped_column(
+        JSONB, default=list, server_default=sql("'[]'::jsonb")
+    )
     # The requests to the provider that made it, in ``ai_calls`` (which may have been deleted).
     call_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

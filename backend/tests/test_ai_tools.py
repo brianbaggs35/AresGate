@@ -415,6 +415,17 @@ class TestDevice:
         assert unnamed.refs == [Ref("device", str(printer.id), f"Device {printer.id}")]
         assert found.lines[0].startswith(f"[device {nas.id}] ")
 
+    def test_a_device_is_found_by_its_number_too(self, session: Session) -> None:
+        nas, printer = self.devices(session)
+
+        found = run(session, "device", Args(id=printer.id))
+
+        assert found.refs == [Ref("device", str(printer.id), f"Device {printer.id}")]
+        assert nas.id != printer.id
+        assert run(session, "device", Args(id=999_999)).lines == [
+            "No device on the home network matches that."
+        ]
+
     def test_what_the_owner_said_it_is_goes_with_it(self, session: Session) -> None:
         self.devices(session)
         nas = session.scalars(select(Device).where(Device.hostname == "nas")).one()

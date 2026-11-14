@@ -1,4 +1,5 @@
 import AppBar from '@/components/AppBar.vue'
+import { useAssistantStore } from '@/stores/assistant'
 import { usePaletteStore } from '@/stores/palette'
 import { mountWithPlugins } from '@/test/mount'
 
@@ -52,5 +53,26 @@ describe('AppBar', () => {
   it('has the theme switcher', async () => {
     const { wrapper } = await open(1280, '/')
     expect(wrapper.find('[data-test="theme-toggle"]').exists()).toBe(true)
+  })
+
+  it('has a button that opens the assistant, which is on a phone too', async () => {
+    for (const width of [1280, 400]) {
+      const { wrapper } = await open(width, '/')
+      const button = wrapper.find('[data-test="assistant-open"]')
+      expect(button.attributes('aria-label')).toBe('Assistant')
+      expect(button.attributes('aria-expanded')).toBe('false')
+      await button.trigger('click')
+      expect(useAssistantStore().open).toBe(true)
+      expect(button.attributes('aria-expanded')).toBe('true')
+      await button.trigger('click')
+      expect(useAssistantStore().open).toBe(false)
+    }
+  })
+
+  it('has none on the Assistant page, which is the conversation', async () => {
+    for (const route of ['/assistant', '/assistant/5']) {
+      const { wrapper } = await open(1280, route)
+      expect(wrapper.find('[data-test="assistant-open"]').exists()).toBe(false)
+    }
   })
 })

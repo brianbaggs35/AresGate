@@ -231,6 +231,21 @@ opens `AiCallDialog`). An answer that could not be made is a warning with a link
 is shown at once and a spinner says it can take a minute. Wording and the starting questions are in
 `src/chat.ts`.
 
+**The assistant panel** (`AssistantHost`, `AssistantPanel`, the `assistant` store) opens from the
+sparkles button in the app bar, on any page but the Assistant page itself, which is the
+conversation. On a screen wide enough for both it is a drawer at the side that pushes the page
+aside; below that it covers the page, and on a phone it is a sheet that rises from the bottom, as
+tall as the visible screen allows (`dvh`, so it shrinks when the keyboard is up and the box to
+type in stays above it) with a *Close* button, so the bar of places is never lost. It shows what
+it is looking at (`pageOf` in `src/pageContext.ts`: the incident or device on screen, the search of
+the logs or incidents, or only the page), hands that to every question, and starts with questions
+that fit the page. It is the same conversation the Assistant page lists (*Open the Assistant page*
+carries it on there, and *New conversation* begins another). What an answer suggests you do comes
+as buttons (`ChatActions`): *open* a page, or change an incident's status or give it a verdict. The
+assistant changes nothing itself: pressing a button makes the same audited request the incident
+pages make, and a change can be taken back with *Undo* at once. On a phone, opening a page puts the
+sheet away.
+
 ## Threats
 
 The Threats pages answer "is anything really going on?" before they answer anything else, and

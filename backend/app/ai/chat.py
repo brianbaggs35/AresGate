@@ -16,8 +16,9 @@ what was sent, and nothing is asked when AI is off or the spending limit is reac
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from ipaddress import ip_address
 from typing import Final, cast
 
 from sqlalchemy import func, or_, select
@@ -30,7 +31,15 @@ from app.ai.redaction import Redactor
 from app.ai.tools import Args, Found, Ref
 from app.events.event import Severity
 from app.incidents.verdicts import MUTING
-from app.models import AiConversation, AiMessage, Device, Incident, IntegrationConnection
+from app.models import (
+    AiConversation,
+    AiMessage,
+    Device,
+    DeviceAddress,
+    Incident,
+    IntegrationConnection,
+)
+from app.models.verdicts import VERDICTS
 
 PURPOSE: Final = "chat"
 # How many times the model is asked about one question: it may look things up twice, and the
@@ -47,6 +56,12 @@ MAX_TITLE: Final = 80
 MAX_MESSAGES: Final = 100
 MAX_TOKENS: Final = 1500
 MAX_NAMES: Final = 500
+# What the assistant may suggest the owner do with one answer, and how long a search it suggests
+# may be.
+MAX_ACTIONS: Final = 3
+MAX_SEARCH: Final = 200
+# The statuses an incident can be put in, and the pages an action can open.
+STATUSES: Final = ("open", "investigating", "resolved", "dismissed")
 
 _TOOL_LIST: Final = "\n".join(f"- {tool.name}: {tool.description}" for tool in tools.TOOLS)
 SYSTEM: Final = f"""\
@@ -55,7 +70,9 @@ owner's questions in a chat. The owner is technical but busy: answer in plain wo
 most important thing first, and say what to do when there is something to do.
 
 You can only read. You cannot change anything in AresGate or on the network, and you must never \
-say that you did or that you will.
+say that you did or that you will. You may suggest what the owner could do, in \
+"actions": the owner sees each as a button and decides, so write it as a suggestion and never as \
+done.
 
 Answer only from the facts you are given: the overview, what you looked up and the conversation. \
 If they do not say it, say that you do not know, or look it up. Never invent incidents, \
@@ -73,6 +90,14 @@ incident as [incident 3] and a device as [device 12]. In "cites" list what you b
 on, as "incident 3", "device 12" or "integration opnsense", only things that appeared in what you \
 were given.
 
+"actions" is empty unless a suggestion helps, and holds at most three. Each has a "kind" and a \
+"target": "open" takes the owner to a page (target "incident 3", "device 12", "integration \
+opnsense", or "logs" with the search to run in "value"); "status" sets the status of an incident \
+(target "incident 3", "value" one of {", ".join(STATUSES)}); "verdict" says what the owner thinks \
+of an incident (target "incident 3", "value" one of {", ".join(VERDICTS)}, and why in "note"). \
+Only suggest it about incidents and devices that appeared in what you were given, and suggest \
+"dismissed" or a verdict that quiets an incident only when you are sure it is nothing.
+
 Answer only with the JSON you are asked for.\
 """
 
@@ -88,6 +113,17 @@ LOOKUP: Final[Mapping[str, object]] = {
     },
     "required": ["tool", "id", "name", "hours", "limit"],
 }
+ACTION: Final[Mapping[str, object]] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "kind": {"type": "string", "enum": ["open", "status", "verdict"]},
+        "target": {"type": "string"},
+        "value": {"type": ["string", "null"]},
+        "note": {"type": ["string", "null"]},
+    },
+    "required": ["kind", "target", "value", "note"],
+}
 SCHEMA: Final[Mapping[str, object]] = {
     "type": "object",
     "additionalProperties": False,
@@ -95,8 +131,9 @@ SCHEMA: Final[Mapping[str, object]] = {
         "lookups": {"type": "array", "items": LOOKUP},
         "answer": {"type": "string"},
         "cites": {"type": "array", "items": {"type": "string"}},
+        "actions": {"type": "array", "items": ACTION},
     },
-    "required": ["lookups", "answer", "cites"],
+    "required": ["lookups", "answer", "cites", "actions"],
 }
 
 
@@ -115,12 +152,25 @@ class Lookup:
 
 
 @dataclass(frozen=True)
+class Suggestion:
+    """What the model suggests the owner do, as it said it, before it is checked against what was
+    found (``_proposed``)."""
+
+    kind: str
+    target: str
+    value: str | None
+    note: str | None
+
+
+@dataclass(frozen=True)
 class Step:
-    """One reply of the model: what it wants looked up, or its answer, and what it cites."""
+    """One reply of the model: what it wants looked up, or its answer, what it cites and what it
+    suggests the owner do."""
 
     lookups: list[Lookup]
     answer: str | None
     cites: list[str]
+    actions: list[Suggestion] = field(default_factory=lambda: [])
 
 
 def _loads(text: str) -> object:
@@ -155,6 +205,22 @@ def _lookup(item: object) -> Lookup | None:
     return Lookup(tool, args)
 
 
+def _text_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _suggestion(item: object) -> Suggestion | None:
+    if not isinstance(item, dict):
+        return None
+    fields = cast("dict[str, object]", item)
+    kind, target = _text_or_none(fields.get("kind")), _text_or_none(fields.get("target"))
+    if kind is None or target is None:
+        return None
+    return Suggestion(
+        kind, target, _text_or_none(fields.get("value")), _text_or_none(fields.get("note"))
+    )
+
+
 def parse(text: str) -> Step | None:
     """What a reply says, or None if it isn't one. A tool that isn't on the list is ignored, so
     the model can't ask for anything else."""
@@ -171,10 +237,13 @@ def parse(text: str) -> Step | None:
     answer = fields.get("answer")
     cited = fields.get("cites")
     cites = cast("list[object]", cited) if isinstance(cited, list) else []
+    suggested = fields.get("actions")
+    suggestions = cast("list[object]", suggested) if isinstance(suggested, list) else []
     return Step(
         lookups=lookups[:MAX_LOOKUPS],
         answer=audit.clean(answer, MAX_ANSWER) if isinstance(answer, str) else None,
         cites=[item for item in cites if isinstance(item, str)],
+        actions=[found for item in suggestions if (found := _suggestion(item)) is not None],
     )
 
 
@@ -252,6 +321,63 @@ def _run(
 NO_MORE: Final = "You cannot look anything else up now: answer with what you have."
 
 
+@dataclass(frozen=True)
+class Page:
+    """Where the owner is while they ask: the page, and what it is about. ``kind`` is
+    ``incident`` or ``device`` (with its ``id``, or for a device its ``address``), ``logs`` or
+    ``incidents`` (with the ``query`` on screen) or ``other`` (with its ``title``)."""
+
+    kind: str
+    id: int | None = None
+    address: str | None = None
+    query: str | None = None
+    title: str | None = None
+
+
+PAGE_KINDS: Final = ("incident", "device", "logs", "incidents", "other")
+_TOOLS: Final = {tool.name: tool for tool in tools.TOOLS}
+
+
+def _page_lookups(db: Session, page: Page | None) -> list[Lookup]:
+    """What the page the owner is on is about, looked up before the model is asked anything, so
+    that "this incident" and "this device" mean what they are looking at."""
+    if page is None:
+        return []
+    if page.kind == "incident" and page.id is not None:
+        return [Lookup(_TOOLS["incident"], Args(id=page.id))]
+    if page.kind != "device":
+        return []
+    device_id = page.id
+    if device_id is None and page.address is not None:
+        try:
+            address = ip_address(page.address)
+        except ValueError:
+            return []
+        device_id = db.scalars(
+            select(DeviceAddress.device_id)
+            .where(DeviceAddress.address == address)
+            .order_by(DeviceAddress.last_seen_at.desc())
+            .limit(1)
+        ).first()
+    return [Lookup(_TOOLS["device"], Args(id=device_id))] if device_id is not None else []
+
+
+def _looking_at(redactor: Redactor, page: Page | None) -> str | None:
+    """A line telling the model which page the owner has open, or None."""
+    if page is None or page.kind not in PAGE_KINDS:
+        return None
+    if page.kind == "incident":
+        return f"The owner has the page of incident {page.id} open." if page.id else None
+    if page.kind == "device":
+        return "The owner has the page of a device open (it is looked up below)."
+    if page.kind in ("logs", "incidents"):
+        where = "the Logs page" if page.kind == "logs" else "the list of incidents"
+        shown = redactor.text(page.query, MAX_SEARCH) if page.query else ""
+        return f"The owner is on {where}" + (f", searching for: {shown}." if shown else ".")
+    title = audit.clean(page.title, MAX_TITLE) if page.title else ""
+    return f"The owner is on the {title} page." if title else None
+
+
 def _question(
     db: Session,
     conversation: AiConversation,
@@ -262,6 +388,7 @@ def _question(
     now: datetime,
     *,
     last: bool,
+    page: Page | None = None,
 ) -> Question:
     """The question for one round. ``ran`` is filled with what the lookups found when the prompt
     is built, which is what an answer may cite."""
@@ -269,6 +396,8 @@ def _question(
     def build(redactor: Redactor) -> str:
         ran[:] = _run(db, redactor, lookups, now)
         parts = [_overview(db, now)]
+        if (looking := _looking_at(redactor, page)) is not None:
+            parts.append(looking)
         if earlier:
             parts.append(_remembered(redactor, earlier))
         parts += [redactor.evidence(_label(lookup), found.lines) for lookup, found in ran]
@@ -307,17 +436,90 @@ class Reply:
     lookups: list[dict[str, str]]
     cites: list[dict[str, str]]
     call_ids: list[int]
+    # What it suggests the owner do, each kept only if it is about something it was shown.
+    actions: list[dict[str, str | None]] = field(default_factory=lambda: [])
 
 
 def _failed(reason: str, call_ids: list[int]) -> Reply:
     return Reply(ok=False, text=reason, lookups=[], cites=[], call_ids=call_ids)
 
 
+def _known(ran: list[tuple[Lookup, Found]]) -> dict[str, Ref]:
+    """What the lookups found that an answer may cite or suggest something about, by how the model
+    names it: ``incident 3``."""
+    return {f"{ref.kind} {ref.key}".lower(): ref for _, found in ran for ref in found.refs}
+
+
+_STATUS_LABELS: Final = {
+    "open": "Reopen {}",
+    "investigating": "Start investigating {}",
+    "resolved": "Mark {} as resolved",
+    "dismissed": "Dismiss {}",
+}
+_VERDICT_LABELS: Final = {
+    "not_suspicious": "Call {} not suspicious",
+    "low_priority": "Call {} low priority",
+    "threat": "Call {} a real threat",
+}
+
+
+def _action(
+    kind: str, target: Ref | str, value: str | None, note: str | None, label: str
+) -> dict[str, str | None]:
+    where = target if isinstance(target, Ref) else None
+    return {
+        "kind": kind,
+        "target_kind": where.kind if where else str(target),
+        "target_key": where.key if where else "",
+        "value": value,
+        "note": note,
+        "label": label,
+    }
+
+
+def _proposed(
+    suggestions: list[Suggestion], ran: list[tuple[Lookup, Found]]
+) -> list[dict[str, str | None]]:
+    """What the model suggests that is something the owner can really do: about an incident, a
+    device or an integration it was shown (or a search of the logs), with a value that is one of
+    the allowed ones. Anything else is dropped, so a suggestion can't name what the lookups did
+    not return, and it is the owner who presses the button."""
+    known = _known(ran)
+    kept: dict[tuple[str, str, str | None], dict[str, str | None]] = {}
+    for item in suggestions:
+        ref = known.get(item.target.strip(" []").lower())
+        value = item.value.strip().lower() if item.value else None
+        note = audit.clean(item.note, 200) if item.note else None
+        made: dict[str, str | None] | None = None
+        if item.kind == "open" and item.target.strip().lower() == "logs":
+            search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
+            if search:
+                made = _action("open", "logs", search, None, f'Search the logs for "{search}"')
+                value = search
+        elif item.kind == "open" and ref is not None:
+            made = _action("open", ref, None, None, f"Open {ref.label}")
+        elif (
+            item.kind == "status"
+            and ref is not None
+            and ref.kind == "incident"
+            and value in _STATUS_LABELS
+        ):
+            made = _action("status", ref, value, None, _STATUS_LABELS[value].format(ref.label))
+        elif (
+            item.kind == "verdict"
+            and ref is not None
+            and ref.kind == "incident"
+            and value in _VERDICT_LABELS
+        ):
+            made = _action("verdict", ref, value, note, _VERDICT_LABELS[value].format(ref.label))
+        if made is not None:
+            kept.setdefault((item.kind, item.target.lower(), value), made)
+    return list(kept.values())[:MAX_ACTIONS]
+
+
 def _cited(names: list[str], ran: list[tuple[Lookup, Found]]) -> list[dict[str, str]]:
     """What the answer cites that was really in what it was given, in the order it cited it."""
-    known: dict[str, Ref] = {
-        f"{ref.kind} {ref.key}".lower(): ref for _, found in ran for ref in found.refs
-    }
+    known = _known(ran)
     kept: dict[str, Ref] = {}
     for name in names:
         ref = known.get(name.strip(" []").lower())
@@ -337,16 +539,17 @@ def reply_to(
     earlier: list[AiMessage],
     text: str,
     now: datetime,
+    page: Page | None = None,
 ) -> Reply:
     """Answers a question, asking the model up to ``MAX_ROUNDS`` times: each time it may ask for
     more to be looked up, and the last time it has to answer. For one of the API's own threads.
-    The caller commits."""
-    asked: list[Lookup] = []
+    The page the owner is on, if they said, is looked up first. The caller commits."""
+    asked: list[Lookup] = _page_lookups(db, page)
     call_ids: list[int] = []
     for number in range(1, MAX_ROUNDS + 1):
         ran: list[tuple[Lookup, Found]] = []
         question = _question(
-            db, conversation, earlier, text, asked, ran, now, last=number == MAX_ROUNDS
+            db, conversation, earlier, text, asked, ran, now, last=number == MAX_ROUNDS, page=page
         )
         outcome = gateway.ask(db, context, question, now)
         if isinstance(outcome, Unavailable):
@@ -361,7 +564,14 @@ def reply_to(
             asked += [lookup for lookup in step.lookups if lookup not in asked]
             continue
         if step.answer:
-            return Reply(True, step.answer, _looked_at(ran), _cited(step.cites, ran), call_ids)
+            return Reply(
+                True,
+                step.answer,
+                _looked_at(ran),
+                _cited(step.cites, ran),
+                call_ids,
+                _proposed(step.actions, ran),
+            )
         return _failed("The AI did not give an answer. Ask again.", call_ids)
     raise AssertionError("unreachable")  # pragma: no cover - the last round returns above
 
@@ -398,13 +608,14 @@ def say(
     conversation: AiConversation,
     text: str,
     now: datetime,
+    page: Page | None = None,
 ) -> None:
     """Adds the owner's question to a conversation and the assistant's answer to it (or why there
-    is none). The caller commits."""
+    is none). ``page`` is where the owner is when they ask. The caller commits."""
     earlier = _remember(messages(db, conversation))
     db.add(AiMessage(conversation_id=conversation.id, role="user", text=text, created_at=now))
     db.flush()
-    answer = reply_to(db, context, conversation, earlier, text, now)
+    answer = reply_to(db, context, conversation, earlier, text, now, page)
     db.add(
         AiMessage(
             conversation_id=conversation.id,
@@ -413,6 +624,7 @@ def say(
             ok=answer.ok,
             lookups=answer.lookups,
             cites=answer.cites,
+            actions=answer.actions,
             call_ids=answer.call_ids,
             created_at=now,
         )

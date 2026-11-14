@@ -8,6 +8,14 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The assistant on any page.** A sparkles button in the app bar opens the assistant over the page
+  you are on: a drawer at the side of a wide screen, a sheet from the bottom of a phone, with a
+  button to close it and the box to type in kept above the keyboard. It knows what you are looking
+  at (the incident or device, or the search of the logs), so "is this bad?" is about it. It carries
+  on the same conversation as the Assistant page. When it thinks you should do something, it
+  suggests it as a button (open the incident, start investigating it, call it not suspicious), and
+  nothing happens until you press it; a change you made that way can be undone at once. See
+  [The assistant](DOCS/operations.md).
 - **The AI can clear false positives, and says it did.** Under Settings > Threat detection, a new
   switch (off by default) lets the AI give the verdict *not suspicious* or *low priority* itself
   when it is sure an incident is a false positive, so the same alert never bothers you again. Each

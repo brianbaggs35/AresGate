@@ -11,6 +11,7 @@ import { AlertsPage } from './pages/alerts-page'
 import { AssetPage } from './pages/asset-page'
 import { AssetsPage } from './pages/assets-page'
 import { AssistantPage } from './pages/assistant-page'
+import { AssistantPanelPage } from './pages/assistant-panel-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { DevicePage, DevicesPage } from './pages/devices-page'
@@ -68,6 +69,8 @@ export interface AresGateFixtures {
   agentSettings: AgentSettingsPage
   /** The chat with the assistant. */
   assistant: AssistantPage
+  /** The assistant's panel, which opens over any page. */
+  assistantPanel: AssistantPanelPage
   /** Where alerts are sent. */
   alerts: AlertsPage
   /** The devices the connected programs can see, as one list. */
@@ -226,6 +229,9 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
   },
   assistant: async ({ page }, use) => {
     await use(new AssistantPage(page))
+  },
+  assistantPanel: async ({ page }, use) => {
+    await use(new AssistantPanelPage(page))
   },
 
   assets: async ({ page }, use) => {
