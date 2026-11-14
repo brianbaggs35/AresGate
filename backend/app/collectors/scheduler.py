@@ -176,7 +176,10 @@ class Scheduler:
         try:
             async with asyncio.timeout(collector.timeout.total_seconds()):
                 target, version = await asyncio.to_thread(self._load, item)
-                async with ApiClient(target, self._recorder, self._policy) as client:
+                # A service on the internet is reached with the policy of that one service, as
+                # everywhere else, never looked for on the home network.
+                policy = service.policy_for(item.connection, self._policy)
+                async with ApiClient(target, self._recorder, policy) as client:
                     outcome = await collector.collect(
                         Context(target, client, started, version, self._new_session, self._settings)
                     )
