@@ -6,8 +6,11 @@ const SELF_MADE = new Set(['host', 'content-length', 'connection'])
 /** What stands in a copied command for a value that is a credential, which is never kept. */
 const placeholder = (name: string) => `<${name.toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_')}>`
 
+/** A single quote inside single quotes: close them, add an escaped quote, open them again. */
+const ESCAPED_QUOTE = String.raw`'\''`
+
 /** A word for a shell, in single quotes, which is all that needs to be safe in them. */
-const quoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`
+const quoted = (text: string) => `'${text.replaceAll("'", ESCAPED_QUOTE)}'`
 
 /** `host:port`, with an address written as IPv6 in brackets. */
 function hostPort(detail: CallDetail): string {
@@ -23,7 +26,7 @@ export function addressOf(detail: CallDetail): string {
 
 /** The query as it was sent, with the value of a credential shown as hidden. */
 export function queryOf(pairs: readonly CallPair[]): string {
-  return pairs.map(({ name, value }) => `${name}=${value === null ? '***' : value}`).join('&')
+  return pairs.map(({ name, value }) => `${name}=${value ?? '***'}`).join('&')
 }
 
 /** The address with its query, as it can be read: a value that is a credential is `***`. */
@@ -39,10 +42,10 @@ export function fullAddressOf(detail: CallDetail): string {
  */
 export function curlOf(method: string, detail: CallDetail): string {
   const query = detail.query
-    .map(
-      ({ name, value }) =>
-        `${encodeURIComponent(name)}=${value === null ? encodeURIComponent(placeholder(name)) : encodeURIComponent(value)}`,
-    )
+    .map(({ name, value }) => {
+      const shown = value === null ? placeholder(name) : value
+      return `${encodeURIComponent(name)}=${encodeURIComponent(shown)}`
+    })
     .join('&')
   const address = quoted(query ? `${addressOf(detail)}?${query}` : addressOf(detail))
   const headers = detail.request_headers

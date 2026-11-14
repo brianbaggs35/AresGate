@@ -343,6 +343,10 @@ onBeforeUnmount(() => {
             <pre
               v-if="full?.excerpt"
               class="api-detail__excerpt"
+              role="textbox"
+              aria-readonly="true"
+              aria-multiline="true"
+              aria-label="Start of the answer"
               tabindex="0"
               data-test="sheet-excerpt"
               >{{ full.excerpt }}</pre>
