@@ -5,7 +5,10 @@ DEV_COMPOSE := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 E2E_COMPOSE := $(COMPOSE) -f docker-compose.e2e.yml
 E2E_PORT := $${ARESGATE_E2E_PORT:-9443}
 # What the image is told about the build, for the status page. (A release's come from its workflow.)
-BUILD_ARGS := ARESGATE_BUILD_COMMIT="$$(git rev-parse HEAD 2>/dev/null)" ARESGATE_BUILD_TIME="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# The date makes the layers that install the operating system's packages (Python, nginx, the
+# fixes) build again once a day, as the CI builds do, rather than being kept for as long as the
+# build cache is, so the Status page follows the versions Wolfi publishes.
+BUILD_ARGS := ARESGATE_BUILD_COMMIT="$$(git rev-parse HEAD 2>/dev/null)" ARESGATE_BUILD_TIME="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" ARESGATE_APK_REFRESH="$$(date -u +%Y-%m-%d)"
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 HADOLINT_IMAGE := hadolint/hadolint:v2.15.1
