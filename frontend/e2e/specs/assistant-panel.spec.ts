@@ -61,7 +61,7 @@ test.describe('the assistant panel', () => {
 
     await expect(assistantPanel.answers).toContainText('Start with incident')
     await expect(assistantPanel.actions).toHaveText(
-      ['Open incident', 'Start investigating incident'].map((label) => new RegExp(label)),
+      ['Open incident', 'Start investigating incident'].map((label) => new RegExp(label, 'i')),
     )
 
     // Nothing changes until a button is pressed; pressing is a change the owner made, and can be

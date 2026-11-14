@@ -44,6 +44,7 @@ watch(
   (open) => {
     if (open) void nextTick(() => box.value?.focus())
   },
+  { immediate: true },
 )
 
 function send() {

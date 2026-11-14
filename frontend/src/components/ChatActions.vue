@@ -101,10 +101,9 @@ const canUndo = (at: number) => {
       >
         {{ action.label }}
       </v-btn>
-      <span
+      <output
         v-if="states[at]?.phase === 'done'"
         class="actions__note text-body-medium"
-        role="status"
         data-test="action-done"
       >
         <v-icon :icon="Check" color="success" size="18" aria-hidden="true" />
@@ -119,15 +118,14 @@ const canUndo = (at: number) => {
         >
           Undo
         </v-btn>
-      </span>
-      <span
+      </output>
+      <output
         v-else-if="states[at]?.phase === 'undone'"
         class="actions__note text-body-medium"
-        role="status"
         data-test="action-undone"
       >
         Taken back.
-      </span>
+      </output>
       <span
         v-else-if="states[at]?.phase === 'failed'"
         class="actions__note text-body-medium text-error"
