@@ -527,6 +527,8 @@ test.describe('layout on a phone', () => {
 
       await expect(integration.callSheet).toBeVisible()
       await expect(integration.sheetExcerpt).toBeVisible()
+      // The sheet comes in over a moment, and is measured when it has settled.
+      await waitForMotion(page)
       const viewport = page.viewportSize()
       const sheet = await integration.callSheet.boundingBox()
       expect(sheet?.width).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1)
