@@ -1572,11 +1572,16 @@ def wazuh(
     password: str,
     alerts: Sequence[Mapping[str, object]] = (),
     agents: Sequence[Mapping[str, object]] = (),
+    states: Mapping[str, Sequence[Mapping[str, object]]] | None = None,
 ) -> Handler:
     """Wazuh's manager API and its indexer in one server, which at home are two on ports of their
     own. Each is told by how a request signs in: the manager gives a token for a user and
     password and then wants it as a bearer, and the indexer wants the user and password on every
-    request. It keeps the alerts of ``alerts`` that are newer than the search asks for."""
+    request. It keeps the alerts of ``alerts`` that are newer than the search asks for. ``states``
+    are the documents of the ``wazuh-states-*`` indices, by what the index is about
+    (``vulnerabilities``, ``system``, ``interfaces``, ``networks``, ``packages`` and ``ports``,
+    see ``sample_wazuh_states``), and a search of one answers with up to the ``size`` it asks for,
+    of those whose state is among the ``interface.state`` it filters by, if it does."""
     token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcmVzZ2F0ZSJ9.c3RhbmQtaW4"  # nosec B105: made up
     login = _basic(username, password)
 
@@ -1604,11 +1609,52 @@ def wazuh(
                 )
             if path == "/wazuh-alerts-*/_search" and seen.method == "POST":
                 return _wazuh_search(seen, alerts)
+            if seen.method == "POST" and (index := _wazuh_state_index(path)) is not None:
+                return _wazuh_states_search(seen, (states or {}).get(index, ()))
         else:
             return _json({"title": "Unauthorized", "detail": "Invalid credentials"}, 401)
         return _json({"title": "Not Found", "detail": "No such resource"}, 404)
 
     return handle
+
+
+def _wazuh_state_index(path: str) -> str | None:
+    """What a search of ``/wazuh-states-inventory-ports*/_search`` is about (``ports``), or None
+    for a path that is not a search of one of the states indices."""
+    found = re.fullmatch(
+        r"/wazuh-states-(?:inventory-(system|interfaces|networks|packages|ports)\*|"
+        r"(vulnerabilities)-\*)/_search",
+        path,
+    )
+    return next((name for name in found.groups() if name), None) if found else None
+
+
+def _wazuh_states_search(seen: Seen, documents: Sequence[Mapping[str, object]]) -> Answer:
+    asked: dict[str, Any] = json.loads(seen.body or b"{}")
+    filters = asked.get("query", {}).get("bool", {}).get("filter", [])
+    wanted = next((item["terms"]["interface.state"] for item in filters if "terms" in item), None)
+    found = [
+        document for document in documents if wanted is None or _wazuh_state(document) in wanted
+    ]
+    return _json(
+        {
+            "took": 1,
+            "timed_out": False,
+            "hits": {
+                "total": {"value": len(found), "relation": "eq"},
+                "max_score": None,
+                "hits": [
+                    {"_index": "wazuh-states", "_id": str(number), "_source": document}
+                    for number, document in enumerate(found[: int(asked.get("size", 10))])
+                ],
+            },
+        }
+    )
+
+
+def _wazuh_state(document: Mapping[str, object]) -> object:
+    card = document.get("interface")
+    return cast("Mapping[str, object]", card).get("state") if isinstance(card, Mapping) else None
 
 
 def _wazuh_agents(seen: Seen, agents: Sequence[Mapping[str, object]]) -> Answer:
@@ -1805,6 +1851,177 @@ def sample_wazuh_agents(now: datetime) -> list[dict[str, object]]:
     ]
 
 
+def sample_wazuh_states() -> dict[str, list[dict[str, object]]]:
+    """What two agents report, in the shape of the Wazuh 4.14 indexer's ``wazuh-states-*`` indices:
+    a web server with a network card the firewall's ARP table lists too, a bridge that is not the
+    machine's own and a loopback, a port that listens and one that doesn't, two packages with a
+    flaw each, and a NAS with a port and a package of its own."""
+
+    def about(agent: str, name: str) -> dict[str, object]:
+        return {"agent": {"id": agent, "name": name, "version": "v4.14.1"}}
+
+    web, nas = about("001", "web1"), about("004", "nas")
+    return {
+        "system": [
+            {
+                **web,
+                "host": {
+                    "hostname": "web1.home.arpa",
+                    "architecture": "x86_64",
+                    "os": {
+                        "name": "Ubuntu",
+                        "version": "24.04.1 LTS (Noble Numbat)",
+                        "platform": "ubuntu",
+                        "full": "Ubuntu 24.04.1 LTS (Noble Numbat)",
+                        "kernel": {"name": "Linux", "release": "6.8.0-45-generic"},
+                    },
+                },
+            },
+            {
+                **nas,
+                "host": {
+                    "hostname": "nas",
+                    "architecture": "aarch64",
+                    "os": {"name": "Debian GNU/Linux", "version": "12", "platform": "debian"},
+                },
+            },
+        ],
+        "interfaces": [
+            {
+                **web,
+                "host": {"mac": "00:11:22:0a:0b:0c"},
+                "interface": {"name": "eth0", "state": "up", "type": "ethernet", "mtu": 1500},
+            },
+            {
+                **web,
+                "host": {"mac": "02:42:ac:11:00:01"},
+                "interface": {"name": "docker0", "state": "up", "type": "ethernet"},
+            },
+            {
+                **web,
+                "host": {"mac": "00:00:00:00:00:00"},
+                "interface": {"name": "lo", "state": "unknown", "type": "loopback"},
+            },
+        ],
+        "networks": [
+            {
+                **web,
+                "interface": {"name": "eth0"},
+                "network": {"ip": "192.168.1.20", "type": "ipv4", "netmask": "255.255.255.0"},
+            },
+            {
+                **web,
+                "interface": {"name": "eth0"},
+                "network": {"ip": "fe80::211:22ff:fe0a:b0c", "type": "ipv6"},
+            },
+            {
+                **web,
+                "interface": {"name": "docker0"},
+                "network": {"ip": "172.17.0.1", "type": "ipv4"},
+            },
+            {**web, "interface": {"name": "lo"}, "network": {"ip": "127.0.0.1", "type": "ipv4"}},
+        ],
+        "ports": [
+            {
+                **web,
+                "source": {"ip": "192.168.1.20", "port": 22},
+                "network": {"transport": "tcp"},
+                "process": {"name": "sshd", "pid": 801},
+                "interface": {"state": "listening"},
+            },
+            {
+                **web,
+                "source": {"ip": "::", "port": 443},
+                "network": {"transport": "tcp"},
+                "process": {"name": "nginx", "pid": 912},
+                "interface": {"state": "listening"},
+            },
+            {
+                **web,
+                "source": {"ip": "192.168.1.20", "port": 51234},
+                "destination": {"ip": "93.184.216.34", "port": 443},
+                "network": {"transport": "tcp"},
+                "process": {"name": "curl", "pid": 4021},
+                "interface": {"state": "established"},
+            },
+            {
+                **nas,
+                "source": {"ip": "::", "port": 445},
+                "network": {"transport": "tcp6"},
+                "process": {"name": "smbd", "pid": 640},
+                "interface": {"state": "listening"},
+            },
+        ],
+        "packages": [
+            {
+                **web,
+                "package": {
+                    "name": "openssl",
+                    "version": "3.0.13-0ubuntu3.4",
+                    "architecture": "amd64",
+                    "type": "deb",
+                },
+            },
+            {
+                **web,
+                "package": {
+                    "name": "nginx",
+                    "version": "1.24.0-2ubuntu7",
+                    "architecture": "amd64",
+                    "type": "deb",
+                },
+            },
+            {
+                **nas,
+                "package": {
+                    "name": "samba",
+                    "version": "2:4.17.12+dfsg-0+deb12u1",
+                    "architecture": "arm64",
+                    "type": "deb",
+                },
+            },
+        ],
+        "vulnerabilities": [
+            {
+                **web,
+                "package": {"name": "nginx", "version": "1.24.0-2ubuntu7", "type": "deb"},
+                "vulnerability": {
+                    "id": "CVE-2024-7347",
+                    "severity": "Medium",
+                    "score": {"base": 4.7, "version": "3.1"},
+                    "description": "Buffer over-read in the mp4 module of nginx.",
+                    "category": "Packages",
+                    "scanner": {"vendor": "Wazuh"},
+                },
+            },
+            {
+                **web,
+                "package": {"name": "openssl", "version": "3.0.13-0ubuntu3.4", "type": "deb"},
+                "vulnerability": {
+                    "id": "CVE-2024-13176",
+                    "severity": "High",
+                    "score": {"base": 7.5, "version": "3.1"},
+                    "description": "A timing side-channel in ECDSA signature computation.",
+                    "category": "Packages",
+                    "scanner": {"vendor": "Wazuh"},
+                },
+            },
+            {
+                **nas,
+                "package": {"name": "samba", "version": "2:4.17.12+dfsg-0+deb12u1", "type": "deb"},
+                "vulnerability": {
+                    "id": "CVE-2025-0001",
+                    "severity": "Critical",
+                    "score": {"base": 9.8, "version": "3.1"},
+                    "description": "An example flaw, made up for the stand-in.",
+                    "category": "Packages",
+                    "scanner": {"vendor": "Wazuh"},
+                },
+            },
+        ],
+    }
+
+
 Kind = Literal[
     "opnsense",
     "zenarmor",
@@ -1880,7 +2097,13 @@ class StandIns:
                 crowdsec_alerts=sample_crowdsec_plugin_alerts(),
             ),
             "zenarmor": zenarmor(api_key),
-            "wazuh": wazuh(username, password, sample_wazuh_alerts(now), sample_wazuh_agents(now)),
+            "wazuh": wazuh(
+                username,
+                password,
+                sample_wazuh_alerts(now),
+                sample_wazuh_agents(now),
+                sample_wazuh_states(),
+            ),
             "anthropic": anthropic(api_key, models),
             "openai": openai(api_key, models),
             "ollama": ollama(api_key, models, paid),

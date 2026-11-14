@@ -1076,7 +1076,7 @@ test.describe('integrations', () => {
       await expect(integration.certificateNote('api')).toHaveCount(0)
     })
 
-    test('reads its alerts from the indexer and its agents from the manager', async ({
+    test('reads its alerts, vulnerabilities and inventory from the indexer and its agents from the manager', async ({
       harness,
       integration,
     }) => {
@@ -1098,21 +1098,27 @@ test.describe('integrations', () => {
       await harness.runCollectors()
       await integration.collectionRefresh.click()
 
-      await expect(integration.collectors).toHaveCount(4)
+      await expect(integration.collectors).toHaveCount(6)
       await expect(integration.collectors).toContainText([
         'Connection check · Indexer',
         'Alerts · Indexer',
+        'Inventory · Indexer',
+        'Vulnerabilities · Indexer',
         'Connection check · Manager API',
         'Agents · Manager API',
       ])
-      await expect(integration.collectorStates).toHaveText(new Array(4).fill('Working'))
+      await expect(integration.collectorStates).toHaveText(new Array(6).fill('Working'))
       await expect(integration.collectorErrors).toHaveCount(0)
-      // The four alerts of the last half hour and the agent that stopped, each stored once.
-      expect((await harness.rowCounts()).events).toBe(5)
+      // The four alerts of the last half hour, the agent that stopped and the three flaws, each
+      // stored once.
+      expect((await harness.rowCounts()).events).toBe(8)
       // The agents in each of four states, counted on every run.
       expect((await harness.rowCounts()).metric_samples).toBe(4)
+      // The two machines the agents report on, with the ports that listen and their software.
+      const counts = await harness.rowCounts()
+      expect([counts.host_systems, counts.host_ports, counts.host_packages]).toEqual([2, 3, 3])
       await harness.runCollectors()
-      expect((await harness.rowCounts()).events).toBe(5)
+      expect((await harness.rowCounts()).events).toBe(8)
       expect((await harness.rowCounts()).metric_samples).toBe(8)
     })
   })

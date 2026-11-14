@@ -43,6 +43,9 @@ from app.models import (
     Device,
     DeviceAddress,
     Event,
+    HostPackage,
+    HostPort,
+    HostSystem,
     Incident,
     IncidentChain,
     IntegrationConnection,
@@ -58,6 +61,9 @@ MAX_ALERTS: Final = 20
 MAX_HOURS: Final = 168
 DEFAULT_HOURS: Final = 24
 MAX_DEVICES: Final = 5
+# How many ports of a machine and how many installations of a package a lookup lists.
+MAX_PORTS: Final = 15
+MAX_PACKAGES: Final = 20
 WHEN: Final = "%Y-%m-%d %H:%M"
 # The incidents that still need someone: not settled, and not quieted by the owner's verdicts.
 ACTIVE: Final = ("open", "investigating")
@@ -286,11 +292,148 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
         maker = f", made by {redactor.text(found.vendor, 60)}" if found.vendor else ""
         what = profile.describe(said.get(found.id), redactor.text)
         where = ", ".join(redactor.address(str(address)) for address in addresses) or "none known"
+        runs = db.scalars(
+            select(HostSystem).where(HostSystem.macs.contains([str(found.mac)])).limit(1)
+        ).first()
+        software = f"; runs {_what_runs(runs, redactor)}" if runs else ""
         lines.append(
-            f"{name} ({redactor.mac(str(found.mac))}){maker}{what}; addresses: {where}; first seen "
-            f"{_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
+            f"{name} ({redactor.mac(str(found.mac))}){maker}{what}{software}; addresses: {where}; "
+            f"first seen {_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
         )
     return Found(lines, [], _plural(len(devices), "device"))
+
+
+# -- what the agents report about their machines
+
+
+def _what_runs(system: HostSystem, redactor: Redactor) -> str:
+    """The machine in a few words: its name, its operating system and how it is built."""
+    name = redactor.name(system.name or system.hostname or f"agent {system.agent_id}")
+    what = ", ".join(
+        redactor.text(fact, 100)
+        for fact in (system.os_name, system.architecture, system.kernel)
+        if fact
+    )
+    return f"{name} ({what})" if what else name
+
+
+def _system_filter(redactor: Redactor, name: str) -> ColumnElement[bool]:
+    """Which machines a name means: an address or a hardware address that belongs to one, or part
+    of its name. The model only ever saw stand-ins, so they are turned back first."""
+    wanted = redactor.reveal(name).strip()
+    address = read_address(wanted)
+    if address is not None:
+        return HostSystem.addresses.contains([str(address)])
+    mac = read_mac(wanted)
+    if mac is not None:
+        return HostSystem.macs.contains([mac])
+    plain = wanted.replace("%", "").replace("_", "")
+    if not plain:
+        return false()
+    like = f"%{plain}%"
+    return or_(HostSystem.name.ilike(like), HostSystem.hostname.ilike(like))
+
+
+def _systems(db: Session, redactor: Redactor, name: str | None, limit: int) -> list[HostSystem]:
+    chosen = select(HostSystem).order_by(HostSystem.name, HostSystem.agent_id).limit(limit)
+    if name and name.strip():
+        chosen = chosen.where(_system_filter(redactor, name))
+    return list(db.scalars(chosen))
+
+
+def open_ports(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The ports the machines the agents watch listen on, and the program that listens."""
+    systems = _systems(db, redactor, args.name, _between(args.limit, 5, 1, MAX_ITEMS))
+    if not systems:
+        return Found(
+            ["No agent has reported a machine that matches, or none reports its ports."],
+            [],
+            "no machine with ports",
+        )
+    lines: list[str] = []
+    for system in systems:
+        ports = db.scalars(
+            select(HostPort)
+            .where(
+                HostPort.source == system.source,
+                HostPort.connection == system.connection,
+                HostPort.agent_id == system.agent_id,
+            )
+            .order_by(HostPort.port, HostPort.transport, HostPort.address)
+        ).all()
+        listening = [
+            f"{port.transport} {redactor.address(str(port.address))}:{port.port}"
+            + (f" ({redactor.text(port.process, 60)})" if port.process else "")
+            for port in ports[:MAX_PORTS]
+        ]
+        more = f" and {len(ports) - MAX_PORTS} more" if len(ports) > MAX_PORTS else ""
+        said = ", ".join(listening) + more if ports else "none listening"
+        lines.append(f"{_what_runs(system, redactor)}: {said}")
+    return Found(lines, [], _plural(len(systems), "machine"))
+
+
+def _kind_of(package: HostPackage) -> str:
+    return ", ".join(fact for fact in (package.kind, package.architecture) if fact) or "no kind"
+
+
+def installed_software(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The machines a piece of software is installed on, and which version of it."""
+    wanted = (args.name or "").replace("%", "").replace("_", "").strip()
+    if not wanted:
+        return Found(["Name the software, or part of its name."], [], "no software named")
+    found = db.execute(
+        select(HostPackage, HostSystem)
+        .join(
+            HostSystem,
+            and_(
+                HostSystem.source == HostPackage.source,
+                HostSystem.connection == HostPackage.connection,
+                HostSystem.agent_id == HostPackage.agent_id,
+            ),
+        )
+        .where(HostPackage.name.ilike(f"%{wanted}%"))
+        .order_by(HostPackage.name, HostSystem.name, HostPackage.version)
+        .limit(_between(args.limit, MAX_PACKAGES, 1, MAX_PACKAGES))
+    ).all()
+    if not found:
+        return Found(
+            [f"No machine an agent reports on has software named {redactor.text(wanted, 60)}."],
+            [],
+            "no such software",
+        )
+    lines = [
+        f"{redactor.text(package.name, 80)} {redactor.text(package.version, 60)} "
+        f"({_kind_of(package)}) on {_what_runs(system, redactor)}"
+        for package, system in found
+    ]
+    return Found(lines, [], _plural(len(found), "installation"))
+
+
+def host_vulnerabilities(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The flaws Wazuh found in the software on the machines it watches, the most serious first.
+    A name narrows them to a CVE, or to a machine by its name or address."""
+    chosen = select(Event).where(Event.source == "wazuh", Event.kind == "vulnerability")
+    if args.name and args.name.strip():
+        wanted = redactor.reveal(args.name).strip()
+        address = read_address(wanted)
+        plain = wanted.replace("%", "").replace("_", "")
+        if address is not None:
+            chosen = chosen.where(Event.dst_address == address)
+        elif plain:
+            chosen = chosen.where(
+                or_(Event.signature.ilike(f"%{plain}%"), Event.summary.ilike(f"%{plain}%"))
+            )
+        else:
+            chosen = chosen.where(false())
+    found = db.scalars(
+        chosen.order_by(Event.severity.desc(), Event.id.desc()).limit(
+            _between(args.limit, 10, 1, MAX_ALERTS)
+        )
+    ).all()
+    if not found:
+        return Found(["No vulnerability is known that matches."], [], "no vulnerabilities")
+    lines = [f"{_severity(event.severity)}: {redactor.text(event.summary, 240)}" for event in found]
+    return Found(lines, [], _plural(len(found), "vulnerability", "vulnerabilities"))
 
 
 # -- the internet addresses
@@ -834,6 +977,26 @@ TOOLS: Final[Sequence[Tool]] = (
         "Devices on the home network that a name, an address, a hardware address or a maker "
         "matches. Uses: name.",
         device,
+    ),
+    Tool(
+        "open_ports",
+        "The ports the machines the agents watch listen on, and the program that listens on "
+        "each. Uses: name, for a machine's name or address, or nothing for all; limit (1-10, "
+        "default 5).",
+        open_ports,
+    ),
+    Tool(
+        "installed_software",
+        "Which of the machines the agents watch have a piece of software installed, and which "
+        "version. Uses: name, for the software or part of its name.",
+        installed_software,
+    ),
+    Tool(
+        "host_vulnerabilities",
+        "The flaws Wazuh found in the software on the machines it watches, the most serious "
+        "first, each with its CVE, the package and the machine. Uses: name, for a CVE or a "
+        "machine's name or address, or nothing for all; limit (1-20, default 10).",
+        host_vulnerabilities,
     ),
     Tool(
         "integrations",

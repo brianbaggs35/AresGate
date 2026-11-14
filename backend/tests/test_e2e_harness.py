@@ -455,7 +455,7 @@ def test_an_opnsense_stand_in_has_services_running_stopped_and_not_installed() -
 
 
 @pytest.mark.usefixtures("stand_ins")
-def test_the_collectors_read_the_alerts_and_agents_of_the_wazuh_stand_in(
+def test_the_collectors_read_the_alerts_agents_and_states_of_the_wazuh_stand_in(
     e2e: TestClient, session: Session, settings: Settings
 ) -> None:
     started = e2e.post(
@@ -492,14 +492,21 @@ def test_the_collectors_read_the_alerts_and_agents_of_the_wazuh_stand_in(
         ("connection-check", "manager"),
         ("wazuh-agents", "manager"),
         ("wazuh-alerts", "indexer"),
+        ("wazuh-inventory", "indexer"),
+        ("wazuh-vulnerabilities", "indexer"),
     ]
     assert {item.consecutive_failures for item in records.values()} == {0}
-    # The second run found the alerts and the agent that stopped stored already.
+    # The second run found the alerts, the agent that stopped and the flaws stored already.
     assert records["wazuh-alerts", "indexer"].last_items == 0
     assert records["wazuh-agents", "manager"].last_items == 0
+    assert records["wazuh-vulnerabilities", "indexer"].last_items == 0
+    # The inventory counts the machines it read, every time.
+    assert records["wazuh-inventory", "indexer"].last_items == 2
     counts = e2e.get("/api/__test__/database/counts").json()
-    # Four alerts of the last half hour and the one agent that stopped reporting.
-    assert counts["events"] == 5
+    # Four alerts of the last half hour, the one agent that stopped reporting and three flaws.
+    assert counts["events"] == 8
+    # Two machines with the ports that listen (three) and the software (three) they report.
+    assert (counts["host_systems"], counts["host_ports"], counts["host_packages"]) == (2, 3, 3)
     # The four states of the agents, counted twice.
     assert (counts["metric_series"], counts["metric_samples"]) == (4, 8)
 

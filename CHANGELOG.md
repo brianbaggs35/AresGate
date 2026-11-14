@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Wazuh vulnerabilities and each machine's inventory.** Two new collectors read the indexer's
+  `wazuh-states-*` indices every 15 minutes. **Vulnerabilities** keeps each flaw Wazuh found as an
+  event (the CVE, how serious, the package and the machine), once, when it is first seen; these
+  are never part of an incident. **Inventory** keeps each agent's operating system, the ports that
+  listen and the software installed, and lists a machine's network cards as devices, so the ARP
+  table and the agent are one device. The analyst can ask about them (`open_ports`,
+  `installed_software`, `host_vulnerabilities`, and `device` now says what a machine runs). The
+  indexer user also needs read on `wazuh-states-*`. The manager's inventory endpoints are going
+  away in Wazuh 5, which is why this reads the indexer. See
+  [Vulnerabilities and inventory](DOCS/integrations.md#vulnerabilities), which says what could
+  only be inferred.
 - **Alerts now tell you when a collector goes quiet.** A collector that has not worked for
   fifteen minutes (or three of its own intervals, if that is longer) is told to every destination
   that is on, once for each stretch of silence, with when it last worked and what its last attempt

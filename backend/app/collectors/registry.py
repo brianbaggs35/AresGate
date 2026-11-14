@@ -20,6 +20,8 @@ from app.collectors.opnsense.suricata_alerts import SuricataAlerts
 from app.collectors.opnsense.system_health import SystemHealth
 from app.collectors.wazuh.agents import Agents
 from app.collectors.wazuh.alerts import Alerts
+from app.collectors.wazuh.inventory import Inventory
+from app.collectors.wazuh.vulnerabilities import Vulnerabilities
 
 COLLECTORS: Sequence[Collector] = (
     ConnectionCheck(),
@@ -40,6 +42,8 @@ COLLECTORS: Sequence[Collector] = (
     NtopngAlerts(),
     Alerts(),
     Agents(),
+    Vulnerabilities(),
+    Inventory(),
 )
 
 
