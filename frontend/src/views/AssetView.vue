@@ -6,6 +6,7 @@ import { fetchAsset, type AssetDetail } from '@/api/assets'
 import { ApiError, errorMessage } from '@/api/client'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AppPage from '@/components/AppPage.vue'
+import AssetCapture from '@/components/AssetCapture.vue'
 import AssetClassify from '@/components/AssetClassify.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
 import AssetIdentity from '@/components/AssetIdentity.vue'
@@ -36,6 +37,10 @@ const session = useSessionStore()
 const route = useRoute()
 
 const key = computed(() => String(route.params.key))
+/** The addresses it has now, which is where a capture of its packets can be taken. */
+const currentAddresses = computed(() =>
+  (data.value?.addresses ?? []).filter((item) => item.current).map((item) => item.address),
+)
 const data = ref<AssetDetail | null>(null)
 const missing = ref(false)
 const loadError = ref<string | null>(null)
@@ -246,6 +251,12 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         <h2 id="peers-title" class="text-title-large">Traffic with</h2>
         <AssetPeers :talks-to="data.talks_to" :contacted-by="data.contacted_by" />
       </section>
+
+      <AssetCapture
+        v-if="currentAddresses.length"
+        :addresses="currentAddresses"
+        data-test="asset-capture-section"
+      />
 
       <section class="section" aria-labelledby="incidents-title" data-test="asset-incidents">
         <h2 id="incidents-title" class="text-title-large">Incidents</h2>

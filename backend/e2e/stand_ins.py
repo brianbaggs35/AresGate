@@ -9,7 +9,9 @@ the shape of the answers that AresGate relies on.
 import base64
 import json
 import re
+import socket
 import ssl
+import struct
 import tempfile
 import threading
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -320,9 +322,11 @@ def ntopng(
     *,
     listed: Sequence[Mapping[str, object]] = (),
     busy_ids: Collection[str] = ("0",),
+    capture: bytes | None = None,
 ) -> Handler:
-    """ntopng's REST API with one authentication token. A login it refuses is sent to its login
-    page, as ntopng does, not answered with a 401, and so is anything it doesn't have. Every
+    """ntopng's REST API with one authentication token. Given ``capture`` (a pcap file) it also
+    sends that as the live capture of a host, as ntopng does. A login it refuses is sent to its
+    login page, as ntopng does, not answered with a 401, and so is anything it doesn't have. Every
     answer is wrapped as ntopng wraps them, with ``rc`` and ``rsp``. It has two interfaces unless
     ``listed`` says otherwise: ``0`` (``eth0``) carries everything given here, and ``1`` (``eth1``,
     named LAN) has seen nothing. The interfaces whose ID is among ``busy_ids`` carry everything
@@ -351,6 +355,9 @@ def ntopng(
                 query, host_alerts if busy else ()
             ),
         }
+        if capture is not None:
+            sent = Answer(body=capture, headers={"Content-Type": "application/vnd.tcpdump.pcap"})
+            answers["/lua/rest/v2/get/pcap/live_traffic.lua"] = lambda: sent
         if seen.path not in answers:
             return Answer(status=302, headers={"Location": "/lua/login.lua"})
         if query.get("ifid") not in known:
@@ -445,6 +452,62 @@ def _ntopng_alerts(
 
 def _ntopng_began(alert: Mapping[str, object]) -> int:
     return int(cast("Mapping[str, int]", alert["tstamp"])["value"])
+
+
+def pcap_file(frames: Sequence[bytes], *, start: int = 1_700_000_000, link: int = 1) -> bytes:
+    """A classic pcap file (microseconds, little-endian) of the frames, a tenth of a second
+    apart."""
+    out = bytearray(struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, link))
+    for number, frame in enumerate(frames):
+        out += struct.pack(
+            "<IIII", start + number // 10, number % 10 * 100_000, len(frame), len(frame)
+        )
+        out += frame
+    return bytes(out)
+
+
+def _ip4(text: str) -> bytes:
+    return socket.inet_aton(text)
+
+
+def ethernet_tcp(
+    source: str, destination: str, source_port: int, destination_port: int, flags: int, data: bytes
+) -> bytes:
+    """An Ethernet frame holding an IPv4 packet holding a TCP segment (no checksums, which a
+    reader of headers doesn't check)."""
+    tcp = struct.pack(">HHIIBBHHH", source_port, destination_port, 0, 0, 5 << 4, flags, 1024, 0, 0)
+    ip = struct.pack(
+        ">BBHHHBBH4s4s", 0x45, 0, 20 + len(tcp) + len(data), 0, 0, 64, 6, 0,
+        _ip4(source), _ip4(destination),
+    )  # fmt: skip
+    return bytes(12) + b"\x08\x00" + ip + tcp + data
+
+
+def ethernet_udp(
+    source: str, destination: str, source_port: int, destination_port: int, data: bytes
+) -> bytes:
+    udp = struct.pack(">HHHH", source_port, destination_port, 8 + len(data), 0)
+    ip = struct.pack(
+        ">BBHHHBBH4s4s", 0x45, 0, 28 + len(data), 0, 0, 64, 17, 0,
+        _ip4(source), _ip4(destination),
+    )  # fmt: skip
+    return bytes(12) + b"\x08\x00" + ip + udp + data
+
+
+def sample_ntopng_capture(host: str = "192.168.1.20") -> bytes:
+    """What ntopng's live capture of a host sends: a TCP handshake and a web request with its
+    answer, and a DNS question."""
+    server = "93.184.216.34"
+    return pcap_file(
+        [
+            ethernet_tcp(host, server, 50000, 80, 0x02, b""),
+            ethernet_tcp(server, host, 80, 50000, 0x12, b""),
+            ethernet_tcp(host, server, 50000, 80, 0x10, b""),
+            ethernet_tcp(host, server, 50000, 80, 0x18, b"GET / HTTP/1.1\r\nHost: example.com\r\n"),
+            ethernet_tcp(server, host, 80, 50000, 0x18, b"HTTP/1.1 200 OK\r\n"),
+            ethernet_udp(host, "192.168.1.1", 53123, 53, b"\x12\x34\x01\x00example"),
+        ]
+    )
 
 
 def sample_ntopng_hosts(now: datetime) -> list[dict[str, object]]:
@@ -1800,6 +1863,7 @@ class StandIns:
                 sample_ntopng_host_alerts(now),
                 listed=_NTOPNG_FIREWALL if firewall else (),
                 busy_ids=("1", "2") if firewall else ("0",),
+                capture=sample_ntopng_capture(),
             ),
             "crowdsec": crowdsec(api_key, sample_crowdsec_decisions()),
             "opnsense": opnsense(

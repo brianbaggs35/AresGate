@@ -1,6 +1,7 @@
 import * as assetsApi from '@/api/assets'
 import { ApiError } from '@/api/client'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
+import AssetCapture from '@/components/AssetCapture.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
 import AssetPeers from '@/components/AssetPeers.vue'
 import { formatBytes } from '@/format'
@@ -175,6 +176,28 @@ describe('AssetView', () => {
 
     expect(findAll('asset-address-now').map((item) => item.text())).toEqual(['Now', 'Before'])
     expect(findAll('asset-address').at(1)?.text()).toContain('192.168.1.19')
+  })
+
+  it('offers a capture of the packets to and from the addresses it has now', async () => {
+    const { wrapper, find } = await open({
+      answer: detail({
+        addresses: [
+          address({ address: '192.168.1.20' }),
+          address({ address: '192.168.1.19', current: false }),
+        ],
+      }),
+    })
+
+    expect(find('asset-capture-section').exists()).toBe(true)
+    expect(wrapper.findComponent(AssetCapture).props('addresses')).toEqual(['192.168.1.20'])
+  })
+
+  it('offers no capture of a device with no address now', async () => {
+    const { find } = await open({
+      answer: detail({ addresses: [address({ current: false })] }),
+    })
+
+    expect(find('asset-capture-section').exists()).toBe(false)
   })
 
   it('says when no address is listed for it', async () => {

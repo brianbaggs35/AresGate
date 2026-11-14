@@ -38,6 +38,13 @@ export class AssetPage {
   readonly noIncidents: Locator
   readonly verdicts: Locator
   readonly noVerdicts: Locator
+  /** The packet capture: its card, the button, what it says of the packets, each packet, and why
+   * it couldn't. */
+  readonly capture: Locator
+  readonly captureStart: Locator
+  readonly captureSummary: Locator
+  readonly capturePackets: Locator
+  readonly captureFailure: Locator
   /** What the page says when there is no such asset, when it cannot be read, and while it loads. */
   readonly missing: Locator
   readonly failure: Locator
@@ -71,6 +78,11 @@ export class AssetPage {
     this.noIncidents = page.getByTestId('asset-no-incidents')
     this.verdicts = page.getByTestId('asset-verdict')
     this.noVerdicts = page.getByTestId('asset-no-verdicts')
+    this.capture = page.getByTestId('asset-capture')
+    this.captureStart = page.getByTestId('capture-start')
+    this.captureSummary = page.getByTestId('capture-summary')
+    this.capturePackets = page.getByTestId('capture-packet')
+    this.captureFailure = page.getByTestId('capture-failure')
     this.missing = page.getByTestId('asset-missing')
     this.failure = page.getByTestId('asset-error')
     this.retry = page.getByTestId('asset-retry')

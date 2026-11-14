@@ -335,6 +335,38 @@ that is still engaged is the same event on every run.
 - **Not read.** ntopng also keeps alerts for the interface, for networks, devices (MAC
   addresses), its own system and monitored hosts. AresGate doesn't read those yet.
 
+### Packets of a host
+
+On a device's page (**Assets**, then the device) the **Packets** card has ntopng listen to one of
+the device's current addresses for 5, 10, 20 or 30 seconds and shows what it saw, as ntopng's
+live capture (`GET /lua/rest/v2/get/pcap/live_traffic.lua`, which takes `ifid`, `host` and
+`duration`) sends it: a classic pcap file. For each packet there is how long after the first it
+came, who sent it to whom with the ports, the protocol (and the flags of a TCP segment, or whether
+an ARP message asks or answers), its size on the wire and the first 48 bytes it carried, with what
+isn't printable shown as dots. It is for looking at what a device is doing, a camera that talks
+when it should be asleep, say. What to know:
+
+- **Nothing is kept.** The file is read, shown and thrown away, and it never goes to an AI
+  provider. Encrypted traffic shows as it is: bytes that mean nothing.
+- **It is limited.** At most 2 MB of the answer is read (the card says when the end is missing),
+  the first 300 packets are listed (all are counted), and one capture runs at a time, since ntopng
+  holds the interface for each. Frames that are neither IP nor ARP are counted and not shown.
+- **It is on one interface.** The first one the connection reads (the lowest **Interface** ID
+  chosen, or the first ntopng lists that isn't the loopback when none is chosen). A device that
+  is on another one of a firewall's interfaces is seen with no packets.
+- **It is on record.** Each capture is in the audit log (**Settings**, then **Activity**) with the
+  host, the seconds and how many packets it held, and in the API log with its path and no query.
+- **The user needs the permission.** ntopng only sends a capture to a user allowed to download
+  PCAP files, which an administrator is and a non-privileged user isn't unless it was given it.
+  Without it the card says what ntopng said. Reading packets is more than the alerts and
+  measurements AresGate otherwise asks for, so use a separate user for it if you want.
+
+The capture is `POST /api/captures` with `host` and `seconds`. It answers 409 when ntopng isn't
+connected or another capture is running, 422 for something that isn't an IP address, and 502 with
+ntopng's reason when it couldn't give one. Read from ntopng's source
+(`scripts/lua/rest/v2/get/pcap/live_traffic.lua`) and its REST API specification, and not tried
+against a live ntopng, which the stand-in in the tests answers like.
+
 ### Where the ntopng reading comes from
 
 ntopng's documentation has the endpoints and an example of each answer, but not the parameters
