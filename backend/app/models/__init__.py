@@ -72,7 +72,7 @@ from app.models.retention import RetentionSettings, SourceRetention
 from app.models.review import ANSWERS, REVIEW_MODES, ReviewFeedback, ReviewSettings
 from app.models.searches import SavedSearch
 from app.models.system import SystemInfo
-from app.models.verdicts import VERDICTS, VerdictRule
+from app.models.verdicts import VERDICTS, AiClearVeto, VerdictRule
 
 __all__ = [
     "AGENT_STATUSES",
@@ -97,6 +97,7 @@ __all__ = [
     "AgentStep",
     "AiAlias",
     "AiCall",
+    "AiClearVeto",
     "AiConversation",
     "AiMessage",
     "AiProvider",

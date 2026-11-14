@@ -176,6 +176,32 @@ describe('VerdictsView', () => {
       )
     })
 
+    it('says that taking back one the AI gave tells it not to give it again', async () => {
+      const gave = verdict({
+        given_by: 'ai',
+        ai: { confidence: 91, provider: 'anthropic', model: 'claude-haiku-5-5', incident_id: 4 },
+      })
+      const { choose, inDialog } = await open([gave])
+
+      await choose(0, 'remove')
+
+      expect(inDialog('confirm-message')?.textContent).toContain(
+        'Taking it back also tells it not to give it again.',
+      )
+      expect(inDialog('confirm-message')?.textContent).toContain(
+        'judged as if it had never said it',
+      )
+    })
+
+    it('does not say that of one you gave', async () => {
+      const { choose, inDialog } = await open([verdict()])
+
+      await choose(0, 'remove')
+
+      expect(inDialog('confirm-message')?.textContent).not.toContain('The AI gave this one')
+      expect(inDialog('confirm-message')?.textContent).toContain('judged as if you had never said')
+    })
+
     it('says it has not been applied to anything, when it has not', async () => {
       const { choose, inDialog } = await open([verdict({ hits: 0, last_hit_at: null })])
 

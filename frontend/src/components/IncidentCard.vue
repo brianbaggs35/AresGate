@@ -7,6 +7,7 @@ import { useDisplay } from 'vuetify'
 import { errorMessage } from '@/api/client'
 import { fetchIncident, type Incident } from '@/api/incidents'
 import { VERDICTS, giveVerdict, type VerdictKind } from '@/api/verdicts'
+import AiGaveChip from '@/components/AiGaveChip.vue'
 import AiChip from '@/components/AiChip.vue'
 import CallChip from '@/components/CallChip.vue'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
@@ -166,6 +167,15 @@ async function give(kind: VerdictKind) {
         data-test="incident-touched"
       >
         {{ incident.touched.text }}
+      </p>
+
+      <p
+        v-if="incident.cleared_by_ai"
+        class="incident-card__cleared text-body-medium"
+        data-test="incident-cleared-by-ai"
+      >
+        <AiGaveChip :ai="incident.cleared_by_ai" />
+        <span v-if="incident.cleared_by_ai.reason">{{ incident.cleared_by_ai.reason }}</span>
       </p>
 
       <div class="incident-card__details">
@@ -347,6 +357,14 @@ async function give(kind: VerdictKind) {
 
 .incident-card__touched {
   margin: -0.25rem 0 0.75rem;
+}
+
+.incident-card__cleared {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
 }
 
 .incident-card__details {

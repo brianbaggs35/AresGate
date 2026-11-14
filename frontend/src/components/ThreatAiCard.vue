@@ -15,6 +15,8 @@ const props = defineProps<{
   mayClear: boolean
   clearFrom: number
   confirms: boolean
+  /** Whether the AI may give a verdict of its own on a false positive it is sure of. */
+  givesVerdicts: boolean
   defaultClearFrom: number
   minClearFrom: number
   /** Whether an AI is watching. */
@@ -24,6 +26,7 @@ const emit = defineEmits<{
   'update:mayClear': [boolean]
   'update:clearFrom': [number]
   'update:confirms': [boolean]
+  'update:givesVerdicts': [boolean]
 }>()
 
 const sentence = computed(() => clearSentence(props.clearFrom, props.minClearFrom))
@@ -37,8 +40,8 @@ const spoken = ({ value }: { value: number }) => `${value.toString()} percent su
     data-test="threat-ai-card"
   >
     <v-alert v-if="!watching" type="info" variant="tonal" class="mb-4" data-test="threat-ai-off">
-      No AI is watching, so these two do nothing yet. Turn on AI, choose a provider and let it read
-      by itself in Settings > AI, and they take effect.
+      No AI is watching, so these do nothing yet. Turn on AI, choose a provider and let it read by
+      itself in Settings > AI, and they take effect.
       <template #append>
         <v-btn variant="text" :to="{ name: 'settings-ai' }" data-test="threat-ai-link">
           AI settings
@@ -101,6 +104,24 @@ const spoken = ({ value }: { value: number }) => `${value.toString()} percent su
     <p class="ai__hint text-body-medium text-medium-emphasis">
       While the AI is watching, an incident is only a threat once it has read it and thinks it is
       real. A critical one never waits for it. Without this, the rules alone decide.
+    </p>
+
+    <v-switch
+      :model-value="givesVerdicts"
+      label="Let the AI clear false positives"
+      color="primary"
+      density="comfortable"
+      hide-details
+      class="mt-4"
+      data-test="threat-verdicts"
+      @update:model-value="emit('update:givesVerdicts', Boolean($event))"
+    />
+    <p class="ai__hint text-body-medium text-medium-emphasis">
+      When the AI is sure an incident is a false positive, it gives the verdict not suspicious or
+      low priority itself, so the same alert never bothers you again. It says it was the AI and why,
+      on the incident and on the Verdicts page, and you can take it back there: it then never gives
+      that one again. Anything critical, anything you called a threat and anything with more than
+      one stage of an attack is left to you.
     </p>
   </SectionCard>
 </template>

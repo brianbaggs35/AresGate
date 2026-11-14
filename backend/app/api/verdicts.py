@@ -18,6 +18,7 @@ from pydantic import (
 )
 from sqlalchemy import select
 
+from app.ai import clearing
 from app.api.deps import Db, SignedIn, record_audit, signed_in
 from app.audit import Action, Outcome
 from app.incidents import engine, rules, verdicts
@@ -33,6 +34,16 @@ Signature = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 
+class GivenByAi(BaseModel):
+    """How the AI came to give a verdict, as it said at the time."""
+
+    confidence: int
+    provider: str | None
+    model: str | None
+    # The incident it was reading, if that still exists.
+    incident_id: int | None
+
+
 class VerdictOut(BaseModel):
     id: int
     verdict: Verdict
@@ -43,7 +54,11 @@ class VerdictOut(BaseModel):
     source: str | None
     source_name: str | None
     signature: str | None
+    # For the AI's, why it said so: its reason.
     note: str | None
+    # Who gave it. The AI gives one only where the owner allows it, and it is theirs to take back.
+    given_by: Literal["owner", "ai"]
+    ai: GivenByAi | None
     created_at: AwareDatetime
     updated_at: AwareDatetime
     # How many signals in incidents it has been applied to, and when the latest happened.
@@ -121,6 +136,17 @@ def rule_out(rule: VerdictRule, hits: tuple[int, datetime | None]) -> VerdictOut
         source_name=rules.name_of(rule.source) if rule.source is not None else None,
         signature=rule.signature,
         note=rule.note,
+        given_by=cast(Literal["owner", "ai"], rule.given_by),
+        ai=(
+            GivenByAi(
+                confidence=rule.ai_confidence or 0,
+                provider=rule.ai_provider,
+                model=rule.ai_model,
+                incident_id=rule.ai_incident_id,
+            )
+            if rule.given_by == clearing.GIVER_AI
+            else None
+        ),
         created_at=rule.created_at,
         updated_at=rule.updated_at,
         hits=hits[0],
@@ -209,7 +235,9 @@ def give_verdict(
         rule.verdict = body.verdict
         if body.note:
             rule.note = body.note
-        if not db.is_modified(rule):
+        # Saying what the AI said makes it the owner's.
+        claimed = clearing.claim(rule)
+        if not (db.is_modified(rule) or claimed):
             return _given(db, rule, was)
         record_audit(
             db,
@@ -240,7 +268,9 @@ def change_verdict(
         rule.verdict = body.verdict
     if "note" in body.model_fields_set:
         rule.note = body.note or None
-    if db.is_modified(rule):
+    # A verdict the AI gave and the owner changed is theirs now.
+    claimed = clearing.claim(rule) if db.is_modified(rule) else False
+    if db.is_modified(rule) or claimed:
         record_audit(
             db,
             request,
@@ -262,12 +292,24 @@ def remove_verdict(
     db: Db,
 ) -> Response:
     """Takes a verdict back: the signals it was applied to are judged as if it had never been
-    said, in the incidents that are not over."""
+    said, in the incidents that are not over. Taking back one the AI gave also tells it not to give
+    that verdict again."""
     engine.hold(db)
     rule = _found(db, rule_id)
-    record_audit(
-        db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=facts(rule)
-    )
+    if rule.given_by == clearing.GIVER_AI:
+        clearing.take_back(db, rule)
+        record_audit(
+            db,
+            request,
+            Action.VERDICT_TAKEN_BACK_FROM_AI,
+            Outcome.SUCCESS,
+            user=auth.user,
+            detail=facts(rule),
+        )
+    else:
+        record_audit(
+            db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=facts(rule)
+        )
     reached = engine.reach(db, rule)
     db.delete(rule)
     db.flush()

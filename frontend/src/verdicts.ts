@@ -55,12 +55,22 @@ export function mutedIn(incident: Pick<Incident, 'verdict_counts'>): number {
 /** What the verdicts and the noise filters say of an incident, in a sentence for the panel about
  * it. */
 export function standing(
-  incident: Pick<Incident, 'verdict' | 'verdict_counts' | 'signal_count' | 'filtered_count'>,
+  incident: Pick<
+    Incident,
+    'verdict' | 'verdict_counts' | 'signal_count' | 'filtered_count' | 'cleared_by_ai'
+  >,
 ) {
   const muted = mutedIn(incident)
   const filtered = incident.filtered_count
   if (incident.verdict === 'threat') {
     return 'You said it is a real threat, so AresGate is certain of it.'
+  }
+  if (incident.verdict !== null && incident.cleared_by_ai !== null) {
+    return (
+      `The AI was ${incident.cleared_by_ai.confidence.toString()}% sure it is a false positive ` +
+      'and gave the verdict itself, so AresGate is sure of nothing and will not raise an alarm ' +
+      'for it. Take the verdict back if you disagree.'
+    )
   }
   if (incident.verdict !== null) {
     return (

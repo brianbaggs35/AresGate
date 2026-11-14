@@ -4,8 +4,10 @@ The incident engine groups signals and says how sure it is from rules anyone can
 adds a second opinion that can read what rules can't: what kind of thing this is (``compromise``,
 ``attack``, ``probe``, ``noise`` or ``unclear``), how sure the AI is, the story in plain words,
 what to check and what the owner might tell AresGate about it. It is the AI's opinion and is kept
-and shown as one: it never changes the incident, never acts on anything and never gives a verdict
-by itself. The owner presses a button to accept a suggestion.
+and shown as one: it never changes the incident and never acts on anything. It gives no verdict by
+itself either: the owner presses a button to accept a suggestion, unless they switched on *Let the
+AI clear false positives* (``app/ai/clearing.py``), when one it is sure is nothing becomes a verdict
+of its own that the owner can take back.
 
 An incident is read when the owner asks (the page's button, or *Start investigating*) and, at the
 usage level the owner chose, by the worker as new incidents come in. Everything goes through the
@@ -25,7 +27,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.ai import brief, gateway, service
+from app.ai import brief, clearing, gateway, service
 from app.ai.gateway import Answer, Context, Question, Unavailable
 from app.ai.redaction import Redactor
 from app.assets import profile
@@ -93,7 +95,9 @@ are thin evidence.
 that way from then on: "not_suspicious" for noise, "low_priority" for a probe that is only \
 background, "threat" only for a compromise or an attack you are sure of, and "none" if the owner \
 should decide. Alarms must stay rare: suggest "threat" only with a confidence of 80 or more. Say \
-why in "verdict_reason", in one sentence.
+why in "verdict_reason", in one sentence that stands alone. The owner may let AresGate give a \
+"not_suspicious" or "low_priority" verdict for you, so say one only of a false positive you are \
+sure of, and "none" otherwise.
 
 "observations" are one to five short, plain statements of what stands out in what was actually \
 sent, taken from "What the programs said of the traffic" and nothing else: who talked to whom and \
@@ -623,6 +627,9 @@ def keep(db: Session, incident: Incident, answered: Answer | Unavailable, now: d
     ).one()
     # What it thinks of this incident now outranks what was thought of its family.
     calls.sync(db, [incident.id])
+    db.refresh(incident)
+    # With the owner's say-so, a false positive it is sure of becomes a verdict of its own.
+    clearing.clear(db, incident, kept, settings.load(db), now)
     return Read(kept)
 
 

@@ -93,6 +93,21 @@ describe('VerdictPanel', () => {
       )
     })
 
+    it('say when the AI gave one, how sure it was and why', async () => {
+      const incident = detail({ signals: [signal({ verdict_rule_id: 2 })] })
+      const { wrapper } = await show(incident, [
+        verdict({
+          id: 2,
+          given_by: 'ai',
+          ai: { confidence: 91, provider: 'anthropic', model: 'claude-haiku-5-5', incident_id: 4 },
+          note: 'The scanner you run.',
+        }),
+      ])
+
+      expect(wrapper.find('[data-test="ai-gave"]').text()).toBe('Given by the AI, 91% sure')
+      expect(wrapper.find('[data-test="applied-why"]').text()).toBe('Why: The scanner you run.')
+    })
+
     it('are not listed when none applies', async () => {
       const { wrapper } = await show(detail(), [verdict()])
 

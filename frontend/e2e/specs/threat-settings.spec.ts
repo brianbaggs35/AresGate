@@ -108,6 +108,20 @@ test.describe('the threat detection settings', () => {
     await expect(threatSettings.raiseValue).toHaveText('Guests and IoT devices: 5 points higher')
   })
 
+  test('keep the AI from giving verdicts until it is allowed to, and keep what is chosen', async ({
+    threatSettings,
+  }) => {
+    await threatSettings.goto()
+    await expect(threatSettings.verdictsSwitch).not.toBeChecked()
+
+    await threatSettings.verdictsSwitch.check()
+    await threatSettings.save.click()
+    await expect(threatSettings.saved).toBeVisible()
+
+    await threatSettings.goto()
+    await expect(threatSettings.verdictsSwitch).toBeChecked()
+  })
+
   test('put the page back to what is kept', async ({ threatSettings, page }) => {
     await threatSettings.goto()
     await threatSettings.levelSlider.focus()

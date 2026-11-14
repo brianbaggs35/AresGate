@@ -24,6 +24,7 @@ EVERYTHING: dict[str, Any] = {
     "notes": "",
     "important_drop": 10,
     "low_raise": 0,
+    "ai_gives_verdicts": False,
 }
 
 
@@ -160,6 +161,18 @@ class TestChangingThem:
             "low_raise": 5,
             "from_low_raise": 0,
         }
+
+    def test_letting_the_ai_clear_false_positives_is_off_until_the_owner_says_so(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        assert client.get(BASE).json()["ai_gives_verdicts"] is False
+
+        saved = change(client, csrf_token, ai_gives_verdicts=True)
+
+        assert saved.json()["ai_gives_verdicts"] is True
+        assert client.get(BASE).json()["ai_gives_verdicts"] is True
+        [event] = audited(session)
+        assert event.detail == {"ai_gives_verdicts": True, "from_ai_gives_verdicts": False}
 
     def test_saving_what_is_saved_changes_and_records_nothing(
         self, client: TestClient, csrf_token: str, session: Session

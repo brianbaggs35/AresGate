@@ -60,6 +60,28 @@ describe('IncidentCard', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
+  it('says when the AI cleared it, how sure it was and why', async () => {
+    const cleared = {
+      verdict_id: 3,
+      verdict: 'not_suspicious',
+      reason: 'The scanner you run.',
+      confidence: 93,
+      provider: 'anthropic',
+      model: 'claude-haiku-5-5',
+      at: '2026-11-14T12:00:00Z',
+    } as const
+    const { text, wrapper } = await show({ cleared_by_ai: cleared })
+
+    expect(text('incident-cleared-by-ai')).toBe('Given by the AI, 93% sure The scanner you run.')
+
+    const none = await show()
+    expect(none.wrapper.find('[data-test="incident-cleared-by-ai"]').exists()).toBe(false)
+    expect(wrapper.exists()).toBe(true)
+
+    const unsaid = await show({ cleared_by_ai: { ...cleared, reason: null } })
+    expect(unsaid.text('incident-cleared-by-ai')).toBe('Given by the AI, 93% sure')
+  })
+
   it('says which lane it is in', async () => {
     const { text, wrapper } = await show({ lane: 'suspect' })
     expect(text('lane-chip')).toBe('Suspect')

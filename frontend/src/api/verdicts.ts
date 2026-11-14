@@ -5,6 +5,16 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/api/client'
 export const VERDICTS = ['not_suspicious', 'low_priority', 'threat'] as const
 export type VerdictKind = (typeof VERDICTS)[number]
 
+/** How the AI came to give a verdict, as it said at the time. */
+export interface GivenByAi {
+  /** How sure it was, from 0 to 100. */
+  confidence: number
+  provider: string | null
+  model: string | null
+  /** The incident it was reading, if that still exists. */
+  incident_id: number | null
+}
+
 /** What the owner said of the signals that match, remembered so that it holds from then on. */
 export interface Verdict {
   id: number
@@ -18,7 +28,12 @@ export interface Verdict {
   source: string | null
   source_name: string | null
   signature: string | null
+  /** For one the AI gave, why it did. */
   note: string | null
+  /** Who gave it. The AI only gives verdicts where you allow it, and each is yours to take back:
+   * doing so also tells it not to give that one again. Changing one makes it yours. */
+  given_by: 'owner' | 'ai'
+  ai: GivenByAi | null
   created_at: string
   updated_at: string
   /** How many signals in incidents it has been applied to, and when the latest happened. */

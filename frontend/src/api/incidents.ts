@@ -177,6 +177,20 @@ export interface Incident {
   importance: 'critical' | 'important' | 'normal' | 'low'
   /** The device that makes it matter more (or less), and a sentence saying so. */
   touched: Touched | null
+  /** Set where the AI, and not you, called it not suspicious or low priority: what it said and how
+   * sure it was. The verdict is yours to take back, on the Verdicts page or here. */
+  cleared_by_ai: ClearedByAi | null
+}
+
+/** A false positive the AI cleared, with what it said at the time. */
+export interface ClearedByAi {
+  verdict_id: number
+  verdict: 'not_suspicious' | 'low_priority'
+  reason: string | null
+  confidence: number
+  provider: string | null
+  model: string | null
+  at: string
 }
 
 /** The device that makes an incident matter more, or less. */
