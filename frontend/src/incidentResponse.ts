@@ -106,13 +106,15 @@ export function coverage(overview: ResponseOverview): string | null {
     ...(overview.opnsense_connected ? [] : ['OPNsense']),
   ]
   if (missing.length === 0) return null
-  return `${formatList(missing)} ${missing.length === 1 ? "isn't" : "aren't"} connected, so AresGate can't see ${
-    missing.length === 2
-      ? 'any ban or block'
-      : missing[0] === 'CrowdSec'
-        ? 'what CrowdSec banned'
-        : 'what the firewall or Suricata turned away'
-  }. What needs a response may already have been answered.`
+  return `${formatList(missing)} ${missing.length === 1 ? "isn't" : "aren't"} connected, so AresGate can't see ${unseen(missing)}. What needs a response may already have been answered.`
+}
+
+/** What can't be seen while these are not connected. */
+function unseen(missing: readonly string[]): string {
+  if (missing.length === 2) return 'any ban or block'
+  return missing[0] === 'CrowdSec'
+    ? 'what CrowdSec banned'
+    : 'what the firewall or Suricata turned away'
 }
 
 /** What was done about an incident, in a few words that go on a line of their own. */

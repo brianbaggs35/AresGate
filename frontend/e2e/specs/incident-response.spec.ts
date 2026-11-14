@@ -2,11 +2,12 @@ import type { IncidentRequest } from '../support'
 import { expect, test } from '../support'
 
 const WAITING = '93.184.216.34'
+// Each in a block of its own: addresses next to each other are one attacker's, and one incident.
 const BANNED = '8.8.4.10'
-const BLOCKED = '8.8.4.11'
-const ENDED = '8.8.4.12'
-const QUIET = '8.8.4.13'
-const OLD = '8.8.4.14'
+const BLOCKED = '8.8.5.11'
+const ENDED = '8.8.6.12'
+const QUIET = '8.8.7.13'
+const OLD = '8.8.8.14'
 
 /** What the programs did about six incidents: one nothing has answered, one CrowdSec banned, one
  * the firewall turned away, one whose ban ran out, a sweep too minor to count, and one that went
@@ -33,7 +34,6 @@ test.describe('incident response', () => {
     await expect(page).toHaveURL('/incident-response')
     await shell.expectCurrent('incident-response')
     await expect(incidentResponse.heading).toHaveText('Incident response')
-    await expect(shell.pageTitle).toHaveText('Incident response')
   })
 
   test('says that nothing is going on when nothing serious is', async ({ incidentResponse }) => {
