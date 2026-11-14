@@ -6,10 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.integrations import calldetail
 from app.integrations.client import Call
 from app.models import ApiCall
 
@@ -39,9 +40,41 @@ class ApiLogRecorder:
                     status_code=call.status_code,
                     duration_ms=call.duration_ms,
                     error=call.error,
+                    detail=call.detail,
+                    excerpt=call.excerpt,
                 )
             )
+            db.flush()
+            if call.excerpt is not None and call.error is None:
+                _forget_old_excerpts(db, call.integration, call.connection)
             db.commit()
+
+
+def _forget_old_excerpts(db: Session, integration: str, connection: str) -> None:
+    """Keeps the answers of only the latest few requests of a connection that worked. The ones of
+    requests that failed are what a person looks at to see what went wrong, and stay."""
+    newest = (
+        select(ApiCall.id)
+        .where(
+            ApiCall.integration == integration,
+            ApiCall.connection == connection,
+            ApiCall.error.is_(None),
+            ApiCall.excerpt.is_not(None),
+        )
+        .order_by(ApiCall.id.desc())
+        .limit(calldetail.KEPT_WHEN_WORKED)
+    )
+    db.execute(
+        update(ApiCall)
+        .where(
+            ApiCall.integration == integration,
+            ApiCall.connection == connection,
+            ApiCall.error.is_(None),
+            ApiCall.excerpt.is_not(None),
+            ApiCall.id.not_in(newest),
+        )
+        .values(excerpt=None)
+    )
 
 
 @dataclass(frozen=True)
@@ -88,6 +121,13 @@ def list_calls(
         return Page(rows, None)
     kept = rows[:limit]
     return Page(kept, kept[-1].id)
+
+
+def get_call(db: Session, integration: str, call_id: int) -> ApiCall | None:
+    """One call of an integration, with everything that was kept of it."""
+    return db.scalar(
+        select(ApiCall).where(ApiCall.integration == integration, ApiCall.id == call_id)
+    )
 
 
 def purge_expired(db: Session, settings: Settings, now: datetime) -> int:

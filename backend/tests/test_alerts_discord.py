@@ -304,8 +304,20 @@ class TestSending:
             204,
         )
         assert call.path == discord.LOGGED_PATH
+        assert call.detail is not None
+        assert call.detail["path"] == discord.LOGGED_PATH
         assert TOKEN not in repr(call)
         assert ID not in repr(call)
+
+    def test_a_call_with_no_detail_is_logged_as_it_is(self) -> None:
+        log = Log()
+        call = Call(NOW, "discord", "destination-1", "POST", f"/{ID}/{TOKEN}", 204, 3, None)
+
+        asyncio.run(discord.without_address(log)(call))
+
+        assert [(logged.path, logged.detail) for logged in log.calls] == [
+            (discord.LOGGED_PATH, None)
+        ]
 
     def test_a_webhook_discord_does_not_know_is_gone(self, serve: Serve) -> None:
         server = self.stand_in(serve, known="1/other")

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.config import Settings
 from app.integrations import netguard, probes, registry
-from app.integrations.client import ApiClient, Recorder, Target
+from app.integrations.client import ApiClient, Recorder, Target, calling
 from app.integrations.netguard import AddressPolicy, Origin, Refused
 from app.integrations.probes import Verdict
 from app.integrations.registry import (
@@ -434,16 +434,18 @@ def draft_target(
 async def check(target: Target, recorder: Recorder, policy: AddressPolicy) -> Verdict:
     """Tests a connection: what the integration's probe made of it."""
     probe = probes.PROBES[(target.integration, target.connection)]
-    async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
-        return await probes.run(probe, client, target)
+    with calling("Connection test"):
+        async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
+            return await probes.run(probe, client, target)
 
 
 async def look_up(
     lookup: probes.Lookuper, target: Target, recorder: Recorder, policy: AddressPolicy
 ) -> probes.Lookup:
     """Asks a connection what it lists (a lookup for one of its fields)."""
-    async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
-        return await probes.look_up(lookup, client, target)
+    with calling("Field lookup"):
+        async with ApiClient(target, recorder, _reached_with(target, policy)) as client:
+            return await probes.look_up(lookup, client, target)
 
 
 def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> list[str]:

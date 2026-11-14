@@ -347,12 +347,13 @@ def _origin(override: str | None) -> Origin:
     return Origin("https", HOSTS[0], 443)
 
 
-def _without_address(record: Recorder) -> Recorder:
+def without_address(record: Recorder) -> Recorder:
     """A recorder that leaves the webhook's address out of the log: the path of the request holds
     the token."""
 
     async def keep(call: LoggedCall) -> None:
-        await record(replace(call, path=LOGGED_PATH))
+        detail = {**call.detail, "path": LOGGED_PATH} if call.detail else call.detail
+        await record(replace(call, path=LOGGED_PATH, detail=detail))
 
     return keep
 
@@ -380,7 +381,7 @@ async def _call(
         options={},
         secrets={"token": webhook.token},
     )
-    async with ApiClient(target, _without_address(recorder), policy) as client:
+    async with ApiClient(target, without_address(recorder), policy) as client:
         try:
             reply = await client.request(
                 method,

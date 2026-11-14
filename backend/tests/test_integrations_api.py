@@ -56,6 +56,7 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("post", f"{BASE}/opnsense/test"),
         ("post", f"{BASE}/opnsense/certificate"),
         ("get", f"{BASE}/opnsense/calls"),
+        ("get", f"{BASE}/opnsense/calls/1"),
     ):
         response = client.request(method, path)
         assert response.status_code == 401, (method, path)
@@ -176,6 +177,7 @@ def test_an_integration_that_does_not_exist_is_not_found(
         ("post", f"{BASE}/nothing/test", None),
         ("post", f"{BASE}/nothing/certificate", {"url": "https://192.168.1.1"}),
         ("get", f"{BASE}/nothing/calls", None),
+        ("get", f"{BASE}/nothing/calls/1", None),
     ]
     for method, path, body in requests:
         response = client.request(method, path, headers=headers(csrf_token), json=body)
@@ -376,6 +378,59 @@ def test_a_test_that_works_marks_it_connected_and_logs_the_call(
     event = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
     assert event is not None
     assert (event.action, event.outcome) == (Action.INTEGRATION_TESTED, Outcome.SUCCESS)
+
+
+def test_one_request_is_opened_to_show_everything_kept_of_it(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(
+        lambda seen: Answer(body='{"data": []}', headers={"Content-Type": "application/json"})
+    )
+    put(client, csrf_token, "crowdsec", crowdsec_body(server))
+    client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token))
+    [listed] = client.get(f"{BASE}/crowdsec/calls").json()["calls"]
+
+    response = client.get(f"{BASE}/crowdsec/calls/{listed['id']}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["id"], body["method"], body["path"]) == (listed["id"], "GET", "/v1/decisions")
+    assert body["excerpt"] == '{\n  "data": []\n}'
+    detail = body["detail"]
+    assert (detail["scheme"], detail["host"], detail["port"]) == ("http", "127.0.0.1", server.port)
+    assert detail["caller"] == "Connection test"
+    assert detail["status_line"].endswith("200 OK")
+    assert detail["content_type"] == "application/json"
+    assert detail["certificate"] is None
+    assert SECRET not in response.text
+    assert {"name": "x-api-key", "value": None} in detail["request_headers"]
+
+
+def test_a_request_from_before_the_detail_was_kept_says_so_with_what_it_has(
+    client: TestClient, csrf_token: str, session: Session
+) -> None:
+    old = ApiCall(
+        occurred_at=datetime(2026, 11, 1, tzinfo=UTC),
+        integration="crowdsec",
+        connection="lapi",
+        method="GET",
+        path="/old",
+        status_code=200,
+        duration_ms=4,
+    )
+    session.add(old)
+    session.commit()
+
+    body = client.get(f"{BASE}/crowdsec/calls/{old.id}").json()
+
+    assert (body["path"], body["detail"], body["excerpt"]) == ("/old", None, None)
+
+
+def test_a_request_that_is_not_there_is_not_found(client: TestClient, csrf_token: str) -> None:
+    response = client.get(f"{BASE}/crowdsec/calls/999999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "There is no such request."}
 
 
 def test_a_test_that_fails_says_why_and_marks_the_problem(

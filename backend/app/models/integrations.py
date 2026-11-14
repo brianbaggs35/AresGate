@@ -1,6 +1,7 @@
 """What AresGate knows about the systems it connects to, and the calls it made to them."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -63,8 +64,8 @@ class IntegrationConnection(Base):
 
 class ApiCall(Base):
     """One request AresGate made to an integration: when, what, how it ended and how long it
-    took. It never holds a secret or a query string, and what the integration said is kept to
-    a short description, because that text is the integration's own and can't be trusted."""
+    took. It never holds a secret, and what the integration said is kept to a short description and
+    an excerpt, because that text is the integration's own and can't be trusted."""
 
     __tablename__ = "integration_api_calls"
     __table_args__ = (Index("ix_integration_api_calls_integration_id", "integration", "id"),)
@@ -74,9 +75,14 @@ class ApiCall(Base):
     integration: Mapped[str] = mapped_column(String(32))
     connection: Mapped[str] = mapped_column(String(32))
     method: Mapped[str] = mapped_column(String(8))
-    # The path only: no host, query string or fragment.
+    # The path only: no host, query string or fragment (``detail`` has those).
     path: Mapped[str] = mapped_column(String(256))
     # None when no answer came (it couldn't connect, or wasn't allowed to).
     status_code: Mapped[int | None] = mapped_column(Integer, default=None)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Where the request went, what it carried and how it was answered (see
+    # app/integrations/calldetail.py). None for a call made before this was kept.
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB, default=None)
+    # The start of the answer, as text, for the calls that failed and the latest few that worked.
+    excerpt: Mapped[str | None] = mapped_column(Text, default=None)
