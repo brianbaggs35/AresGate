@@ -54,6 +54,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **The Status page said Python 3.14.8 after Python was updated to 3.14.10.** The page reports the
+  Python the container runs, which comes from Wolfi's package, and `make up` kept the cached layer
+  that installed it for as long as Docker's build cache did, so an image built once stayed on the
+  version of that day. `make up` now builds those layers again the first time it runs each day,
+  as the CI builds do, so the packages (Python, nginx, PostgreSQL and their fixes) follow Wolfi.
+  Run `make up` once to see the current versions.
 - **Dividers and boxes that had no border.** Sixteen places (the log drawer and its fields, the
   tables of logs and of AI calls, the search box and its facets, chat messages, the bulk bar, the
   raw record and the response rows) drew their border with a theme colour that doesn't exist, so

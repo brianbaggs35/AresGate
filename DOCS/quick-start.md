@@ -211,8 +211,10 @@ shouldn't have build tools. To run without a checkout at all, use the `docker ru
 - From a release without a checkout: run `docker rm -f aresgate`, then run the command above
   again with the updated image tag. The `aresgate-data` volume is kept. From a release with a
   checkout: set a newer `ARESGATE_VERSION` in `.env` and run `make pull`.
-- From the source: `git pull`, then `make up` (or `make rebuild` to rebuild every layer, which
-  also fetches the newest security fixes for the operating system's packages).
+- From the source: `git pull`, then `make up`. It also fetches the newest versions of the
+  operating system's packages (Python, nginx, PostgreSQL and their security fixes) the first
+  time it runs each day, so the Status page shows what Wolfi has published. `make rebuild`
+  rebuilds every layer at any time.
 
 Your data lives in a Docker volume, so it is kept. Run `make backup` first
 ([Operations](operations.md#backups)).
