@@ -130,21 +130,22 @@ def _binned(
 
 
 def _count(db: Session, win: Window, matches: ColumnElement[bool]) -> Counted:
+    """The window and the one before it are counted in one pass over the events: the buckets are
+    cut from the window's start, so those of the window before it fall at numbers below zero."""
     bucket = _binned(win, Event.occurred_at, win.bucket)
     rows = db.execute(
         select(bucket, func.count())
-        .where(matches, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+        .where(matches, Event.occurred_at >= win.previous_start, Event.occurred_at < win.end)
         .group_by(bucket)
     ).all()
     per_bucket = [0] * len(win.buckets())
+    previous = 0
     for start, count in rows:
-        per_bucket[(start - win.start) // win.bucket] = count
-    previous = db.scalar(
-        select(func.count()).where(
-            matches, Event.occurred_at >= win.previous_start, Event.occurred_at < win.start
-        )
-    )
-    return Counted(sum(per_bucket), previous or 0, per_bucket)
+        if start < win.start:
+            previous += count
+        else:
+            per_bucket[(start - win.start) // win.bucket] = count
+    return Counted(sum(per_bucket), previous, per_bucket)
 
 
 def blocked(db: Session, win: Window) -> Counted:
@@ -170,22 +171,32 @@ class Alerts:
 
 
 def alerts(db: Session, win: Window) -> Alerts:
+    """The alerts of the window and of the one before it, from one pass over the events. The buckets
+    are cut from the window's start, so those of the window before it fall at numbers below zero,
+    and what they are counted for is how many times each was reported (``reports``) and how many of
+    those another program had already reported (``duplicates``)."""
     bucket = _binned(win, Event.occurred_at, win.bucket)
     rows = db.execute(
-        select(bucket, Event.severity, func.count(distinct(_SAME)))
-        .where(IS_ORIGINAL, Event.occurred_at >= win.start, Event.occurred_at < win.end)
+        select(
+            bucket,
+            Event.severity,
+            func.count(distinct(_SAME)).filter(Event.twin_of.is_(None)),
+            func.count(),
+            func.count().filter(Event.twin_of.is_not(None)),
+        )
+        .where(IS_ALERT, Event.occurred_at >= win.previous_start, Event.occurred_at < win.end)
         .group_by(bucket, Event.severity)
     ).all()
     by_severity = {level: [0] * len(win.buckets()) for level in Severity}
-    for start, severity, count in rows:
+    previous = reports = duplicates = 0
+    for start, severity, count, reported, repeated in rows:
+        if start < win.start:
+            previous += count
+            continue
         by_severity[Severity(severity)][(start - win.start) // win.bucket] += count
+        reports += reported
+        duplicates += repeated
     present = [level for level, counts in by_severity.items() if any(counts)]
-    previous = _previous_alerts(db, win)
-    reports, duplicates = db.execute(
-        select(func.count(), func.count().filter(Event.twin_of.is_not(None))).where(
-            IS_ALERT, Event.occurred_at >= win.start, Event.occurred_at < win.end
-        )
-    ).one()
     return Alerts(
         total=sum(sum(counts) for counts in by_severity.values()),
         previous=previous,
@@ -194,23 +205,6 @@ def alerts(db: Session, win: Window) -> Alerts:
         reports=reports,
         duplicates=duplicates,
     )
-
-
-def _previous_alerts(db: Session, win: Window) -> int:
-    """How many alerts there were in the window before, counted the same way: once for each of its
-    buckets that they were reported in."""
-    bucket = _binned(win, Event.occurred_at, win.bucket)
-    per_bucket = (
-        select(func.count(distinct(_SAME)).label("n"))
-        .where(
-            IS_ORIGINAL,
-            Event.occurred_at >= win.previous_start,
-            Event.occurred_at < win.start,
-        )
-        .group_by(bucket, Event.severity)
-        .subquery()
-    )
-    return db.scalar(select(func.coalesce(func.sum(per_bucket.c.n), 0))) or 0
 
 
 @dataclass(frozen=True)
