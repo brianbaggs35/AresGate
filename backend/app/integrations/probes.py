@@ -7,6 +7,7 @@ is its own text and can't be trusted, so a probe says only what it checked, plus
 facts (a version, an interface name) with control characters removed.
 """
 
+import asyncio
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -102,6 +103,42 @@ def problem(
 
 def unexpected(product: str) -> Verdict:
     return Verdict(False, f"It answered, but the answer doesn't look like {product}'s.")
+
+
+# What a service on the internet answers when it is busy or down: the same request often works a
+# moment later, so a probe of one asks once more after ``RETRY_PAUSE`` seconds before it says so.
+UNAVAILABLE = (502, 503, 504)
+RETRY_PAUSE = 3.0
+
+
+async def ask_twice(
+    client: ApiClient,
+    method: str,
+    path: str,
+    *,
+    query: Mapping[str, str] | None = None,
+    json_body: object = None,
+    headers: Mapping[str, str] | None = None,
+) -> Reply:
+    """A request to a service on the internet, asked again once if it says it is unavailable."""
+    reply = await client.request(method, path, query=query, json_body=json_body, headers=headers)
+    if reply.status not in UNAVAILABLE:
+        return reply
+    await asyncio.sleep(RETRY_PAUSE)
+    return await client.request(method, path, query=query, json_body=json_body, headers=headers)
+
+
+def unavailable(reply: Reply, product: str) -> Verdict | None:
+    """What a busy or down service on the internet says of the test, or None if it isn't one. It
+    is the service's own trouble and not the key's, so it says so."""
+    if reply.status not in UNAVAILABLE:
+        return None
+    return Verdict(
+        False,
+        f"{product} is unavailable right now (HTTP {reply.status}). That is on {product}'s side: "
+        "it is busy or down, and not a problem with the key or with AresGate. AresGate asks "
+        "again on its own, or press Test again in a few minutes.",
+    )
 
 
 def service_state(reply: Reply) -> ModuleState:
@@ -687,10 +724,12 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
 async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
     """Asks OTX who the key belongs to. That is a request about the key's own account, so it
     sends no address to OTX and counts as no lookup."""
-    reply = await client.request(
-        "GET", "/api/v1/users/me", headers={"X-OTX-API-KEY": target.secrets["api_key"]}
+    reply = await ask_twice(
+        client, "GET", "/api/v1/users/me", headers={"X-OTX-API-KEY": target.secrets["api_key"]}
     )
     refused = "OTX didn't accept the key. Copy it again from your OTX account's settings."
+    if gone := unavailable(reply, "OTX"):
+        return gone
     if bad := problem(reply, "OTX", refused=refused, forbidden=refused):
         return bad
     account = as_object(reply.json())
@@ -703,8 +742,10 @@ async def greynoise_ping(client: ApiClient, target: Target) -> Verdict:
     """Asks GreyNoise whether the key works and which plan it belongs to. The ping is about the
     key alone, so it sends no address and counts as no lookup. Only a subscription's key is
     tested this way: the Community API's keys are tested with a lookup, which it counts."""
-    reply = await client.request("GET", "/ping", headers={"key": target.secrets["api_key"]})
+    reply = await ask_twice(client, "GET", "/ping", headers={"key": target.secrets["api_key"]})
     refused = "GreyNoise didn't accept the key. Copy it again from your GreyNoise account."
+    if gone := unavailable(reply, "GreyNoise"):
+        return gone
     if bad := problem(reply, "GreyNoise", refused=refused, forbidden=refused):
         return bad
     answer = as_object(reply.json())
@@ -722,12 +763,15 @@ async def nvd(client: ApiClient, target: Target) -> Verdict:
     30 seconds, which the loop that asks about CVEs leaves room for."""
     use_key = target.options.get("access") != "none"
     key = target.secrets.get("api_key") if use_key else None
-    reply = await client.request(
+    reply = await ask_twice(
+        client,
         "GET",
         "/rest/json/cves/2.0",
         query={"cveIds": NVD_TEST_CVE, "resultsPerPage": "1"},
         headers={"apiKey": key} if key else None,
     )
+    if gone := unavailable(reply, "NVD"):
+        return gone
     if not reply.ok:
         said = audit.clean(reply.headers.get("message"), 120)
         if reply.status == 404 and said and "apikey" in said.lower():
@@ -765,12 +809,15 @@ async def fingerbank(client: ApiClient, target: Target) -> Verdict:
     answers 200 with a device, or 404 when it has none for the address: either way it accepted the
     key. A 429 means it asked for fewer requests, which says nothing against the key either. The
     request sends no real device, and costs one of the requests the key allows an hour."""
-    reply = await client.request(
+    reply = await ask_twice(
+        client,
         "GET",
         "/api/v2/combinations/interrogate",
         json_body={"mac": DOCUMENTATION_MAC},
         headers={"Authorization": f"Bearer {target.secrets['api_key']}"},
     )
+    if gone := unavailable(reply, "Fingerbank"):
+        return gone
     if reply.status == 429:
         return Verdict(
             True, "Fingerbank accepted the key, but asked for fewer requests for a moment."
