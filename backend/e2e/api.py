@@ -352,6 +352,7 @@ class VerdictRequest(BaseModel):
     source: str | None = None
     signature: str | None = None
     note: str | None = None
+    by_ai: bool = False
 
 
 class VerdictsRequest(BaseModel):

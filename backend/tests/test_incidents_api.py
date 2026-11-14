@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.ai import clearing
 from app.api import asking
 from app.api import incidents as incidents_api
 from app.assets import profile
@@ -19,7 +20,15 @@ from app.incidents import engine as correlation
 from app.incidents import episode, names, queries, search
 from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.models import AuditEvent, Device, DeviceAddress, Incident, IntegrationConnection, User
+from app.models import (
+    AiTriage,
+    AuditEvent,
+    Device,
+    DeviceAddress,
+    Incident,
+    IntegrationConnection,
+    User,
+)
 from app.nvd import lookup as nvd_lookup
 from app.nvd import store as nvd_store
 from app.threats import settings as threat_settings
@@ -2039,3 +2048,61 @@ class TestWhatTheDevicesMatter:
         first, second = listed(client, order="priority")
 
         assert (first["subject"], second["subject"]) == (ATTACKER, OTHER_ATTACKER)
+
+
+class TestClearedByTheAi:
+    def cleared(self, session: Session, settings: Settings) -> Incident:
+        store(session, settings, alert(NOW, n=1, severity=Severity.MEDIUM))
+        run(session)
+        found = session.scalars(select(Incident)).one()
+        reading = AiTriage(
+            incident_id=found.id,
+            read_at=NOW,
+            signals_read=1,
+            classification="noise",
+            confidence=93,
+            headline="A scanner",
+            story="It tried a port.",
+            verdict="not_suspicious",
+            verdict_reason="The owner's own scanner.",
+            provider="anthropic",
+            model="claude-haiku-5-5",
+        )
+        clearing.clear(session, found, reading, Tuning(ai_gives_verdicts=True), NOW)
+        session.commit()
+        return found
+
+    def test_an_incident_the_ai_cleared_says_why_and_how_sure_it_was(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        found = self.cleared(session, settings)
+
+        [item] = listed(client)
+        detail = client.get(f"{BASE}/{found.id}").json()
+
+        assert item["verdict"] == "not_suspicious"
+        assert item["cleared_by_ai"] == {
+            "verdict_id": item["cleared_by_ai"]["verdict_id"],
+            "verdict": "not_suspicious",
+            "reason": "The owner's own scanner.",
+            "confidence": 93,
+            "provider": "anthropic",
+            "model": "claude-haiku-5-5",
+            "at": item["cleared_by_ai"]["at"],
+        }
+        assert detail["cleared_by_ai"] == item["cleared_by_ai"]
+
+    def test_one_the_owner_called_harmless_says_nothing_of_the_ai(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        store(session, settings, alert(NOW, n=1, severity=Severity.MEDIUM))
+        run(session)
+        client.post(
+            "/api/verdicts",
+            json={"verdict": "not_suspicious", "address": ATTACKER},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+        [item] = listed(client)
+
+        assert (item["verdict"], item["cleared_by_ai"]) == ("not_suspicious", None)

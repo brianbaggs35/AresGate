@@ -23,6 +23,9 @@ export interface ThreatDraft {
   important_drop: number
   /** How many points more sure it has to be when it touched only guest or IoT devices. */
   low_raise: number
+  /** Whether the AI may give a verdict of its own on a false positive it is sure of. Off until
+   * you turn it on, and each one it gives is yours to take back. */
+  ai_gives_verdicts: boolean
 }
 
 export interface ThreatSettings extends ThreatDraft {

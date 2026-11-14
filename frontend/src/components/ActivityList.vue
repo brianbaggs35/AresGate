@@ -45,6 +45,8 @@ const TITLES: Readonly<Record<string, string>> = {
   'verdict.given': 'A verdict was given',
   'verdict.changed': 'A verdict was changed',
   'verdict.removed': 'A verdict was taken back',
+  'verdict.given_by_ai': 'The AI cleared a false positive',
+  'verdict.taken_back_from_ai': 'A verdict the AI gave was taken back',
   'noise.filters_changed': 'The noise filters were changed',
   'threat_intel.ruled': 'Something was ruled safe or suspicious',
   'threat_intel.ruling_cleared': 'A ruling on a threat was taken back',

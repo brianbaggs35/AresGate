@@ -705,6 +705,8 @@ class VerdictSpec(NamedTuple):
     signature: str | None = None
     note: str | None = None
     destination: str | None = None
+    # Given by the AI, 91 sure, rather than by the owner.
+    by_ai: bool = False
 
 
 def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
@@ -719,6 +721,10 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
                 source=spec.source,
                 signature=spec.signature,
                 note=spec.note,
+                given_by="ai" if spec.by_ai else "owner",
+                ai_confidence=91 if spec.by_ai else None,
+                ai_provider="anthropic" if spec.by_ai else None,
+                ai_model="claude-haiku-5-5" if spec.by_ai else None,
             )
         )
     session.flush()

@@ -351,6 +351,10 @@ class ThreatSettings(Base):
     # IoT devices.
     important_drop: Mapped[int] = mapped_column(SmallInteger, default=10, server_default="10")
     low_raise: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    # Whether the AI may give a verdict that clears an incident it reads and is sure is a false
+    # positive, which is then the owner's to take back (app/ai/clearing.py). Off until the owner
+    # turns it on.
+    ai_gives_verdicts: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # What is reachable from the internet: ``none``, ``some`` (the ports) or ``unknown``.
     exposure: Mapped[str] = mapped_column(String(8), default="unknown")
     exposed_ports: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list)

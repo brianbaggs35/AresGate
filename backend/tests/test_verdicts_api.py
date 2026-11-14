@@ -5,11 +5,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai import clearing
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
 from app.incidents import engine
-from app.models import AuditEvent, Incident, User, VerdictRule
+from app.models import AiClearVeto, AiTriage, AuditEvent, Incident, User, VerdictRule
+from app.threats.settings import Tuning
 from tests.helpers import OTHER_ORIGIN
 from tests.test_incidents_engine import (
     ATTACKER,
@@ -84,6 +86,8 @@ class TestGivingAVerdict:
             "source_name": None,
             "signature": None,
             "note": "my scanner",
+            "given_by": "owner",
+            "ai": None,
             "created_at": "",
             "updated_at": "",
             "hits": 0,
@@ -555,3 +559,117 @@ class TestWhatAVerdictReaches:
         session.flush()
 
         assert engine.reach(session, rule) == set()
+
+
+class TestWhatTheAiGave:
+    def given_by_ai(self, session: Session, settings: Settings) -> VerdictRule:
+        """The verdict the AI gave of a scan: it was 91 sure, and said why."""
+        store(session, settings, alert(NOW, n=1, severity=Severity.HIGH))
+        run(session)
+        found = session.scalars(select(Incident)).one()
+        reading = AiTriage(
+            incident_id=found.id,
+            read_at=NOW,
+            signals_read=1,
+            classification="noise",
+            confidence=91,
+            headline="A scanner",
+            story="It tried a port.",
+            verdict="not_suspicious",
+            verdict_reason="The owner's own scanner.",
+            provider="anthropic",
+            model="claude-haiku-5-5",
+        )
+        rule = clearing.clear(session, found, reading, Tuning(ai_gives_verdicts=True), NOW)
+        session.commit()
+        assert rule is not None
+        return rule
+
+    def test_it_says_who_gave_it_and_what_the_ai_said(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = self.given_by_ai(session, settings)
+
+        (listed,) = client.get(BASE).json()["items"]
+
+        assert listed["given_by"] == "ai"
+        assert listed["note"] == "The owner's own scanner."
+        assert listed["ai"] == {
+            "confidence": 91,
+            "provider": "anthropic",
+            "model": "claude-haiku-5-5",
+            "incident_id": rule.ai_incident_id,
+        }
+
+    def test_the_owner_saying_it_themselves_makes_it_theirs(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = self.given_by_ai(session, settings)
+
+        response = give(
+            client,
+            csrf_token,
+            address=str(rule.address),
+            source=rule.source,
+            signature=rule.signature,
+        )
+
+        assert response.status_code == 200
+        assert (response.json()["given_by"], response.json()["ai"]) == ("owner", None)
+        (event,) = audited(session, Action.VERDICT_CHANGED)
+        assert event.detail is not None
+        assert event.detail["verdict_id"] == rule.id
+        assert audited(session, Action.VERDICT_TAKEN_BACK_FROM_AI) == []
+
+    def test_changing_it_makes_it_theirs(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = self.given_by_ai(session, settings)
+
+        response = client.patch(
+            f"{BASE}/{rule.id}", json={"verdict": "low_priority"}, headers=headers(csrf_token)
+        )
+
+        assert (response.json()["given_by"], response.json()["ai"]) == ("owner", None)
+
+    def test_a_note_alone_makes_it_theirs_too(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = self.given_by_ai(session, settings)
+
+        response = client.patch(
+            f"{BASE}/{rule.id}", json={"note": "Yes, mine"}, headers=headers(csrf_token)
+        )
+
+        assert response.json()["given_by"] == "owner"
+        assert response.json()["note"] == "Yes, mine"
+
+    def test_saying_nothing_new_of_a_verdict_the_owners_changes_nothing(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        give(client, csrf_token, address=ATTACKER, note="mine")
+
+        response = give(client, csrf_token, address=ATTACKER, note="mine")
+
+        assert response.status_code == 200
+        assert audited(session, Action.VERDICT_CHANGED) == []
+
+    def test_taking_it_back_says_so_and_tells_the_ai_not_to_do_it_again(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = self.given_by_ai(session, settings)
+        incident = session.scalars(select(Incident)).one()
+        assert incident.verdict == "not_suspicious"
+
+        response = client.delete(f"{BASE}/{rule.id}", headers=headers(csrf_token))
+
+        assert response.status_code == 204
+        session.expire_all()
+        assert session.scalars(select(VerdictRule)).all() == []
+        assert incident.verdict is None
+        (event,) = audited(session, Action.VERDICT_TAKEN_BACK_FROM_AI)
+        assert event.detail is not None
+        assert event.detail["verdict_id"] == rule.id
+        assert audited(session, Action.VERDICT_REMOVED) == []
+        (veto,) = session.scalars(select(AiClearVeto))
+        assert (veto.source, veto.signature) == (rule.source, rule.signature)

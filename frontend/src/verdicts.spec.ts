@@ -42,7 +42,13 @@ describe('mutedIn', () => {
 })
 
 describe('standing', () => {
-  const base = { verdict: null, verdict_counts: {}, signal_count: 4, filtered_count: 0 } as const
+  const base = {
+    verdict: null,
+    verdict_counts: {},
+    signal_count: 4,
+    filtered_count: 0,
+    cleared_by_ai: null,
+  } as const
 
   it('says nothing was said', () => {
     expect(standing(base)).toBe("You haven't said anything about it yet.")
@@ -78,6 +84,23 @@ describe('standing', () => {
   it('says it raises no alarm when every signal is left out', () => {
     expect(standing({ ...base, verdict: 'not_suspicious' })).toContain('will not raise an alarm')
     expect(standing({ ...base, verdict: 'low_priority' })).toContain('sure of nothing')
+  })
+
+  it('says the AI gave the verdict, how sure it was, and that it can be taken back', () => {
+    const cleared = {
+      verdict_id: 3,
+      verdict: 'not_suspicious',
+      reason: 'The owner scanner.',
+      confidence: 93,
+      provider: 'anthropic',
+      model: 'claude-haiku-5-5',
+      at: '2026-11-14T12:00:00Z',
+    } as const
+
+    expect(standing({ ...base, verdict: 'not_suspicious', cleared_by_ai: cleared })).toBe(
+      'The AI was 93% sure it is a false positive and gave the verdict itself, so AresGate is ' +
+        'sure of nothing and will not raise an alarm for it. Take the verdict back if you disagree.',
+    )
   })
 
   it('says the owner called it a threat', () => {

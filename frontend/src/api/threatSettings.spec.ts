@@ -16,6 +16,7 @@ const DRAFT: ThreatDraft = {
   notes: 'A web server',
   important_drop: 15,
   low_raise: 5,
+  ai_gives_verdicts: true,
 }
 
 describe('threat settings', () => {

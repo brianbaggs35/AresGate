@@ -38,6 +38,42 @@ test.describe('where a device sends its traffic', () => {
   })
 })
 
+test.describe('a verdict the AI gave', () => {
+  test('says so, why and how sure it was, and is taken back with a warning', async ({
+    harness,
+    page,
+    verdicts,
+  }) => {
+    await harness.createIncidents([{ address: ATTACKER, signals: 2 }])
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: ATTACKER, note: 'The scanner you run.', by_ai: true },
+    ])
+
+    // What a verdict quiets is left out of the list unless asked for.
+    await page.goto('/incidents?view=all&quieted=1')
+    await expect(page.getByTestId('incident-cleared-by-ai')).toContainText(
+      'Given by the AI, 91% sure',
+    )
+
+    await verdicts.goto()
+    await expect(verdicts.rows.first().getByTestId('ai-gave')).toHaveText(
+      'Given by the AI, 91% sure',
+    )
+    await expect(verdicts.rows.first().getByTestId('verdict-why')).toHaveText(
+      'Why: The scanner you run.',
+    )
+
+    await verdicts.rows.first().getByTestId('verdict-remove').click()
+    await expect(page.getByTestId('take-back-ai')).toContainText('not to give it again')
+    await verdicts.confirm.click()
+
+    await expect(verdicts.empty).toBeVisible()
+    await page.goto('/incidents?view=all&quieted=1')
+    await expect(page.getByTestId('incident')).toHaveCount(1)
+    await expect(page.getByTestId('incident-cleared-by-ai')).toHaveCount(0)
+  })
+})
+
 test.describe('verdicts page', () => {
   test('is one of the settings pages, and says none have been given on a new install', async ({
     page,

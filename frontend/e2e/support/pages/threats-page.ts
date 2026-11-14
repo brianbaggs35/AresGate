@@ -224,6 +224,10 @@ export class ThreatSettingsPage {
     return this.page.getByTestId('threat-confirm').getByRole('checkbox')
   }
 
+  get verdictsSwitch(): Locator {
+    return this.page.getByTestId('threat-verdicts').getByRole('checkbox')
+  }
+
   /** The sliders for how far the devices that matter move the bar, and what each says. */
   get dropSlider(): Locator {
     return this.page.getByRole('slider', {

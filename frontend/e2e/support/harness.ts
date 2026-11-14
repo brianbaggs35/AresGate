@@ -271,6 +271,8 @@ export interface VerdictRequest {
   source?: string
   signature?: string
   note?: string
+  /** Given by the AI, 91% sure, and not by the owner. */
+  by_ai?: boolean
 }
 
 /** How many verdicts `createVerdicts()` gave. */

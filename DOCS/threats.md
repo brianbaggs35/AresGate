@@ -330,11 +330,34 @@ on now moved between lanes, so you see the effect first.
 | **Let the AI set harmless incidents aside** | On by default. Probes and noise the AI is sure about go to the background instead of your list. They are still kept. |
 | **How sure the AI has to be** | The AI's confidence needed to set one aside (50 to 100, 80 by default). Critical incidents are never set aside. |
 | **A threat needs the AI to agree** | While an AI is on and reading by itself, an incident that only the rules are sure of is a suspect until the AI agrees (unless it is critical). |
+| **Let the AI clear false positives** | Off by default. When the AI is sure an incident is a false positive (it says so, and is as sure as the setting above), it gives the verdict *not suspicious* or *low priority* itself, so the same alert never bothers you again. See [When the AI clears a false positive](#when-the-ai-clears-a-false-positive). |
 | **Devices that matter** | Two sliders, each 0 to 30 points. How much lower the bar to be shown an incident is when it touched a device you called *important* or *critical* (10 by default), and how much higher it is when it touched only guests' and IoT devices (0 by default). A chain of attacks is shown whatever the bar is. |
 | **What is open to the internet** | Nothing, some services (with their ports, up to 20) or not sure. The same scan means little on a network with nothing open and a lot on one that runs a service. The AI is told. |
 | **Anything else about your network** | Up to 500 characters in your own words (a Plex server, a VPN to the office), which the AI is told too. |
 
-The two AI settings do nothing while no AI is on; the page says so.
+The AI settings do nothing while no AI is on; the page says so.
+
+### When the AI clears a false positive
+
+With **Let the AI clear false positives** on, a reading that suggests *not suspicious* or *low
+priority* with at least the confidence you set for setting incidents aside becomes a verdict of its
+own, about the address and the program and signature of the incident's strongest alert (or the
+program and signature where it names no address). Everything that respects your verdicts respects
+it: the incident is muted, out of what needs you, and that match never raises an alarm again.
+
+It never replaces your word:
+
+- A verdict says who gave it. On the Verdicts page and on the incident it shows *Given by the AI,
+  91% sure*, the reason it gave, and which provider and model said so. The audit log records it
+  (`verdict.given_by_ai`) with the same facts.
+- **Take back** removes it, and tells the AI not to give that one again (`verdict.taken_back_from_ai`).
+  Saying or changing the verdict yourself makes it yours, and the AI's confidence is forgotten.
+- It never clears an incident you already gave a verdict on, a critical one, a chain of attacks (of
+  stages or across devices), one the AI itself is sure is an attack, or one that is over.
+- An alert with no signature is left to you, since a verdict about an address alone would clear
+  everything it ever does.
+
+The code is `app/ai/clearing.py`, called when a reading is kept (`app/ai/triage.py`).
 
 ### Which devices matter
 

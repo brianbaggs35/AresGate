@@ -34,6 +34,8 @@ class ThreatSettingsOut(BaseModel):
     # (down) and one that touched only guest or IoT devices (up).
     important_drop: int
     low_raise: int
+    # Whether the AI may give a verdict that clears an incident it is sure is a false positive.
+    ai_gives_verdicts: bool
     # What each is until it is changed, and the lowest the AI's bar can be.
     default_threat_from: int
     default_clear_from: int
@@ -65,6 +67,7 @@ class ThreatSettingsIn(BaseModel):
         default=settings.DEFAULT_IMPORTANT_DROP, ge=0, le=settings.MAX_SHIFT
     )
     low_raise: int = Field(default=settings.DEFAULT_LOW_RAISE, ge=0, le=settings.MAX_SHIFT)
+    ai_gives_verdicts: bool = False
 
     @field_validator("notes")
     @classmethod
@@ -101,6 +104,7 @@ def _tuning(body: ThreatSettingsIn) -> Tuning:
         notes=body.notes,
         important_drop=body.important_drop,
         low_raise=body.low_raise,
+        ai_gives_verdicts=body.ai_gives_verdicts,
     )
 
 
@@ -117,6 +121,7 @@ def _shown(db: Db) -> ThreatSettingsOut:
         notes=tuning.notes,
         important_drop=tuning.important_drop,
         low_raise=tuning.low_raise,
+        ai_gives_verdicts=tuning.ai_gives_verdicts,
         default_threat_from=settings.DEFAULT_THREAT_FROM,
         default_clear_from=settings.DEFAULT_CLEAR_FROM,
         default_important_drop=settings.DEFAULT_IMPORTANT_DROP,
@@ -154,6 +159,7 @@ def _facts(was: Tuning, now: Tuning) -> dict[str, str | int | bool]:
         "exposure",
         "important_drop",
         "low_raise",
+        "ai_gives_verdicts",
     ):
         before, after = getattr(was, name), getattr(now, name)
         if before != after:
