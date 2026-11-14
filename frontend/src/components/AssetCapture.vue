@@ -165,7 +165,12 @@ function notesOf(found: Capture): string {
       >
         {{ notesOf(result) }}
       </p>
-      <div v-if="result.packets.length" class="scroll">
+      <section
+        v-if="result.packets.length"
+        class="scroll"
+        tabindex="0"
+        aria-label="Packets captured, in a table that scrolls sideways"
+      >
         <v-table density="compact" data-test="capture-packets">
           <caption class="sr-only">
             Packets captured
@@ -191,7 +196,7 @@ function notesOf(found: Capture): string {
             </tr>
           </tbody>
         </v-table>
-      </div>
+      </section>
     </div>
   </SectionCard>
 </template>
@@ -228,8 +233,14 @@ function notesOf(found: Capture): string {
   padding: 0;
 }
 
+/* One scroller, the section, which the keyboard can reach: the table's own wrapper would be a
+ * second one that it can't. */
 .scroll {
   overflow-x: auto;
+}
+
+.scroll :deep(.v-table__wrapper) {
+  overflow: visible;
 }
 
 .mono {
