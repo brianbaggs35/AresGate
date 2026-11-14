@@ -11,6 +11,7 @@ from httpx2 import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api import threat_intel as threat_intel_api
 from app.integrations import netguard, service
 from app.integrations.client import CallFailed, Target
 from app.intel import store, subjects, virustotal
@@ -358,11 +359,15 @@ def test_a_search_within_the_spacing_of_the_last_lookup_waits_and_says_how_long(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The clock stands still, so that no time passes between the lookup and the search: the wait
+    # is rounded up to whole seconds and a busy computer could take one of them.
+    moment = utcnow()
+    monkeypatch.setattr(threat_intel_api, "utcnow", lambda: moment)
     session.add(
         IntelLookup(
             provider=virustotal.PROVIDER,
             address=ip_address("1.1.1.1"),
-            requested_at=utcnow() - timedelta(seconds=10),
+            requested_at=moment - timedelta(seconds=10),
             outcome=store.REPORTED,
         )
     )

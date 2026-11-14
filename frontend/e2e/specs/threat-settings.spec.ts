@@ -84,6 +84,30 @@ test.describe('the threat detection settings', () => {
     await expect(threatSettings.levelValue).toHaveText('40 out of 100')
   })
 
+  test('say how far the devices that matter move the bar, and keep it when saved', async ({
+    threatSettings,
+    page,
+  }) => {
+    await threatSettings.goto()
+    await expect(threatSettings.dropValue).toHaveText('Important devices: 10 points lower')
+    await expect(threatSettings.raiseValue).toHaveText('Guests and IoT devices: 0 points higher')
+
+    await threatSettings.dropSlider.focus()
+    await page.keyboard.press('ArrowRight')
+    await threatSettings.raiseSlider.focus()
+    for (let step = 0; step < 5; step++) await page.keyboard.press('ArrowRight')
+
+    await expect(threatSettings.dropValue).toHaveText('Important devices: 11 points lower')
+    await expect(threatSettings.raiseValue).toHaveText('Guests and IoT devices: 5 points higher')
+    await expect(threatSettings.save).toBeEnabled()
+    await threatSettings.save.click()
+    await expect(threatSettings.saved).toBeVisible()
+
+    await threatSettings.goto()
+    await expect(threatSettings.dropValue).toHaveText('Important devices: 11 points lower')
+    await expect(threatSettings.raiseValue).toHaveText('Guests and IoT devices: 5 points higher')
+  })
+
   test('put the page back to what is kept', async ({ threatSettings, page }) => {
     await threatSettings.goto()
     await threatSettings.levelSlider.focus()

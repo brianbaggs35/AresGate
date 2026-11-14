@@ -172,6 +172,19 @@ export interface Incident {
   /** What the threat hunter's last run says of it, when it names it in a finding worth acting on.
    * The hunter only reads: this is what it thinks, for you to decide. */
   hunter: HunterFlag[]
+  /** How much the devices it touched matter to you, which ranks it: `critical` and `important` are
+   * devices you said matter, `low` is only guests and IoT, `normal` is the rest. */
+  importance: 'critical' | 'important' | 'normal' | 'low'
+  /** The device that makes it matter more (or less), and a sentence saying so. */
+  touched: Touched | null
+}
+
+/** The device that makes an incident matter more, or less. */
+export interface Touched {
+  name: string
+  kind: string
+  importance: 'critical' | 'important' | 'low'
+  text: string
 }
 
 /** One finding of the threat hunter that names an incident. */

@@ -30,6 +30,13 @@ class TestWhyItIsWhereItIs:
         assert "20% sure" in line
         assert "below the 35%" in line
 
+    def test_the_bar_it_fell_short_of_is_the_one_its_devices_moved(self) -> None:
+        [lower] = said(confidence=20, importance=1, tuning=Tuning(important_drop=10))
+        [higher] = said(confidence=40, importance=-1, tuning=Tuning(low_raise=10))
+
+        assert "below the 25%" in lower
+        assert "below the 45%" in higher
+
     def test_one_the_ai_set_aside_says_who_and_how_sure(self) -> None:
         first, second = said(confidence=80, ai_class="probe", ai_confidence=91, ai_basis="family")
 

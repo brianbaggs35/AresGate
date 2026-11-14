@@ -11,6 +11,7 @@ import AiChip from '@/components/AiChip.vue'
 import CallChip from '@/components/CallChip.vue'
 import ConfidenceMeter from '@/components/ConfidenceMeter.vue'
 import HunterChip from '@/components/HunterChip.vue'
+import ImportanceChip from '@/components/ImportanceChip.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import LaneChip from '@/components/LaneChip.vue'
 import ResponseChip from '@/components/ResponseChip.vue'
@@ -143,6 +144,7 @@ async function give(kind: VerdictKind) {
         <CallChip v-if="incident.call" :call="incident.call" />
         <AiChip v-else-if="incident.ai" :ai="incident.ai" />
         <HunterChip :flags="incident.hunter" />
+        <ImportanceChip v-if="incident.touched" :touched="incident.touched" />
         <span class="incident-card__when text-body-medium text-medium-emphasis">
           Last signal
           <time
@@ -157,6 +159,14 @@ async function give(kind: VerdictKind) {
       <h3 class="incident-card__title text-title-large" data-test="incident-title">
         {{ incident.title }}
       </h3>
+
+      <p
+        v-if="incident.touched"
+        class="incident-card__touched text-body-medium text-medium-emphasis"
+        data-test="incident-touched"
+      >
+        {{ incident.touched.text }}
+      </p>
 
       <div class="incident-card__details">
         <ConfidenceMeter
@@ -333,6 +343,10 @@ async function give(kind: VerdictKind) {
 .incident-card__title {
   margin: 0.75rem 0 0.75rem;
   overflow-wrap: anywhere;
+}
+
+.incident-card__touched {
+  margin: -0.25rem 0 0.75rem;
 }
 
 .incident-card__details {

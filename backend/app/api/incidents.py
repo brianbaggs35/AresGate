@@ -59,6 +59,7 @@ from app.nvd import lookup as nvd_lookup
 from app.nvd import said as nvd_said
 from app.nvd import store as nvd_store
 from app.threats import explain
+from app.threats import importance as weighing
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
 
@@ -217,6 +218,20 @@ class IncidentOut(BaseModel):
     chain_reason: str | None
     # What the threat hunter's last run says of it, if it names it in a finding worth acting on.
     hunter: list[HunterFlagOut] = Field(default_factory=lambda: [])
+    # How much the devices it touched matter to the owner, which ranks it: ``critical`` and
+    # ``important`` are devices they said matter, ``low`` is only guests and IoT, ``normal`` the
+    # rest. ``touched`` names the device that makes it so, and says so in a sentence.
+    importance: Literal["critical", "important", "normal", "low"] = "normal"
+    touched: TouchedOut | None = None
+
+
+class TouchedOut(BaseModel):
+    """The device that makes an incident matter more, or less."""
+
+    name: str
+    kind: str
+    importance: Literal["critical", "important", "low"]
+    text: str
 
 
 class ReasonOut(BaseModel):
@@ -785,6 +800,7 @@ def _incident(
     judging: Judging,
     read: AiTriage | None = None,
     hunted: list[flags.Flag] | None = None,
+    touch: weighing.Touch | None = None,
 ) -> IncidentOut:
     lane = attention.lane_of(incident, judging.floor, judging.tuning)
     return IncidentOut(
@@ -822,6 +838,21 @@ def _incident(
         chain_link=cast(Literal["confirmed", "inferred"] | None, incident.chain_link),
         chain_reason=incident.chain_reason,
         hunter=_hunter(hunted or []),
+        importance=cast(
+            Literal["critical", "important", "normal", "low"], weighing.word(incident.importance)
+        ),
+        touched=_touched(touch),
+    )
+
+
+def _touched(touch: weighing.Touch | None) -> TouchedOut | None:
+    if touch is None:
+        return None
+    return TouchedOut(
+        name=touch.name,
+        kind=touch.kind,
+        importance=cast(Literal["critical", "important", "low"], touch.importance),
+        text=weighing.sentence(touch),
     )
 
 
@@ -1012,9 +1043,15 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     grouped = occurrences.group(seen)
     devices = queries.devices(db, incident)
     drawn = _path(db, incident, seen, done, devices)
+    touch = weighing.touches(db, [incident]).get(incident.id)
     return IncidentDetail(
         **_incident(
-            incident, done, judging, read, flags.of_incidents(db, [incident.id])[incident.id]
+            incident,
+            done,
+            judging,
+            read,
+            flags.of_incidents(db, [incident.id])[incident.id],
+            touch,
         ).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
@@ -1041,7 +1078,10 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
         ],
         blocked=None if done.state == "no_address" else done.tally.blocked,
         reading=_reading(read),
-        why=explain.why(incident, judging.floor, judging.tuning),
+        why=[
+            *explain.why(incident, judging.floor, judging.tuning),
+            *([weighing.sentence(touch)] if touch else []),
+        ],
         occurrences=occurrences_out(grouped),
         family=_family(db, incident),
         insights=_insights(insights.of(grouped)),
@@ -1283,11 +1323,17 @@ def list_incidents(
         )
     }
     hunted = flags.of_incidents(db, [incident.id for incident in page.incidents])
+    touching = weighing.touches(db, page.incidents)
     return IncidentPage(
         total=page.total,
         items=[
             _incident(
-                incident, done[incident.id], judging, read.get(incident.id), hunted[incident.id]
+                incident,
+                done[incident.id],
+                judging,
+                read.get(incident.id),
+                hunted[incident.id],
+                touching.get(incident.id),
             )
             for incident in page.incidents
         ],

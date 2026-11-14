@@ -19,12 +19,14 @@ from app.audit import Action, Outcome
 from app.devices import ways
 from app.events.event import Severity
 from app.models import utcnow
+from app.threats import importance as weighing
 
 router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(signed_in)])
 
 MAX_PAGE = 100
 StatusName = Literal["online", "recent", "away"]
 Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
+Importance = Literal["normal", "important", "critical"]
 # The longest words a search takes in: more than any address or name.
 MAX_SEARCH = 200
 MAX_SOURCES = 8
@@ -57,6 +59,8 @@ class ProfileOut(BaseModel):
     carries: bool
     purpose: str | None
     updated_at: AwareDatetime
+    # How much it matters to the owner, which ranks the threats that touch it.
+    importance: Importance
 
 
 class KindOut(BaseModel):
@@ -66,6 +70,10 @@ class KindOut(BaseModel):
     label: str
     group: str
     carries: bool
+    # How much an asset of this kind usually matters, offered when the owner picks it.
+    importance: Importance
+    # Whether a threat that touched only assets of this kind takes more proof (guests, IoT).
+    lowers: bool
 
 
 class KindGroupOut(BaseModel):
@@ -249,6 +257,7 @@ def _said(said: profiles.Profile) -> ProfileOut:
         carries=said.carries,
         purpose=said.purpose,
         updated_at=said.updated_at,
+        importance=cast(Importance, said.importance),
     )
 
 
@@ -628,7 +637,14 @@ def list_kinds() -> list[KindGroupOut]:
             key=key,
             label=label,
             kinds=[
-                KindOut(key=kind.key, label=kind.label, group=kind.group, carries=kind.carries)
+                KindOut(
+                    key=kind.key,
+                    label=kind.label,
+                    group=kind.group,
+                    carries=kind.carries,
+                    importance=cast(Importance, weighing.PRESETS.get(kind.key, "normal")),
+                    lowers=kind.key in weighing.LOW_KINDS,
+                )
                 for kind in profiles.KINDS
                 if kind.group == key
             ],
@@ -646,6 +662,10 @@ class ProfileIn(BaseModel):
             description="What it is for, in the owner's words: Dad's work laptop.",
         ),
     ] = None
+    importance: Annotated[
+        Importance,
+        Field(description="How much it matters: normal, important or critical."),
+    ] = "normal"
 
 
 def _listed(db: Db, key: str) -> Asset:
@@ -667,14 +687,15 @@ def classify_asset(
     """Says what an asset is and what it is for. It is the owner's word and replaces what was
     said before."""
     _listed(db, key)
-    kept = profiles.save(db, key, body.kind, body.purpose, utcnow())
+    kept = profiles.save(db, key, body.kind, body.purpose, utcnow(), body.importance)
+    weighing.refresh(db)
     record_audit(
         db,
         request,
         Action.ASSET_CLASSIFIED,
         Outcome.SUCCESS,
         user=auth.user,
-        detail={"asset": key, "kind": body.kind},
+        detail={"asset": key, "kind": body.kind, "importance": body.importance},
     )
     db.commit()
     return _said(kept)
@@ -691,6 +712,7 @@ def unclassify_asset(
     """Takes back what was said of an asset."""
     if not profiles.clear(db, key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing was said of that asset.")
+    weighing.refresh(db)
     record_audit(
         db,
         request,

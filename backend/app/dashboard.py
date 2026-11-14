@@ -30,6 +30,7 @@ from app.incidents.attention import NEEDS_YOU_FROM, Standing, clauses, urgent_cl
 from app.incidents.filters import inside_clause
 from app.models import Device, Event, Incident, MetricSample, MetricSeries
 from app.models.base import UTCDateTime
+from app.threats import importance
 from app.threats.settings import Tuning
 
 # The firewall's byte counters, which only rise until the firewall restarts.
@@ -428,9 +429,7 @@ def marked_incidents(
             Incident.severity >= MARKED_FROM,
             ~or_(by[Standing.MUTED], by[Standing.UNSURE], by[Standing.AI_CLEARED]),
         )
-        .order_by(
-            Incident.severity.desc(), Incident.confidence.desc(), Incident.last_seen_at.desc()
-        )
+        .order_by(Incident.severity.desc(), importance.rank().desc(), Incident.last_seen_at.desc())
         .limit(limit)
     )
     return sorted(db.scalars(chosen), key=lambda incident: (incident.first_seen_at, incident.id))

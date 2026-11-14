@@ -224,6 +224,27 @@ export class ThreatSettingsPage {
     return this.page.getByTestId('threat-confirm').getByRole('checkbox')
   }
 
+  /** The sliders for how far the devices that matter move the bar, and what each says. */
+  get dropSlider(): Locator {
+    return this.page.getByRole('slider', {
+      name: 'How many points lower the bar is for an incident that touched an important device',
+    })
+  }
+
+  get dropValue(): Locator {
+    return this.page.getByTestId('importance-drop-value')
+  }
+
+  get raiseSlider(): Locator {
+    return this.page.getByRole('slider', {
+      name: 'How many points higher the bar is for an incident that touched only guest or IoT devices',
+    })
+  }
+
+  get raiseValue(): Locator {
+    return this.page.getByTestId('importance-raise-value')
+  }
+
   /** The radio for what is open to the internet: none, some or unknown. */
   exposure(choice: 'none' | 'some' | 'unknown'): Locator {
     return this.page.getByTestId(`exposure-${choice}`).getByRole('radio')
