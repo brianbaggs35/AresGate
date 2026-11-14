@@ -147,7 +147,7 @@ watch(
   gap: 0.5rem 1rem;
   align-items: center;
   padding: 0.75rem 0;
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant), 0.6);
+  border-bottom: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.6));
 }
 
 .calls__main {

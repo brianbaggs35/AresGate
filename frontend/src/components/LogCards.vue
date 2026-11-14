@@ -88,7 +88,7 @@ const accent = (event: LogEvent) => `rgb(var(--v-theme-${SEVERITY[event.severity
   width: 100%;
   min-height: 44px;
   padding: 0.75rem 1rem 0.75rem 1.25rem;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.75rem;
   background: rgb(var(--v-theme-surface));
   color: inherit;

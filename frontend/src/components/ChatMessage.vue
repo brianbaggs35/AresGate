@@ -165,7 +165,7 @@ function callLabel(index: number): string {
 .message--assistant {
   align-self: flex-start;
   width: 100%;
-  border: 1px solid rgb(var(--v-theme-outline-variant), 0.6);
+  border: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.6));
   background: rgb(var(--v-theme-surface));
   overflow-wrap: anywhere;
 }

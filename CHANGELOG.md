@@ -16,7 +16,6 @@ Every release's notes are here, newest first. The format follows
   again; changing it yourself makes it yours. It never clears what you gave a verdict on, a
   critical incident or a chain of attacks. See
   [When the AI clears a false positive](DOCS/threats.md#when-the-ai-clears-a-false-positive).
-
 - **Say which devices matter.** On the Assets page, each device is now *normal*, *important* or
   *critical* (a NAS or a router offers critical, a server or a camera important), and a guest's
   device is a kind of its own. Incidents are ranked by how bad, how sure and how much the device
@@ -25,6 +24,14 @@ Every release's notes are here, newest first. The format follows
   (10 points by default) and how much higher for guests and IoT devices (0), with the preview of
   what each would change. The AI is told which devices matter, and no longer told a local
   device's hardware address. See [Which devices matter](DOCS/threats.md#which-devices-matter).
+
+### Fixed
+
+- **Dividers and boxes that had no border.** Sixteen places (the log drawer and its fields, the
+  tables of logs and of AI calls, the search box and its facets, chat messages, the bulk bar, the
+  raw record and the response rows) drew their border with a theme colour that doesn't exist, so
+  the browser dropped the whole border. They use the border colour the rest of the app does, and a
+  test now fails when a stylesheet names a theme colour the themes don't define.
 
 ## 0.1.7
 
