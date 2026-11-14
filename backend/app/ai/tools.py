@@ -280,12 +280,17 @@ def _device_ref(found: Device) -> Ref:
 
 
 def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
-    """The devices on the home network that a name, an address or a maker matches."""
-    if not args.name or not args.name.strip():
+    """The devices on the home network that a name, an address or a maker matches, or the one with
+    an id."""
+    if args.id is not None:
+        wanted = Device.id == args.id
+    elif args.name and args.name.strip():
+        wanted = _device_filter(redactor, args.name)
+    else:
         return Found(["Name the device, or give its address."], [], "no device named")
     devices = db.scalars(
         select(Device)
-        .where(_device_filter(redactor, args.name))
+        .where(wanted)
         .order_by(Device.last_seen_at.desc(), Device.id)
         .limit(MAX_DEVICES)
     ).all()

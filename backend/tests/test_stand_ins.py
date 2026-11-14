@@ -901,6 +901,10 @@ class TestAiProviders:
         assert second["lookups"] == []
         assert second["answer"] == "Start with incident 7: it is the one that needs you most."
         assert second["cites"] == ["incident 7"]
+        assert second["actions"] == [
+            {"kind": "open", "target": "incident 7", "value": None, "note": None},
+            {"kind": "status", "target": "incident 7", "value": "investigating", "note": None},
+        ]
 
     def test_anthropic_says_nothing_needs_attention_when_nothing_was_found(self) -> None:
         said = self.chat(
@@ -910,6 +914,7 @@ class TestAiProviders:
 
         assert said["answer"] == "Nothing needs your attention right now."
         assert said["cites"] == []
+        assert said["actions"] == []
 
     def test_anthropic_looks_up_the_integrations_when_asked_about_them(self) -> None:
         first = self.chat("The owner asks: Are my integrations working?")
@@ -933,11 +938,17 @@ class TestAiProviders:
         ]
         assert second["answer"] == "Start with device 4: it is the one that needs you most."
         assert second["cites"] == ["device 4"]
+        assert second["actions"] == []
 
     def test_anthropic_answers_any_other_question_straight_away(self) -> None:
         said = self.chat("The owner asks: How are you?")
 
-        assert said == {"lookups": [], "answer": "All quiet on the home network.", "cites": []}
+        assert said == {
+            "lookups": [],
+            "answer": "All quiet on the home network.",
+            "cites": [],
+            "actions": [],
+        }
 
     def agent(self, content: str) -> dict[str, Any]:
         good = {"x-api-key": "right-key", "anthropic-version": "2023-06-01"}

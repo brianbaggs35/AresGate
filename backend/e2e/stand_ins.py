@@ -1578,7 +1578,9 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
         if words not in question:
             continue
         if f'<data label="{tool.replace("_", " ")}' not in prompt:
-            return json.dumps({"lookups": [_lookup(tool, name)], "answer": "", "cites": []})
+            return json.dumps(
+                {"lookups": [_lookup(tool, name)], "answer": "", "cites": [], "actions": []}
+            )
         found = re.search(rf"\[{kind} (\w+)\]", prompt)
         answer = (
             f"Start with {kind} {found.group(1)}: it is the one that needs you most."
@@ -1586,8 +1588,19 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
             else "Nothing needs your attention right now."
         )
         cites = [f"{kind} {found.group(1)}"] if found else []
-        return json.dumps({"lookups": [], "answer": answer, "cites": cites})
-    return json.dumps({"lookups": [], "answer": "All quiet on the home network.", "cites": []})
+        # What it suggests of an incident it found: to open it, and to start on it.
+        actions = (
+            [
+                {"kind": "open", "target": cites[0], "value": None, "note": None},
+                {"kind": "status", "target": cites[0], "value": "investigating", "note": None},
+            ]
+            if kind == "incident" and found
+            else []
+        )
+        return json.dumps({"lookups": [], "answer": answer, "cites": cites, "actions": actions})
+    return json.dumps(
+        {"lookups": [], "answer": "All quiet on the home network.", "cites": [], "actions": []}
+    )
 
 
 def _answer_of_an_agent(asked: Mapping[str, Any]) -> str | None:

@@ -1,5 +1,6 @@
+import ChatActions from '@/components/ChatActions.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
-import { answer, question } from '@/test/aiChat'
+import { action, answer, question } from '@/test/aiChat'
 import { mountWithPlugins } from '@/test/mount'
 
 async function show(message = answer(), canRetry = false) {
@@ -119,5 +120,18 @@ describe('ChatMessage', () => {
 
       expect(find('message-retry').exists()).toBe(false)
     })
+  })
+
+  it('shows what it suggests as buttons, and says when one opened a page', async () => {
+    const { find, wrapper } = await show(answer({ actions: [action()] }))
+    expect(find('message-actions').exists()).toBe(true)
+    wrapper.findComponent(ChatActions).vm.$emit('opened')
+    expect(wrapper.emitted('opened')).toHaveLength(1)
+  })
+
+  it('suggests nothing where it did not, or could not answer', async () => {
+    expect((await show()).find('message-actions').exists()).toBe(false)
+    const failed = await show(answer({ ok: false, actions: [action()] }))
+    expect(failed.find('message-actions').exists()).toBe(false)
   })
 })
