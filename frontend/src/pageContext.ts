@@ -19,24 +19,30 @@ function text(value: unknown, most: number): string | undefined {
 export function pageOf(route: Where): PageContext | null {
   const name = typeof route.name === 'string' ? route.name : ''
   if (name === 'assistant' || name === 'assistant-chat') return null
-  if (name === 'incident') {
-    const id = Number(route.params.id)
-    return Number.isSafeInteger(id) && id > 0 ? { kind: 'incident', id } : null
-  }
-  if (name === 'asset') {
-    const found = /^device-(\d{1,15})$/.exec(String(route.params.key))
-    return found ? { kind: 'device', id: Number(found[1]) } : { kind: 'other', title: 'Assets' }
-  }
-  if (name === 'device') {
-    const address = text(route.params.address, 45)
-    return address ? { kind: 'device', address } : { kind: 'other', title: 'Devices' }
-  }
+  if (name === 'incident') return incidentPage(route)
+  if (name === 'asset') return assetPage(route)
+  if (name === 'device') return devicePage(route)
   if (name === 'logs' || name === 'incidents') {
     const query = text(route.query.q, MAX_SEARCH)
     return { kind: name, ...(query ? { query } : {}) }
   }
   const title = text(route.meta.title, MAX_TITLE)
   return title ? { kind: 'other', title } : null
+}
+
+function incidentPage(route: Where): PageContext | null {
+  const id = Number(route.params.id)
+  return Number.isSafeInteger(id) && id > 0 ? { kind: 'incident', id } : null
+}
+
+function assetPage(route: Where): PageContext {
+  const found = /^device-(\d{1,15})$/.exec(String(route.params.key))
+  return found ? { kind: 'device', id: Number(found[1]) } : { kind: 'other', title: 'Assets' }
+}
+
+function devicePage(route: Where): PageContext {
+  const address = text(route.params.address, 45)
+  return address ? { kind: 'device', address } : { kind: 'other', title: 'Devices' }
 }
 
 /** What the panel says it is looking at, in words, or null where there is nothing to say. */

@@ -44,7 +44,7 @@ watch(onItsOwnPage, (own) => {
     aria-label="Assistant"
     data-test="assistant-drawer"
   >
-    <AssistantPanel />
+    <AssistantPanel v-if="assistant.open" />
   </v-navigation-drawer>
 </template>
 

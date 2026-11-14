@@ -187,10 +187,18 @@ def _number(value: object) -> int | None:
     return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
+def _fields(item: object) -> dict[str, object] | None:
+    return cast("dict[str, object]", item) if isinstance(item, dict) else None
+
+
+def _items(value: object) -> list[object]:
+    return cast("list[object]", value) if isinstance(value, list) else []
+
+
 def _lookup(item: object) -> Lookup | None:
-    if not isinstance(item, dict):
+    fields = _fields(item)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", item)
     name = fields.get("tool")
     tool = tools.by_name(name) if isinstance(name, str) else None
     if tool is None:
@@ -210,9 +218,9 @@ def _text_or_none(value: object) -> str | None:
 
 
 def _suggestion(item: object) -> Suggestion | None:
-    if not isinstance(item, dict):
+    fields = _fields(item)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", item)
     kind, target = _text_or_none(fields.get("kind")), _text_or_none(fields.get("target"))
     if kind is None or target is None:
         return None
@@ -228,22 +236,17 @@ def parse(text: str) -> Step | None:
         loaded = _loads(text)
     except ValueError:
         return None
-    if not isinstance(loaded, dict):
+    fields = _fields(loaded)
+    if fields is None:
         return None
-    fields = cast("dict[str, object]", loaded)
-    asked = fields.get("lookups")
-    items = cast("list[object]", asked) if isinstance(asked, list) else []
-    lookups = [found for item in items if (found := _lookup(item)) is not None]
+    lookups = [found for item in _items(fields.get("lookups")) if (found := _lookup(item))]
+    suggestions = [found for item in _items(fields.get("actions")) if (found := _suggestion(item))]
     answer = fields.get("answer")
-    cited = fields.get("cites")
-    cites = cast("list[object]", cited) if isinstance(cited, list) else []
-    suggested = fields.get("actions")
-    suggestions = cast("list[object]", suggested) if isinstance(suggested, list) else []
     return Step(
         lookups=lookups[:MAX_LOOKUPS],
         answer=audit.clean(answer, MAX_ANSWER) if isinstance(answer, str) else None,
-        cites=[item for item in cites if isinstance(item, str)],
-        actions=[found for item in suggestions if (found := _suggestion(item)) is not None],
+        cites=[item for item in _items(fields.get("cites")) if isinstance(item, str)],
+        actions=suggestions,
     )
 
 
@@ -477,6 +480,28 @@ def _action(
     }
 
 
+def _made(item: Suggestion, ref: Ref | None) -> dict[str, str | None] | None:
+    """The one thing a suggestion means, or None if it is not something the owner can do."""
+    value = item.value.strip().lower() if item.value else None
+    note = audit.clean(item.note, 200) if item.note else None
+    if item.kind == "open" and item.target.strip().lower() == "logs":
+        search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
+        return (
+            _action("open", "logs", search, None, f'Search the logs for "{search}"')
+            if search
+            else None
+        )
+    if item.kind == "open" and ref is not None:
+        return _action("open", ref, None, None, f"Open {ref.label}")
+    if ref is None or ref.kind != "incident" or value is None:
+        return None
+    if item.kind == "status" and value in _STATUS_LABELS:
+        return _action("status", ref, value, None, _STATUS_LABELS[value].format(ref.label))
+    if item.kind == "verdict" and value in _VERDICT_LABELS:
+        return _action("verdict", ref, value, note, _VERDICT_LABELS[value].format(ref.label))
+    return None
+
+
 def _proposed(
     suggestions: list[Suggestion], ran: list[tuple[Lookup, Found]]
 ) -> list[dict[str, str | None]]:
@@ -487,33 +512,9 @@ def _proposed(
     known = _known(ran)
     kept: dict[tuple[str, str, str | None], dict[str, str | None]] = {}
     for item in suggestions:
-        ref = known.get(item.target.strip(" []").lower())
-        value = item.value.strip().lower() if item.value else None
-        note = audit.clean(item.note, 200) if item.note else None
-        made: dict[str, str | None] | None = None
-        if item.kind == "open" and item.target.strip().lower() == "logs":
-            search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
-            if search:
-                made = _action("open", "logs", search, None, f'Search the logs for "{search}"')
-                value = search
-        elif item.kind == "open" and ref is not None:
-            made = _action("open", ref, None, None, f"Open {ref.label}")
-        elif (
-            item.kind == "status"
-            and ref is not None
-            and ref.kind == "incident"
-            and value in _STATUS_LABELS
-        ):
-            made = _action("status", ref, value, None, _STATUS_LABELS[value].format(ref.label))
-        elif (
-            item.kind == "verdict"
-            and ref is not None
-            and ref.kind == "incident"
-            and value in _VERDICT_LABELS
-        ):
-            made = _action("verdict", ref, value, note, _VERDICT_LABELS[value].format(ref.label))
+        made = _made(item, known.get(item.target.strip(" []").lower()))
         if made is not None:
-            kept.setdefault((item.kind, item.target.lower(), value), made)
+            kept.setdefault((item.kind, item.target.lower(), made["value"]), made)
     return list(kept.values())[:MAX_ACTIONS]
 
 

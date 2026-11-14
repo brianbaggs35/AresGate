@@ -27,6 +27,13 @@ describe('AssistantHost', () => {
     expect(useAssistantStore().open).toBe(false)
   })
 
+  it('has no panel in the page until it is opened, so nothing of it is read or found', async () => {
+    const { wrapper, assistant } = await open(1280)
+    assistant.open = false
+    await flushPromises()
+    expect(wrapper.find('[data-test="assistant-panel"]').exists()).toBe(false)
+  })
+
   it('is a drawer that covers the page on a screen with no room beside it', async () => {
     const { wrapper } = await open(900)
     expect(wrapper.find('[data-test="assistant-drawer"]').classes()).toContain(
