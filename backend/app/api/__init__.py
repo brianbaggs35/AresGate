@@ -26,6 +26,7 @@ from app.api import (
     metrics,
     noise,
     passkeys,
+    retention_settings,
     review,
     searches,
     setup,
@@ -70,6 +71,7 @@ api_router.include_router(chains.router)
 api_router.include_router(threats.router)
 api_router.include_router(threat_intel.router)
 api_router.include_router(threat_settings.router)
+api_router.include_router(retention_settings.router)
 api_router.include_router(review.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audit.router)

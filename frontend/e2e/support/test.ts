@@ -15,6 +15,7 @@ import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { DevicePage, DevicesPage } from './pages/devices-page'
 import { IncidentPage } from './pages/incident-page'
+import { RetentionSettingsPage } from './pages/retention-settings-page'
 import { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
@@ -79,6 +80,8 @@ export interface AresGateFixtures {
   /** What the AI decided, for the owner to agree or disagree with, and how much of it waits. */
   review: ReviewPage
   reviewSettings: ReviewSettingsPage
+  /** The settings page for how long data is kept and how big the database may get. */
+  retentionSettings: RetentionSettingsPage
   /** The settings page that lists the verdicts that were given. */
   verdicts: VerdictsPage
   /** The settings page for what is set aside without a verdict, and how sure it has to be. */
@@ -245,6 +248,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   reviewSettings: async ({ page }, use) => {
     await use(new ReviewSettingsPage(page))
+  },
+
+  retentionSettings: async ({ page }, use) => {
+    await use(new RetentionSettingsPage(page))
   },
 
   verdicts: async ({ page }, use) => {

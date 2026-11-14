@@ -5,6 +5,7 @@ import {
   Gavel,
   Workflow,
   History,
+  Hourglass,
   MonitorSmartphone,
   ShieldAlert,
   Sparkles,
@@ -45,4 +46,5 @@ export const settingsSections: readonly SettingsSection[] = [
   { key: 'ai', route: 'settings-ai', title: 'AI', icon: Sparkles },
   { key: 'agents', route: 'settings-agents', title: 'Agents', icon: Workflow },
   { key: 'data', route: 'settings-data', title: 'Data', icon: Database },
+  { key: 'retention', route: 'settings-retention', title: 'Retention', icon: Hourglass },
 ]

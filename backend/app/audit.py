@@ -60,6 +60,7 @@ class Action(StrEnum):
     AI_LEVEL_CHANGED = "ai.level_changed"
     EVENT_RETENTION_CHANGED = "events.retention_changed"
     METRIC_RETENTION_CHANGED = "metrics.retention_changed"
+    RETENTION_SETTINGS_CHANGED = "retention.settings_changed"
     INCIDENT_STATUS_CHANGED = "incident.status_changed"
     INCIDENT_TRIAGED = "incident.triaged"
     INCIDENTS_CHANGED = "incidents.changed"

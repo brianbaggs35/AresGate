@@ -6,6 +6,19 @@ Every release's notes are here, newest first. The format follows
 
 ## Unreleased
 
+### Added
+
+- **A Retention page in Settings, with a size limit for the database.** It starts switched off,
+  and while it is off each kind of data is kept for the time of its own setting, as before.
+  Switched on, you choose one number of days (30 by default) for events, measurements, the API
+  log, the record of AI requests and the log of alerts sent, or keep everything forever with no
+  age limit at all. You can also limit how big the database may get: when it is over, the oldest
+  weeks of events and measurements are dropped, a whole table at a time and checked every fifteen
+  minutes, until it is under 95% of the limit. Nothing that arrives is refused because of the
+  limit, the week being collected and everything else is never touched, and the page says so when
+  it is over with nothing more it may remove. See
+  [Retention and the size of the database](DOCS/operations.md#retention-and-the-size-of-the-database).
+
 ### Fixed
 
 - **A busy NVD, OTX, GreyNoise or Fingerbank is no longer reported as a failed connection with a

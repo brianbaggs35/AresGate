@@ -29,6 +29,7 @@ describe('SettingsNav', () => {
       '/settings/ai',
       '/settings/agents',
       '/settings/data',
+      '/settings/retention',
     ])
     expect(links.map((link) => link.text())).toEqual([
       'Account',
@@ -41,6 +42,7 @@ describe('SettingsNav', () => {
       'AI',
       'Agents',
       'Data',
+      'Retention',
     ])
   })
 
@@ -70,6 +72,7 @@ describe('SettingsNav', () => {
       '/settings/ai',
       '/settings/agents',
       '/settings/data',
+      '/settings/retention',
     ])
     expect(tabs.map((tab) => tab.text())).toEqual([
       'Account',
@@ -82,6 +85,7 @@ describe('SettingsNav', () => {
       'AI',
       'Agents',
       'Data',
+      'Retention',
     ])
     expect(tabs[2]?.classes()).toContain('v-tab--selected')
   })
