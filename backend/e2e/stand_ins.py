@@ -1557,26 +1557,28 @@ def _judgement_of_families(asked: Mapping[str, Any]) -> str | None:
     )
 
 
-def _lookup(tool: str) -> dict[str, Any]:
-    return {"tool": tool, "id": None, "name": None, "hours": None, "limit": None}
+def _lookup(tool: str, name: str | None = None) -> dict[str, Any]:
+    return {"tool": tool, "id": None, "name": name, "hours": None, "limit": None}
 
 
 def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
     """What the assistant would answer in the chat (a request for a JSON schema with ``lookups``):
     a question about what needs attention is answered after a look at the open incidents, one
-    about the integrations after a look at them, and any other straight away."""
+    about the integrations after a look at them, one about the storage after a look at the nas,
+    and any other straight away."""
     if "lookups" not in _schema_properties(asked):
         return None
     prompt = _prompt_of(asked)
     question = prompt.rsplit("The owner asks:", 1)[-1].lower()
-    for words, tool, kind in (
-        ("attention", "open_incidents", "incident"),
-        ("integration", "integrations", "integration"),
+    for words, tool, kind, name in (
+        ("attention", "open_incidents", "incident", None),
+        ("integration", "integrations", "integration", None),
+        ("storage", "device", "device", "nas"),
     ):
         if words not in question:
             continue
         if f'<data label="{tool.replace("_", " ")}' not in prompt:
-            return json.dumps({"lookups": [_lookup(tool)], "answer": "", "cites": []})
+            return json.dumps({"lookups": [_lookup(tool, name)], "answer": "", "cites": []})
         found = re.search(rf"\[{kind} (\w+)\]", prompt)
         answer = (
             f"Start with {kind} {found.group(1)}: it is the one that needs you most."

@@ -921,6 +921,19 @@ class TestAiProviders:
         assert [lookup["tool"] for lookup in first["lookups"]] == ["integrations"]
         assert second["cites"] == ["integration opnsense"]
 
+    def test_anthropic_looks_up_the_nas_when_asked_about_storage_and_cites_the_device(self) -> None:
+        first = self.chat("The owner asks: What is on the storage?")
+        second = self.chat(
+            '<data label="device nas">\n[device 4] nas, made by Synology\n</data>\n\n'
+            "The owner asks: What is on the storage?"
+        )
+
+        assert [(lookup["tool"], lookup["name"]) for lookup in first["lookups"]] == [
+            ("device", "nas")
+        ]
+        assert second["answer"] == "Start with device 4: it is the one that needs you most."
+        assert second["cites"] == ["device 4"]
+
     def test_anthropic_answers_any_other_question_straight_away(self) -> None:
         said = self.chat("The owner asks: How are you?")
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import tools
 from app.ai.redaction import Level, Redactor
-from app.ai.tools import Args
+from app.ai.tools import Args, Ref
 from app.assets import profile
 from app.config import Settings
 from app.events.event import NewEvent, Severity
@@ -352,7 +352,8 @@ class TestBlockedSources:
 
 
 class TestDevice:
-    def devices(self, session: Session) -> None:
+    def devices(self, session: Session) -> tuple[Device, Device]:
+        """A NAS and a printer, in that order."""
         nas = Device(
             mac="aa:bb:cc:00:00:01",
             hostname="nas",
@@ -386,19 +387,33 @@ class TestDevice:
             ]
         )
         session.commit()
+        return nas, printer
 
     def test_it_is_found_by_part_of_a_name_or_a_maker(self, session: Session) -> None:
-        self.devices(session)
+        nas, _ = self.devices(session)
 
         by_name = run(session, "device", Args(name="NA"))
         by_maker = run(session, "device", Args(name="brother"))
 
         assert by_name.lines == [
-            f"nas, made by Synology; addresses: {DEVICE}; first seen "
+            f"[device {nas.id}] nas, made by Synology; addresses: {DEVICE}; first seen "
             f"{NOW - 30 * HOUR:%Y-%m-%d %H:%M} UTC, last seen {NOW - HOUR:%Y-%m-%d %H:%M} UTC"
         ]
         assert by_name.summary == "1 device"
-        assert by_maker.lines[0].startswith("unnamed, made by Brother;")
+        assert by_maker.lines[0].endswith(
+            "unnamed, made by Brother; addresses: 192.168.1.30; first seen "
+            f"{NOW - 40 * HOUR:%Y-%m-%d %H:%M} UTC, last seen {NOW - 2 * HOUR:%Y-%m-%d %H:%M} UTC"
+        )
+
+    def test_what_it_found_can_be_cited_by_the_device_it_is_about(self, session: Session) -> None:
+        nas, printer = self.devices(session)
+
+        found = run(session, "device", Args(name="NA"))
+        unnamed = run(session, "device", Args(name="brother"))
+
+        assert found.refs == [Ref("device", str(nas.id), "nas")]
+        assert unnamed.refs == [Ref("device", str(printer.id), f"Device {printer.id}")]
+        assert found.lines[0].startswith(f"[device {nas.id}] ")
 
     def test_what_the_owner_said_it_is_goes_with_it(self, session: Session) -> None:
         self.devices(session)
@@ -416,10 +431,8 @@ class TestDevice:
     def test_it_is_found_by_an_address_or_a_hardware_address(self, session: Session) -> None:
         self.devices(session)
 
-        assert run(session, "device", Args(name=DEVICE)).lines[0].startswith("nas,")
-        assert (
-            run(session, "device", Args(name="AA-BB-CC-00-00-02")).lines[0].startswith("unnamed,")
-        )
+        assert " nas, " in run(session, "device", Args(name=DEVICE)).lines[0]
+        assert " unnamed, " in run(session, "device", Args(name="AA-BB-CC-00-00-02")).lines[0]
 
     def test_a_percent_sign_is_not_a_wildcard(self, session: Session) -> None:
         self.devices(session)
@@ -739,9 +752,14 @@ class TestNewDevices:
 
         assert found.summary == "2 new devices"
         assert found.lines == [
-            f"unnamed; addresses: none known; first seen {NOW - HOUR:%Y-%m-%d %H:%M} UTC",
-            f"camera, made by Acme; addresses: {HOME}; first seen "
+            f"[device {bare.id}] unnamed; addresses: none known; first seen "
+            f"{NOW - HOUR:%Y-%m-%d %H:%M} UTC",
+            f"[device {fresh.id}] camera, made by Acme; addresses: {HOME}; first seen "
             f"{NOW - 2 * HOUR:%Y-%m-%d %H:%M} UTC",
+        ]
+        assert found.refs == [
+            Ref("device", str(bare.id), f"Device {bare.id}"),
+            Ref("device", str(fresh.id), "camera"),
         ]
         assert run(session, "new_devices", Args(hours=48, limit=1)).summary == "1 new device"
 
