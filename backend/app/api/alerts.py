@@ -165,10 +165,11 @@ class DeliveryOut(BaseModel):
     id: int
     destination_id: int
     destination: str
-    # None for a summary, and for a message whose incident has since been deleted.
+    # None for a summary or a watchdog message, and for a message whose incident has since been
+    # deleted.
     incident_id: int | None
-    kind: Literal["incident", "summary", "update"]
-    reason: Literal["new", "worse", "reopened", "limit", "quiet", "retract"]
+    kind: Literal["incident", "summary", "update", "watchdog"]
+    reason: Literal["new", "worse", "reopened", "limit", "quiet", "retract", "silent", "back"]
     state: DeliveryState
     title: str
     severity: SeverityName
@@ -788,8 +789,11 @@ def _delivery(row: AlertDelivery, destination: str) -> DeliveryOut:
         destination_id=row.destination_id,
         destination=destination,
         incident_id=row.incident_id,
-        kind=cast("Literal['incident', 'summary', 'update']", row.kind),
-        reason=cast("Literal['new', 'worse', 'reopened', 'limit', 'quiet', 'retract']", row.reason),
+        kind=cast("Literal['incident', 'summary', 'update', 'watchdog']", row.kind),
+        reason=cast(
+            "Literal['new', 'worse', 'reopened', 'limit', 'quiet', 'retract', 'silent', 'back']",
+            row.reason,
+        ),
         state=cast("DeliveryState", row.state),
         title=row.title,
         severity=SEVERITY_NAMES[Severity(row.severity)],

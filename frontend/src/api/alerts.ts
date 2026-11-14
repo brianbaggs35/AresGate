@@ -284,18 +284,22 @@ export type DeliveryState =
 /** Why a message was made: an incident the destination had not heard of, one that got worse (for a
  * destination told of threats, one that went a stage further), one that was reopened, a summary
  * of what was held back (over the limit, or in quiet hours), or a correction to a message sent
- * before (`retract`: it was stood down because the incident turned out not to be a threat). */
-export type DeliveryReason = 'new' | 'worse' | 'reopened' | 'limit' | 'quiet' | 'retract'
+ * before (`retract`: it was stood down because the incident turned out not to be a threat). A
+ * watchdog message is about no incident: a collector went quiet (`silent`) or is reporting again
+ * (`back`). */
+export type DeliveryReason =
+  'new' | 'worse' | 'reopened' | 'limit' | 'quiet' | 'retract' | 'silent' | 'back'
 
 /** One message to one destination, and what became of it. */
 export interface Delivery {
   id: number
   destination_id: number
   destination: string
-  /** None for a summary, and for a message whose incident has since been deleted. */
+  /** None for a summary or a watchdog message, and for a message whose incident has since been
+   * deleted. */
   incident_id: number | null
-  /** `update` is a change to a message already sent. */
-  kind: 'incident' | 'summary' | 'update'
+  /** `update` is a change to a message already sent, and `watchdog` one about a collector. */
+  kind: 'incident' | 'summary' | 'update' | 'watchdog'
   reason: DeliveryReason
   state: DeliveryState
   title: string

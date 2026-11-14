@@ -209,6 +209,28 @@ Whatever an attacker or a device can choose (an alert's words, a hostname) is pu
 it can't format the message, make a link or ping anyone, and `allowed_mentions` is empty on every
 message anyway.
 
+## When a collector goes quiet
+
+An alert system that has stopped looking is worse than none, so a destination is also told when
+a collector that was working **stops reporting**: the firewall's API stopped answering, a password
+was changed, a service is down. A collector counts as quiet when it has not **worked** for fifteen
+minutes or three of its own intervals, whichever is longer. One that has never worked is not
+told of, because it has not gone quiet, it was never set up; the Status page shows it.
+
+- It is told **once for each stretch of silence**, and again, in one short message, when the
+  collector **works again**, but only if the first message was sent.
+- It follows the destination's **quiet hours** like any message, and a quiet message that was
+  still waiting when the collector came back is dropped, not sent late. Where quiet hours let
+  critical incidents through, it goes through too.
+- It is **not** counted against the messages an hour a destination allows, and it does not
+  depend on the destination's rules: a destination that is on hears of every collector.
+- Each one is a row in the delivery log, with the collector's name where an incident's title would
+  be, and a link to the Status page in the message.
+
+The worker runs the collectors and sends the messages, so a **stopped worker cannot tell you it has
+stopped**. The watchdog catches a collector that fails while the worker lives. For the worker
+itself, watch the container (`/api/health`, or your own monitoring).
+
 ## The delivery log
 
 The **Delivery log** on the Alerts page lists every message, newest first, with where it is:

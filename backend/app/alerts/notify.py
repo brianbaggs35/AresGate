@@ -44,7 +44,7 @@ from typing import Final
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.alerts import destinations, discord, mail, message
+from app.alerts import destinations, discord, mail, message, watchdog
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import Unusable
 from app.alerts.discord import Sent, Webhook
@@ -53,7 +53,7 @@ from app.incidents import attention, queries
 from app.incidents import rules as incident_rules
 from app.integrations.client import Recorder
 from app.integrations.netguard import AddressPolicy
-from app.models import AlertDelivery, AlertDestination, Incident, utcnow
+from app.models import AlertDelivery, AlertDestination, CollectorHealth, Incident, utcnow
 from app.threats import explain, stages
 from app.threats import settings as threat_settings
 from app.threats.settings import Tuning
@@ -437,8 +437,9 @@ def due_now(
     for row in due:
         if row.kind == "summary" or row in held:
             continue
-        if row.kind == "update":
-            # A change to a message already sent is not another message in the channel.
+        if row.kind in ("update", "watchdog"):
+            # A change to a message already sent is not another message in the channel, and what
+            # the watchdog says is about AresGate itself, so it is never held back for the limit.
             ready.append(row)
         elif allowed > 0:
             ready.append(row)
@@ -495,6 +496,8 @@ def build(
             max_per_hour=destination.max_per_hour,
             at=now,
         )
+    if row.kind == "watchdog":
+        return watchdog.message_for(row, list(db.scalars(select(CollectorHealth))), origin, now)
     incident = db.get(Incident, row.incident_id) if row.incident_id else None
     if incident is None:
         return None
@@ -543,11 +546,14 @@ def _job(
     payload = build(db, destination, row, origin, now, tuning) if edit or not changing else None
     if payload is None:
         row.state = "dropped"
-        row.note = (
-            "Not changed. The message or the incident is gone."
-            if changing
-            else "Not sent. The incident is gone."
-        )
+        if row.kind == "watchdog":
+            row.note = "Not sent. The collector is gone."
+        else:
+            row.note = (
+                "Not changed. The message or the incident is gone."
+                if changing
+                else "Not sent. The incident is gone."
+            )
         return None
     return Job(row.id, destination.id, where, payload, edit)
 
@@ -572,6 +578,7 @@ def plan(db: Session, settings: Settings, now: datetime) -> list[Job]:
             continue
         rules = alert_rules.of(destination)
         decide_new(db, destination, rules, now, tuning)
+        watchdog.decide(db, destination, rules, now)
         for row in due_now(db, destination, rules, now):
             job = _job(db, destination, target, row, settings.public_origin, now, tuning)
             if job is not None:
