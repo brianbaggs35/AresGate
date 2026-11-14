@@ -840,7 +840,7 @@ test.describe('integrations', () => {
 
       await integration.save.click()
 
-      await expect(integration.report).toContainText("didn't accept the credentials")
+      await expect(integration.report).toContainText('answered access forbidden')
       await expect(integration.status).toHaveText('Problem')
       await integration.chooseFilter('result', 'Failed')
       await expect(integration.logCalls).toHaveCount(1)
