@@ -510,6 +510,35 @@ test.describe('layout on a phone', () => {
       expect(await overflow(page)).toBeLessThanOrEqual(0)
     })
 
+    test('an open request of the log fills the screen and fits it', async ({
+      page,
+      harness,
+      integration,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: 'a-valid-ntopng-token' })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill('a-valid-ntopng-token')
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await integration.logRefresh.click()
+
+      await integration.logCalls.last().click()
+
+      await expect(integration.callSheet).toBeVisible()
+      await expect(integration.sheetExcerpt).toBeVisible()
+      // The sheet comes in over a moment, and is measured when it has settled.
+      await waitForMotion(page)
+      const viewport = page.viewportSize()
+      const sheet = await integration.callSheet.boundingBox()
+      expect(sheet?.width).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1)
+      expect(sheet?.height).toBeGreaterThanOrEqual((viewport?.height ?? 0) - 1)
+      expect(await overflow(page)).toBeLessThanOrEqual(0)
+      // The arrows and Close are within reach, not under the bottom of the screen.
+      await integration.sheetClose.click()
+      await expect(integration.callSheet).toBeHidden()
+    })
+
     test('a page with a note beside the certificate fits the screen', async ({
       page,
       integration,

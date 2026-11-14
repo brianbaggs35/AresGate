@@ -16,17 +16,19 @@ import json
 import logging
 import ssl
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from types import TracebackType
-from typing import Self
+from typing import Any, Self
 
 import httpx2
 
 from app import __version__, audit
-from app.integrations import certdiag, netguard
+from app.integrations import calldetail, certdiag, netguard
 from app.integrations.netguard import AddressPolicy, GuardedBackend, GuardedTransport, Origin
 from app.models import utcnow
 
@@ -43,6 +45,19 @@ MAX_PATH = 256
 MAX_ERROR = 500
 HIDDEN = "***"
 REDIRECTED = "Redirected to another address, which AresGate doesn't follow."
+# Who is making the requests, for the log: the collector, say. A request made where nothing says
+# it has no one named.
+CALLER: ContextVar[str | None] = ContextVar("api_caller", default=None)
+
+
+@contextmanager
+def calling(name: str) -> Generator[None]:
+    """Names who is making the requests made inside it, for the log."""
+    token = CALLER.set(name)
+    try:
+        yield
+    finally:
+        CALLER.reset(token)
 
 
 @dataclass(frozen=True)
@@ -57,6 +72,10 @@ class Call:
     status_code: int | None
     duration_ms: int
     error: str | None
+    # Everything else the log keeps of it, for the page that shows one request (see
+    # ``calldetail``), and the start of the answer.
+    detail: dict[str, Any] | None = None
+    excerpt: str | None = None
 
 
 Recorder = Callable[[Call], Awaitable[None]]
@@ -88,6 +107,8 @@ class Reply:
     # is empty. ``cut`` says it was stopped at the most that was asked for.
     content: bytes = b""
     cut: bool = False
+    # What the log keeps of how it came, which is no concern of whoever asked.
+    seen: calldetail.Seen | None = field(default=None, compare=False, repr=False)
 
     @property
     def ok(self) -> bool:
@@ -230,9 +251,15 @@ class ApiClient:
         occurred_at = utcnow()
         status: int | None = None
         error: str | None = None
+        built: httpx2.Request | None = None
+        seen: calldetail.Seen | None = None
         try:
-            reply = await self._send(method, path, query, json_body, headers, auth, keep_bytes)
+            built = self._http.build_request(
+                method, path, params=query, json=json_body, headers=headers
+            )
+            reply = await self._send(built, auth, keep_bytes, started)
             status = reply.status
+            seen = reply.seen
             if 300 <= status < 400:
                 error = REDIRECTED
             elif status >= 400:
@@ -243,15 +270,8 @@ class ApiClient:
             raise CallFailed(error) from None
         finally:
             await self._log(
-                Call(
-                    occurred_at=occurred_at,
-                    integration=self._target.integration,
-                    connection=self._target.connection,
-                    method=method.upper()[:8],
-                    path=clean_path(path),
-                    status_code=status,
-                    duration_ms=round((time.monotonic() - started) * 1000),
-                    error=error,
+                self._logged(
+                    started, occurred_at, method, path, built, auth is not None, seen, status, error
                 )
             )
 
@@ -272,25 +292,37 @@ class ApiClient:
         occurred_at = utcnow()
         status: int | None = None
         error: str | None = None
+        built: httpx2.Request | None = None
+        seen: calldetail.Seen | None = None
         try:
             if self._policy.read_only and method.upper() != "GET":
                 raise CallFailed(
                     "This service is only read, so AresGate sends it nothing that changes."
                 )
-            async with (
-                asyncio.timeout(self._deadline),
-                self._http.stream(method, path, json=json_body, headers=headers) as response,
-            ):
-                status = response.status_code
-                if not 200 <= status < 300:
-                    error = REDIRECTED if 300 <= status < 400 else _phrase(status)
-                    raise NotSuccess(status)
-                read = 0
-                async for line in response.aiter_lines():
-                    read += len(line) + 1
-                    if read > MAX_BODY:
-                        raise CallFailed("It answered with more than AresGate reads.")
-                    yield line
+            built = self._http.build_request(method, path, json=json_body, headers=headers)
+            async with asyncio.timeout(self._deadline):
+                response = await self._http.send(built, stream=True)
+                try:
+                    status = response.status_code
+                    first_byte = round((time.monotonic() - started) * 1000)
+                    if not 200 <= status < 300:
+                        error = REDIRECTED if 300 <= status < 400 else _phrase(status)
+                        seen = self._looked_at(response, b"", 0, first_byte)
+                        raise NotSuccess(status)
+                    read = 0
+                    kept = bytearray()
+                    try:
+                        async for line in response.aiter_lines():
+                            read += len(line) + 1
+                            if read > MAX_BODY:
+                                raise CallFailed("It answered with more than AresGate reads.")
+                            if len(kept) < calldetail.EXCERPT_CHARS:
+                                kept += line.encode() + b"\n"
+                            yield line
+                    finally:
+                        seen = self._looked_at(response, bytes(kept), read, first_byte)
+                finally:
+                    await response.aclose()
         except NotSuccess:
             raise
         except Exception as problem:
@@ -298,56 +330,96 @@ class ApiClient:
             raise CallFailed(error) from None
         finally:
             await self._log(
-                Call(
-                    occurred_at=occurred_at,
-                    integration=self._target.integration,
-                    connection=self._target.connection,
-                    method=method.upper()[:8],
-                    path=clean_path(path),
-                    status_code=status,
-                    duration_ms=round((time.monotonic() - started) * 1000),
-                    error=error,
-                )
+                self._logged(started, occurred_at, method, path, built, False, seen, status, error)
             )
 
     async def _send(
         self,
-        method: str,
-        path: str,
-        query: Mapping[str, str] | None,
-        json_body: object,
-        headers: Mapping[str, str] | None,
+        built: httpx2.Request,
         auth: tuple[str, str] | None,
         keep_bytes: int | None,
+        started: float,
     ) -> Reply:
-        if self._policy.read_only and method.upper() != "GET":
+        if self._policy.read_only and built.method != "GET":
             raise CallFailed(
                 "This service is only read, so AresGate sends it nothing that changes."
             )
-        async with (
-            asyncio.timeout(self._deadline),
-            self._http.stream(
-                method, path, params=query, json=json_body, headers=headers, auth=auth
-            ) as response,
-        ):
-            body = bytearray()
-            cut = False
-            limit = MAX_BODY if keep_bytes is None else keep_bytes
-            async for chunk in response.aiter_bytes():
-                body += chunk
-                if len(body) > limit:
-                    if keep_bytes is None:
-                        raise CallFailed("It answered with more than AresGate reads.")
-                    del body[limit:]
-                    cut = True
-                    break
-            return Reply(
-                response.status_code,
-                body.decode("utf-8", errors="replace") if keep_bytes is None else "",
-                {name.lower(): value for name, value in response.headers.items()},
-                bytes(body) if keep_bytes is not None else b"",
-                cut,
+        async with asyncio.timeout(self._deadline):
+            response = await self._http.send(built, stream=True, auth=auth)
+            try:
+                first_byte = round((time.monotonic() - started) * 1000)
+                body = bytearray()
+                cut = False
+                limit = MAX_BODY if keep_bytes is None else keep_bytes
+                async for chunk in response.aiter_bytes():
+                    body += chunk
+                    if len(body) > limit:
+                        if keep_bytes is None:
+                            raise CallFailed("It answered with more than AresGate reads.")
+                        del body[limit:]
+                        cut = True
+                        break
+                return Reply(
+                    response.status_code,
+                    body.decode("utf-8", errors="replace") if keep_bytes is None else "",
+                    {name.lower(): value for name, value in response.headers.items()},
+                    bytes(body) if keep_bytes is not None else b"",
+                    cut,
+                    self._looked_at(response, bytes(body), len(body), first_byte, cut),
+                )
+            finally:
+                await response.aclose()
+
+    def _mask(self, text: str) -> str:
+        for value in self._hidden:
+            text = text.replace(value, HIDDEN)
+        return text
+
+    def _looked_at(
+        self,
+        response: httpx2.Response,
+        kept: bytes,
+        size: int,
+        first_byte: int,
+        cut: bool = False,
+    ) -> calldetail.Seen:
+        return calldetail.look_at(response, kept, size, cut, first_byte, self._mask)
+
+    def _logged(
+        self,
+        started: float,
+        occurred_at: datetime,
+        method: str,
+        path: str,
+        built: httpx2.Request | None,
+        signed: bool,
+        seen: calldetail.Seen | None,
+        status: int | None,
+        error: str | None,
+    ) -> Call:
+        """The log entry of a request that has ended."""
+        shown = clean_path(path)
+        detail = None
+        if built is not None:
+            if signed:
+                built.headers["Authorization"] = HIDDEN
+            detail = calldetail.describe(
+                self._target.origin, built, shown, CALLER.get(), seen, self._mask
             )
+        return Call(
+            occurred_at=occurred_at,
+            integration=self._target.integration,
+            connection=self._target.connection,
+            method=method.upper()[:8],
+            path=shown,
+            status_code=status,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            error=error,
+            detail=detail,
+            # What a login or a token exchange answers with is the credential itself, in whatever
+            # form, so nothing of the answer to a path that names one is kept.
+            excerpt=None if seen is None or calldetail.is_secret_name(shown) else seen.excerpt,
+        )
 
     async def _log(self, call: Call) -> None:
         try:

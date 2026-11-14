@@ -1128,6 +1128,29 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page)
     })
 
+    test('the API log, and an open request, have no WCAG 2.2 AA problems', async ({
+      page,
+      harness,
+      integration,
+      shell,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: 'a-valid-ntopng-token' })
+      await integration.goto('ntopng')
+      await shell.chooseTheme(theme)
+      await shell.expectTheme(theme)
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill('a-valid-ntopng-token')
+      await integration.save.click()
+      await expect(integration.report).toContainText('The test passed')
+      await integration.logRefresh.click()
+      await expect(integration.logCalls.first()).toBeVisible()
+      await expectAccessible(page, { include: '[data-test="api-log"]' })
+
+      await integration.logCalls.last().click()
+      await expect(integration.sheetExcerpt).toBeVisible()
+      await expectAccessible(page)
+    })
+
     test('the activity page has no WCAG 2.2 AA problems', async ({ page, activity, shell }) => {
       await activity.goto()
       await expect(activity.entries.first()).toBeVisible()

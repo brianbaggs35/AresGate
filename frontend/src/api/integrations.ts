@@ -264,6 +264,49 @@ export interface Call {
   error: string | null
 }
 
+/** A name and its value, which is null where the value is a credential and so is never kept. */
+export interface CallPair {
+  name: string
+  value: string | null
+}
+
+/** The certificate a system presented for a request. */
+export interface CallCertificate {
+  subject: string
+  issuer: string
+  fingerprint: string
+  not_after: string
+}
+
+/** Where a request went, what it carried, and how it was answered. */
+export interface CallDetail {
+  scheme: string
+  host: string
+  port: number
+  /** The path, with no query string. */
+  path: string
+  query: CallPair[]
+  request_headers: CallPair[]
+  /** Which collector or page made it, if that was known. */
+  caller: string | null
+  /** The rest is only there when there was an answer. */
+  first_byte_ms?: number | null
+  status_line?: string | null
+  response_headers?: CallPair[]
+  size?: number | null
+  cut?: boolean
+  content_type?: string | null
+  certificate?: CallCertificate | null
+  address?: string | null
+}
+
+/** A request with everything that was kept of it. `detail` is null for one made before that was
+ * kept, and `excerpt` for one whose answer wasn't kept or isn't text. */
+export interface CallFull extends Call {
+  detail: CallDetail | null
+  excerpt: string | null
+}
+
 export interface CallPage {
   calls: Call[]
   /** Pass it as `before` for the next page of older calls. Null on the last page. */
@@ -341,6 +384,11 @@ export function lookUpCertificate(
     },
     csrfToken,
   )
+}
+
+/** One request, with everything that was kept of it. */
+export function fetchCall(key: string, id: number): Promise<CallFull> {
+  return apiGet<CallFull>(path(key, `/calls/${id}`))
 }
 
 /** The newest calls first. */

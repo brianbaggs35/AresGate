@@ -59,6 +59,17 @@ export class IntegrationPage {
   readonly logRefresh: Locator
   readonly logOlder: Locator
   readonly logClear: Locator
+  /** The sheet that opens a request of the log: everything that was kept of it. */
+  readonly callSheet: Locator
+  readonly sheetTitle: Locator
+  readonly sheetAddress: Locator
+  readonly sheetQuery: Locator
+  readonly sheetRequestHeaders: Locator
+  readonly sheetAnswer: Locator
+  readonly sheetExcerpt: Locator
+  readonly sheetOlder: Locator
+  readonly sheetNewer: Locator
+  readonly sheetClose: Locator
 
   constructor(private readonly page: Page) {
     this.title = page.getByTestId('page-heading')
@@ -110,6 +121,16 @@ export class IntegrationPage {
     this.logRefresh = page.getByTestId('log-refresh')
     this.logOlder = page.getByTestId('log-older')
     this.logClear = page.getByTestId('log-clear')
+    this.callSheet = page.getByTestId('call-sheet')
+    this.sheetTitle = page.getByTestId('sheet-title')
+    this.sheetAddress = page.getByTestId('sheet-address')
+    this.sheetQuery = page.getByTestId('sheet-query')
+    this.sheetRequestHeaders = page.getByTestId('sheet-request-headers')
+    this.sheetAnswer = page.getByTestId('sheet-answer-facts')
+    this.sheetExcerpt = page.getByTestId('sheet-excerpt')
+    this.sheetOlder = page.getByTestId('sheet-older')
+    this.sheetNewer = page.getByTestId('sheet-newer')
+    this.sheetClose = page.getByTestId('sheet-close')
   }
 
   async goto(key: string): Promise<void> {
