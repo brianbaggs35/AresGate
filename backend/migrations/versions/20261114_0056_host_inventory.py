@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column("addresses", postgresql.ARRAY(postgresql.INET()), nullable=False),
         sa.Column("read_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint(*KEY, name=op.f("pk_host_systems")),
+        if_not_exists=True,
     )
     op.create_table(
         "host_ports",
@@ -56,6 +57,7 @@ def upgrade() -> None:
             name=op.f("fk_host_ports_source_host_systems"),
             ondelete="CASCADE",
         ),
+        if_not_exists=True,
     )
     op.create_table(
         "host_packages",
@@ -75,6 +77,7 @@ def upgrade() -> None:
             name=op.f("fk_host_packages_source_host_systems"),
             ondelete="CASCADE",
         ),
+        if_not_exists=True,
     )
 
 

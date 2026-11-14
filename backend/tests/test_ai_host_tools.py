@@ -100,8 +100,8 @@ class TestOpenPorts:
 
         assert found.lines == [
             "nas: tcp [::]:445 (smbd)",
-            "web1 (Ubuntu 24.04, x86_64, 6.8.0): tcp 192.168.1.20:22 (sshd), "
-            "tcp [::]:443 (nginx), udp 192.168.1.20:5353",
+            "web1 (Ubuntu 24.04, x86_64, 6.8.0): "
+            + "tcp 192.168.1.20:22 (sshd), tcp [::]:443 (nginx), udp 192.168.1.20:5353",
         ]
         assert found.summary == "2 machines"
 
