@@ -32,7 +32,9 @@ watch(onItsOwnPage, (own) => {
     data-test="assistant-sheet"
   >
     <v-card class="host__sheet">
-      <AssistantPanel />
+      <!-- A closed sheet keeps what it held out of sight, not out of the page, so it is not drawn
+           while it is closed. -->
+      <AssistantPanel v-if="assistant.open" />
     </v-card>
   </v-bottom-sheet>
   <v-navigation-drawer

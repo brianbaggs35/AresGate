@@ -66,17 +66,19 @@ test.describe('the assistant panel', () => {
 
     // Nothing changes until a button is pressed; pressing is a change the owner made, and can be
     // taken back.
-    await assistantPanel.actions.nth(1).click()
-    await expect(assistantPanel.done).toBeVisible()
-    await page.reload()
-    await expect(incident.status).toHaveText('Investigating')
-
-    await assistantPanel.opener.click()
-    await assistantPanel.ask('What needs my attention right now?')
+    await expect(incident.status).toHaveText('Open')
     await assistantPanel.actions.nth(1).click()
     await expect(assistantPanel.done).toBeVisible()
     await assistantPanel.undo.click()
     await expect(assistantPanel.undone).toBeVisible()
+    await page.reload()
+    await expect(incident.status).toHaveText('Open')
+
+    // Pressed again and not taken back, it stays.
+    await assistantPanel.opener.click()
+    await assistantPanel.ask('What needs my attention right now?')
+    await assistantPanel.actions.nth(1).click()
+    await expect(assistantPanel.done).toBeVisible()
     await page.reload()
     await expect(incident.status).toHaveText('Investigating')
   })

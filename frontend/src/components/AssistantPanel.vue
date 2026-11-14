@@ -297,6 +297,11 @@ defineExpose({ send })
 
 /* The box to type in stays below the conversation, clear of a phone's home bar and, with the
    sheet sized by the visible screen, above its keyboard. */
+.panel__box :deep(textarea) {
+  /* A target a finger or a pointer can hit, where the field is only one line tall. */
+  min-height: 2rem;
+}
+
 .panel__box {
   display: flex;
   align-items: flex-end;
