@@ -29,6 +29,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **Wrong passkey answers and wrong passwords are counted apart, so neither locks the other
+  kind of sign-in out.** Before, they shared the address's count, so one person's wrong
+  passwords could lock a household member's passkey out, and the other way around. Now a locked
+  address still lets a right passkey in, and a locked passkey count still lets the password in.
+  A sign-in challenge that ran out is no longer counted at all. Nothing counts against an
+  account, as before. The reasoning is in
+  [Security](DOCS/security.md#how-it-is-hardened-today).
 - **The button on the Interfaces page that looks for what your programs report now says Find
   interfaces,** not Find feeds, so it says what you are looking for.
 - **The connection tests and the status page now say whether OPNsense, ntopng or CrowdSec

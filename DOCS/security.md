@@ -161,9 +161,21 @@ see [SECURITY.md](../SECURITY.md).
 - A device's count of sign-ins has to go up, so a copy of a passkey that is used next to the
   original is refused and recorded against the account. Devices that don't count, such as
   synced passkeys that always report zero, are left alone.
-- Wrong answers count towards the address's lockout, like wrong passwords, and a locked address
-  is refused even a right passkey. They don't count against any account, because nobody has
-  said whose account they are after, so guessing at passkeys can't keep the owner out.
+- Wrong passkey answers are counted for the address in a count of their own, apart from wrong
+  passwords, with the same limits as passwords (the fifth in a row locks it for a minute, and
+  each one after that doubles the wait, up to an hour). While it is locked even a right
+  passkey is refused. Because the two counts are apart, someone behind the same address
+  (a shared network or a reverse proxy) who keeps typing a wrong password can't keep a
+  household member's passkey out, and a passkey that keeps failing doesn't stop the password
+  from signing in. A right passkey clears the passkey count. A challenge that ran out, as when a
+  tab was left open, counts against nobody, because it is no sign of guessing.
+- Wrong passkey answers don't count against any account, on purpose. The credential id in an
+  answer isn't a secret, so counting a wrong answer that names a stored passkey against its
+  account would let anyone who has seen the id keep the owner out. The count of the address
+  is all that guards passkey sign-in, and it is enough: an answer is a signature, which can't be
+  guessed, so the lockout is there to slow noise and not to stop a break-in. An attacker who
+  changes address starts again at zero, which gains them nothing a signature check doesn't
+  already refuse.
 - Adding a passkey and removing one need the password, so a sign-in left open on a borrowed
   computer can't put its own passkey on the account or take away the ones the owner would use to
   get back in. Wrong passwords there count towards the same lockout as at the sign-in page, and
