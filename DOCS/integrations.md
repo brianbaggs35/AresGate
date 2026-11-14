@@ -1491,6 +1491,9 @@ What is never kept:
 - In the start of an answer, the value under a key that names a credential (a login's `token`,
   say), a web token and a `Bearer` credential are left out, since a login answers with one before
   AresGate has put it among the secrets to hide.
+- Nothing is kept of the answer to a request whose path names a credential (a login at
+  `/security/user/authenticate`, say), since that answer is the credential itself, in whatever
+  form the system sends it.
 - The path of a Discord webhook, which holds its token, is replaced as it is in the entry itself.
 - What the other system answered is untrusted text, so it is only ever shown as plain text.
 - Requests are deleted automatically after `ARESGATE_API_LOG_RETENTION_DAYS` days (30 by
