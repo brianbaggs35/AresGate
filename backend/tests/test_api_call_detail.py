@@ -309,6 +309,21 @@ def test_the_answer_of_a_failed_request_is_kept(serve: Serve) -> None:
     assert detail_of(log)["status_line"].endswith("500 Internal Server Error")
 
 
+def test_nothing_is_kept_of_the_answer_to_a_login_which_is_the_credential_itself(
+    serve: Serve,
+) -> None:
+    server = serve(
+        lambda seen: Answer(body="opaque-session-value", headers={"Content-Type": "text/plain"})
+    )
+    log = Log()
+
+    request(target(server), log, "POST", "/security/user/authenticate?raw=true", auth=("u", "p"))
+
+    assert log.calls[0].excerpt is None
+    assert detail_of(log)["status_line"].endswith("200 OK")
+    assert "opaque-session-value" not in repr(log.calls)
+
+
 def test_what_is_read_as_bytes_is_sized_and_not_given_as_text(serve: Serve) -> None:
     server = serve(
         lambda seen: Answer(

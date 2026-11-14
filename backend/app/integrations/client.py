@@ -416,7 +416,9 @@ class ApiClient:
             duration_ms=round((time.monotonic() - started) * 1000),
             error=error,
             detail=detail,
-            excerpt=seen.excerpt if seen else None,
+            # What a login or a token exchange answers with is the credential itself, in whatever
+            # form, so nothing of the answer to a path that names one is kept.
+            excerpt=None if seen is None or calldetail.is_secret_name(shown) else seen.excerpt,
         )
 
     async def _log(self, call: Call) -> None:
