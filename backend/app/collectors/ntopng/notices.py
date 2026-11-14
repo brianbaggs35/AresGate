@@ -71,21 +71,35 @@ class Notices(Collector):
             # it is.
             for ifid in ifids if family in PER_INTERFACE else ifids[:1]:
                 asked += 1
-                try:
-                    records = await _records(context, path, ifid)
-                except CollectorFailed as failure:
-                    refused.append(failure)
-                    continue
                 port = ports.get(ifid) if family in PER_INTERFACE else None
-                found = parse(family, records, port)
-                if records and not found:
-                    raise CollectorFailed(
-                        "It answered, but the alerts aren't in a form AresGate reads."
-                    )
-                events.extend(found)
+                try:
+                    events.extend(await _family(context, family, path, ifid, port))
+                except _Refused as failure:
+                    refused.append(failure.failure)
         if len(refused) == asked:
             raise refused[0]
         return Outcome(items=await context.record(events))
+
+
+class _Refused(Exception):
+    """A list ntopng wouldn't give, kept apart from the failures that stop the run."""
+
+    def __init__(self, failure: CollectorFailed) -> None:
+        super().__init__(str(failure))
+        self.failure = failure
+
+
+async def _family(
+    context: Context, family: str, path: str, ifid: int, port: str | None
+) -> list[NewEvent]:
+    try:
+        records = await _records(context, path, ifid)
+    except CollectorFailed as failure:
+        raise _Refused(failure) from failure
+    found = parse(family, records, port)
+    if records and not found:
+        raise CollectorFailed("It answered, but the alerts aren't in a form AresGate reads.")
+    return found
 
 
 async def _records(context: Context, path: str, ifid: int) -> list[object]:
