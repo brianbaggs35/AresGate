@@ -397,6 +397,35 @@ test.describe('layout on a phone', () => {
     await expect(shell.moreButton).toHaveAttribute('aria-expanded', 'false')
   })
 
+  test.describe('incident response', () => {
+    test('fits the screen, and is reached through More, which the bar leaves its other places for', async ({
+      page,
+      harness,
+      incidentResponse,
+      shell,
+    }) => {
+      await harness.createIncidents([
+        { address: '93.184.216.34', severity: 'critical', minutes_ago: 5 },
+        { address: '8.8.4.10', severity: 'high', ban: true, minutes_ago: 20 },
+      ])
+      await page.goto('/incidents')
+      await expect(shell.incidentResponseLink).toHaveCount(0)
+
+      await shell.goTo('incident-response')
+
+      await expect(incidentResponse.rows).toHaveCount(2)
+      await shell.expectCurrent('incident-response')
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBeLessThanOrEqual(0)
+      const viewport = page.viewportSize()
+      const hero = await incidentResponse.hero.boundingBox()
+      expect(hero?.width).toBeGreaterThan((viewport?.width ?? 0) * 0.85)
+      await expect(shell.reviewLink).toBeVisible()
+    })
+  })
+
   test.describe('status', () => {
     test('the page fits the screen, with every place still reachable from the bottom bar', async ({
       page,

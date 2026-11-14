@@ -87,6 +87,7 @@ describe('BottomNavigation', () => {
           place.textContent.trim(),
         ),
       ).toEqual([
+        'Incident response',
         'Assistant',
         'Agents',
         'Logs',

@@ -4,6 +4,7 @@ import {
   ChartColumn,
   HeartPulse,
   LayoutDashboard,
+  LifeBuoy,
   MonitorSmartphone,
   Network,
   Radar,
@@ -27,6 +28,9 @@ export interface NavItem {
   icon: NonNullable<IconProps['icon']>
   /** More words that find it in the command palette, which are not shown. */
   keywords?: string
+  /** On a phone it is behind the More button, though it would fit in the bottom bar, to leave the
+   * bar for the places that are used most. */
+  behindMore?: boolean
 }
 
 /** A phone's bottom bar has room for this many destinations before it gets cramped. */
@@ -42,6 +46,13 @@ export const navItems: readonly NavItem[] = [
     keywords: 'attacks real noise background suspects kinds families lanes',
   },
   { route: 'incidents', title: 'Incidents', icon: Siren },
+  {
+    route: 'incident-response',
+    title: 'Incident response',
+    icon: LifeBuoy,
+    keywords: 'responded banned blocked ban crowdsec firewall suricata answered waiting stopped',
+    behindMore: true,
+  },
   {
     route: 'review',
     title: 'Review',
@@ -90,11 +101,13 @@ export const navItems: readonly NavItem[] = [
 ]
 
 /** What the bottom bar of a phone holds: the places in the menu while they fit, and otherwise as
- * many as leave room for a "More" button, with the rest behind it. */
+ * many as leave room for a "More" button, with the rest behind it. A place that asks to be behind
+ * More is never in the bar when there is a More button, and the places in each keep their order. */
 export function bottomBar(
   items: readonly NavItem[] = navItems,
   limit: number = BOTTOM_BAR_LIMIT,
 ): { bar: readonly NavItem[]; more: readonly NavItem[] } {
   if (items.length <= limit) return { bar: items, more: [] }
-  return { bar: items.slice(0, limit - 1), more: items.slice(limit - 1) }
+  const bar = items.filter((item) => !item.behindMore).slice(0, limit - 1)
+  return { bar, more: items.filter((item) => !bar.includes(item)) }
 }

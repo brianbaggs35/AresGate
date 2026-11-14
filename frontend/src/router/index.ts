@@ -42,6 +42,14 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // What was done about the incidents. It sits under Incidents in the menu, but is a place of
+    // its own, so that the menu marks only one of the two.
+    path: '/incident-response',
+    name: 'incident-response',
+    component: () => import('@/views/IncidentResponseView.vue'),
+    meta: { title: 'Incident response' },
+  },
+  {
     path: '/review',
     name: 'review',
     component: () => import('@/views/ReviewView.vue'),

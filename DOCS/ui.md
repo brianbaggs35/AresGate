@@ -68,6 +68,17 @@ apply, facts for its waves, ports and neighbouring addresses. The status is alwa
 primary action is the one to reach for next, and the page confirms a change in an `output`.
 Status looks, wording and the filters' choices are in `src/incidents.ts`.
 
+Incident Response is a page of its own right under Incidents in the menu, and answers one
+question first: does any incident still wait for a response? A `HeroSurface` says so in a
+sentence (urgent while any waits, calm once all are answered, idle when nothing serious went on),
+with a chip for each group that has anything in it, and under it the groups in the order they matter,
+each a `SectionCard` of `ResponseRow`s: severity and status chips, the title (the link to the
+incident), one line (why it needs a response, or what was done about it, from `answer` in
+`src/incidentResponse.ts`) and when it was last seen. Ten are listed a group, the rest behind a
+button. A program that is not connected is said in an alert with a link to Integrations, since
+then "no response" may only mean that nobody can tell. On a phone the page is reached through
+More: `behindMore` in `src/navigation.ts` leaves the bar to the places that are used most.
+
 The search is `SearchBox`: a labelled text field in a `role="search"` landmark, a panel
 behind its help button (a disclosure, not a menu, so it is plain buttons that work with a screen
 reader and a thumb) with the saved searches, the ways to search and the searches made before, and one button for each

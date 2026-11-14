@@ -15,6 +15,7 @@ import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { DevicePage, DevicesPage } from './pages/devices-page'
 import { IncidentPage } from './pages/incident-page'
+import { IncidentResponsePage } from './pages/incident-response-page'
 import { RetentionSettingsPage } from './pages/retention-settings-page'
 import { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 import { IncidentsPage } from './pages/incidents-page'
@@ -41,6 +42,7 @@ export interface AresGateFixtures {
   /** The list of incidents, and the page for one. */
   incidents: IncidentsPage
   incident: IncidentPage
+  incidentResponse: IncidentResponsePage
   /** Every event that was collected, and the sheet that opens one. */
   logs: LogsPage
   integrations: IntegrationsPage
@@ -155,6 +157,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   incident: async ({ page }, use) => {
     await use(new IncidentPage(page))
+  },
+
+  incidentResponse: async ({ page }, use) => {
+    await use(new IncidentResponsePage(page))
   },
 
   logs: async ({ page }, use) => {
