@@ -4,6 +4,15 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **A busy NVD, OTX, GreyNoise or Fingerbank is no longer reported as a failed connection with a
+  bare "HTTP 503".** Testing one of them now asks again after three seconds when it answers
+  502, 503 or 504, and if it is still down says so: that it is unavailable, that this is on its
+  side and not a problem with the key or AresGate, and that AresGate asks again on its own.
+
 ## 0.1.6
 
 ### Added

@@ -1268,7 +1268,7 @@ def test_fingerbank_asking_for_fewer_requests_is_no_sign_against_the_key(serve: 
     [
         (Answer(status=401), "Fingerbank didn't accept the key."),
         (Answer(status=403), "Fingerbank has blocked this key."),
-        (Answer(status=502), "Fingerbank answered HTTP 502."),
+        (Answer(status=500), "Fingerbank answered HTTP 500."),
         (Answer(body="<html>"), "doesn't look like Fingerbank's"),
     ],
 )
@@ -1397,3 +1397,96 @@ def test_a_size_beyond_the_gigabytes_is_in_terabytes() -> None:
     assert probes.Traffic(2, 1, 3, 4_700_000_000_000).describe() == (
         "2 hosts (1 local), 3 flows, 4.7 TB seen"
     )
+
+
+# ---- A service on the internet that is busy or down -----------------------------------------
+
+
+@pytest.fixture
+def no_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(probes, "RETRY_PAUSE", 0.0)
+
+
+type Case = tuple[str, str, dict[str, str | int], dict[str, str], str]
+INTERNET_PROBES: list[Case] = [
+    ("nvd", "NVD", {"access": "none"}, {}, '{"vulnerabilities": []}'),
+    ("otx", "OTX", {}, {"api_key": "k"}, '{"username": "someone"}'),
+    ("fingerbank", "Fingerbank", {}, {"api_key": "k"}, "{}"),
+]
+
+
+@pytest.mark.parametrize(("integration", "name", "options", "secrets", "good"), INTERNET_PROBES)
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_a_service_on_the_internet_that_is_down_says_so_after_asking_twice(
+    serve: Serve,
+    no_pause: None,
+    integration: str,
+    name: str,
+    options: dict[str, str | int],
+    secrets: dict[str, str],
+    good: str,
+    status: int,
+) -> None:
+    result, server, _ = verdict(
+        serve,
+        integration,
+        "api",
+        lambda seen: Answer(status=status),
+        options=options,
+        secrets=secrets,
+    )
+
+    assert not result.ok
+    assert result.message.startswith(f"{name} is unavailable right now (HTTP {status}).")
+    assert f"on {name}'s side" in result.message
+    assert len(server.seen) == 2
+
+
+@pytest.mark.parametrize(("integration", "name", "options", "secrets", "good"), INTERNET_PROBES)
+def test_a_service_on_the_internet_that_answers_the_second_time_passes(
+    serve: Serve,
+    no_pause: None,
+    integration: str,
+    name: str,
+    options: dict[str, str | int],
+    secrets: dict[str, str],
+    good: str,
+) -> None:
+    answers = iter([Answer(status=503), Answer(body=good)])
+
+    result, server, _ = verdict(
+        serve,
+        integration,
+        "api",
+        lambda seen: next(answers),
+        options=options,
+        secrets=secrets,
+    )
+
+    assert result.ok
+    assert len(server.seen) == 2
+
+
+def test_greynoise_that_is_down_is_asked_again_and_then_said_to_be_down(
+    serve: Serve, no_pause: None
+) -> None:
+    server = serve(lambda seen: Answer(status=503))
+    where = Target(
+        integration="greynoise",
+        connection="api",
+        origin=netguard.parse_origin(server.url, allow_http=True),
+        tls_mode="system",
+        tls_ca_pem=None,
+        tls_fingerprint=None,
+        options={},
+        secrets={"api_key": "k"},
+    )
+
+    async def go() -> Verdict:
+        async with ApiClient(where, Log(), HOME_NETWORK_AND_LOOPBACK) as client:
+            return await probes.run(probes.greynoise_ping, client, where)
+
+    result = asyncio.run(go())
+
+    assert result.message.startswith("GreyNoise is unavailable right now (HTTP 503).")
+    assert len(server.seen) == 2
