@@ -359,8 +359,8 @@ def ntopng(
                 query, host_alerts if busy else ()
             ),
         }
-        for path, extra in (extras or {}).items():
-            answers[path] = lambda extra=extra: _ntopng_extra(extra, query, busy)
+        for path, lookup in (extras or {}).items():
+            answers[path] = lambda lookup=lookup: _ntopng_extra(lookup, query, busy)
         if capture is not None:
             sent = Answer(body=capture, headers={"Content-Type": "application/vnd.tcpdump.pcap"})
             answers["/lua/rest/v2/get/pcap/live_traffic.lua"] = lambda: sent
@@ -383,8 +383,8 @@ def answers(rsp: object) -> NtopngExtra:
     return lambda _query, _busy: rsp
 
 
-def _ntopng_extra(extra: NtopngExtra, query: Mapping[str, Sequence[str]], busy: bool) -> Answer:
-    found = extra(query, busy)
+def _ntopng_extra(lookup: NtopngExtra, query: Mapping[str, Sequence[str]], busy: bool) -> Answer:
+    found = lookup(query, busy)
     if found is None:
         return _ntopng_answer({}, "NOT_FOUND", -3, status=404)
     return _ntopng_answer(found)
