@@ -28,8 +28,8 @@ for (const theme of ['light', 'dark'] as const) {
       await harness.createIncidents([
         { address: '93.184.216.34', severity: 'critical', minutes_ago: 5 },
         { address: '8.8.4.10', severity: 'high', ban: true, minutes_ago: 20 },
-        { address: '8.8.4.11', severity: 'medium', blocks: 3, dropped: 1, minutes_ago: 30 },
-        { address: '8.8.4.12', severity: 'high', ban: true, ban_left: '5m', minutes_ago: 300 },
+        { address: '8.8.5.11', severity: 'medium', blocks: 3, dropped: 1, minutes_ago: 30 },
+        { address: '8.8.6.12', severity: 'high', ban: true, ban_left: '5m', minutes_ago: 300 },
       ])
       await incidentResponse.goto()
       await expect(incidentResponse.rows).toHaveCount(4)
