@@ -11,6 +11,7 @@ import {
   type Verdict,
   type VerdictKind,
 } from '@/api/verdicts'
+import AiGaveChip from '@/components/AiGaveChip.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { useSessionStore } from '@/stores/session'
@@ -109,6 +110,7 @@ async function takeBack(verdict: Verdict) {
       <ul class="verdict-panel__rules">
         <li v-for="rule in applied" :key="rule.id" class="verdict-panel__rule" data-test="applied">
           <VerdictChip :verdict="rule.verdict" size="small" />
+          <AiGaveChip v-if="rule.ai" :ai="rule.ai" />
           <span class="verdict-panel__about text-body-medium" data-test="applied-about">{{
             aboutVerdict(rule)
           }}</span>
@@ -123,6 +125,13 @@ async function takeBack(verdict: Verdict) {
           >
             Take back
           </v-btn>
+          <p
+            v-if="rule.ai && rule.note"
+            class="verdict-panel__why text-body-medium"
+            data-test="applied-why"
+          >
+            Why: {{ rule.note }}
+          </p>
         </li>
       </ul>
     </section>
@@ -219,6 +228,12 @@ async function takeBack(verdict: Verdict) {
 .verdict-panel__about {
   flex: 1 1 14rem;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.verdict-panel__why {
+  flex: 1 1 100%;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 

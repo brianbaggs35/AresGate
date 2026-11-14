@@ -149,6 +149,7 @@ onBeforeUnmount(() => {
       v-model:may-clear="draft.ai_may_clear"
       v-model:clear-from="draft.clear_from"
       v-model:confirms="draft.ai_confirms"
+      v-model:gives-verdicts="draft.ai_gives_verdicts"
       :default-clear-from="kept.default_clear_from"
       :min-clear-from="kept.min_clear_from"
       :watching="kept.watching"

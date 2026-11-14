@@ -36,10 +36,14 @@ from app.models import (
     Incident,
     IncidentSignal,
     ReviewFeedback,
+    VerdictRule,
 )
 from app.review import service as review_service
 from app.review import settings as review_settings
+from app.threats import settings as threat_settings
+from app.threats.settings import Tuning
 from tests.stubs import Handler, Seen, Serve
+from tests.test_ai_clearing import scan
 from tests.test_ai_gateway import Log, anthropic_says, context, turned_on
 from tests.test_ai_service import NOW, saved
 from tests.test_incidents_search import incident as make_incident
@@ -795,6 +799,41 @@ class TestKeepingWhatItSaid:
         assert (row.review, row.reviewed_at) == ("pending", None)
         session.refresh(found)
         assert found.ai_class is None
+
+    def test_a_false_positive_it_is_sure_of_becomes_a_verdict_when_the_owner_allows_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        found = scan(session, settings)
+        threat_settings.save(session, Tuning(ai_gives_verdicts=True))
+
+        triage.keep(
+            session, found, self.answered(session, classification="noise", confidence=92), NOW
+        )
+        session.commit()
+
+        rule = session.scalars(select(VerdictRule)).one()
+        assert (rule.given_by, rule.verdict, rule.ai_confidence, rule.ai_incident_id) == (
+            "ai",
+            "low_priority",
+            92,
+            found.id,
+        )
+        session.refresh(found)
+        assert found.verdict == "low_priority"
+
+    def test_it_gives_no_verdict_unless_the_owner_allows_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        found = scan(session, settings)
+
+        triage.keep(
+            session, found, self.answered(session, classification="noise", confidence=92), NOW
+        )
+        session.commit()
+
+        assert session.scalars(select(VerdictRule)).all() == []
+        session.refresh(found)
+        assert found.verdict is None
 
     def test_a_reading_counts_at_once_when_the_owner_lets_the_ai_decide(
         self, session: Session

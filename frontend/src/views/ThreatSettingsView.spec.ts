@@ -152,6 +152,7 @@ describe('ThreatSettingsView', () => {
         notes: '',
         important_drop: 10,
         low_raise: 0,
+        ai_gives_verdicts: false,
       },
       'a-security-token',
     )

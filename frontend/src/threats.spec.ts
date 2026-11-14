@@ -189,6 +189,7 @@ describe('the settings page', () => {
       { ai_may_clear: false },
       { clear_from: 90 },
       { ai_confirms: false },
+      { ai_gives_verdicts: true },
       { exposure: 'none' as const },
       { notes: 'A web server' },
       { exposed_ports: [22] },

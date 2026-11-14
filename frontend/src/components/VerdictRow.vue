@@ -3,6 +3,7 @@ import { Pencil, Undo2 } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Verdict } from '@/api/verdicts'
+import AiGaveChip from '@/components/AiGaveChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import { aboutVerdict } from '@/verdicts'
@@ -28,6 +29,7 @@ const used = computed(() => {
     <div class="verdict-row__body">
       <div class="verdict-row__what">
         <VerdictChip :verdict="rule.verdict" />
+        <AiGaveChip v-if="rule.ai" :ai="rule.ai" />
         <span class="verdict-row__about text-title-medium" data-test="verdict-about">{{
           about
         }}</span>

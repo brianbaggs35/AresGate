@@ -30,6 +30,21 @@ describe('VerdictRow', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
+  it('says when the AI gave it, how sure it was and why', async () => {
+    const { text, wrapper } = await show({
+      given_by: 'ai',
+      ai: { confidence: 91, provider: 'anthropic', model: 'claude-haiku-5-5', incident_id: 4 },
+      note: 'The scanner you run.',
+    })
+
+    expect(text('ai-gave')).toBe('Given by the AI, 91% sure')
+    expect(wrapper.find('[data-test="ai-gave"]').attributes('title')).toBe(
+      'Said by anthropic claude-haiku-5-5',
+    )
+    expect(text('verdict-why')).toBe('Why: The scanner you run.')
+    expect((await show()).wrapper.find('[data-test="ai-gave"]').exists()).toBe(false)
+  })
+
   it('says how many signals it has been applied to, and when the last was', async () => {
     const { text } = await show({
       hits: 12,

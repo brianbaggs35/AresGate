@@ -76,6 +76,7 @@ export function incident(changes: Partial<Incident> = {}): Incident {
     hunter: [],
     importance: 'normal',
     touched: null,
+    cleared_by_ai: null,
     ...changes,
   }
 }

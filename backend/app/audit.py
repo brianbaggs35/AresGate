@@ -69,6 +69,8 @@ class Action(StrEnum):
     VERDICT_GIVEN = "verdict.given"
     VERDICT_CHANGED = "verdict.changed"
     VERDICT_REMOVED = "verdict.removed"
+    VERDICT_GIVEN_BY_AI = "verdict.given_by_ai"
+    VERDICT_TAKEN_BACK_FROM_AI = "verdict.taken_back_from_ai"
     AGENT_CREATED = "agent.created"
     AGENT_CHANGED = "agent.changed"
     AGENT_DELETED = "agent.deleted"

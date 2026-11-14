@@ -16,6 +16,8 @@ export function verdict(changes: Partial<Verdict> = {}): Verdict {
     source_name: null,
     signature: null,
     note: null,
+    given_by: 'owner',
+    ai: null,
     created_at: new Date(NOW - 24 * HOUR).toISOString(),
     updated_at: new Date(NOW - 24 * HOUR).toISOString(),
     hits: 12,

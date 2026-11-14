@@ -122,6 +122,7 @@ export function threatSettings(changes: Partial<ThreatSettings> = {}): ThreatSet
     notes: '',
     important_drop: 10,
     low_raise: 0,
+    ai_gives_verdicts: false,
     default_threat_from: 65,
     default_clear_from: 80,
     default_important_drop: 10,

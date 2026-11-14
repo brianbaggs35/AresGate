@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **The AI can clear false positives, and says it did.** Under Settings > Threat detection, a new
+  switch (off by default) lets the AI give the verdict *not suspicious* or *low priority* itself
+  when it is sure an incident is a false positive, so the same alert never bothers you again. Each
+  one says it was the AI, how sure it was, why and which model, on the Verdicts page and on the
+  incident, and is in the audit log. **Take back** removes it and tells the AI not to give it
+  again; changing it yourself makes it yours. It never clears what you gave a verdict on, a
+  critical incident or a chain of attacks. See
+  [When the AI clears a false positive](DOCS/threats.md#when-the-ai-clears-a-false-positive).
+
 - **Say which devices matter.** On the Assets page, each device is now *normal*, *important* or
   *critical* (a NAS or a router offers critical, a server or a camera important), and a guest's
   device is a kind of its own. Incidents are ranked by how bad, how sure and how much the device

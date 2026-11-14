@@ -74,7 +74,7 @@ class Lane(StrEnum):
 CLEARABLE_BELOW: Final = Severity.CRITICAL
 
 
-def _escalated(incident: Incident, tuning: Tuning) -> bool:
+def escalated(incident: Incident, tuning: Tuning) -> bool:
     """Whether the incident is more than the rules alone say: a chain of stages, a step of a chain
     across two devices (``app/threats/chains.py``), or an AI that is sure it is an attack or a
     compromise. Such an incident is never unsure and never set aside."""
@@ -109,10 +109,10 @@ def standing(
         return Standing.HANDLED
     if incident.verdict in MUTING:
         return Standing.MUTED
-    escalated = _escalated(incident, tuning)
-    if incident.confidence < floor + tuning.shift(incident.importance) and not escalated:
+    sure = escalated(incident, tuning)
+    if incident.confidence < floor + tuning.shift(incident.importance) and not sure:
         return Standing.UNSURE
-    if not escalated and _cleared(incident, tuning):
+    if not sure and _cleared(incident, tuning):
         return Standing.AI_CLEARED
     return Standing.NEEDS_YOU
 
@@ -136,7 +136,7 @@ def is_threat(
     rules_sure = incident.confidence >= tuning.threat_from and (
         not tuning.confirming or incident.severity >= CLEARABLE_BELOW
     )
-    return incident.verdict == "threat" or _escalated(incident, tuning) or rules_sure
+    return incident.verdict == "threat" or escalated(incident, tuning) or rules_sure
 
 
 def urgent(incident: Incident, floor: int = NEEDS_YOU_FROM, tuning: Tuning | None = None) -> bool:

@@ -278,6 +278,7 @@ export function draftOf(kept: ThreatSettings): ThreatDraft {
     notes: kept.notes,
     important_drop: kept.important_drop,
     low_raise: kept.low_raise,
+    ai_gives_verdicts: kept.ai_gives_verdicts,
   }
 }
 
@@ -292,6 +293,7 @@ export function sameDraft(one: ThreatDraft, other: ThreatDraft): boolean {
     one.notes === other.notes &&
     one.important_drop === other.important_drop &&
     one.low_raise === other.low_raise &&
+    one.ai_gives_verdicts === other.ai_gives_verdicts &&
     one.exposed_ports.length === other.exposed_ports.length &&
     one.exposed_ports.every((port, index) => port === other.exposed_ports[index])
   )

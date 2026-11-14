@@ -164,8 +164,12 @@ onMounted(load)
     >
       <template v-if="target">
         <p class="mb-2">{{ aboutVerdict(target) }}</p>
+        <p v-if="target.ai" data-test="take-back-ai">
+          The AI gave this one. Taking it back also tells it not to give it again.
+        </p>
         <p>
-          It is judged as if you had never said it, which means it can raise alarms again.
+          It is judged as if {{ target.ai ? 'it' : 'you' }} had never said it, which means it can
+          raise alarms again.
           {{
             target.hits > 0
               ? `${formatCount(target.hits)} ${target.hits === 1 ? 'signal' : 'signals'} it was applied to ${target.hits === 1 ? 'is' : 'are'} judged again in the incidents that are not resolved.`

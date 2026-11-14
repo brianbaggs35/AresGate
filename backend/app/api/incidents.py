@@ -18,7 +18,7 @@ from pydantic import (
 from sqlalchemy import ColumnElement, func, or_, select
 
 from app.agents import flags
-from app.ai import catalog, triage
+from app.ai import catalog, clearing, triage
 from app.api import asking
 from app.api import conversations as conversation_api
 from app.api import wire as wire_api
@@ -54,7 +54,16 @@ from app.incidents import (
 )
 from app.incidents.attention import Lane
 from app.incidents.queries import Order
-from app.models import AiTriage, Device, Incident, IncidentFamily, IncidentSignal, NvdCve, utcnow
+from app.models import (
+    AiTriage,
+    Device,
+    Incident,
+    IncidentFamily,
+    IncidentSignal,
+    NvdCve,
+    VerdictRule,
+    utcnow,
+)
 from app.nvd import lookup as nvd_lookup
 from app.nvd import said as nvd_said
 from app.nvd import store as nvd_store
@@ -223,6 +232,21 @@ class IncidentOut(BaseModel):
     # rest. ``touched`` names the device that makes it so, and says so in a sentence.
     importance: Literal["critical", "important", "normal", "low"] = "normal"
     touched: TouchedOut | None = None
+    # Set where the AI, and not the owner, called it not suspicious or low priority: why, how sure
+    # it was and which verdict it gave, which the owner can take back (``DELETE /verdicts/{id}``).
+    cleared_by_ai: ClearedByAiOut | None = None
+
+
+class ClearedByAiOut(BaseModel):
+    """A false positive the AI cleared, with what it said at the time."""
+
+    verdict_id: int
+    verdict: Literal["not_suspicious", "low_priority"]
+    reason: str | None
+    confidence: int
+    provider: str | None
+    model: str | None
+    at: AwareDatetime
 
 
 class TouchedOut(BaseModel):
@@ -801,6 +825,7 @@ def _incident(
     read: AiTriage | None = None,
     hunted: list[flags.Flag] | None = None,
     touch: weighing.Touch | None = None,
+    cleared: VerdictRule | None = None,
 ) -> IncidentOut:
     lane = attention.lane_of(incident, judging.floor, judging.tuning)
     return IncidentOut(
@@ -842,6 +867,21 @@ def _incident(
             Literal["critical", "important", "normal", "low"], weighing.word(incident.importance)
         ),
         touched=_touched(touch),
+        cleared_by_ai=_cleared(cleared),
+    )
+
+
+def _cleared(rule: VerdictRule | None) -> ClearedByAiOut | None:
+    if rule is None:
+        return None
+    return ClearedByAiOut(
+        verdict_id=rule.id,
+        verdict=cast(Literal["not_suspicious", "low_priority"], rule.verdict),
+        reason=rule.note,
+        confidence=rule.ai_confidence or 0,
+        provider=rule.ai_provider,
+        model=rule.ai_model,
+        at=rule.created_at,
     )
 
 
@@ -1044,6 +1084,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
     devices = queries.devices(db, incident)
     drawn = _path(db, incident, seen, done, devices)
     touch = weighing.touches(db, [incident]).get(incident.id)
+    cleared = clearing.of(db, [incident]).get(incident.id)
     return IncidentDetail(
         **_incident(
             incident,
@@ -1052,6 +1093,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             read,
             flags.of_incidents(db, [incident.id])[incident.id],
             touch,
+            cleared,
         ).model_dump(),
         reasons=[ReasonOut.model_validate(reason) for reason in incident.reasons],
         grouping=episode.explain(
@@ -1324,6 +1366,7 @@ def list_incidents(
     }
     hunted = flags.of_incidents(db, [incident.id for incident in page.incidents])
     touching = weighing.touches(db, page.incidents)
+    clearing_by_ai = clearing.of(db, page.incidents)
     return IncidentPage(
         total=page.total,
         items=[
@@ -1334,6 +1377,7 @@ def list_incidents(
                 read.get(incident.id),
                 hunted[incident.id],
                 touching.get(incident.id),
+                clearing_by_ai.get(incident.id),
             )
             for incident in page.incidents
         ],
