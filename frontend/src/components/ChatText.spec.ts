@@ -14,6 +14,17 @@ describe('ChatText', () => {
     expect(link.attributes('href')).toBe('/incidents/3')
   })
 
+  it('links the devices it names to their pages', async () => {
+    const { wrapper } = await mountWithPlugins(ChatText, {
+      props: { text: 'Is [device 12] the one?' },
+    })
+
+    expect(wrapper.element.parentElement?.textContent).toBe('Is device 12 the one?')
+    expect(wrapper.find('[data-test="message-device"]').attributes('href')).toBe(
+      '/assets/device-12',
+    )
+  })
+
   it('is just words when there is no incident in it', async () => {
     const { wrapper } = await mountWithPlugins(ChatText, { props: { text: 'All quiet.' } })
 

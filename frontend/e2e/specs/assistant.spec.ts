@@ -72,6 +72,27 @@ test.describe('the assistant', () => {
     await expect(page).toHaveURL(/\/incidents\/\d+$/)
   })
 
+  test('looks up a device, and links to its page', async ({
+    harness,
+    aiSettings,
+    assistant,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN])
+    await turnOnAi(harness, aiSettings)
+    await assistant.goto()
+
+    await assistant.ask('What is on the storage?')
+
+    await expect(assistant.answers).toContainText('Start with device')
+    await expect(assistant.lookups).toHaveText(['1 device'])
+    await expect(assistant.cites).toHaveText(['nas'])
+
+    await assistant.cites.first().click()
+
+    await expect(page).toHaveURL(/\/assets\/device-\d+$/)
+  })
+
   test('shows exactly what the provider was sent, one request for each time it was asked', async ({
     harness,
     aiSettings,

@@ -88,7 +88,7 @@ class Args:
 
 @dataclass(frozen=True)
 class Ref:
-    """Something a lookup found that an answer may cite: ``kind`` is ``incident`` or
+    """Something a lookup found that an answer may cite: ``kind`` is ``incident``, ``device`` or
     ``integration``, ``key`` is its id, and ``label`` is what the page calls it."""
 
     kind: str
@@ -274,6 +274,11 @@ def _device_filter(redactor: Redactor, name: str) -> ColumnElement[bool]:
     return or_(Device.hostname.ilike(like), Device.vendor.ilike(like))
 
 
+def _device_ref(found: Device) -> Ref:
+    """What an answer cites of a device: its id, and what the owner calls it."""
+    return Ref("device", str(found.id), found.hostname or f"Device {found.id}")
+
+
 def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
     """The devices on the home network that a name, an address or a maker matches."""
     if not args.name or not args.name.strip():
@@ -304,10 +309,10 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
         ).first()
         software = f"; runs {_what_runs(runs, redactor)}" if runs else ""
         lines.append(
-            f"{name}{maker}{what}{software}; addresses: {where}; "
+            f"[device {found.id}] {name}{maker}{what}{software}; addresses: {where}; "
             f"first seen {_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
         )
-    return Found(lines, [], _plural(len(devices), "device"))
+    return Found(lines, [_device_ref(found) for found in devices], _plural(len(devices), "device"))
 
 
 # -- what the agents report about their machines
@@ -660,8 +665,11 @@ def new_devices(db: Session, redactor: Redactor, args: Args, now: datetime) -> F
             .limit(3)
         ).all()
         where = ", ".join(redactor.address(str(address)) for address in addresses) or "none known"
-        lines.append(f"{name}{maker}; addresses: {where}; first seen {_when(item.first_seen_at)}")
-    return Found(lines, [], _plural(len(found), "new device"))
+        lines.append(
+            f"[device {item.id}] {name}{maker}; addresses: {where}; "
+            f"first seen {_when(item.first_seen_at)}"
+        )
+    return Found(lines, [_device_ref(item) for item in found], _plural(len(found), "new device"))
 
 
 def noisy_alerts(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:

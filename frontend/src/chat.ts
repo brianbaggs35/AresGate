@@ -17,6 +17,10 @@ export const MAX_QUESTION = 2000
 export function citeRoute(cite: ChatCite): RouteLocationRaw | null {
   if (cite.kind === 'incident') return { name: 'incident', params: { id: cite.key } }
   if (cite.kind === 'integration') return { name: 'integration', params: { key: cite.key } }
+  // A device's page is the asset page of that device.
+  if (cite.kind === 'device' && /^\d{1,18}$/.test(cite.key)) {
+    return { name: 'asset', params: { key: `device-${cite.key}` } }
+  }
   return null
 }
 
@@ -29,17 +33,19 @@ export function questionAbout(about: string | null | undefined): string | null {
     : null
 }
 
-/** One piece of an answer's text: words, or an incident to link to. */
-export type Piece = { text: string } | { incident: number }
+/** One piece of an answer's text: words, or an incident or a device to link to. */
+export type Piece = { text: string } | { incident: number } | { device: number }
 
-/** The text of an answer cut into words and the incidents it names as [incident 3], which the
- * page turns into links. */
+/** The text of an answer cut into words and the incidents and devices it names as [incident 3]
+ * and [device 12], which the page turns into links. */
 export function pieces(text: string): Piece[] {
   const found: Piece[] = []
   let from = 0
-  for (const match of text.matchAll(/\[incident (\d{1,18})\]/g)) {
+  for (const match of text.matchAll(/\[(incident|device) (\d{1,18})\]/g)) {
     if (match.index > from) found.push({ text: text.slice(from, match.index) })
-    found.push({ incident: Number(match[1]) })
+    found.push(
+      match[1] === 'device' ? { device: Number(match[2]) } : { incident: Number(match[2]) },
+    )
     from = match.index + match[0].length
   }
   if (from < text.length) found.push({ text: text.slice(from) })

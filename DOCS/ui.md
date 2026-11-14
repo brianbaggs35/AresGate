@@ -223,7 +223,7 @@ The Assistant is a place in the menu of its own, third after Incidents (so it is
 bar). On a wide screen the conversations are a card beside the chat; on a phone they are behind a
 *Conversations* button that opens a sheet. The chat is a `role="log"` list of `ChatMessage`s: what the
 owner asked sits to the right, tinted, and an answer sits on a surface of its own with who said it,
-the text (paragraphs and lists, with `[incident 3]` turned into links by `ChatText`), a *Looked at*
+the text (paragraphs and lists, with `[incident 3]` and `[device 12]` turned into links by `ChatText`), a *Looked at*
 row of chips, a *Based on* row of chips that link, and a button for each request that made it (it
 opens `AiCallDialog`). An answer that could not be made is a warning with a link to Settings > AI and
 *Ask again*. The box to type in sticks to the bottom of the screen, above a phone's bottom bar

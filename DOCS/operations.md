@@ -1088,7 +1088,7 @@ AresGate works without it. A test sends only the words "Say OK."
   (a provider that must not see an address is given a stand-in, and a stand-in it asks about is
   turned back to the device it stood for), and there is no tool that writes. An answer keeps what
   it looked at (in words with no address in them) and what it cites, which the page turns into
-  links to incidents and integrations; a citation it was not given is dropped. Requests are
+  links to incidents, devices (to the device's asset page) and integrations; a citation it was not given is dropped. Requests are
   recorded with the purpose `chat` and `about` `chat <conversation>`, so they are on the usage
   page and the spending limits apply. Conversations (`ai_conversations`, `ai_messages`) are
   yours: they are kept until deleted, hold the real values, and are not sent anywhere. The model is

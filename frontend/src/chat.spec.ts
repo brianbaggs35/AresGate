@@ -18,8 +18,16 @@ describe('chat', () => {
       })
     })
 
-    it('is nowhere for anything else', () => {
-      expect(citeRoute({ kind: 'device', key: '1', label: 'A device' })).toBeNull()
+    it('is the asset page of a device', () => {
+      expect(citeRoute({ kind: 'device', key: '12', label: 'vault' })).toEqual({
+        name: 'asset',
+        params: { key: 'device-12' },
+      })
+    })
+
+    it('is nowhere for anything else, or a device with no number', () => {
+      expect(citeRoute({ kind: 'device', key: 'vault', label: 'A device' })).toBeNull()
+      expect(citeRoute({ kind: 'mystery', key: '1', label: 'Something' })).toBeNull()
     })
   })
 
@@ -46,6 +54,16 @@ describe('chat', () => {
         { text: ' and ' },
         { incident: 40 },
         { text: ', then wait.' },
+      ])
+    })
+
+    it('are words, and the devices it names', () => {
+      expect(pieces('Ask about [device 12] or [incident 3].')).toEqual([
+        { text: 'Ask about ' },
+        { device: 12 },
+        { text: ' or ' },
+        { incident: 3 },
+        { text: '.' },
       ])
     })
 
