@@ -481,6 +481,25 @@ not *done*: a ban made where AresGate cannot see it is not counted.
   `seen_at`, `ends_at`, `simulated`, `in_force`), `blocked`, `blocked_since_ban`,
   `last_blocked_at`, `dropped` and `unknown`. `blocked` on the incident is the same count.
   Wazuh's active responses are not read yet, nor does AresGate ban or block anything itself.
+- **The Incident Response page.** Under *Incidents* in the menu, it answers one question: of the
+  incidents of the last 24 hours, 7 days or 30 days, which still wait for a response? An incident
+  counts if it is of medium severity or higher, and you have not called it not suspicious or low
+  priority, nor dismissed it. Each is in the first group that is true:
+  - **Needs a response** is an incident that is open or being looked at and that nothing stops:
+    no ban and nothing turned it away; or only some of the addresses it came from are banned; or
+    it came back after its ban ended.
+  - **Banned** is one whose ban holds (or, for a resolved incident, held for part of it).
+  - **Turned away** is one the firewall or Suricata turned away and nothing banned.
+  - **Ban ended** is one whose ban ran out with nothing seen since.
+  - **Closed without a response** is a resolved one nothing was done about, which is fine.
+  - **Nothing to block** is one that names no address, only an alert.
+
+  It says what it cannot see when CrowdSec or OPNsense is not connected, since then "needs a
+  response" may only mean that nobody can tell. It lists at most the 200 most serious incidents
+  and says how many there were in all. `GET /api/incident-response?days=7` (1 to 30) gives the
+  same: `groups` in the order above, each with its `items` (the incident, its `state`, `why` when
+  it needs a response, `banned_now`, `attackers`, `ban_ends_at`, `blocked` and `dropped`), the
+  `total` and `shown`, and whether `crowdsec_connected` and `opnsense_connected`. It only reads.
 
 ### Verdicts
 

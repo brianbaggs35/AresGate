@@ -304,6 +304,13 @@ overlapping.
   the rules.
 - **The API** is `app/api/incidents.py`, with the queries in `app/incidents/queries.py` so that
   the AI analyst can call them too. They only read, apart from the status.
+- **The Incident Response page** is `incidents/respond.py` (`overview(db, days)` puts each
+  incident of medium severity or higher in a group from what `response.of` says, with the
+  conditions for each group in `_group`) and `app/api/incident_response.py`. In the web app it is
+  `IncidentResponseView`, with `ResponseRow` for each incident and the wording in
+  `src/incidentResponse.ts`. It is a route of its own, `/incident-response`, so that the menu marks
+  only one of it and Incidents, and `behindMore` in `src/navigation.ts` keeps it out of a phone's
+  bottom bar.
 - **The response** is `incidents/response.py`: `of(db, incidents)` answers for a whole page of
   incidents with one query for the CrowdSec decisions in their time, one for the firewall's
   blocks and Suricata's drops (a `VALUES` list of each incident's address and time window joined

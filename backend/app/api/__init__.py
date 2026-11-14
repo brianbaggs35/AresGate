@@ -20,6 +20,7 @@ from app.api import (
     devices,
     events,
     health,
+    incident_response,
     incidents,
     integrations,
     interfaces,
@@ -63,6 +64,7 @@ api_router.include_router(alerts.router)
 api_router.include_router(collectors.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(events.router)
+api_router.include_router(incident_response.router)
 api_router.include_router(incidents.router)
 api_router.include_router(logs.router)
 api_router.include_router(searches.router)

@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **An Incident response page, right under Incidents in the menu.** It says in one sentence
+  whether any incident still waits for a response, then lists the incidents of the last 24 hours,
+  7 days or 30 days in the one group that says what was done about each: **needs a response**
+  (going on and nothing stops it, only some of its addresses banned, or back after its ban
+  ended), **banned**, **turned away** by the firewall or Suricata, **ban ended**, **closed
+  without a response** and **nothing to block**. Only incidents of medium severity or higher count,
+  and not those you called not suspicious or low priority or dismissed. It says what it cannot see
+  when CrowdSec or OPNsense isn't connected. On a phone it is behind More, so the bar keeps Review.
+  See [The Incident Response page](DOCS/operations.md#what-was-done-about-an-incident).
 - **A Retention page in Settings, with a size limit for the database.** It starts switched off,
   and while it is off each kind of data is kept for the time of its own setting, as before.
   Switched on, you choose one number of days (30 by default) for events, measurements, the API
