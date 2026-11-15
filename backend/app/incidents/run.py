@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
+from app import wakeups
 from app.incidents import engine, evidence
 from app.models import utcnow
 from app.threats import chains, drift, families
@@ -30,6 +31,8 @@ def correlate_once(new_session: Callable[[], Session]) -> engine.Result:
         chains.link(db, utcnow())
         # Kinds of incident that differ from what they were when judged are marked.
         drift.detect(db, utcnow())
+        if result.created or result.updated or result.merged:
+            wakeups.notify(db, wakeups.INCIDENTS)
         db.commit()
     if result.events or result.merged:
         logger.info(
@@ -47,8 +50,12 @@ async def run(
     *,
     enabled: bool = True,
     interval: timedelta = INTERVAL,
+    wake: wakeups.Signal | None = None,
+    settle: timedelta = engine.SETTLE,
 ) -> None:
-    """Files signals, waits, and files again until cancelled. A failure (the database isn't up
+    """Files signals, waits, and files again until cancelled. Newly stored events wake it, and it
+    then waits ``settle`` for them to settle before it files them, since the engine leaves alone
+    what is newer. A failure (the database isn't up
     yet, or was restarted) is logged and tried again next time, because it must never stop the
     worker. When collecting is off nothing new is stored, so there is nothing to file."""
     while True:
@@ -59,4 +66,5 @@ async def run(
                     await asyncio.sleep(0)
             except Exception:
                 logger.exception("Couldn't file the latest signals into incidents")
-        await asyncio.sleep(interval.total_seconds())
+        if await wakeups.pause(wake, interval):
+            await asyncio.sleep(settle.total_seconds())

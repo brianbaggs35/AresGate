@@ -44,6 +44,7 @@ from typing import Final
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from app import wakeups
 from app.alerts import destinations, discord, mail, message, watchdog
 from app.alerts import rules as alert_rules
 from app.alerts.destinations import Unusable
@@ -725,6 +726,7 @@ async def run(
     *,
     enabled: bool = True,
     interval: timedelta = INTERVAL,
+    wake: wakeups.Signal | None = None,
 ) -> None:
     """Tells destinations, waits, and tells them again until cancelled. A failure (the database
     isn't up yet, or was restarted) is logged and tried again next time, because it must never
@@ -742,4 +744,4 @@ async def run(
                     )
             except Exception:
                 logger.exception("Couldn't send the latest alerts")
-        await asyncio.sleep(interval.total_seconds())
+        await wakeups.pause(wake, interval)

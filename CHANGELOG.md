@@ -30,6 +30,16 @@ Every release's notes are here, newest first. The format follows
   the indexes (about a second for two million events) and storing events waits while it does. See
   [What the dashboard reads of events](DOCS/development.md#what-the-dashboard-reads-of-events).
 
+- **An alert is filed and told within seconds of settling, not after a wait for the next look.**
+  The worker's jobs (filing events into incidents, telling the destinations of an alert, running
+  the agents) looked for work every 5 to 30 seconds, so a new alert took up to a minute to be
+  filed and then up to half a minute to be told. They are now told when there is something to do
+  (PostgreSQL's `NOTIFY`, which needs no service of its own): the incident is filed 30 seconds
+  after the alert arrived, the time the engine waits for related events to arrive, and the message
+  goes out within a few seconds of it, and an agent you start runs at once. The old intervals stay
+  as a safety net, so if a note is lost the wait is what it was. No job library was added; the
+  [developer guide](DOCS/development.md#what-wakes-the-workers-loops) says why.
+
 - **Incidents and logs can be narrowed by time, device and interface with choices.** Under the
   search box on the Incidents and Logs pages there are now choices for **When** (the last hour, 24
   hours, today, 7 or 30 days, or from and until two days you pick), **Device** and **Interface**.

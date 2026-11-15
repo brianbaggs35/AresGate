@@ -19,7 +19,7 @@ from typing import Final, cast
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, wakeups
 from app.agents import catalog, fingerprint, flow, graph, probe, service
 from app.agents.graph import State, Work
 from app.ai.gateway import Context
@@ -283,6 +283,7 @@ async def run(
     *,
     enabled: bool = True,
     interval: timedelta = INTERVAL,
+    wake: wakeups.Signal | None = None,
 ) -> None:
     """Runs what waits, and looks again, until cancelled. A failure is logged and tried again,
     because it must never stop the worker."""
@@ -298,4 +299,4 @@ async def run(
                     pruned = time.monotonic()
             except Exception:
                 logger.exception("Couldn't run the agents")
-        await asyncio.sleep(interval.total_seconds())
+        await wakeups.pause(wake, interval)
