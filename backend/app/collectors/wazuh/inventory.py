@@ -45,6 +45,32 @@ SYSTEM, INTERFACES, NETWORKS, PACKAGES, PORTS = (
     f"{PREFIX}{name}*" for name in ("system", "interfaces", "networks", "packages", "ports")
 )
 LISTENING: Final = ("listening", "LISTEN")
+# What is read of each index, so the indexer leaves out the rest of each document (a package's
+# description, the time it was indexed, Wazuh's own bookkeeping) instead of sending it. Both
+# places a document may name its agent are kept (see ``indexer.agent_of``).
+AGENT: Final = ("agent.id", "agent.name", "wazuh.agent.id", "wazuh.agent.name")
+READ: Final = {
+    SYSTEM: (
+        *AGENT,
+        "host.hostname",
+        "host.architecture",
+        "host.os.name",
+        "host.os.version",
+        "host.os.platform",
+        "host.os.full",
+        "host.os.kernel",
+    ),
+    INTERFACES: (*AGENT, "host.mac", "interface.name", "interface.state"),
+    NETWORKS: (*AGENT, "interface.name", "network.ip"),
+    PACKAGES: (
+        *AGENT,
+        "package.name",
+        "package.version",
+        "package.architecture",
+        "package.type",
+    ),
+    PORTS: (*AGENT, "source.ip", "source.port", "network.transport", "process.name"),
+}
 # The interfaces of a bridge, a container or a virtual machine host are not the machine, and a
 # device for each would fill the Devices page.
 VIRTUAL: Final = (
@@ -104,7 +130,13 @@ async def _all(
     context: Context, index: str, query: Mapping[str, object] | None = None
 ) -> indexer.Page:
     return await indexer.search(
-        context, index, {"size": indexer.WINDOW, "query": query or {"match_all": {}}}
+        context,
+        index,
+        {
+            "size": indexer.WINDOW,
+            "_source": list(READ[index]),
+            "query": query or {"match_all": {}},
+        },
     )
 
 

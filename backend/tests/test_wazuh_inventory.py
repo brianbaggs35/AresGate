@@ -421,12 +421,45 @@ class TestRunningAgainstWazuh:
         assert bodies[0] == {
             "track_total_hits": True,
             "size": indexer.WINDOW,
+            "_source": list(inventory.READ[inventory.SYSTEM]),
             "query": {"match_all": {}},
         }
         assert bodies[4]["query"] == {
             "bool": {"filter": [{"terms": {"interface.state": ["listening", "LISTEN"]}}]}
         }
         assert (health(session).consecutive_failures, health(session).last_items) == (0, 0)
+
+    def test_it_reads_an_answer_of_a_big_network_that_is_over_what_other_answers_may_be(
+        self, session: Session, settings: Settings, engine: Engine, serve: Serve
+    ) -> None:
+        """A network of a few machines has thousands of packages, and each document carries more
+        than AresGate reads, so the answer is bigger than most requests may be."""
+        documents = [
+            {
+                "_index": "wazuh-states-inventory-packages-wazuh",
+                "_id": str(number),
+                "_source": {
+                    **WEB,
+                    "package": {**package(f"lib{number}")["package"], "description": "d" * 600},
+                },
+            }
+            for number in range(5000)
+        ]
+
+        def handle(seen: Seen) -> Answer:
+            found = documents if "packages" in seen.path else []
+            return Answer(
+                body=json.dumps({"hits": {"total": {"value": len(found)}, "hits": found}})
+            )
+
+        certificate = make_certificate()
+        connect(session, settings, serve(handle, certificate).url, certificate)
+
+        collect(settings, engine, Inventory())
+
+        session.expire_all()
+        assert (health(session).consecutive_failures, health(session).last_error) == (0, None)
+        assert len(session.scalars(select(HostPackage)).all()) == 5000
 
     def test_the_network_card_of_a_machine_is_a_device_that_is_not_on_the_network_now(
         self, session: Session, settings: Settings, engine: Engine, serve: Serve
@@ -495,6 +528,15 @@ class TestRunningAgainstWazuh:
         collect(settings, engine, Inventory())
 
         assert "read on wazuh-states-*" in (health(session).last_error or "")
+
+
+@pytest.mark.parametrize("index", [inventory.SYSTEM, inventory.INTERFACES, inventory.NETWORKS])
+def test_it_asks_each_index_only_for_the_fields_it_reads_and_the_agent_both_ways_it_is_named(
+    index: str,
+) -> None:
+    asked = inventory.READ[index]
+
+    assert {"agent.id", "agent.name", "wazuh.agent.id", "wazuh.agent.name"} <= set(asked)
 
 
 def test_it_reads_from_the_indexer_and_is_one_of_the_collectors() -> None:

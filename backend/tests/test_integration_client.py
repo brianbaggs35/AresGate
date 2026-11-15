@@ -263,6 +263,26 @@ def test_an_answer_that_is_too_big_is_not_read(
     assert "more than AresGate reads" in str(log.calls[0].error)
 
 
+def test_a_call_that_says_how_big_its_answer_may_be_reads_that_much(
+    serve: Serve, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(client_module, "MAX_BODY", 1024)
+    server = serve(lambda seen: Answer(body="x" * 5000))
+    log = Log()
+
+    reply = request(target(server), log, "GET", "/x", max_bytes=6000)
+
+    assert len(reply.text) == 5000
+
+
+def test_an_answer_over_what_the_call_says_it_may_be_is_not_read(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(body="x" * 5000))
+    log = Log()
+
+    with pytest.raises(CallFailed, match="more than AresGate reads"):
+        request(target(server), log, "GET", "/x", max_bytes=4000)
+
+
 def test_an_untrusted_certificate_says_how_to_trust_it(serve: Serve) -> None:
     server = serve(lambda seen: Answer(), make_certificate())
 

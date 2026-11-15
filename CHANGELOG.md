@@ -6,6 +6,16 @@ Every release's notes are here, newest first. The format follows
 
 ## 0.1.8
 
+### Fixed
+
+- **"It answered with more than AresGate reads" after setting Wazuh up as the guide says.** Once
+  the Wazuh user could read `wazuh-states-*`, the Inventory collector asked for up to 10,000
+  documents of each index, and the packages of a few machines can come to more than the 2 MiB any
+  answer was allowed. Each search now names the fields it reads, so the indexer sends a fraction
+  of each document, and what the indexer answers may be up to 16 MiB (the alerts and the
+  vulnerabilities as well). Nothing changes in what is kept, and the setup steps stay as they
+  were. See [Wazuh](DOCS/integrations.md#wazuh).
+
 ## 0.1.7
 
 ### Added
