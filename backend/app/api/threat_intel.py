@@ -198,6 +198,16 @@ def list_known(
 _ARTICLE = {"ip": "an IP address", "domain": "a domain", "url": "a web address"}
 
 
+def _expect_kind(subject: subjects.Subject, kind: Kind | None) -> None:
+    """Refuses a subject of another kind than the one the search says it is for, so a search from
+    the tab of one kind is never answered under another."""
+    if kind is not None and subject.kind != kind:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"That is {_ARTICLE[subject.kind]}, not {_ARTICLE[kind]}.",
+        )
+
+
 @router.post("/lookups")
 def look_up(
     body: LookupIn,
@@ -217,11 +227,7 @@ def look_up(
         subject = subjects.parse(body.subject)
     except subjects.Refusal as refusal:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(refusal)) from refusal
-    if body.kind is not None and subject.kind != body.kind:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"That is {_ARTICLE[subject.kind]}, not {_ARTICLE[body.kind]}.",
-        )
+    _expect_kind(subject, body.kind)
     unasked = feed.refusal(subject)
     if unasked is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, unasked)
