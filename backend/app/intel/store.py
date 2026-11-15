@@ -299,3 +299,15 @@ def prune(db: Session, provider: str, now: datetime) -> None:
             IntelLookup.provider == provider, IntelLookup.requested_at < now - KEEP
         )
     )
+
+
+def purge_expired(db: Session, days: int, now: datetime) -> int:
+    """Forgets the answers last asked for more than ``days`` days ago, and returns how many there
+    were. What the owner ruled of a subject is not an answer and is never forgotten. Commits."""
+    deleted = (
+        db.connection()
+        .execute(delete(IntelSubject).where(IntelSubject.checked_at < now - timedelta(days=days)))
+        .rowcount
+    )
+    db.commit()
+    return deleted

@@ -13,7 +13,9 @@ from app.audit import Action
 from app.config import Settings
 from app.events import retention as event_retention
 from app.events.store import record
-from app.models import AuditEvent, Event, User
+from app.intel import overrides, subjects, virustotal
+from app.intel import store as intel_store
+from app.models import AuditEvent, Event, IntelOverride, IntelSubject, User
 from app.partitions import EVENTS, METRIC_SAMPLES, Partition
 from app.retention_policy import GIGABYTE, Policy
 from tests.helpers import OTHER_ORIGIN, new_event
@@ -166,6 +168,67 @@ class TestThePurge:
 
 def week(start: datetime) -> Partition:
     return EVENTS.containing(start)
+
+
+class TestThreatIntelligence:
+    """The answers kept from threat intelligence have no period of their own, so only a time the
+    owner chose ends them, and what the owner ruled is never ended."""
+
+    def keep_two(self, session: Session) -> None:
+        now = datetime.now(UTC)
+        for age, text in ((20, "93.184.216.34"), (2, "1.1.1.1")):
+            intel_store.keep(
+                session,
+                "otx",
+                subjects.parse(text),
+                virustotal.Unknown(),
+                now - timedelta(days=age),
+            )
+        overrides.rule(session, subjects.parse("93.184.216.34"), "safe", None, now)
+        session.commit()
+
+    def kept(self, session: Session) -> list[str]:
+        session.expire_all()
+        return sorted(session.scalars(select(IntelSubject.subject)))
+
+    def test_nothing_is_forgotten_while_retention_is_not_managed(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session]
+    ) -> None:
+        self.keep_two(session)
+
+        retention.purge_once(settings, new_session)
+
+        assert self.kept(session) == ["1.1.1.1", "93.184.216.34"]
+
+    def test_the_owners_days_decide_which_answers_are_past_their_period(
+        self,
+        session: Session,
+        settings: Settings,
+        new_session: Callable[[], Session],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        self.keep_two(session)
+        retention_policy.save(session, Policy(managed=True, days=10))
+        session.commit()
+
+        with caplog.at_level(logging.INFO, logger="app.retention"):
+            retention.purge_once(settings, new_session)
+
+        assert self.kept(session) == ["1.1.1.1"]
+        assert "Removed 1 threat intelligence answers past their retention period" in caplog.text
+        # What the owner ruled stays, whatever became of the answer.
+        assert session.scalar(select(func.count()).select_from(IntelOverride)) == 1
+
+    def test_nothing_is_forgotten_when_everything_is_kept_forever(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session]
+    ) -> None:
+        self.keep_two(session)
+        retention_policy.save(session, Policy(managed=True, keep_forever=True))
+        session.commit()
+
+        retention.purge_once(settings, new_session)
+
+        assert self.kept(session) == ["1.1.1.1", "93.184.216.34"]
 
 
 class TestTheQuota:

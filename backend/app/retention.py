@@ -14,6 +14,7 @@ from app.alerts import log as alerts
 from app.config import Settings
 from app.events import retention as events
 from app.integrations import apilog
+from app.intel import store as intel
 from app.metrics import retention as metrics
 from app.models import utcnow
 
@@ -27,10 +28,10 @@ QUOTA_INTERVAL = timedelta(minutes=15)
 
 
 def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
-    """Deletes the audit events, the API log entries, the record of AI requests and the
-    integrations' events and samples past their retention periods, and returns how many audit
-    events there were. Where the owner keeps everything forever (on the Retention page), nothing is
-    deleted."""
+    """Deletes the audit events, the API log entries, the record of AI requests, the answers kept
+    from threat intelligence (where the owner manages retention) and the integrations' events and
+    samples past their retention periods, and returns how many audit events there were. Where the
+    owner keeps everything forever (on the Retention page), nothing is deleted."""
     with new_session() as db:
         now = utcnow()
         chosen = retention_policy.load(db)
@@ -40,6 +41,14 @@ def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
         apilog.purge_expired(db, settings, now)
         ai.purge_expired(db, settings, now)
         alerts.purge_expired(db, settings, now)
+        if chosen.managed:
+            # Threat intelligence has no period of its own, so it is kept as long as nothing says
+            # otherwise: only a time the owner chose here ends it. Their rulings are never ended.
+            gone = intel.purge_expired(db, chosen.days, now)
+            if gone:
+                logger.info(
+                    "Removed %d threat intelligence answers past their retention period", gone
+                )
         purged = audit.purge_expired(db, settings, now)
         removed = events.purge_expired(db, settings, now)
         if removed.deleted or removed.partitions_dropped:
