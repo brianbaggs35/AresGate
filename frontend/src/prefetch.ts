@@ -35,6 +35,6 @@ export function prefetchDashboard(now = Date.now()): void {
 export function takePrefetched(window: DashboardWindow, now = Date.now()): Early | null {
   const found = early
   early = null
-  if (!found || found.calls.window !== window || now - found.at > KEEP_MS) return null
+  if (found?.calls.window !== window || now - found.at > KEEP_MS) return null
   return found.calls
 }
