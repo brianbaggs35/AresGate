@@ -49,6 +49,7 @@ describe('fetching the dashboard ahead', () => {
   it('lets the page see a failure, and reports none if the page never asks', async () => {
     const failure = new ApiError(401, "You're not signed in.", 'unauthenticated')
     vi.spyOn(dashboardApi, 'fetchDashboard').mockRejectedValue(failure)
+    vi.spyOn(collectorsApi, 'fetchCollectors').mockRejectedValue(failure)
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
 
@@ -57,7 +58,9 @@ describe('fetching the dashboard ahead', () => {
     expect(unhandled).not.toHaveBeenCalled()
 
     prefetchDashboard()
-    await expect(takePrefetched('24h')?.dashboard).rejects.toBe(failure)
+    const early = takePrefetched('24h')
+    await expect(early?.dashboard).rejects.toBe(failure)
+    await expect(early?.collectors).rejects.toBe(failure)
     process.off('unhandledRejection', unhandled)
   })
 })
