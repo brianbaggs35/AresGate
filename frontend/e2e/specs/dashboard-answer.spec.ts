@@ -13,7 +13,8 @@ test.describe('the dashboard answer', () => {
     const first = await page.request.get('/api/dashboard')
     const etag = first.headers()['etag'] ?? ''
     expect(first.status()).toBe(200)
-    expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
+    // Nginx compresses a body this size and so marks its tag as weak (W/), which is still a tag.
+    expect(etag).toMatch(/^(W\/)?"[0-9a-f]{32}"$/)
     expect(first.headers()['cache-control']).toBe('private, no-cache')
 
     const again = await page.request.get('/api/dashboard', { headers: { 'If-None-Match': etag } })
