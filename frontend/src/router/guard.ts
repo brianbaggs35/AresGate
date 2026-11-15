@@ -1,5 +1,6 @@
 import type { LocationQuery, RouteLocationRaw, Router } from 'vue-router'
 
+import { prefetchDashboard } from '@/prefetch'
 import { useSessionStore } from '@/stores/session'
 
 /**
@@ -16,7 +17,12 @@ export function guardRoutes(router: Router): void {
 
     if (session.setupRequired) return to.name === 'setup' ? true : { name: 'setup' }
     if (to.name === 'setup') return { name: session.signedIn ? 'home' : 'sign-in' }
-    if (session.signedIn) return to.name === 'sign-in' ? { name: 'home' } : true
+    if (session.signedIn) {
+      if (to.name === 'sign-in') return { name: 'home' }
+      // The dashboard's data is asked for now, while the router fetches the page's code.
+      if (to.name === 'home') prefetchDashboard()
+      return true
+    }
     if (to.meta.public) return true
     return { name: 'sign-in', query: to.fullPath === '/' ? {} : { next: to.fullPath } }
   })

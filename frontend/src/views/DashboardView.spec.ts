@@ -3,6 +3,7 @@ import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
+import { prefetchDashboard, takePrefetched } from '@/prefetch'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
 import { collector, report } from '@/test/collectors'
@@ -125,6 +126,52 @@ describe('DashboardView', () => {
     const { fetchDashboard, fetchCollectors } = await open()
     expect(fetchDashboard).toHaveBeenCalledWith('24h')
     expect(fetchCollectors).toHaveBeenCalledTimes(1)
+  })
+
+  describe('what was asked for before its code had arrived', () => {
+    afterEach(() => takePrefetched('24h'))
+
+    it('is shown, without asking again', async () => {
+      const fetches = mocks()
+      prefetchDashboard()
+      expect(fetches.fetchDashboard).toHaveBeenCalledTimes(1)
+
+      const { wrapper } = await mountWithPlugins(DashboardView, {
+        signedIn: 'admin',
+        withApp: true,
+      })
+      await flushPromises()
+
+      expect(fetches.fetchDashboard).toHaveBeenCalledTimes(1)
+      expect(fetches.fetchCollectors).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('[data-test="dashboard-error"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="range-24h"]').exists()).toBe(true)
+    })
+
+    it('is used for the first look only', async () => {
+      const fetches = mocks()
+      prefetchDashboard()
+      const { wrapper } = await mountWithPlugins(DashboardView, {
+        signedIn: 'admin',
+        withApp: true,
+      })
+      await flushPromises()
+
+      await wrapper.find('[data-test="range-7d"]').trigger('click')
+      await flushPromises()
+
+      expect(fetches.fetchDashboard).toHaveBeenCalledTimes(2)
+      expect(fetches.fetchDashboard).toHaveBeenLastCalledWith('7d')
+    })
+
+    it('ends the sign-in on the page when it was told there was none', async () => {
+      mocks({ dashboard: new ApiError(401, "You're not signed in.", 'unauthenticated') })
+      prefetchDashboard()
+      const { pinia } = await mountWithPlugins(DashboardView, { signedIn: 'admin', withApp: true })
+      await flushPromises()
+
+      expect(useSessionStore(pinia).expired).toBe(true)
+    })
   })
 
   it('says when the AI has decisions that wait for review, and not otherwise', async () => {

@@ -37,6 +37,7 @@ import {
 } from '@/dashboard'
 import { formatCount, formatFigure } from '@/format'
 import { usePolling } from '@/polling'
+import { takePrefetched } from '@/prefetch'
 import { SEVERITIES, SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import type { Judged } from '@/verdicts'
@@ -68,9 +69,12 @@ async function load(quiet = false) {
   if (!quiet) loading.value = true
   try {
     const [dashboard, collectors, incidents] = await session.call(async () => {
+      // The first load of the page takes what the guard started asking for before the page's code
+      // had arrived.
+      const ahead = quiet ? null : takePrefetched(range.value)
       const [counted, reporting] = await Promise.all([
-        fetchDashboard(range.value),
-        fetchCollectors(),
+        ahead?.dashboard ?? fetchDashboard(range.value),
+        ahead?.collectors ?? fetchCollectors(),
       ])
       // The lane lists what the banner counted, so it asks for the same thing: the floor and the
       // window are the dashboard's. With nothing that needs the owner there is nothing to list.

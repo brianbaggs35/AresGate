@@ -35,20 +35,24 @@ export const useSessionStore = defineStore('session', () => {
     csrfToken.value = null
   }
 
-  /** Asks the API whether this is a fresh install and who, if anyone, is signed in. */
+  /** Asks the API whether this is a fresh install and who, if anyone, is signed in. The two
+   * questions don't depend on each other, so they are asked together; on a fresh install nobody
+   * can be signed in and the answer to the second is not looked at. */
   async function restore() {
     error.value = null
     try {
-      setupRequired.value = await authApi.fetchSetupRequired()
-      if (setupRequired.value) {
+      const [required, info] = await Promise.all([
+        authApi.fetchSetupRequired(),
+        authApi.fetchSession().catch((sessionError: unknown) => {
+          if (!isUnauthenticated(sessionError)) throw sessionError
+          return null
+        }),
+      ])
+      setupRequired.value = required
+      if (required || info === null) {
         forget()
       } else {
-        try {
-          adopt(await authApi.fetchSession())
-        } catch (sessionError) {
-          if (!isUnauthenticated(sessionError)) throw sessionError
-          forget()
-        }
+        adopt(info)
       }
       known.value = true
     } catch (restoreError) {

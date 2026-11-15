@@ -43,13 +43,38 @@ describe('session store', () => {
       expect(store).toMatchObject({ known: true, signedIn: false, setupRequired: false })
     })
 
-    it('does not ask who is signed in on a fresh install, which has no account', async () => {
+    it('has no one signed in on a fresh install, which has no account', async () => {
       vi.spyOn(authApi, 'fetchSetupRequired').mockResolvedValue(true)
-      const session = vi.spyOn(authApi, 'fetchSession')
+      vi.spyOn(authApi, 'fetchSession').mockRejectedValue(notSignedIn())
       const store = useSessionStore()
       await store.restore()
       expect(store).toMatchObject({ known: true, signedIn: false, setupRequired: true })
-      expect(session).not.toHaveBeenCalled()
+    })
+
+    it('does not look at who is signed in once it is told there is no account', async () => {
+      vi.spyOn(authApi, 'fetchSetupRequired').mockResolvedValue(true)
+      vi.spyOn(authApi, 'fetchSession').mockResolvedValue(info)
+      const store = useSessionStore()
+      await store.restore()
+      expect(store).toMatchObject({ known: true, signedIn: false, setupRequired: true })
+    })
+
+    it('asks whether there is an account and who is signed in at the same time', async () => {
+      let answerSetup: (required: boolean) => void = () => undefined
+      const setup = vi.spyOn(authApi, 'fetchSetupRequired').mockReturnValue(
+        new Promise((resolve) => {
+          answerSetup = resolve
+        }),
+      )
+      const session = vi.spyOn(authApi, 'fetchSession').mockResolvedValue(info)
+      const store = useSessionStore()
+      const restoring = store.restore()
+      // Neither has been answered, and both have been asked.
+      expect(setup).toHaveBeenCalledOnce()
+      expect(session).toHaveBeenCalledOnce()
+      answerSetup(false)
+      await restoring
+      expect(store).toMatchObject({ known: true, signedIn: true })
     })
 
     it.each([
@@ -67,6 +92,7 @@ describe('session store', () => {
     it('forgets an earlier error when it asks again', async () => {
       const setup = vi.spyOn(authApi, 'fetchSetupRequired').mockRejectedValueOnce(offline())
       setup.mockResolvedValue(true)
+      vi.spyOn(authApi, 'fetchSession').mockRejectedValue(notSignedIn())
       const store = useSessionStore()
       await store.restore()
       await store.restore()

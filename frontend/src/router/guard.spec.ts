@@ -3,6 +3,7 @@ import { createMemoryHistory, type RouteLocationRaw } from 'vue-router'
 
 import * as authApi from '@/api/auth'
 import { ApiError } from '@/api/client'
+import * as prefetch from '@/prefetch'
 import { buildRouter } from '@/router'
 import { guardRoutes, landingPage } from '@/router/guard'
 import { useSessionStore } from '@/stores/session'
@@ -19,6 +20,9 @@ function guarded() {
 const state = {
   freshInstall: () => {
     vi.spyOn(authApi, 'fetchSetupRequired').mockResolvedValue(true)
+    vi.spyOn(authApi, 'fetchSession').mockRejectedValue(
+      new ApiError(401, "You're not signed in.", 'unauthenticated'),
+    )
   },
   signedOut: () => {
     vi.spyOn(authApi, 'fetchSetupRequired').mockResolvedValue(false)
@@ -39,6 +43,12 @@ async function goTo(path: string) {
 }
 
 describe('route guard', () => {
+  let prefetchDashboard: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    prefetchDashboard = vi.spyOn(prefetch, 'prefetchDashboard').mockReturnValue(undefined)
+  })
+
   it('sends everyone to setting up while there is no account', async () => {
     state.freshInstall()
     expect((await goTo('/')).name).toBe('setup')
@@ -84,6 +94,37 @@ describe('route guard', () => {
     expect((await goTo('/no/such/page')).name).toBe('not-found')
     expect((await goTo('/sign-in')).name).toBe('home')
   })
+
+  it('starts asking for the dashboard’s data when someone signed in is on their way to it', async () => {
+    state.signedIn()
+    expect((await goTo('/')).name).toBe('home')
+    expect(prefetchDashboard).toHaveBeenCalledOnce()
+  })
+
+  it('asks for the dashboard’s data after a sign-in sends them there, too', async () => {
+    state.signedIn()
+    expect((await goTo('/sign-in')).name).toBe('home')
+    // The move to the sign-in page was turned round before it asked; the one it turned into did.
+    expect(prefetchDashboard).toHaveBeenCalledOnce()
+  })
+
+  it.each(['/settings/account', '/incidents', '/no/such/page'])(
+    'asks for nothing ahead on the way to %s',
+    async (path) => {
+      state.signedIn()
+      await goTo(path)
+      expect(prefetchDashboard).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['freshInstall', 'signedOut'] as const)(
+    'asks for nothing ahead of someone who is not signed in (%s)',
+    async (which) => {
+      state[which]()
+      await goTo('/')
+      expect(prefetchDashboard).not.toHaveBeenCalled()
+    },
+  )
 
   it('asks the API once, not on every move', async () => {
     state.signedIn()
