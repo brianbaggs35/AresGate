@@ -40,6 +40,15 @@ Every release's notes are here, newest first. The format follows
   as a safety net, so if a note is lost the wait is what it was. No job library was added; the
   [developer guide](DOCS/development.md#what-wakes-the-workers-loops) says why.
 
+- **The first page appears sooner after you open AresGate.** The web app used to ask whether there
+  is an account, wait for the answer, then ask who is signed in, wait again, load the dashboard's
+  code and only then ask for the dashboard's numbers: four trips one after another. The first two
+  questions are now asked together, and as soon as it is known you are signed in and heading for
+  the dashboard, its numbers are asked for while its code is still being fetched, and the page
+  uses them instead of asking again. Nothing is asked before the sign-in is known, a sign-in that
+  has ended still sends you to the sign-in page, and only the dashboard (the page you land on) is
+  fetched ahead.
+
 - **Incidents and logs can be narrowed by time, device and interface with choices.** Under the
   search box on the Incidents and Logs pages there are now choices for **When** (the last hour, 24
   hours, today, 7 or 30 days, or from and until two days you pick), **Device** and **Interface**.
