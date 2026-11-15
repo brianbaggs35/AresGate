@@ -631,6 +631,10 @@ Every 15 minutes AresGate reads what each agent's inventory module reports, from
 - **A limit.** A search asks for at most 10,000 documents of each index, so a machine with more
   than that isn't read in full. When the system index holds more than was read, nothing is
   forgotten.
+- **How much is sent.** Each search names the fields it reads, so the indexer leaves out the rest
+  of every document (a package's description, when it was indexed), which for thousands of
+  packages is most of it. The answers of every search of the indexer, the alerts and the
+  vulnerabilities too, may be up to 16 MiB, where other systems' may be 2 MiB.
 - **The permission.** Read on `wazuh-states-*`. A user without it is refused (HTTP 403) and the
   Collection card says to add it; the connection test, which only searches the alerts, doesn't
   check it.

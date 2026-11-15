@@ -718,6 +718,10 @@ WAZUH_STATES = "/wazuh-states-*/_search"
 # The index patterns a user has to be allowed to read, for what each is about.
 ALERT_INDICES = "wazuh-alerts-*"
 STATE_INDICES = "wazuh-states-*"
+# The most of an indexer's answer that is read. A search asks for hundreds of alerts or thousands
+# of documents, each with more in it than AresGate reads, so its answer is far over what other
+# systems' may be.
+INDEXER_ANSWER = 16 * 1024 * 1024
 INDEXER_REFUSED = (
     f"{WAZUH_INDEXER} didn't accept the credentials (HTTP 401). It has its own users, apart "
     "from the manager API's: Indexer management, Security, Internal users."
@@ -781,6 +785,7 @@ async def wazuh_search(
         path,
         json_body=body,
         auth=(str(target.options["username"]), target.secrets["password"]),
+        max_bytes=INDEXER_ANSWER,
     )
 
 

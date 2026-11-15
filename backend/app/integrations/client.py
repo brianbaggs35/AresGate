@@ -242,11 +242,14 @@ class ApiClient:
         headers: Mapping[str, str] | None = None,
         auth: tuple[str, str] | None = None,
         keep_bytes: int | None = None,
+        max_bytes: int | None = None,
     ) -> Reply:
         """Sends a request and returns what came back, whatever its status. Raises
         ``CallFailed`` if nothing came back. Either way the call is logged. ``keep_bytes`` is for
         an answer that isn't text: the body is kept as it is in ``Reply.content``, and what comes
-        after that many bytes is left unread instead of being an error."""
+        after that many bytes is left unread instead of being an error. ``max_bytes`` is for a
+        text answer that is known to be big, a search that returns thousands of documents: it is
+        the most that is read before the call fails (the usual ``MAX_BODY`` when it is None)."""
         started = time.monotonic()
         occurred_at = utcnow()
         status: int | None = None
@@ -257,7 +260,7 @@ class ApiClient:
             built = self._http.build_request(
                 method, path, params=query, json=json_body, headers=headers
             )
-            reply = await self._send(built, auth, keep_bytes, started)
+            reply = await self._send(built, auth, keep_bytes, max_bytes, started)
             status = reply.status
             seen = reply.seen
             if 300 <= status < 400:
@@ -338,6 +341,7 @@ class ApiClient:
         built: httpx2.Request,
         auth: tuple[str, str] | None,
         keep_bytes: int | None,
+        max_bytes: int | None,
         started: float,
     ) -> Reply:
         if self._policy.read_only and built.method != "GET":
@@ -350,7 +354,7 @@ class ApiClient:
                 first_byte = round((time.monotonic() - started) * 1000)
                 body = bytearray()
                 cut = False
-                limit = MAX_BODY if keep_bytes is None else keep_bytes
+                limit = (max_bytes or MAX_BODY) if keep_bytes is None else keep_bytes
                 async for chunk in response.aiter_bytes():
                     body += chunk
                     if len(body) > limit:
