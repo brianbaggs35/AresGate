@@ -54,12 +54,13 @@ class Signal:
     def set(self) -> None:
         self._event.set()
 
-    async def wait(self, timeout: timedelta) -> bool:
-        """Waits for the signal for at most ``timeout``, and says whether it came. A signal that
+    async def wait(self, interval: timedelta) -> bool:
+        """Waits for the signal for at most ``interval``, and says whether it came. A signal that
         came while the loop was busy ends the wait at once, and counts once however many there
         were."""
         try:
-            await asyncio.wait_for(self._event.wait(), timeout.total_seconds())
+            async with asyncio.timeout(interval.total_seconds()):
+                await self._event.wait()
         except TimeoutError:
             return False
         self._event.clear()
