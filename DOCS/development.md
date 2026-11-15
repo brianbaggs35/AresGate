@@ -106,6 +106,21 @@ the tests make through the models and the migration makes with its own copy of t
 has to empty the tables, such as a test's cleanup or the end-to-end harness, calls
 `audit.allow_deletes(session)` first, in the same transaction.
 
+## What the dashboard reads of events
+
+The dashboard asks about ten questions of the events table each time it refreshes, and most are
+about alerts (`kind = 'alert'`) or connections the firewall refused (`kind = 'firewall'` and a
+severity of low or more). Those two have partial indexes of their own, `ix_events_alert_occurred_at`
+and `ix_events_block_occurred_at` (`app/models/events.py`), which hold the columns the questions
+read, so a question is answered from the index and reads no other event. A partial index is used
+only when the planner can see a query's condition is the index's, so `IS_ALERT` and `IS_BLOCK` in
+`app/dashboard.py` are written as text (`kind = 'alert'`), not as parameters: a plan the database
+keeps for a statement it has run a few times is made for any value, and would not use them. Use
+those two for any new question about alerts or refused connections, and add the columns it reads
+to the index if it reads more. The indexes are on the partitioned table, so every week has them,
+those made later included (a test checks it). Each is one more thing to write for every event, so
+an index is only added for a question that is measured to pay for it.
+
 ## Storing events from a collector
 
 A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them

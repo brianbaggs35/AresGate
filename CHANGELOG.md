@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **The dashboard reads far fewer events.** Every question the dashboard asks of the events (how
+  many alerts, how many connections the firewall refused, which addresses and ports, the noisiest
+  rules) read every event of the window, firewall lines and all, and it asks about ten of them each
+  time it refreshes. Alerts and refused connections now have indexes of their own, so a question
+  about one reads none of the other. On two million synthetic events (97% refused connections)
+  the dashboard's event questions took about 1.3 seconds of one core instead of about 3 seconds,
+  storing a batch of events takes about a tenth longer, and the indexes add about 3% to what the
+  events take on disk. Nothing the dashboard shows changes. The first start after the update builds
+  the indexes (about a second for two million events) and storing events waits while it does. See
+  [What the dashboard reads of events](DOCS/development.md#what-the-dashboard-reads-of-events).
+
 - **Incidents and logs can be narrowed by time, device and interface with choices.** Under the
   search box on the Incidents and Logs pages there are now choices for **When** (the last hour, 24
   hours, today, 7 or 30 days, or from and until two days you pick), **Device** and **Interface**.

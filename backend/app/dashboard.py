@@ -19,6 +19,7 @@ from sqlalchemy import (
     distinct,
     func,
     literal,
+    literal_column,
     or_,
     select,
     tuple_,
@@ -41,7 +42,10 @@ TRAFFIC_OUT = "interface.bytes_out"
 # What an event is called when it is an alert (an intrusion rule, a Wazuh rule) and when it is a
 # connection the firewall refused. The firewall's log gives a block the lowest severity above
 # info and a pass none.
-IS_ALERT = Event.kind == "alert"
+# Written with the text of the value, not as a parameter: a partial index (see the Event model) is
+# only used for a query whose condition the planner can see is the index's, and a parameter hides
+# that from the plan the database keeps for a statement it has run a few times.
+IS_ALERT = Event.kind == literal_column("'alert'")
 # An alert that is the first of its kind, not one another program reported moments after it
 # (app/events/twins.py).
 IS_ORIGINAL = and_(IS_ALERT, Event.twin_of.is_(None))
@@ -56,7 +60,10 @@ _SAME = tuple_(
     Event.dst_port,
     Event.protocol,
 )
-IS_BLOCK = and_(Event.kind == "firewall", Event.severity >= Severity.LOW)
+IS_BLOCK = and_(
+    Event.kind == literal_column("'firewall'"),
+    Event.severity >= literal_column(str(int(Severity.LOW))),
+)
 
 RECENT_ALERTS = 8
 TOP_SOURCES = 8
