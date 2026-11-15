@@ -352,8 +352,11 @@ class TestTheKeptAnswers:
         assert cache.fetch("day", session, lambda: b"new").body == b"new"
 
     def test_a_tag_follows_the_body(self) -> None:
-        assert answers.etag_of(b"a") == answers.etag_of(b"a")
-        assert answers.etag_of(b"a") != answers.etag_of(b"b")
+        body = b"a"
+        same_body = bytes(body)
+
+        assert answers.etag_of(body) == answers.etag_of(same_body)
+        assert answers.etag_of(body) != answers.etag_of(b"b")
 
     def test_each_change_moves_the_stamp_on(self, session: Session, engine: Engine) -> None:
         sessions = sessionmaker(bind=engine, expire_on_commit=False)
@@ -364,4 +367,5 @@ class TestTheKeptAnswers:
         answers.stamp_change(sessions)
         second = answers.current_stamp(session)
 
-        assert first is not None and second == first + 1
+        assert first is not None
+        assert second == first + 1
