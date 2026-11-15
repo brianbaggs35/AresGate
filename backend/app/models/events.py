@@ -14,6 +14,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,6 +44,34 @@ class Event(Base):
         Index("ix_events_source_occurred_at", "source", "occurred_at"),
         Index("ix_events_src_address_occurred_at", "src_address", "occurred_at"),
         Index("ix_events_dst_address_occurred_at", "dst_address", "occurred_at"),
+        # What the dashboard reads of alerts and of refused connections, each kept apart from the
+        # rest of the events, so a question about one reads none of the other (nearly every event
+        # of a firewall that logs what it blocks is a refused connection, and few are alerts). They
+        # hold the columns those questions read, so the table itself isn't. The predicates are
+        # written as the queries write them (see IS_ALERT and IS_BLOCK in app/dashboard.py), so
+        # the planner can tell a query's rows are in the index.
+        Index(
+            "ix_events_alert_occurred_at",
+            "occurred_at",
+            postgresql_include=[
+                "source",
+                "severity",
+                "signature",
+                "summary",
+                "src_address",
+                "dst_address",
+                "dst_port",
+                "protocol",
+                "twin_of",
+            ],
+            postgresql_where=text("kind = 'alert'"),
+        ),
+        Index(
+            "ix_events_block_occurred_at",
+            "occurred_at",
+            postgresql_include=["src_address", "dst_address", "dst_port"],
+            postgresql_where=text("kind = 'firewall' AND severity >= 1"),
+        ),
         {"postgresql_partition_by": "RANGE (occurred_at)"},
     )
 
