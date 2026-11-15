@@ -130,12 +130,8 @@ function pickInterface(value: string | null) {
 </script>
 
 <template>
-  <div
-    class="scope"
-    role="group"
-    aria-label="Narrow by time, device and interface"
-    data-test="scope"
-  >
+  <fieldset class="scope" data-test="scope">
+    <legend class="sr-only">Narrow by time, device and interface</legend>
     <v-select
       :model-value="range"
       :items="choices"
@@ -196,11 +192,15 @@ function pickInterface(value: string | null) {
       data-test="scope-interface"
       @update:model-value="pickInterface"
     />
-  </div>
+  </fieldset>
 </template>
 
 <style scoped>
 .scope {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
