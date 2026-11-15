@@ -928,8 +928,8 @@ async def nvd(client: ApiClient, target: Target) -> Verdict:
                 f"{reply.status}), which it does when the key is wrong or its limit is reached. "
                 "Check the key, or try again in a minute.",
             )
-        if bad := problem(reply, "NVD"):
-            return bad
+    if bad := problem(reply, "NVD"):
+        return bad
     answer = as_object(reply.json())
     if answer is None or as_array(answer.get("vulnerabilities")) is None:
         return unexpected("NVD")

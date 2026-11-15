@@ -326,8 +326,8 @@ async def stream(prepared: Prepared, context: Context) -> AsyncGenerator[str | S
                     yield piece
     except (CallFailed, wire.AiFailed) as failure:
         yield Sent(None, str(failure), _milliseconds(started))
-        return
-    yield Sent(completion, None, _milliseconds(started))
+    else:
+        yield Sent(completion, None, _milliseconds(started))
 
 
 def _milliseconds(started: float) -> int:
