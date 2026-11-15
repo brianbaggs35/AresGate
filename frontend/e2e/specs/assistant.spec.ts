@@ -29,6 +29,7 @@ test.describe('the assistant', () => {
     await expect(assistant.heading).toHaveText('Assistant')
     await expect(assistant.empty).toContainText('Ask about your network')
     await expect(assistant.starters).toHaveCount(4)
+    await expect(page.getByTestId('chat-readonly')).toHaveText('Read only')
     await assistant.starters.first().click()
     await expect(assistant.input).toHaveValue(ATTENTION)
   })

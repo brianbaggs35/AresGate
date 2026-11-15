@@ -212,6 +212,28 @@ describe('AssistantView', () => {
       expect(box.value).toBe(STARTERS[1])
     })
 
+    it('says it only reads, and that Enter sends, on a screen with a keyboard', async () => {
+      const { find } = await open({ route: '/assistant', conversations: [] })
+
+      expect(find('chat-readonly').text()).toBe('Read only')
+      expect(find('chat-hint').text()).toContain('Enter sends')
+    })
+
+    it('leaves the hint about the keyboard off a phone', async () => {
+      const { find } = await open({ route: '/assistant', conversations: [], width: 400 })
+
+      expect(find('chat-hint').exists()).toBe(false)
+    })
+
+    it('counts what is left of the question only when it is getting long', async () => {
+      const { wrapper, find } = await open({ route: '/assistant', conversations: [] })
+      expect(find('chat-count').exists()).toBe(false)
+
+      await type(wrapper, 'x'.repeat(1700))
+
+      expect(find('chat-count').text()).toBe('300 left')
+    })
+
     it('starts with the question a button on another page asked', async () => {
       const { wrapper } = await open({ route: '/assistant?about=incident:9' })
 
