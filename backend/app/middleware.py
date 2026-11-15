@@ -5,9 +5,11 @@ import re
 import time
 from uuid import uuid4
 
+import anyio.to_thread
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app import answers
 from app.logs import request_id
 
 logger = logging.getLogger("aresgate.request")
@@ -80,3 +82,34 @@ class RequestContext:
                 "client": client[0] if client else None,
             },
         )
+
+
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+class NoteChanges:
+    """Writes down, for the answers that are kept for a few seconds, that a change succeeded. It
+    is written before the reply starts, so by the time the person sees that their change was made,
+    the next request in any worker builds its answer afresh. A failure to write it is logged and
+    changes nothing: the answers are then kept for no longer than their seconds."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] in SAFE_METHODS:
+            await self.app(scope, receive, send)
+            return
+
+        async def send_after_noting(message: Message) -> None:
+            if message["type"] == "http.response.start" and message["status"] < 400:
+                try:
+                    sessions = scope["app"].state.sessions()
+                    await anyio.to_thread.run_sync(answers.stamp_change, sessions)
+                except Exception:
+                    logger.warning(
+                        "A change could not be noted for the kept answers", exc_info=True
+                    )
+            await send(message)
+
+        await self.app(scope, receive, send_after_noting)

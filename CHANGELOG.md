@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **The dashboard is built once for every page that asks within a few seconds, and answers
+  "nothing new" without sending it again.** Each open page asks for the dashboard every 30 seconds,
+  and each ask used to run all of its questions and send all of the answer, even when nothing had
+  happened. An answer is now kept for 15 seconds, so a computer and a phone that are both showing
+  the dashboard share one build, and anything you change (a rule, a verdict, a setting) drops it at
+  once, so what you see after a change is never from before it. The answer carries a tag; the
+  browser sends it back, and while the answer is the same it gets an empty reply. Only the
+  dashboard's answer is kept by the browser, and only by that browser (`private, no-cache`);
+  everything else the API sends is still `no-store`. What arrives from your network shows within
+  the 15 seconds, as the page already updated only every 30. See
+  [the developer guide](DOCS/development.md#answers-that-are-kept-for-a-few-seconds).
 - **The dashboard reads far fewer events.** Every question the dashboard asks of the events (how
   many alerts, how many connections the firewall refused, which addresses and ports, the noisiest
   rules) read every event of the window, firewall lines and all, and it asks about ten of them each
