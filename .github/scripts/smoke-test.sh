@@ -37,6 +37,33 @@ for page in /assets /assets/device-1; do
     grep --quiet '<div id="app">' <<<"$body" || fail "$page did not fall back to the web app's index"
 done
 
+echo "Precompressed files and the font"
+# The build writes a gzip copy beside each text file, and nginx sends it as it is (gzip_static); the
+# page and its script are checked, and one that asks for no compression gets the plain file.
+script="$(grep --only-matching --max-count=1 '/static/index-[^"]*\.js' <<<"$index")"
+[[ -n "$script" ]] || fail "the index page names no script"
+for path in / "$script"; do
+    packed="$(curl --silent --show-error --fail --insecure --header 'Accept-Encoding: gzip' \
+        --dump-header - --output /dev/null "$base$path")"
+    grep --quiet --ignore-case '^content-encoding: gzip' <<<"$packed" ||
+        fail "$path was not sent compressed"
+    grep --quiet --ignore-case '^vary:.*accept-encoding' <<<"$packed" ||
+        fail "$path does not say that its answer depends on Accept-Encoding"
+done
+plain="$(curl --silent --show-error --fail --insecure --header 'Accept-Encoding: identity' \
+    --dump-header - --output /dev/null "$base$script")"
+if grep --quiet --ignore-case '^content-encoding:' <<<"$plain"; then
+    fail "$script was compressed for a browser that did not ask for it"
+fi
+# The font the page's text is set in is fetched at once, and under the page's own policy.
+font="$(grep --only-matching --max-count=1 \
+    '<link rel="preload" as="font" type="font/woff2" crossorigin[^>]*href="[^"]*"' <<<"$index" |
+    sed 's/.*href="//; s/"$//')"
+[[ -n "$font" ]] || fail "the index page does not preload the font"
+font_headers="$(curl --silent --show-error --fail --insecure --dump-header - --output /dev/null "$base$font")"
+grep --quiet --ignore-case '^content-type: font/woff2' <<<"$font_headers" ||
+    fail "the preloaded font was not sent as font/woff2"
+
 echo "The AI API is passed on without a redirect"
 # A path that is also the start of a proxied location with a slash (/api/ai/) is redirected to it by
 # nginx, and the API redirects it back. Nobody is signed in, so the API itself answers 401.

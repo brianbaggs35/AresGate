@@ -197,6 +197,26 @@ instead of asking again. Only the landing page is fetched ahead, and never befor
 known; a 401 reaches the page through the same `session.call` as any other. `startup.spec.ts`
 checks both orders in the browser.
 
+## What the web app's build leaves for nginx
+
+Two plugins in `frontend/build/assets.ts` (tested in `assets.spec.ts`, and measured by coverage like
+`src/`) run in `vite build`, in the container's frontend stage, so the runtime image needs no build
+tool:
+
+- `precompress` writes `app.js.gz` beside every text file (js, css, html, svg, json, webmanifest)
+  of 1 KB or more, at gzip level 9, and keeps it only if it is smaller. nginx has `gzip_static on`
+  (`docker/nginx/nginx.conf`) so it sends the copy as it is to a browser that accepts gzip. The
+  API's JSON has no copy and is still compressed as it goes. `smoke-test.sh` checks the `Content-Encoding`
+  and the `Vary` header for the page and its script, and that a request that accepts no compression
+  gets the plain file.
+- `preloadFont` puts `<link rel="preload" as="font" crossorigin>` for the Latin font in the page's
+  head, with the address the build gave the file. The font is `@fontsource-variable/inter/wght.css`
+  (weight only); the `opsz` files carry an optical-size axis that no style of the app sets.
+
+Brotli is not used. The image would need nginx's brotli module, and `brotli_static` stops nginx
+starting if the module is missing; check what the Wolfi package offers before adding it (Brotli
+11 is about 14% smaller than gzip 9 on this build).
+
 ## Storing events from a collector
 
 A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them

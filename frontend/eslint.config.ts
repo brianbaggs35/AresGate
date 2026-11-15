@@ -22,7 +22,7 @@ export default defineConfigWithVueTs(
   },
   {
     name: 'aresgate/tests',
-    files: ['src/**/*.spec.ts', 'src/test/**', 'e2e/**'],
+    files: ['src/**/*.spec.ts', 'src/test/**', 'build/**/*.spec.ts', 'e2e/**'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-empty-function': 'off',

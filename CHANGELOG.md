@@ -49,6 +49,17 @@ Every release's notes are here, newest first. The format follows
   has ended still sends you to the sign-in page, and only the dashboard (the page you land on) is
   fetched ahead.
 
+- **Less to download when the web app opens.** The web app's text files (the code and styles of
+  every page) are now compressed once when the container is built, and nginx sends those copies as
+  they are instead of compressing each response as it goes, at the best level instead of a middling
+  one (about 1% smaller, and no work at request time). The font the pages are set in is now the
+  weight-only Inter, which is the same typeface without the optical-size axis (nothing in the app
+  used it): the Latin part of the font is 48 KB instead of 73 KB (a third less), and it is fetched
+  as soon as the page arrives instead of after the stylesheet that names it has been read. The
+  smoke test checks that files are sent compressed only to a browser that accepts it. Brotli, which
+  would take another 14% off the text, is not used: whether the image's nginx has its module is not
+  something this change could check.
+
 - **Incidents and logs can be narrowed by time, device and interface with choices.** Under the
   search box on the Incidents and Logs pages there are now choices for **When** (the last hour, 24
   hours, today, 7 or 30 days, or from and until two days you pick), **Device** and **Interface**.
