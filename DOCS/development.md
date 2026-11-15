@@ -186,6 +186,17 @@ container doesn't have and mustn't get. `LISTEN`/`NOTIFY` is all of the wake-up 
 Revisit it if there ever is a second worker process, work that has to run exactly once across
 machines, or the kinds of loop keep growing.
 
+## What the web app asks for when it opens
+
+`session.restore()` asks `GET /api/setup/status` and `GET /api/auth/session` together (a 401 from
+the second is "nobody is signed in", and on a fresh install it isn't looked at). The route guard
+(`src/router/guard.ts`) then calls `prefetchDashboard()` (`src/prefetch.ts`) when someone is signed
+in and is going to `home`: the dashboard's two requests start there, before vue-router fetches the
+page's code, and `DashboardView` takes them (once, and only within 10 seconds) in its first load
+instead of asking again. Only the landing page is fetched ahead, and never before the sign-in is
+known; a 401 reaches the page through the same `session.call` as any other. `startup.spec.ts`
+checks both orders in the browser.
+
 ## Storing events from a collector
 
 A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them
