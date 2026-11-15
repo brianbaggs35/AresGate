@@ -11,7 +11,7 @@ test.describe('the dashboard answer', () => {
     await dashboard.goto()
 
     const first = await page.request.get('/api/dashboard')
-    const etag = first.headers()['etag']
+    const etag = first.headers()['etag'] ?? ''
     expect(first.status()).toBe(200)
     expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
     expect(first.headers()['cache-control']).toBe('private, no-cache')
@@ -30,7 +30,7 @@ test.describe('the dashboard answer', () => {
     await harness.createActivity({ collectors: ['ok'] })
     await dashboard.goto()
     const first = await page.request.get('/api/dashboard')
-    const etag = first.headers()['etag']
+    const etag = first.headers()['etag'] ?? ''
 
     await harness.createActivity({ alerts: { high: 2 } })
 
