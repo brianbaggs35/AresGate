@@ -3,7 +3,7 @@ import { expect, test } from '../support'
 
 const ATTACKER = '93.184.216.34'
 
-/** Three attacks heard from at different times, the first on a device called nas. */
+/** Three attacks heard from at different times, each on a device of its own, the first called nas. */
 const SOME: IncidentRequest[] = [
   {
     address: ATTACKER,
@@ -11,10 +11,25 @@ const SOME: IncidentRequest[] = [
     programs: ['wazuh', 'opnsense'],
     signals: 4,
     minutes_ago: 4,
+    device: '192.168.1.20',
     device_name: 'nas',
   },
-  { address: '8.8.8.8', severity: 'high', programs: ['wazuh'], signals: 2, minutes_ago: 35 },
-  { address: '1.1.1.1', severity: 'medium', programs: ['ntopng'], signals: 1, minutes_ago: 180 },
+  {
+    address: '8.8.8.8',
+    severity: 'high',
+    programs: ['wazuh'],
+    signals: 2,
+    minutes_ago: 35,
+    device: '192.168.1.21',
+  },
+  {
+    address: '1.1.1.1',
+    severity: 'medium',
+    programs: ['ntopng'],
+    signals: 1,
+    minutes_ago: 180,
+    device: '192.168.1.22',
+  },
 ]
 
 test.describe('narrowing by time and device', () => {
@@ -86,6 +101,6 @@ test.describe('narrowing by time and device', () => {
     await logs.searchBox.press('Enter')
 
     await expect(logs.events).toHaveCount(2)
-    await expect(scope.getByRole('combobox', { name: 'When' })).toContainText('The last 30 days')
+    await expect(scope.getByRole('combobox', { name: 'When' })).toHaveValue('The last 30 days')
   })
 })
