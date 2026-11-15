@@ -311,8 +311,10 @@ page lists them. Switch **Manage how long data is kept** on to use what you choo
 
 - **Keep it for a number of days** (1 to 3650, 30 by default) sets one time for events,
   measurements, the API log, the record of AI requests and the log of alerts sent, and the answers
-  kept from threat intelligence (an answer goes once it was last asked for longer ago than this;
-  what you ruled safe or suspicious is never removed). An integration that you gave its own time
+  kept from threat intelligence: the services' answers about addresses, domains and web addresses
+  and NVD's answers about CVEs (an answer goes once it was last asked for longer ago than this).
+  What you ruled safe or suspicious is never removed, and what Fingerbank made of a device goes
+  with the device, not with its age. An integration that you gave its own time
   on the **Data** page keeps that time. The activity log, which is the
   record of what was done in AresGate, keeps its own period (`ARESGATE_AUDIT_RETENTION_DAYS`).
 - **Keep everything forever** deletes nothing because of its age or the size of the database, the

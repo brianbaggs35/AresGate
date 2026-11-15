@@ -45,6 +45,7 @@ router = APIRouter(prefix="/threat-intel", tags=["threat-intel"], dependencies=[
 
 
 type Provider = Literal["virustotal", "otx", "greynoise"]
+type Kind = Literal["ip", "domain", "url"]
 
 
 class LookupIn(BaseModel):
@@ -55,6 +56,9 @@ class LookupIn(BaseModel):
 
     subject: str = Field(max_length=subjects.MAX_LENGTH)
     provider: Provider = virustotal.PROVIDER
+    # What the person is searching for, where they have said: a search from the tab of one kind
+    # is refused for a subject of another, so it isn't answered under the wrong heading.
+    kind: Kind | None = None
     # Ask the service again even if the answer kept is still fresh.
     refresh: bool = False
 
@@ -64,7 +68,6 @@ class DetailOut(BaseModel):
     value: str
 
 
-type Kind = Literal["ip", "domain", "url"]
 type Judgement = Literal["malicious", "suspicious", "clean", "unknown"]
 type Verdict = Literal["safe", "suspicious"]
 
@@ -168,12 +171,13 @@ def list_known(
     judgement: Annotated[Judgement | None, Query(description="Only this judgement.")] = None,
     limit: Annotated[int, Query(ge=1, le=known.MAX_PAGE)] = 25,
     offset: Annotated[int, Query(ge=0, le=2**31 - 1)] = 0,
-    provider: Annotated[Provider, Query(description="Which service's answers.")] = (
-        virustotal.PROVIDER
-    ),
+    provider: Annotated[
+        Provider | None, Query(description="Only this service's answers, else every service's.")
+    ] = None,
 ) -> KnownOut:
-    """Everything one service has answered and AresGate kept, newest first. It reads what is kept
-    only, so it asks no service anything and counts toward no limit."""
+    """Everything the services have answered and AresGate kept, newest first (a subject once for
+    each service that answered). It reads what is kept only, so it asks no service anything and
+    counts toward no limit."""
     found = known.page(
         db,
         provider,
@@ -189,6 +193,9 @@ def list_known(
         counts=CountsOut(**found.counts),
         items=[_out(row, None, now, cached=True, ruling=ruling) for row, ruling in found.rows],
     )
+
+
+_ARTICLE = {"ip": "an IP address", "domain": "a domain", "url": "a web address"}
 
 
 @router.post("/lookups")
@@ -210,6 +217,11 @@ def look_up(
         subject = subjects.parse(body.subject)
     except subjects.Refusal as refusal:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(refusal)) from refusal
+    if body.kind is not None and subject.kind != body.kind:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"That is {_ARTICLE[subject.kind]}, not {_ARTICLE[body.kind]}.",
+        )
     unasked = feed.refusal(subject)
     if unasked is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, unasked)

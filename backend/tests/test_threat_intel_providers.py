@@ -111,6 +111,25 @@ def test_a_search_is_for_a_service_that_there_is(client: TestClient, csrf_token:
     assert code == 422
 
 
+def test_a_search_from_the_tab_of_one_kind_is_refused_for_another(
+    client: TestClient, csrf_token: str, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connect(session, "otx", monkeypatch)
+
+    for subject, kind, said in (
+        ("example.com", "ip", "That is a domain, not an IP address."),
+        (ADDRESS, "domain", "That is an IP address, not a domain."),
+        ("https://example.com/login", "domain", "That is a web address, not a domain."),
+    ):
+        response = client.post(
+            URL,
+            json={"subject": subject, "provider": "otx", "kind": kind},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"] == said
+
+
 @pytest.mark.parametrize(
     ("provider", "subject", "detail"),
     [
@@ -259,7 +278,7 @@ def test_a_search_answered_by_one_service_is_not_answered_from_what_another_kept
     assert len(asked) == 1
 
 
-def test_what_is_kept_is_listed_for_one_service_at_a_time(
+def test_what_is_kept_is_listed_for_every_service_or_for_one(
     client: TestClient, csrf_token: str, session: Session
 ) -> None:
     now = utcnow()
@@ -281,7 +300,11 @@ def test_what_is_kept_is_listed_for_one_service_at_a_time(
         items = client.get(KNOWN, params=params).json()["items"]
         return [(item["provider"], item["subject"]) for item in items]
 
-    assert subjects_of(None) == [("virustotal", "example.com")]
+    assert subjects_of(None) == [
+        ("virustotal", "example.com"),
+        ("greynoise", "1.1.1.1"),
+        ("otx", ADDRESS),
+    ]
     assert subjects_of("otx") == [("otx", ADDRESS)]
     assert subjects_of("greynoise") == [("greynoise", "1.1.1.1")]
     assert client.get(KNOWN, params={"provider": "shodan"}).status_code == 422

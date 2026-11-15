@@ -15,7 +15,7 @@ from app.events import retention as event_retention
 from app.events.store import record
 from app.intel import overrides, subjects, virustotal
 from app.intel import store as intel_store
-from app.models import AuditEvent, Event, IntelOverride, IntelSubject, User
+from app.models import AuditEvent, Event, IntelOverride, IntelSubject, NvdCve, User
 from app.partitions import EVENTS, METRIC_SAMPLES, Partition
 from app.retention_policy import GIGABYTE, Policy
 from tests.helpers import OTHER_ORIGIN, new_event
@@ -218,6 +218,24 @@ class TestThreatIntelligence:
         assert "Removed 1 threat intelligence answers past their retention period" in caplog.text
         # What the owner ruled stays, whatever became of the answer.
         assert session.scalar(select(func.count()).select_from(IntelOverride)) == 1
+
+    def test_what_nvd_said_of_a_cve_goes_with_them(
+        self, session: Session, settings: Settings, new_session: Callable[[], Session]
+    ) -> None:
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                NvdCve(cve_id="CVE-2021-44228", state="found", checked_at=now - timedelta(days=20)),
+                NvdCve(cve_id="CVE-2024-0001", state="found", checked_at=now - timedelta(days=2)),
+            ]
+        )
+        retention_policy.save(session, Policy(managed=True, days=10))
+        session.commit()
+
+        retention.purge_once(settings, new_session)
+
+        session.expire_all()
+        assert session.scalars(select(NvdCve.cve_id)).all() == ["CVE-2024-0001"]
 
     def test_nothing_is_forgotten_when_everything_is_kept_forever(
         self, session: Session, settings: Settings, new_session: Callable[[], Session]

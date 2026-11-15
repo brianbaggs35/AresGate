@@ -17,6 +17,7 @@ from app.integrations import apilog
 from app.intel import store as intel
 from app.metrics import retention as metrics
 from app.models import utcnow
+from app.nvd import store as nvd
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,8 @@ QUOTA_INTERVAL = timedelta(minutes=15)
 
 def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
     """Deletes the audit events, the API log entries, the record of AI requests, the answers kept
-    from threat intelligence (where the owner manages retention) and the integrations' events and
+    from threat intelligence, which is what the services said of addresses, domains, web addresses
+    and CVEs (where the owner manages retention) and the integrations' events and
     samples past their retention periods, and returns how many audit events there were. Where the
     owner keeps everything forever (on the Retention page), nothing is deleted."""
     with new_session() as db:
@@ -43,8 +45,11 @@ def purge_once(settings: Settings, new_session: Callable[[], Session]) -> int:
         alerts.purge_expired(db, settings, now)
         if chosen.managed:
             # Threat intelligence has no period of its own, so it is kept as long as nothing says
-            # otherwise: only a time the owner chose here ends it. Their rulings are never ended.
-            gone = intel.purge_expired(db, chosen.days, now)
+            # otherwise: only a time the owner chose here ends it. Their rulings are never ended,
+            # and what Fingerbank said of a device goes with the device, not with this.
+            gone = intel.purge_expired(db, chosen.days, now) + nvd.purge_expired(
+                db, chosen.days, now
+            )
             if gone:
                 logger.info(
                     "Removed %d threat intelligence answers past their retention period", gone

@@ -709,11 +709,11 @@ def test_an_old_answer_is_shown_when_asking_again_gets_no_answer(
 
 
 def test_the_answers_kept_are_for_a_signed_in_user(client: TestClient) -> None:
-    assert client.get(KNOWN).status_code == 401
+    assert client.get(KNOWN, params={"provider": "virustotal"}).status_code == 401
 
 
 def test_nothing_kept_is_an_empty_list(client: TestClient, csrf_token: str) -> None:
-    assert client.get(KNOWN).json() == {
+    assert client.get(KNOWN, params={"provider": "virustotal"}).json() == {
         "total": 0,
         "counts": {"malicious": 0, "suspicious": 0, "clean": 0, "unknown": 0},
         "items": [],
@@ -746,7 +746,7 @@ def kept(session: Session) -> datetime:
 def test_the_answers_kept_are_listed_newest_first_with_their_counts(
     client: TestClient, csrf_token: str, kept: datetime
 ) -> None:
-    body = client.get(KNOWN).json()
+    body = client.get(KNOWN, params={"provider": "virustotal"}).json()
 
     assert body["total"] == 4
     assert body["counts"] == {"malicious": 1, "suspicious": 1, "clean": 1, "unknown": 1}
@@ -763,7 +763,7 @@ def test_the_answers_kept_are_listed_newest_first_with_their_counts(
 def test_a_kept_web_address_shows_its_host_and_cannot_be_searched_again_from_the_list(
     client: TestClient, csrf_token: str, kept: datetime, session: Session
 ) -> None:
-    [item] = client.get(KNOWN, params={"kind": "url"}).json()["items"]
+    [item] = client.get(KNOWN, params={"provider": "virustotal", "kind": "url"}).json()["items"]
 
     key = subjects.url_key("https://example.com/login?next=1")
     assert (item["subject"], item["repeatable"]) == ("example.com", False)
@@ -772,14 +772,14 @@ def test_a_kept_web_address_shows_its_host_and_cannot_be_searched_again_from_the
     for row in session.scalars(select(IntelSubject).where(IntelSubject.kind == "url")):
         row.host = None
     session.commit()
-    [item] = client.get(KNOWN, params={"kind": "url"}).json()["items"]
+    [item] = client.get(KNOWN, params={"provider": "virustotal", "kind": "url"}).json()["items"]
     assert item["subject"] == "A web address"
 
 
 def test_the_answers_kept_are_filtered_by_judgement_and_the_counts_stay_whole(
     client: TestClient, csrf_token: str, kept: datetime
 ) -> None:
-    body = client.get(KNOWN, params={"judgement": "malicious"}).json()
+    body = client.get(KNOWN, params={"provider": "virustotal", "judgement": "malicious"}).json()
 
     assert body["total"] == 1
     assert body["counts"] == {"malicious": 1, "suspicious": 1, "clean": 1, "unknown": 1}
@@ -791,7 +791,7 @@ def test_the_answers_kept_are_filtered_by_judgement_and_the_counts_stay_whole(
 def test_the_answers_kept_are_filtered_by_kind_and_the_counts_follow(
     client: TestClient, csrf_token: str, kept: datetime
 ) -> None:
-    body = client.get(KNOWN, params={"kind": "domain"}).json()
+    body = client.get(KNOWN, params={"provider": "virustotal", "kind": "domain"}).json()
 
     assert body["total"] == 2
     assert body["counts"] == {"malicious": 0, "suspicious": 1, "clean": 1, "unknown": 0}
@@ -813,7 +813,7 @@ def test_the_answers_kept_are_filtered_by_kind_and_the_counts_follow(
 def test_the_answers_kept_are_searched_by_name_address_or_owner_with_no_wildcards(
     client: TestClient, csrf_token: str, kept: datetime, text: str, found: list[str]
 ) -> None:
-    body = client.get(KNOWN, params={"q": text}).json()
+    body = client.get(KNOWN, params={"provider": "virustotal", "q": text}).json()
 
     assert [item["subject"] for item in body["items"]] == found
     assert body["total"] == len(found)
@@ -822,7 +822,7 @@ def test_the_answers_kept_are_searched_by_name_address_or_owner_with_no_wildcard
 def test_the_answers_kept_come_a_page_at_a_time(
     client: TestClient, csrf_token: str, kept: datetime
 ) -> None:
-    body = client.get(KNOWN, params={"limit": 2, "offset": 2}).json()
+    body = client.get(KNOWN, params={"provider": "virustotal", "limit": 2, "offset": 2}).json()
 
     assert body["total"] == 4
     assert [item["subject"] for item in body["items"]] == [ADDRESS, "odd.example.net"]

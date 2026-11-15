@@ -27,18 +27,29 @@ Every release's notes are here, newest first. The format follows
   the assistant is read only. Nothing moves for a person who asked their device for less motion.
   See [The assistant](DOCS/operations.md).
 
-- **Threat intelligence has a tab for each service.** The Threat intelligence page searches
-  AlienVault OTX and GreyNoise as well as VirusTotal, each on its own tab with its own search and
-  its own list of what AresGate kept from it. A service is only asked what it answers: OTX takes
-  addresses and domains, GreyNoise IPv4 addresses. Its report says what that service counts, such
-  as the pulses that name an address, instead of engines, and a clean answer is said in the
-  service's words. What you rule safe or suspicious is still one ruling whichever service is asked.
-  See [Searching the other services](DOCS/integrations.md#searching-the-other-services).
+- **Threat intelligence has a tab for each kind of it.** The Threat intelligence page is now
+  organised by what the intelligence is about, not by who gives it: IP addresses, domains, web
+  addresses, CVEs and devices. A search on one of the first three asks every connected service
+  that answers about that kind at once, and shows each service's answer beside the others:
+  VirusTotal takes all three, AlienVault OTX addresses and domains, GreyNoise IPv4 addresses. So a
+  service has information in more than one tab, and a subject of another kind than the tab's is
+  refused. A report says what that service counts, such as the pulses that name an address instead
+  of engines, and a clean answer is said in the service's words. The list under each tab, "What
+  AresGate knows", has one row for each subject with a button for what each service said of it.
+  The CVEs tab lists what NVD says of the CVEs that incidents name: how severe each is and what
+  its score is made of, whether CISA lists it as exploited in the wild and what it asks to be
+  done by when, and the weaknesses behind it, filtered by rating or by what is exploited and
+  searched by identifier, description or weakness. The Devices tab lists what Fingerbank made of
+  each device: what it is, who made it, what it runs and how sure Fingerbank is. Both are asked in
+  the background within the services' own limits, so they are read here and not searched. What you
+  rule safe or suspicious is still one ruling whichever service is asked. See
+  [Threat intelligence by kind](DOCS/integrations.md#threat-intelligence-by-kind).
 
 - **Old threat intelligence answers go after the days you chose.** The answers kept from threat
-  intelligence had no time of their own and stayed for ever. Where you manage how long data is
-  kept, they now go after the number of days you chose, like the rest. What you ruled safe or
-  suspicious is never removed. See
+  intelligence, NVD's answers about CVEs included, had no time of their own and stayed for ever.
+  Where you manage how long data is kept, they now go after the number of days you chose, like the
+  rest. What you ruled safe or suspicious is never removed, and what Fingerbank made of a device
+  goes with the device. See
   [Retention](DOCS/operations.md#retention-and-the-size-of-the-database).
 
 ### Fixed

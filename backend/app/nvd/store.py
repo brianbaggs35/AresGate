@@ -1,9 +1,9 @@
 """What is kept of NVD's answers, one row for each CVE."""
 
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import NvdCve
@@ -55,3 +55,15 @@ def load(db: Session, cve_ids: Iterable[str]) -> dict[str, NvdCve]:
     if not wanted:
         return {}
     return {row.cve_id: row for row in db.scalars(select(NvdCve).where(NvdCve.cve_id.in_(wanted)))}
+
+
+def purge_expired(db: Session, days: int, now: datetime) -> int:
+    """Forgets what NVD said of the CVEs last asked about more than ``days`` days ago, and returns
+    how many there were. A CVE that an incident still names is asked about again. Commits."""
+    deleted = (
+        db.connection()
+        .execute(delete(NvdCve).where(NvdCve.checked_at < now - timedelta(days=days)))
+        .rowcount
+    )
+    db.commit()
+    return deleted

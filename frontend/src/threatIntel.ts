@@ -1,13 +1,101 @@
-import { CircleHelp, ShieldAlert, ShieldCheck, TriangleAlert, type LucideIcon } from '@lucide/vue'
+import {
+  Bug,
+  CircleHelp,
+  EyeOff,
+  Fingerprint,
+  Globe,
+  Link2,
+  MonitorSmartphone,
+  Network,
+  ShieldAlert,
+  ShieldCheck,
+  TriangleAlert,
+  type LucideIcon,
+} from '@lucide/vue'
 
 import { formatCount } from '@/format'
 import type { Judgement, Lookup, Provider, Ruling, SubjectKind, Verdict } from '@/api/threatIntel'
+import type { DeviceState } from '@/api/threatCatalog'
 
 /** What each kind of subject is called. */
 export const KIND: Record<SubjectKind, string> = {
   ip: 'IP address',
   domain: 'Domain',
   url: 'Web address',
+}
+
+/** The kinds of threat intelligence, as the tabs of the page: what the intelligence is about, not
+ * which service it comes from. A service gives intelligence of every kind it answers about. */
+export type TypeKey = SubjectKind | 'cve' | 'device'
+
+export interface TypeLook {
+  key: TypeKey
+  /** The tab. */
+  name: string
+  icon: LucideIcon
+  /** What the search box is labelled, and what an example in it looks like, for the kinds that
+   * are searched for by hand. */
+  label: string
+  placeholder: string
+  /** What it answers about, as the end of "Look up ...". */
+  about: string
+  /** What there are many of, in a sentence. */
+  plural: string
+}
+
+/** The tabs, in order: what a service is asked about by hand first, then what AresGate reads from
+ * NVD and Fingerbank in the background. */
+export const TYPES: readonly TypeLook[] = [
+  {
+    key: 'ip',
+    name: 'IP addresses',
+    icon: Network,
+    label: 'IP address',
+    placeholder: '203.0.113.7',
+    about: 'an IP address',
+    plural: 'IP addresses',
+  },
+  {
+    key: 'domain',
+    name: 'Domains',
+    icon: Globe,
+    label: 'Domain',
+    placeholder: 'example.com',
+    about: 'a domain',
+    plural: 'domains',
+  },
+  {
+    key: 'url',
+    name: 'Web addresses',
+    icon: Link2,
+    label: 'Web address',
+    placeholder: 'https://example.com/login',
+    about: 'a web address',
+    plural: 'web addresses',
+  },
+  {
+    key: 'cve',
+    name: 'CVEs',
+    icon: Bug,
+    label: '',
+    placeholder: '',
+    about: 'a vulnerability',
+    plural: 'vulnerabilities',
+  },
+  {
+    key: 'device',
+    name: 'Devices',
+    icon: MonitorSmartphone,
+    label: '',
+    placeholder: '',
+    about: 'a device',
+    plural: 'devices',
+  },
+]
+
+/** One kind of threat intelligence, by its key. */
+export function typeOf(key: TypeKey): TypeLook {
+  return TYPES.find((one) => one.key === key) as TypeLook
 }
 
 export interface JudgementLook {
@@ -83,11 +171,8 @@ export interface ProviderLook {
   key: Provider
   /** What the service is called. */
   name: string
-  /** What it answers about, as the end of "Ask it about ...". */
-  about: string
-  /** What the search box is labelled, and what an example in it looks like. */
-  label: string
-  placeholder: string
+  /** The kinds of subject it answers about. */
+  kinds: readonly SubjectKind[]
   /** What its "clean" says, where it is not what the other services say. */
   clean: string
   /** What its score is called, or null where it gives none. */
@@ -98,14 +183,12 @@ export interface ProviderLook {
   sharing: string | null
 }
 
-/** The services, in the order their tabs come. */
+/** The services, in the order their results come. */
 export const PROVIDERS: readonly ProviderLook[] = [
   {
     key: 'virustotal',
     name: 'VirusTotal',
-    about: 'an IP address, a domain or a web address',
-    label: 'IP address, domain or web address',
-    placeholder: '203.0.113.7, example.com or https://example.com/login',
+    kinds: ['ip', 'domain', 'url'],
     clean: 'No engine flagged it',
     score: 'Community score',
     analysis: true,
@@ -115,9 +198,7 @@ export const PROVIDERS: readonly ProviderLook[] = [
   {
     key: 'otx',
     name: 'AlienVault OTX',
-    about: 'an IP address or a domain',
-    label: 'IP address or domain',
-    placeholder: '203.0.113.7 or example.com',
+    kinds: ['ip', 'domain'],
     clean: 'Listed as safe',
     score: 'Reputation score',
     analysis: false,
@@ -126,9 +207,7 @@ export const PROVIDERS: readonly ProviderLook[] = [
   {
     key: 'greynoise',
     name: 'GreyNoise',
-    about: 'an IPv4 address',
-    label: 'IPv4 address',
-    placeholder: '203.0.113.7',
+    kinds: ['ip'],
     clean: 'Benign or a common business service',
     score: null,
     analysis: false,
@@ -139,6 +218,11 @@ export const PROVIDERS: readonly ProviderLook[] = [
 /** One service, by its key. */
 export function providerOf(key: Provider): ProviderLook {
   return PROVIDERS.find((one) => one.key === key) as ProviderLook
+}
+
+/** The services that answer about a kind of subject. */
+export function providersFor(kind: SubjectKind): ProviderLook[] {
+  return PROVIDERS.filter((one) => one.kinds.includes(kind))
 }
 
 /** The judgement of an answer as a sentence, in the words of the service that gave it. */
@@ -202,4 +286,35 @@ export function tallyOf(lookup: Lookup): string {
     return `${formatCount(flagged)} ${flagged === 1 ? 'pulse' : 'pulses'}`
   }
   return JUDGEMENT[lookup.reported_judgement].short
+}
+
+export interface DeviceStateLook {
+  label: string
+  /** What it means, as a sentence about the device. */
+  about: string
+  color: string | undefined
+  icon: LucideIcon
+}
+
+/** What Fingerbank made of a device, wherever one is shown. */
+export const DEVICE_STATE: Record<DeviceState, DeviceStateLook> = {
+  identified: {
+    label: 'Identified',
+    about: 'Fingerbank recognised it.',
+    color: 'success',
+    icon: Fingerprint,
+  },
+  unknown: {
+    label: 'Not recognised',
+    about: 'Fingerbank has no match for it.',
+    color: undefined,
+    icon: CircleHelp,
+  },
+  private: {
+    label: 'Private address',
+    about:
+      'Its hardware address is one the device made up, which hides what it is, so Fingerbank was not asked.',
+    color: 'info',
+    icon: EyeOff,
+  },
 }
