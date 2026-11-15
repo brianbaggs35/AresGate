@@ -44,10 +44,28 @@ class Feed:
     remember: Callable[[IntegrationConnection, Answer, datetime], None] | None = None
     # The service only takes IPv4 addresses.
     ipv4_only: bool = False
+    # What a search may be about: an address, a domain, a web address.
+    kinds: frozenset[str] = frozenset({"ip", "domain", "url"})
 
     @property
     def connection(self) -> ConnectionDef:
         return self.definition.connections[0]
+
+    def refusal(self, subject: Subject) -> str | None:
+        """Why the service isn't asked about a subject, in words for the person searching, or None
+        when it is."""
+        if subject.kind not in self.kinds:
+            return f"{self.name} answers about {_ASKED[self.kinds]}, not {_KINDS[subject.kind]}."
+        if self.ipv4_only and ":" in subject.host:
+            return f"{self.name} only answers about IPv4 addresses."
+        return None
+
+
+_KINDS = {"ip": "IP addresses", "domain": "domains", "url": "web addresses"}
+_ASKED = {
+    frozenset({"ip"}): "IP addresses",
+    frozenset({"ip", "domain"}): "IP addresses and domains",
+}
 
 
 VIRUSTOTAL = Feed(
@@ -64,6 +82,7 @@ ALIENVAULT_OTX = Feed(
     definition=registry.ALIENVAULT_OTX,
     ask=otx.ask,
     level_of=budget.otx_level_of,
+    kinds=frozenset({"ip", "domain"}),
 )
 GREYNOISE = Feed(
     name="GreyNoise",
@@ -72,8 +91,10 @@ GREYNOISE = Feed(
     ask=greynoise.ask,
     level_of=budget.greynoise_level_of,
     ipv4_only=True,
+    kinds=frozenset({"ip"}),
 )
 FEEDS: tuple[Feed, ...] = (VIRUSTOTAL, ALIENVAULT_OTX, GREYNOISE)
+FEED_OF: dict[str, Feed] = {feed.provider: feed for feed in FEEDS}
 # VirusTotal is the one a person searches by hand, so the pages that do speak of it alone.
 DEFINITION = VIRUSTOTAL.definition
 CONNECTION = VIRUSTOTAL.connection
