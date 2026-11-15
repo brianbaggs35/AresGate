@@ -139,12 +139,10 @@ def list_cves(
         (NvdCve.severity.in_(["CRITICAL", "HIGH", "MEDIUM", "LOW"]), func.lower(NvdCve.severity)),
         else_="unrated",
     )
-    counted = dict(
-        {
-            row[0]: row[1]
-            for row in db.execute(select(named, func.count()).where(*matching).group_by(named))
-        }
-    )
+    counted = {
+        row[0]: row[1]
+        for row in db.execute(select(named, func.count()).where(*matching).group_by(named))
+    }
     flagged = (
         db.scalar(
             select(func.count()).select_from(NvdCve).where(*matching, NvdCve.exploited.is_(True))
