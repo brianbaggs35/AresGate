@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **Agents check what they found against what they looked at.** A model can write an address or
+  a CVE number that nobody gave it, and a finding built on one reads as well as one built on a
+  fact. Before the report is written, every IPv4 address and CVE number in a finding's title,
+  detail and evidence is looked for in what the run read, in what the agent reported last time and
+  in your own instructions. A finding that names one that is in none of them is kept, but its
+  confidence is lowered to low, and a new step in the run says which finding named what. It is a
+  rule and not a request to the model, and it only ever lowers a confidence. See
+  [Agents](DOCS/agents.md#how-a-run-works).
+
 - **A better Assistant page.** The page keeps everything it did and looks and feels much more
   finished. A new conversation opens with the assistant's mark and four cards to start from, each
   with an icon. The box to type in is one rounded field with the send button inside it, a hint

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.agents import catalog, fingerprint, flow, probe, proposals
+from app.agents import catalog, fingerprint, flow, grounding, probe, proposals
 from app.agents import settings as agent_settings
 from app.agents.catalog import Lookup, Template
 from app.ai import gateway, tools
@@ -714,12 +714,58 @@ def _findings_of(
 async def _report(work: Work, state: State) -> dict[str, object]:
     """Settles the report: what the model said, or what was collected when it said nothing, and,
     for an agent that suggests tidying, the suggestions."""
-    findings = state["findings"] or _found_by_testing(state["ran"])
+    steps: list[Step] = []
+    findings = state["findings"]
+    if findings:
+        findings, check = _checked(work, state["ran"], findings)
+        steps.append(check)
+    else:
+        findings = _found_by_testing(state["ran"])
     summary = state["summary"] or _collected(state)
-    steps = [Step(title="Wrote the report", detail={"findings": len(findings)})]
+    steps.append(Step(title="Wrote the report", detail={"findings": len(findings)}))
     if work.snapshot.template.proposes:
         steps.append(await asyncio.to_thread(_suggest, work, state["rejects"]))
     return {"summary": summary, "findings": findings, "steps": steps}
+
+
+def _checked(
+    work: Work, ran: Sequence[Entry], findings: list[Finding]
+) -> tuple[list[Finding], Step]:
+    """The findings the model made, each held up to what was really looked at (see grounding.py):
+    one that names an address or a CVE that is nowhere in it is no longer sure of itself."""
+    snapshot = work.snapshot
+    seen = [snapshot.goal]
+    for entry in ran:
+        seen += [entry["label"], entry["summary"], *entry["lines"]]
+    if snapshot.previous is not None:
+        seen += [
+            snapshot.previous.summary,
+            *(" ".join(pair) for pair in snapshot.previous.findings),
+        ]
+    claims = [
+        grounding.Claim(
+            item["title"], "\n".join([item["title"], item["detail"], *item["evidence"]])
+        )
+        for item in findings
+    ]
+    missing = grounding.unseen(claims, seen)
+    lowered: list[Finding] = []
+    for item in findings:
+        kept = item.copy()
+        if item["title"] in missing:
+            kept["confidence"] = "low"
+        lowered.append(kept)
+    title = (
+        f"Checked the findings against what it looked at: {len(missing)} of {len(findings)} "
+        "named something it never saw, so their confidence is lowered"
+        if missing
+        else "Checked the findings against what it looked at: everything they name was there"
+    )
+    # What the owner reads under the step: which finding named what.
+    said = "; ".join(f"{named}: {', '.join(names)}" for named, names in missing.items())
+    return lowered, Step(
+        title=title, detail={"checked": len(findings), "not_seen": missing, "summary": said}
+    )
 
 
 def _suggest(work: Work, rejects: Sequence[str]) -> Step:

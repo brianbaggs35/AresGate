@@ -80,7 +80,12 @@ page draws as it goes:
 2. **Look** reads what AresGate knows, with the same read-only tools the assistant has.
 3. **Think** asks the AI what it makes of what was read. It may ask to look at more, and the graph
    goes back to Look. A run looks at most three rounds, and at most four things at a time.
-4. **Report** settles a summary and the findings.
+4. **Report** settles a summary and the findings. First it holds each finding up to what the run
+   really looked at: every IPv4 address and CVE number in a finding's title, detail and evidence has
+   to be in what the run read, in what the agent reported last time or in your own instructions. A
+   finding that names one that is in none of them is kept, since you still want to know, but it can
+   no longer say it is sure: its confidence is lowered to low, and the step says which finding
+   named what. This is a rule, not a request to the model, and it only ever lowers a confidence.
 
 The graph the page draws is the one the API describes, so a change to what an agent does changes
 the picture with no change to the page. Each step is kept as it happens: a step that looked at
