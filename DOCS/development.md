@@ -121,6 +121,32 @@ to the index if it reads more. The indexes are on the partitioned table, so ever
 those made later included (a test checks it). Each is one more thing to write for every event, so
 an index is only added for a question that is measured to pay for it.
 
+## Answers that are kept for a few seconds
+
+The dashboard is built from about ten queries, and every open page asks for it every 30 seconds, so
+`GET /api/dashboard` keeps its answer for 15 seconds (`app/answers.py`, `AnswerCache`, one for each
+API worker, kept in `app.state.answers`) and sends it with an `ETag`. A request that names that tag
+in `If-None-Match` gets a `304` with no body. The sign-in is checked first, by the router, so a kept
+answer is never given to someone who isn't signed in.
+
+- **A change drops it, in every worker.** `NoteChanges` (`app/middleware.py`) takes the next number
+  of the `answers_stamp` sequence before the reply to any change that succeeded (not `GET`, and
+  nothing below 400) is sent, and an answer built under another number is never used. A sequence,
+  not a row, so there is nothing to lock and it isn't one of the install's facts; reading it is
+  one cheap lookup. A change made by the program itself (events collected, incidents the engine
+  files) takes no number: it shows within the 15 seconds.
+- **A route opts in** with the `Revalidation` dependency (`app/api/conditional.py`):
+  `revalidation.reply(body, etag)` sends the answer, or the `304`, with `Cache-Control: private,
+  no-cache`. The body has to be the same bytes while the answer is the same, so it holds nothing
+  about when it was built (the dashboard's window ends on a bucket's edge for this reason).
+- **nginx** sends `no-store` on every API response except one the API gives exactly
+  `private, no-cache` (`$api_cache_control` in `docker/nginx/nginx.conf`), so a route can't make
+  anything else cacheable by accident. Keep `no-store` for anything that carries a secret or the
+  account's data.
+- The browser revalidates by itself, so the web app's `fetch` needed no change. The Playwright spec
+  `dashboard-answer.spec.ts` checks the tag, the `304`, a change showing at once and the signed-out
+  case, through nginx in the container run.
+
 ## Storing events from a collector
 
 A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them

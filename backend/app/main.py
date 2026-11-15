@@ -11,11 +11,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import logs, retention
+from app.answers import AnswerCache
 from app.api import api_router
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
 from app.integrations import netguard
-from app.middleware import HEADER, RequestContext
+from app.middleware import HEADER, NoteChanges, RequestContext
 from app.models import utcnow
 from app.secret_key import load_secret_key
 
@@ -90,6 +91,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ``alert_origin``.)
     app.state.alert_policy = netguard.PUBLIC_INTERNET
     app.state.alert_origin = None
+    # The answers built from many queries are kept a few seconds in each worker, and a change
+    # that succeeded makes them be built again. (Tests and the harness stand in their own sessions.)
+    app.state.answers = AnswerCache()
+    app.state.sessions = get_sessionmaker
+    app.add_middleware(NoteChanges)
     app.add_middleware(RequestContext)
     app.add_exception_handler(Exception, server_error)
     app.add_exception_handler(RequestValidationError, invalid_request)

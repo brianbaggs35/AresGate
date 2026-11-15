@@ -131,6 +131,8 @@ def app(settings: Settings, session: Session, engine: Engine) -> FastAPI:
     app.dependency_overrides[api_log_recorder] = lambda: ApiLogRecorder(
         sessionmaker(bind=engine, expire_on_commit=False)
     )
+    # A change is noted for the kept answers in a session of its own, on the test database.
+    app.state.sessions = lambda: sessionmaker(bind=engine, expire_on_commit=False)
     # Stand-ins for integrations run on this machine.
     app.state.address_policy = netguard.HOME_NETWORK_AND_LOOPBACK
     app.state.local_ai_policy = netguard.HOME_NETWORK_AND_LOOPBACK

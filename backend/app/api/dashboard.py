@@ -3,11 +3,13 @@
 from datetime import datetime
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import AwareDatetime, BaseModel
 
 from app import dashboard
 from app.agents import probe
+from app.answers import AnswerCache
+from app.api.conditional import Revalidation
 from app.api.deps import Db, signed_in
 from app.events.event import Severity
 from app.incidents import filters, verdicts
@@ -353,11 +355,21 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
     )
 
 
-@router.get("")
+@router.get(
+    "",
+    response_model=DashboardOut,
+    responses={304: {"description": "Nothing has changed since the answer the request names."}},
+)
 def get_dashboard(
+    request: Request,
     db: Db,
+    revalidation: Revalidation,
     window: Annotated[Literal["24h", "7d"], Query(description="How far back to look.")] = "24h",
-) -> DashboardOut:
+) -> Response:
     """The numbers and charts on the dashboard for the last 24 hours or 7 days, each against the
-    stretch of time before it."""
-    return build(db, window, utcnow())
+    stretch of time before it. An answer is kept for a few seconds, and dropped at once when the
+    owner changes something, so the polls of several open pages share one build. A request that
+    names the answer it already has, with If-None-Match, gets no body while it is still the one."""
+    cache: AnswerCache = request.app.state.answers
+    answer = cache.fetch(window, db, lambda: build(db, window, utcnow()).model_dump_json().encode())
+    return revalidation.reply(answer.body, answer.etag)
