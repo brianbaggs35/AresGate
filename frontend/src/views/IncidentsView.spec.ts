@@ -163,14 +163,19 @@ describe('IncidentsView', () => {
   })
 
   describe('the filters', () => {
-    /** Chooses from the select that is at this place on the page. */
-    const pick = (wrapper: VueWrapper, at: number, value: unknown) =>
-      wrapper.findAllComponents(VSelect)[at]?.vm.$emit('update:modelValue', value)
+    /** Chooses from the select of this filter. */
+    const pick = (wrapper: VueWrapper, filter: string, value: unknown) => {
+      wrapper
+        .findComponent<typeof VSelect>(`[data-test="filter-${filter}"]`)
+        .vm.$emit('update:modelValue', value)
+    }
 
     it('narrow the list to the serious ones', async () => {
       const { wrapper, router, fetchIncidents, choose } = await open()
 
-      await choose(() => pick(wrapper, 0, 'high'))
+      await choose(() => {
+        pick(wrapper, 'severity', 'high')
+      })
 
       expect(last(fetchIncidents).minSeverity).toBe('high')
       expect(router.currentRoute.value.query).toEqual({ severity: 'high' })
@@ -179,7 +184,9 @@ describe('IncidentsView', () => {
     it('narrow it to the incidents AresGate is sure of', async () => {
       const { wrapper, router, fetchIncidents, choose } = await open()
 
-      await choose(() => pick(wrapper, 2, 65))
+      await choose(() => {
+        pick(wrapper, 'confidence', 65)
+      })
 
       expect(last(fetchIncidents).minConfidence).toBe(65)
       expect(router.currentRoute.value.query).toEqual({ confidence: '65' })
@@ -188,7 +195,9 @@ describe('IncidentsView', () => {
     it('narrow it to a lane: the threats, the suspects or the background', async () => {
       const { wrapper, router, fetchIncidents, choose } = await open()
 
-      await choose(() => pick(wrapper, 1, 'threat'))
+      await choose(() => {
+        pick(wrapper, 'lane', 'threat')
+      })
 
       expect(last(fetchIncidents).lanes).toEqual(['threat'])
       expect(router.currentRoute.value.query).toEqual({ lane: 'threat' })
@@ -199,9 +208,13 @@ describe('IncidentsView', () => {
         route: '/incidents?lane=suspect',
       })
       expect(last(fetchIncidents).lanes).toEqual(['suspect'])
-      expect(wrapper.findAllComponents(VSelect)[1]?.props('modelValue')).toBe('suspect')
+      expect(
+        wrapper.findComponent<typeof VSelect>('[data-test="filter-lane"]').props('modelValue'),
+      ).toBe('suspect')
 
-      await choose(() => pick(wrapper, 1, null))
+      await choose(() => {
+        pick(wrapper, 'lane', null)
+      })
 
       expect(last(fetchIncidents)).not.toHaveProperty('lanes')
       expect(router.currentRoute.value.query).toEqual({})
@@ -230,7 +243,9 @@ describe('IncidentsView', () => {
     it('keep the kind in the address when another way to narrow it is chosen', async () => {
       const { wrapper, router, choose } = await open({ route: '/incidents?family=7' })
 
-      await choose(() => pick(wrapper, 0, 'high'))
+      await choose(() => {
+        pick(wrapper, 'severity', 'high')
+      })
 
       expect(router.currentRoute.value.query).toEqual({ severity: 'high', family: '7' })
     })
@@ -253,7 +268,9 @@ describe('IncidentsView', () => {
         minConfidence: 35,
       })
       expect(find('clear-filters').exists()).toBe(true)
-      expect(wrapper.findAllComponents(VSelect)[0]?.props('modelValue')).toBe('high')
+      expect(
+        wrapper.findComponent<typeof VSelect>('[data-test="filter-severity"]').props('modelValue'),
+      ).toBe('high')
     })
 
     it('ignore a severity or a confidence that is not one of the choices', async () => {
@@ -395,6 +412,22 @@ describe('IncidentsView', () => {
         quieted: '1',
       })
       expect(last(fetchIncidents)).not.toHaveProperty('verdicts')
+    })
+
+    it('has choices for when, device and interface, which write into the search', async () => {
+      const { find, wrapper, router, fetchIncidents, choose } = await open({
+        route: '/incidents?q=ssh',
+      })
+
+      await choose(() => {
+        wrapper
+          .findComponent<typeof VSelect>('[data-test="scope-when"]')
+          .vm.$emit('update:modelValue', '7d')
+      })
+
+      expect(router.currentRoute.value.query.q).toBe('ssh since:7d')
+      expect(last(fetchIncidents).q).toBe('ssh since:7d')
+      expect(find('scope-device').exists()).toBe(true)
     })
 
     describe('that cannot be understood', () => {

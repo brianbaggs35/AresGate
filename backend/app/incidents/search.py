@@ -9,13 +9,14 @@ ones below. How a term is read is the language in ``app/querylang.py``, which th
 from ipaddress import IPv4Network, IPv6Network
 from typing import Final
 
-from sqlalchemy import ColumnElement, String, cast, exists, func, or_, select
+from sqlalchemy import ColumnElement, String, and_, cast, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import INET
 
 from app.agents import flags
 from app.incidents import rules
 from app.incidents.queries import NO_VERDICT
-from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Incident, IncidentSignal
+from app.interfaces.scope import on_interface
+from app.models import INCIDENT_STATUSES, Device, DeviceAddress, Event, Incident, IncidentSignal
 from app.querylang import (
     Clause,
     Compiled,
@@ -124,6 +125,23 @@ def _device(clause: Clause, _context: Context) -> Compiled:
     return found, f"Device: {value}"
 
 
+def _interface(clause: Clause, _context: Context) -> Compiled:
+    value = word(clause, "interface")
+    found = (
+        select(IncidentSignal.id)
+        .join(
+            Event,
+            and_(
+                Event.id == IncidentSignal.event_id,
+                Event.occurred_at == IncidentSignal.occurred_at,
+            ),
+        )
+        .where(IncidentSignal.incident_id == Incident.id, on_interface(value))
+        .exists()
+    )
+    return found, f"Interface: {value}"
+
+
 def _port(clause: Clause, _context: Context) -> Compiled:
     ports = port_numbers(clause)
     return Incident.ports.overlap(ports), f"Port: {', '.join(str(port) for port in ports)}"
@@ -171,6 +189,7 @@ FIELDS: Final = (
     Field("activity", _activity),
     Field("signature", _signature),
     Field("device", _device),
+    Field("interface", _interface),
     Field("port", _port),
     Field("banned", _banned),
     Field("hunted", _hunted),

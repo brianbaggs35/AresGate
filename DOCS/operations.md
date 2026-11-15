@@ -735,6 +735,9 @@ and each incident has a page of its own.
   you saved, the ways to search and the searches made before in this browser (the last eight,
   kept only in the browser). A search is in the address of the page (`?q=`), so it can be sent
   as a link, and [a search can be saved under a name](#saved-searches).
+  Under the box, the choices **When**, **Device** and **Interface** write the `since:`,
+  `before:`, `device:` and `interface:` terms for you and read them back from a search you typed
+  (the interface choice is left out while no interface is named).
 
   | You type | It finds |
   | --- | --- |
@@ -748,6 +751,7 @@ and each incident has a page of its own.
   | `signature:"ET SCAN"` | a signal with this rule in its name |
   | `port:22`, `port:22,2222` | it touched this destination port |
   | `device:nas` | it involves a device with this name, maker or hardware address |
+  | `interface:Guests` | a signal of it came in on this interface of yours, as you placed the ports on the Interfaces page (while the events are still kept) |
   | `banned:yes` | a program banned the address |
   | `hunted:yes` | the threat hunter flagged it in its last run (`hunted:no` for the rest) |
   | `since:6h`, `since:today`, `since:2026-10-01` | still going on after this time (`30m`, `6h`, `2d`, `1w`, `today`, `yesterday`, a date or a date and time) |
@@ -802,6 +806,8 @@ it. Not to be confused with [the container's own logs](#reading-the-logs).
   searches made before, and the search is in the address of the page (`?q=`). Buttons under the
   box count the severities, integrations and kinds among what was found, and add themselves to
   the search with a tap.
+  The choices under the box (**When**, **Device** and **Interface**) write the `since:`,
+  `before:`, `device:` and `interface:` terms for you and read them back from a search you typed.
 
   | You type | It finds |
   | --- | --- |
@@ -814,6 +820,8 @@ it. Not to be confused with [the container's own logs](#reading-the-logs).
   | `severity>=high`, `severity:info` | this serious, or compared (`>`, `>=`, `<`, `<=`) |
   | `signature:"ET SCAN"` | part of the rule that fired |
   | `incident:yes` | only events AresGate filed into an incident (`no` for the others) |
+  | `device:nas` | either end is a device with this name, maker or hardware address |
+  | `interface:Guests` | came in on this interface of yours, as you placed the ports on the Interfaces page |
   | `raw:sshd` | the integration's own record (see below) |
   | `since:1h`, `before:2026-10-27T08:00:00Z` | in the last hour, or before a moment (a date or a date and time works too) |
   | `-port:22` | a minus turns any term around |

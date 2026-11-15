@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **Incidents and logs can be narrowed by time, device and interface with choices.** Under the
+  search box on the Incidents and Logs pages there are now choices for **When** (the last hour, 24
+  hours, today, 7 or 30 days, or from and until two days you pick), **Device** and **Interface**.
+  They write the terms into the search (`since:`, `before:`, `device:`, `interface:`), so the
+  address of the page, the chips under the box, a saved search and the API all say the same
+  thing, and a search you type shows up in the choices. The search itself learned two terms:
+  `interface:` on incidents and logs (the interface the traffic came in on, as you placed the
+  ports on the Interfaces page) and `device:` on logs. Not everything the ticket hopes for is
+  here yet: this is the first piece, for the lists that were hardest to narrow. See
+  [Searching incidents](DOCS/operations.md#searching-incidents).
+
 - **Agents check what they found against what they looked at.** A model can write an address or
   a CVE number that nobody gave it, and a finding built on one reads as well as one built on a
   fact. Before the report is written, every IPv4 address and CVE number in a finding's title,

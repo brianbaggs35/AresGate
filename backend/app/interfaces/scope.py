@@ -4,10 +4,10 @@ that came in before as well."""
 
 from typing import NamedTuple
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, and_, exists, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
-from app.models import Interface, InterfaceFeed
+from app.models import Event, Interface, InterfaceFeed
 
 
 class Place(NamedTuple):
@@ -41,3 +41,30 @@ class Resolver:
             if found is not None and (found.interface is not None or found.ignored):
                 return found
         return self._places.get((integration, connection, ""))
+
+
+def on_interface(name: str) -> ColumnElement[bool]:
+    """Events that came in on the interface of this name (in any case), as a condition on
+    ``Event``. It reads the placing the way ``Resolver`` does, in the database: a port that was
+    placed or set aside belongs where it was put, and any other port belongs where its
+    connection as a whole was placed. A name that is no interface matches nothing."""
+    placed = aliased(InterfaceFeed)
+    specific = aliased(InterfaceFeed)
+    interface = select(Interface.id).where(func.lower(Interface.name) == name.casefold())
+    port_decided = (
+        select(specific.id)
+        .where(
+            specific.integration == Event.source,
+            specific.connection == Event.connection,
+            specific.native_name == Event.iface,
+            or_(specific.interface_id.is_not(None), specific.ignored),
+        )
+        .correlate(Event)
+        .exists()
+    )
+    return exists().where(
+        placed.integration == Event.source,
+        placed.connection == Event.connection,
+        placed.interface_id.in_(interface),
+        or_(placed.native_name == Event.iface, and_(placed.native_name == "", ~port_decided)),
+    )

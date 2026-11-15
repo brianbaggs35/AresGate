@@ -25,6 +25,7 @@ import IncidentCard from '@/components/IncidentCard.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ScopeFilters from '@/components/ScopeFilters.vue'
 import SearchBox from '@/components/SearchBox.vue'
 import SearchFacets from '@/components/SearchFacets.vue'
 import { LOOK_OVER_FROM, didDo, type Change } from '@/bulk'
@@ -426,6 +427,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         :error="searchError"
         @update:model-value="search"
       />
+
+      <ScopeFilters :model-value="filters.q" @update:model-value="search" />
 
       <div class="incidents__views">
         <v-btn-toggle

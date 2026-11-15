@@ -182,6 +182,28 @@ export function toggled(text: string, term: string): string {
   return text.trim() ? `${text.trim()} ${term}` : term
 }
 
+/** A term of the search that gives a field a value: `field:value` or `field:"some words"`. It is
+ * only a term where it starts the text or follows a space, so `-field:value` (turned around) is
+ * not one. */
+function fieldPattern(field: string): RegExp {
+  return new RegExp(String.raw`(^|\s)${field}[:=](?:"([^"]*)"|(\S+))`, 'gi')
+}
+
+/** What the search says a field is, in every term that says so, in the order they were typed. */
+export function valuesOf(text: string, field: string): string[] {
+  return [...text.matchAll(fieldPattern(field))].map((found) => (found[2] ?? found[3]) as string)
+}
+
+/** The text with every term for a field taken out, and the field given this value (or none, to
+ * leave it out). A value with a space in it is quoted. */
+export function withField(text: string, field: string, value: string | null): string {
+  const rest = text.replace(fieldPattern(field), ' ').replace(/\s+/g, ' ').trim()
+  const wanted = value?.trim()
+  if (!wanted) return rest
+  const term = /\s/.test(wanted) ? `${field}:"${wanted.replaceAll('"', '')}"` : `${field}:${wanted}`
+  return rest ? `${rest} ${term}` : term
+}
+
 /** What the views of the list have to give way to. A search that names a status or a verdict
  * is about those, whatever the list was showing: it looks across every status, and among the
  * incidents your verdicts quiet. */
