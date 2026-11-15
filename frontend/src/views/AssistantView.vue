@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ArrowUp, MessagesSquare, Sparkles, SquarePen } from '@lucide/vue'
+import {
+  ArrowUp,
+  BellRing,
+  Eye,
+  MessagesSquare,
+  PlugZap,
+  Radar,
+  ShieldBan,
+  SquarePen,
+} from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
@@ -20,11 +29,11 @@ import { MAX_QUESTION, questionAbout, STARTERS } from '@/chat'
 import { useAnswerProgress } from '@/chatProgress'
 import AiCallDialog from '@/components/AiCallDialog.vue'
 import AppPage from '@/components/AppPage.vue'
+import AssistantMark from '@/components/AssistantMark.vue'
 import ChatConversations from '@/components/ChatConversations.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatWriting from '@/components/ChatWriting.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -64,12 +73,19 @@ const box = ref<{ focus: () => void } | null>(null)
 /** Which load of a conversation is the newest, so the answer to an older one is dropped. */
 let latest = 0
 
+/** An icon for each of the questions to start with, in the order they are listed. */
+const STARTER_ICONS = [BellRing, Radar, PlugZap, ShieldBan]
+/** Past this share of the longest question, the box says how many characters are left. */
+const COUNT_FROM = 0.8
+
 const id = computed(() => {
   const given = route.params.id
   return typeof given === 'string' ? Number(given) : null
 })
 const messages = computed<Message[]>(() => current.value?.messages ?? [])
 const tooLong = computed(() => draft.value.length > MAX_QUESTION)
+const left = computed(() => MAX_QUESTION - draft.value.length)
+const counting = computed(() => draft.value.length >= MAX_QUESTION * COUNT_FROM)
 const canSend = computed(() => draft.value.trim() !== '' && !tooLong.value && !sending.value)
 /** The last answer, if it failed and nothing is under way: the one that can be asked again. */
 const retryable = computed(() => {
@@ -257,6 +273,17 @@ function showCall(call: number) {
       title="Assistant"
       description="Ask about your network in plain words. It looks things up in what your integrations reported, says what it based the answer on, and can't change anything."
     >
+      <template #badge>
+        <v-chip
+          size="small"
+          variant="tonal"
+          color="primary"
+          :prepend-icon="Eye"
+          data-test="chat-readonly"
+        >
+          Read only
+        </v-chip>
+      </template>
       <template #actions>
         <v-btn
           variant="tonal"
@@ -307,25 +334,33 @@ function showCall(call: number) {
           </RouterLink>
         </v-alert>
 
-        <EmptyState
+        <section
           v-if="messages.length === 0 && pending === null"
-          title="Ask about your network"
-          description="Try one of these, or ask anything about your incidents, devices and integrations."
-          :icon="Sparkles"
+          class="assistant__hero"
+          aria-labelledby="assistant-hero"
           data-test="chat-empty"
         >
+          <AssistantMark :size="64" />
+          <h2 id="assistant-hero" class="text-headline-small">Ask about your network</h2>
+          <p class="text-body-large text-medium-emphasis">
+            Try one of these, or ask anything about your incidents, devices and integrations.
+          </p>
           <div class="assistant__starters">
-            <v-btn
-              v-for="starter in STARTERS"
+            <button
+              v-for="(starter, index) in STARTERS"
               :key="starter"
-              variant="outlined"
+              type="button"
+              class="assistant__starter"
               data-test="chat-starter"
               @click="pick(starter)"
             >
-              {{ starter }}
-            </v-btn>
+              <span class="assistant__starter-icon" aria-hidden="true">
+                <v-icon :icon="STARTER_ICONS[index % STARTER_ICONS.length]" size="20" />
+              </span>
+              <span class="text-body-large">{{ starter }}</span>
+            </button>
           </div>
-        </EmptyState>
+        </section>
 
         <div
           v-else
@@ -352,32 +387,47 @@ function showCall(call: number) {
           {{ failure }}
         </v-alert>
 
-        <form class="assistant__composer" data-test="chat-form" @submit.prevent="send">
-          <v-textarea
-            ref="box"
-            v-model="draft"
-            label="Ask about your network"
-            rows="1"
-            max-rows="6"
-            auto-grow
-            hide-details="auto"
-            :error-messages="tooLong ? `Keep it under ${MAX_QUESTION} characters.` : undefined"
-            :disabled="sending"
-            data-test="chat-input"
-            @keydown.enter="onEnter"
-          />
-          <v-btn
-            type="submit"
-            color="primary"
-            icon
-            :disabled="!canSend"
-            :loading="sending"
-            aria-label="Send"
-            data-test="chat-send"
+        <div class="assistant__dock">
+          <form class="assistant__composer" data-test="chat-form" @submit.prevent="send">
+            <v-textarea
+              ref="box"
+              v-model="draft"
+              label="Ask about your network"
+              variant="plain"
+              rows="1"
+              max-rows="6"
+              auto-grow
+              hide-details="auto"
+              class="assistant__input"
+              :error-messages="tooLong ? `Keep it under ${MAX_QUESTION} characters.` : undefined"
+              :disabled="sending"
+              data-test="chat-input"
+              @keydown.enter="onEnter"
+            />
+            <v-btn
+              type="submit"
+              color="primary"
+              icon
+              :disabled="!canSend"
+              :loading="sending"
+              aria-label="Send"
+              data-test="chat-send"
+            >
+              <v-icon :icon="ArrowUp" />
+            </v-btn>
+          </form>
+          <p
+            v-if="mdAndUp || counting"
+            class="assistant__hint text-body-small text-medium-emphasis"
           >
-            <v-icon :icon="ArrowUp" />
-          </v-btn>
-        </form>
+            <span v-if="mdAndUp" data-test="chat-hint">
+              Enter sends. Shift and Enter start a new line.
+            </span>
+            <span v-if="counting" class="assistant__count" data-test="chat-count">
+              {{ left }} left
+            </span>
+          </p>
+        </div>
         <p class="text-body-medium text-medium-emphasis" data-test="chat-note">
           The assistant only reads. Under every answer you can see exactly what your AI provider was
           sent. What it may see is set under
@@ -466,23 +516,122 @@ function showCall(call: number) {
   margin: 0;
 }
 
-.assistant__starters {
+.assistant__hero {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2.5rem 0.5rem 1rem;
+  text-align: center;
+}
+
+.assistant__hero h2,
+.assistant__hero p {
+  margin: 0;
+  max-width: 34rem;
+}
+
+.assistant__starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 44rem;
+  margin-top: 1rem;
+}
+
+/* A question to start with: a card that is a button, in the order it is read. */
+.assistant__starter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 1rem;
+  background: rgb(var(--v-theme-surface));
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.assistant__starter:hover {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary), 0.06);
+  transform: translateY(-1px);
+}
+
+.assistant__starter:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.assistant__starter-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  background: rgb(var(--v-theme-primary), 0.14);
+  color: rgb(var(--v-theme-primary));
 }
 
 /* The box to type in stays at the bottom of the screen while the conversation scrolls above it. */
-.assistant__composer {
+.assistant__dock {
   position: sticky;
   bottom: var(--v-layout-bottom, 0px);
   z-index: 1;
+  padding: 0.5rem 0 0.25rem;
+  background: rgb(var(--v-theme-background));
+}
+
+.assistant__composer {
   display: flex;
   align-items: flex-end;
-  gap: 0.75rem;
-  padding: 0.75rem 0;
-  background: rgb(var(--v-theme-background));
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.25rem 1rem;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 1.5rem;
+  background: rgb(var(--v-theme-surface));
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.assistant__composer:focus-within {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 3px rgb(var(--v-theme-primary), 0.2);
+}
+
+.assistant__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant__hint {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.25rem 1rem 0;
+}
+
+.assistant__count {
+  margin-inline-start: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant__starter,
+  .assistant__composer {
+    transition: none;
+  }
+
+  .assistant__starter:hover {
+    transform: none;
+  }
 }
 </style>

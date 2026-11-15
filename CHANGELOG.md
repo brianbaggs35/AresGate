@@ -6,6 +6,18 @@ Every release's notes are here, newest first. The format follows
 
 ## 0.1.8
 
+### Changed
+
+- **A better Assistant page.** The page keeps everything it did and looks and feels much more
+  finished. A new conversation opens with the assistant's mark and four cards to start from, each
+  with an icon. The box to type in is one rounded field with the send button inside it, a hint
+  that Enter sends (left off a phone), and a count of the characters left once the question is
+  getting long. Each answer has the mark beside it, a softer corner where it speaks from, and
+  small icons on "Looked at" and "Based on". While it works the mark breathes and three dots rise
+  in turn, instead of a spinner. The open conversation has a bar at its edge, and the title says
+  the assistant is read only. Nothing moves for a person who asked their device for less motion.
+  See [The assistant](DOCS/operations.md).
+
 ### Fixed
 
 - **"It answered with more than AresGate reads" after setting Wazuh up as the guide says.** Once

@@ -70,10 +70,28 @@ const emit = defineEmits<{ delete: [conversation: ConversationSummary] }>()
   align-items: center;
   gap: 0.25rem;
   border-radius: 0.75rem;
+  transition: background-color 150ms ease;
 }
 
-.conversations__item--current {
+.conversations__item:hover {
+  background: rgb(var(--v-theme-on-surface), 0.06);
+}
+
+/* The one that is open: tinted, with a bar at its edge that says so without colour alone. */
+.conversations__item--current,
+.conversations__item--current:hover {
   background: rgb(var(--v-theme-primary), 0.14);
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary));
+}
+
+.conversations__item--current .conversations__title {
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversations__item {
+    transition: none;
+  }
 }
 
 .conversations__link {
