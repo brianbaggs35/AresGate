@@ -5,11 +5,13 @@ import { defineConfig } from 'vite'
 import vuetify from 'vite-plugin-vuetify'
 import { configDefaults } from 'vitest/config'
 
+import { precompress, preloadFont } from './build/assets.ts'
+
 // In development the API runs on uvicorn; nginx does this proxying in production.
 const apiTarget = process.env.ARESGATE_API_URL ?? 'http://127.0.0.1:8000'
 
 export default defineConfig({
-  plugins: [vue(), vuetify({ autoImport: true })],
+  plugins: [vue(), vuetify({ autoImport: true }), preloadFont(), precompress()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
@@ -45,8 +47,8 @@ export default defineConfig({
     server: { deps: { inline: ['vuetify'] } },
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,vue}'],
-      exclude: ['src/**/*.spec.ts', 'src/test/**'],
+      include: ['src/**/*.{ts,vue}', 'build/**/*.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/test/**', 'build/**/*.spec.ts'],
       // lcov.info names files from the repository root (frontend/src/…), as SonarQube expects.
       reporter: ['text', ['lcovonly', { projectRoot: '..' }], 'html'],
       thresholds: { lines: 95, functions: 95, branches: 95, statements: 95 },
