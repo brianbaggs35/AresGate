@@ -28,7 +28,7 @@ test.describe('narrowing by time and device', () => {
     await expect(incidents.cards).toHaveCount(3)
     const scope = page.getByTestId('scope')
 
-    await scope.getByRole('combobox', { name: 'When' }).click()
+    await scope.getByTestId('scope-when').click()
     await page.getByRole('option', { name: 'The last hour' }).click()
 
     await expect(page).toHaveURL(/q=since:1h/)
@@ -76,7 +76,7 @@ test.describe('narrowing by time and device', () => {
     await expect(logs.events).toHaveCount(2)
     const scope = page.getByTestId('scope')
 
-    await scope.getByRole('combobox', { name: 'When' }).click()
+    await scope.getByTestId('scope-when').click()
     await page.getByRole('option', { name: 'The last hour' }).click()
 
     await expect(logs.events).toHaveCount(1)
