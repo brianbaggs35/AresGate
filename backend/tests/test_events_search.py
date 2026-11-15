@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 
 import pytest
 from sqlalchemy import select
@@ -9,7 +10,8 @@ from app.events import search
 from app.events.event import Severity
 from app.events.search import Context, SearchError
 from app.events.store import record as record_events
-from app.models import Event, Incident, IncidentSignal
+from app.interfaces import service as interfaces
+from app.models import Device, DeviceAddress, Event, Incident, IncidentSignal, InterfaceFeed
 from tests.helpers import new_event
 
 NOW = datetime(2026, 10, 27, 15, 30, tzinfo=UTC)
@@ -124,6 +126,105 @@ ALL = {
     "DNS query volume",
     "udp flood",
 }
+
+
+def on_ports(session: Session, settings: Settings) -> None:
+    """Events of one program that came in on four ports, placed as the owner might have: the
+    first on Internet, the second on Guests, the third set aside, and the connection as a whole
+    (any other port) on Home."""
+    ports: dict[str, InterfaceFeed] = {}
+    for name in ("igc0", "igc1", "igc2", ""):
+        feed = InterfaceFeed(integration="opnsense", connection="api", native_name=name)
+        session.add(feed)
+        session.flush()
+        ports[name] = feed
+    for name, feeds in (("Internet", ["igc0"]), ("Guests", ["igc1"]), ("Home", [""])):
+        interfaces.create(
+            session,
+            name=name,
+            role="home",
+            notes="",
+            networks=[],
+            feeds=[ports[port].id for port in feeds],
+        )
+    interfaces.place(session, ports["igc2"].id, None, ignored=True)
+    for index, port in enumerate(("igc0", "igc1", "igc2", "igc9", None)):
+        event = new_event(
+            source="opnsense",
+            connection="api",
+            kind="firewall",
+            occurred_at=NOW - timedelta(minutes=index),
+            identity=("port", index),
+            summary=f"Blocked on {port}",
+            iface=port,
+        )
+        record_events(session, settings, [event], event.occurred_at)
+    session.commit()
+
+
+class TestInterface:
+    def test_an_event_is_on_the_interface_its_port_was_placed_on(
+        self, session: Session, settings: Settings
+    ) -> None:
+        on_ports(session, settings)
+
+        assert found(session, "interface:Internet") == {"Blocked on igc0"}
+        assert found(session, "interface:guests") == {"Blocked on igc1"}
+        assert labels("interface:Internet") == ["Interface: Internet"]
+
+    def test_a_port_nobody_placed_is_where_its_connection_was_placed(
+        self, session: Session, settings: Settings
+    ) -> None:
+        on_ports(session, settings)
+
+        assert found(session, "interface:home") == {"Blocked on igc9", "Blocked on None"}
+
+    def test_a_port_set_aside_is_on_no_interface(
+        self, session: Session, settings: Settings
+    ) -> None:
+        on_ports(session, settings)
+
+        for name in ("internet", "guests", "home"):
+            assert "Blocked on igc2" not in found(session, f"interface:{name}")
+
+    def test_a_name_that_is_no_interface_finds_nothing(
+        self, session: Session, settings: Settings
+    ) -> None:
+        on_ports(session, settings)
+
+        assert found(session, "interface:Cellar") == set()
+        assert refused("interface:a,b") == '"interface:" takes one value, not a list.'
+
+
+class TestDevice:
+    def test_a_device_is_found_by_the_name_the_maker_or_the_hardware_address_of_either_end(
+        self, session: Session, events: object
+    ) -> None:
+        nas = Device(
+            mac="aa:bb:cc:00:11:22",
+            hostname="nas",
+            vendor="Synology",
+            first_seen_at=NOW,
+            last_seen_at=NOW,
+        )
+        session.add(nas)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=nas.id, address=ip_address(DEVICE), first_seen_at=NOW, last_seen_at=NOW
+            )
+        )
+        session.commit()
+
+        assert found(session, "device:nas") == {
+            "sshd: authentication failed",
+            "Blocked tcp",
+            "udp flood",
+        }
+        assert found(session, "device:SYNO") == found(session, "device:nas")
+        assert found(session, "device:aa:bb:cc") == found(session, "device:nas")
+        assert found(session, "device:printer") == set()
+        assert labels("device:nas") == ["Device: nas"]
 
 
 class TestFields:

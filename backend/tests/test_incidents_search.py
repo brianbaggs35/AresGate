@@ -6,9 +6,20 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import Settings
+from app.events.store import record as record_events
 from app.incidents import search
 from app.incidents.search import Context, SearchError
-from app.models import Device, DeviceAddress, Incident, IncidentSignal
+from app.interfaces import service as interfaces
+from app.models import (
+    Device,
+    DeviceAddress,
+    Event,
+    Incident,
+    IncidentSignal,
+    InterfaceFeed,
+)
+from tests.helpers import new_event
 
 NOW = datetime(2026, 10, 27, 15, 30, tzinfo=UTC)
 HALIFAX = ZoneInfo("America/Halifax")
@@ -345,6 +356,37 @@ class TestWhatItFinds:
         assert found(session, "device:SYNO") == {"attack"}
         assert found(session, "device:aa:bb:cc") == {"attack"}
         assert found(session, "device:printer") == set()
+
+    def test_an_incident_is_on_an_interface_when_a_signal_came_in_on_its_port(
+        self, session: Session, incidents: dict[str, Incident], settings: Settings
+    ) -> None:
+        port = InterfaceFeed(integration="opnsense", connection="api", native_name="igc1")
+        session.add(port)
+        session.flush()
+        interfaces.create(
+            session, name="Guests", role="guest", notes="", networks=[], feeds=[port.id]
+        )
+        signal = session.scalars(
+            select(IncidentSignal).where(IncidentSignal.incident_id == incidents["attack"].id)
+        ).one()
+        event = new_event(
+            source="opnsense",
+            connection="api",
+            kind="alert",
+            occurred_at=signal.occurred_at,
+            identity=("guest",),
+            summary="A scan",
+            iface="igc1",
+        )
+        record_events(session, settings, [event], event.occurred_at)
+        stored = session.scalars(select(Event).where(Event.summary == "A scan")).one()
+        signal.event_id = stored.id
+        session.commit()
+
+        assert found(session, "interface:guests") == {"attack"}
+        assert found(session, "-interface:guests") == {"scan", "rule", "six"}
+        assert found(session, "interface:Cellar") == set()
+        assert [term.label for term in parse("interface:Guests").terms] == ["Interface: Guests"]
 
     def test_ports(self, session: Session, incidents: dict[str, Incident]) -> None:
         assert found(session, "port:22") == {"attack"}

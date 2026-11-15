@@ -16,6 +16,7 @@ import LogDrawer from '@/components/LogDrawer.vue'
 import LogTable from '@/components/LogTable.vue'
 import LogVolume from '@/components/LogVolume.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ScopeFilters from '@/components/ScopeFilters.vue'
 import SearchBox from '@/components/SearchBox.vue'
 import SearchFacets from '@/components/SearchFacets.vue'
 import { formatCount } from '@/format'
@@ -438,6 +439,8 @@ usePolling(() => {
         :error="searchError"
         @update:model-value="show"
       />
+
+      <ScopeFilters :model-value="q" @update:model-value="show" />
 
       <SearchFacets :groups="facetGroups" @toggle="toggleFacet" />
 

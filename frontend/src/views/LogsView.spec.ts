@@ -1,3 +1,4 @@
+import { VSelect } from 'vuetify/components'
 import { ApiError } from '@/api/client'
 import * as api from '@/api/logs'
 import { COLUMNS_KEY, TIME_KEY, cursorBefore } from '@/logs'
@@ -209,6 +210,20 @@ describe('LogsView', () => {
       expect(wrapper.findAll('[data-test="search-term"]').map((chip) => chip.text())).toEqual([
         'Kind: alert',
       ])
+    })
+
+    it('has choices for when, device and interface, which write into the search', async () => {
+      const { find, wrapper, router, fetchLogs, choose } = await open({ route: '/logs?q=ssh' })
+
+      await choose(() => {
+        wrapper
+          .findComponent<typeof VSelect>('[data-test="scope-when"]')
+          .vm.$emit('update:modelValue', '7d')
+      })
+
+      expect(router.currentRoute.value.query).toEqual({ q: 'ssh since:7d' })
+      expect(lastQuery(fetchLogs).q).toBe('ssh since:7d')
+      expect(find('scope-device').exists()).toBe(true)
     })
 
     it('has the choices for severity, integration and kind, which add to the search', async () => {

@@ -11,10 +11,11 @@ slowest field; with a time (``since:1h``) it is quick.
 from ipaddress import IPv4Network, IPv6Network
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, Text, cast, or_, select
+from sqlalchemy import ColumnElement, String, Text, cast, or_, select
 from sqlalchemy.dialects.postgresql import INET
 
-from app.models import Event, IncidentSignal
+from app.interfaces.scope import on_interface
+from app.models import Device, DeviceAddress, Event, IncidentSignal
 from app.querylang import (
     Clause,
     Compiled,
@@ -135,6 +136,32 @@ def _incident(clause: Clause, _context: Context) -> Compiled:
     return found if yes else ~found, f"In an incident: {'yes' if yes else 'no'}"
 
 
+def _interface(clause: Clause, _context: Context) -> Compiled:
+    value = word(clause, "interface")
+    return on_interface(value), f"Interface: {value}"
+
+
+def _device(clause: Clause, _context: Context) -> Compiled:
+    value = word(clause, "device")
+    found = (
+        select(Device.id)
+        .join(DeviceAddress, DeviceAddress.device_id == Device.id)
+        .where(
+            or_(
+                DeviceAddress.address == Event.src_address,
+                DeviceAddress.address == Event.dst_address,
+            ),
+            or_(
+                Device.hostname.icontains(value, autoescape=True),
+                Device.vendor.icontains(value, autoescape=True),
+                cast(Device.mac, String).icontains(value, autoescape=True),
+            ),
+        )
+        .exists()
+    )
+    return found, f"Device: {value}"
+
+
 def _since(clause: Clause, context: Context) -> Compiled:
     when, shown = moment(only_one(clause, "since"), context)
     return Event.occurred_at >= when, f"Since: {shown}"
@@ -168,6 +195,8 @@ FIELDS: Final = (
     Field("signature", _signature),
     Field("raw", _raw),
     Field("incident", _incident),
+    Field("device", _device),
+    Field("interface", _interface),
     Field("since", _since),
     Field("before", _before),
 )

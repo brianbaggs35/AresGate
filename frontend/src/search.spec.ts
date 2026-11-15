@@ -16,6 +16,8 @@ import {
   severityChoices,
   sourceChoices,
   toggled,
+  valuesOf,
+  withField,
   without,
   zone,
 } from '@/search'
@@ -257,5 +259,34 @@ describe('the choices under a search', () => {
 
     expect(groupsOf(some, none)).toEqual([some])
     expect(groupsOf(none)).toEqual([])
+  })
+})
+
+describe('a field of the search', () => {
+  it('reads every value the search gives it, quoted or not, in any case', () => {
+    expect(valuesOf('ssh since:1h SINCE=2d device:"my laptop" -device:nas', 'since')).toEqual([
+      '1h',
+      '2d',
+    ])
+    expect(valuesOf('ssh device:"my laptop" -device:nas', 'device')).toEqual(['my laptop'])
+    expect(valuesOf('ssh', 'device')).toEqual([])
+    expect(valuesOf('device:""', 'device')).toEqual([''])
+  })
+
+  it('gives it one value, in place of any it had, at the end of the search', () => {
+    expect(withField('ssh since:1h port:22', 'since', '7d')).toBe('ssh port:22 since:7d')
+    expect(withField('', 'interface', 'Guests')).toBe('interface:Guests')
+    expect(withField('since:1h since:2d', 'since', 'today')).toBe('since:today')
+  })
+
+  it('quotes a value of several words, and leaves quotes inside it out', () => {
+    expect(withField('ssh', 'device', 'my laptop')).toBe('ssh device:"my laptop"')
+    expect(withField('', 'device', 'my "best" laptop')).toBe('device:"my best laptop"')
+  })
+
+  it('takes it out when there is no value, and leaves a term turned around alone', () => {
+    expect(withField('ssh since:1h', 'since', null)).toBe('ssh')
+    expect(withField('ssh since:1h', 'since', '  ')).toBe('ssh')
+    expect(withField('-device:nas device:tv', 'device', null)).toBe('-device:nas')
   })
 })
