@@ -1,9 +1,11 @@
 import { defineComponent, ref } from 'vue'
 import type { MockInstance } from 'vitest'
+import { VDialog } from 'vuetify/components'
 
 import { ApiError } from '@/api/client'
 import * as interfacesApi from '@/api/interfaces'
 import type { Interface, Role } from '@/api/interfaces'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import InterfaceEditor from '@/components/InterfaceEditor.vue'
 import { iface } from '@/test/interfaces'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -212,6 +214,15 @@ describe('InterfaceEditor', () => {
       expect(change).not.toHaveBeenCalled()
     })
 
+    it('closes when the sheet asks to be, as when the page behind it is pressed', async () => {
+      const { wrapper, visible } = await open({ item })
+
+      wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      expect(visible.value).toBe(false)
+    })
+
     it('asks before removing, and says what happens to its feeds', async () => {
       const { visible } = await open({ item })
 
@@ -221,6 +232,17 @@ describe('InterfaceEditor', () => {
       expect(at('confirm-message')!.textContent).toContain('Its feeds stay')
       expect(remove).not.toHaveBeenCalled()
       expect(visible.value).toBe(true)
+    })
+
+    it('does not remove it when the question is closed some other way', async () => {
+      const { wrapper } = await open({ item })
+      await press('editor-remove')
+
+      wrapper.findComponent(ConfirmDialog).vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      expect(at('confirm-title')).toBeNull()
+      expect(remove).not.toHaveBeenCalled()
     })
 
     it('removes it once that is confirmed, and says so', async () => {

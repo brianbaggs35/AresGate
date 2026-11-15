@@ -1,3 +1,5 @@
+import { VDialog } from 'vuetify/components'
+
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import type { Lookup } from '@/api/threatIntel'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -344,5 +346,35 @@ describe('ThreatReportDialog', () => {
     const { inWindow } = await mountReport({ ...MALICIOUS, kind: 'url', repeatable: false })
 
     expect(inWindow('[data-test="ruling"]')).toBeNull()
+  })
+
+  it('moves the keyboard to what it is about once it has opened', async () => {
+    const { wrapper, inWindow } = await mountReport()
+
+    wrapper.findComponent(VDialog).vm.$emit('afterEnter')
+
+    expect(document.activeElement).toBe(inWindow('[data-test="report-subject"]'))
+  })
+
+  it('says so when the window asks to be closed', async () => {
+    const onUpdate = vi.fn()
+    const { wrapper } = await mountReport(MALICIOUS, { onUpdate })
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+
+    expect(onUpdate).toHaveBeenCalledWith(false)
+  })
+
+  it('draws no share of a bar for a report that counts no engines', async () => {
+    const { inWindow } = await mountReport({
+      ...UNKNOWN,
+      judgement: 'clean',
+      reported_judgement: 'clean',
+    })
+
+    expect(inWindow('[data-test="report-bar"]')).not.toBeNull()
+    expect(
+      inWindow('[data-test="report-bar"]')?.querySelectorAll('[style*="width: 0%"]'),
+    ).toHaveLength(4)
   })
 })

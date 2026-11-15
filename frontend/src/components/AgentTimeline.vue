@@ -15,6 +15,12 @@ defineProps<{
   live: boolean
 }>()
 
+/** How long a step took, written out, or null when that isn't known. */
+const tookOf = (step: Step, next: Step | undefined): string | null => {
+  const ms = tookMs(step, next)
+  return ms === null ? null : formatElapsed(ms)
+}
+
 const summaryOf = (step: Step): string => {
   const summary = step.detail.summary
   return typeof summary === 'string' ? summary : ''
@@ -34,8 +40,8 @@ const summaryOf = (step: Step): string => {
             <span class="text-label-small text-medium-emphasis step__when">
               {{ nodeInfo(step.node).label }} ·
               <time :datetime="step.at">{{ formatClock(step.at) }}</time>
-              <span v-if="tookMs(step, steps[at + 1]) !== null" data-test="step-took">
-                · took {{ formatElapsed(tookMs(step, steps[at + 1]) ?? 0) }}
+              <span v-if="tookOf(step, steps[at + 1])" data-test="step-took">
+                · took {{ tookOf(step, steps[at + 1]) }}
               </span>
             </span>
           </div>

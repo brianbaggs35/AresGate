@@ -39,7 +39,7 @@ const route = useRoute()
 const key = computed(() => String(route.params.key))
 /** The addresses it has now, which is where a capture of its packets can be taken. */
 const currentAddresses = computed(() =>
-  (data.value?.addresses ?? []).filter((item) => item.current).map((item) => item.address),
+  (data.value as AssetDetail).addresses.filter((item) => item.current).map((item) => item.address),
 )
 const data = ref<AssetDetail | null>(null)
 const missing = ref(false)

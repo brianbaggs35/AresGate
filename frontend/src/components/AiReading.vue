@@ -33,7 +33,10 @@ const emit = defineEmits<{ ask: []; changed: [] }>()
 const session = useSessionStore()
 
 const reading = computed(() => props.incident.reading)
-const look = computed(() => (reading.value ? CLASSIFICATION[reading.value.classification] : null))
+// Only read where there is a reading to show.
+const look = computed(
+  () => CLASSIFICATION[(reading.value as NonNullable<typeof reading.value>).classification],
+)
 const fresh = computed(() => newSince(props.incident))
 
 /** The verdict it suggests, unless the owner has already said something of the incident: then it
@@ -48,10 +51,10 @@ const giving = ref(false)
 const notice = ref<string | null>(null)
 const problem = ref<string | null>(null)
 
-async function accept() {
-  const kind = suggested.value
-  const target = scope.value
-  if (!kind || !target) return
+async function accept(
+  kind: NonNullable<typeof suggested.value>,
+  target: NonNullable<typeof scope.value>,
+) {
   giving.value = true
   notice.value = null
   problem.value = null
@@ -109,7 +112,7 @@ async function accept() {
       </RouterLink>
     </v-alert>
 
-    <div v-if="reading && look" class="ai-reading" data-test="ai-reading">
+    <div v-if="reading" class="ai-reading" data-test="ai-reading">
       <div class="ai-reading__chips">
         <v-chip
           :color="look.color"
@@ -171,7 +174,7 @@ async function accept() {
           :color="VERDICT[suggested].color"
           :loading="giving"
           data-test="ai-accept"
-          @click="accept"
+          @click="accept(suggested, scope)"
         >
           Mark {{ scope.title }} as {{ VERDICT[suggested].label.toLowerCase() }}
         </v-btn>

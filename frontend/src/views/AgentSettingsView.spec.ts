@@ -297,6 +297,14 @@ describe('AgentSettingsView', () => {
     expect(find('agent-ai-saved').exists()).toBe(false)
   })
 
+  it('offers the providers with none of them asked when the choice is kept but not in use', async () => {
+    const { find } = await open(
+      settings({ ai_source: 'own', provider: 'anthropic', asking: null, reason: 'No key yet.' }),
+    )
+
+    expect(find('agent-own').exists()).toBe(true)
+  })
+
   it('starts from the choice that is kept', async () => {
     const { find } = await open(
       settings({ ai_source: 'own', provider: 'anthropic', model: 'claude-sonnet-5-5' }),
@@ -378,6 +386,21 @@ describe('AgentSettingsView', () => {
       await click('agent-cleanup-save')
 
       expect(find('agent-cleanup-failure').text()).toBe('Choose suggest or auto.')
+    })
+
+    it('keeps a limit that was cleared as none', async () => {
+      const { find, click, save } = await open(
+        settings({ ai_source: 'own', provider: 'anthropic', model: 'claude-sonnet-5-5' }),
+      )
+
+      await find('agent-limit-daily-field').find('input').setValue('')
+      await find('agent-limit-monthly-field').find('input').setValue(' ')
+      await click('agent-limits-save')
+
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({ daily: null, monthly: null }),
+        expect.any(String),
+      )
     })
 
     it('keeps the choice of AI without the limits that were typed and not saved', async () => {

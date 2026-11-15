@@ -252,4 +252,14 @@ describe('SetupGuideDialog', () => {
     expect(document.querySelector('.v-overlay--active.v-dialog--fullscreen')).toBeNull()
     expect(desktop.inWindow('.guide--screen')).toBeNull()
   })
+
+  it('closes when the window asks to be, as when the page behind it is pressed', async () => {
+    const { wrapper, openIt, inWindow } = await mountGuide()
+    await openIt()
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(inWindow('[data-test="setup-guide"]')).toBeNull()
+  })
 })

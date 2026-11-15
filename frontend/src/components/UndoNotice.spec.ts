@@ -1,3 +1,5 @@
+import { VSnackbar } from 'vuetify/components'
+
 import UndoNotice from '@/components/UndoNotice.vue'
 import type { Done } from '@/interface-board'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -50,5 +52,18 @@ describe('UndoNotice', () => {
     await flushPromises()
 
     expect(shown.emitted('undo')).toEqual([[done]])
+  })
+
+  it('goes when the snackbar asks to, as when its time is up', async () => {
+    const { show, shown } = await open()
+    await show({ text: 'Placed.', undo: null })
+
+    const active = () => document.querySelector('[data-test="undo-notice"].v-overlay--active')
+    expect(active()).not.toBeNull()
+
+    shown.findComponent(VSnackbar).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(active()).toBeNull()
   })
 })

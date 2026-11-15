@@ -125,7 +125,8 @@ function tally(item: Lookup): string {
 /** Shows the answer that is open as the owner ruled it, or as VirusTotal made it where the ruling
  * was taken back. The page is told, and reads the list again, whose counts and filters follow. */
 function ruled(ruling: Ruling | null) {
-  if (opened.value) opened.value = withRuling(opened.value, ruling)
+  // Only the report that is open can say this, so there is one.
+  opened.value = withRuling(opened.value as Lookup, ruling)
   emit('ruled')
 }
 

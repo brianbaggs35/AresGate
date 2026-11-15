@@ -82,7 +82,8 @@ async function search() {
 /** Shows the last search as the owner ruled it, or as VirusTotal made it again where the ruling was
  * taken back, and tells the page, so that what else it shows is read again. */
 function ruled(ruling: Ruling | null) {
-  if (last.value) last.value = withRuling(last.value, ruling)
+  // Only the report of the last search can say this, so there is one.
+  last.value = withRuling(last.value as Lookup, ruling)
   emit('ruled')
 }
 

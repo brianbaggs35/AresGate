@@ -16,11 +16,15 @@ const props = defineProps<{ item: Interface; stats: Stats | undefined }>()
 
 const role = computed(() => roleInfo(props.item.role))
 const programs = computed(() => [...new Set(props.item.feeds.map((feed) => feed.integration_name))])
-const trend = computed(() => (props.stats?.speed ? totalSpeed(props.stats.speed) : []))
-const received = computed(() =>
-  props.stats?.speed ? latestSpeed(props.stats.speed.received) : null,
-)
-const sent = computed(() => (props.stats?.speed ? latestSpeed(props.stats.speed.sent) : null))
+/** The traffic of the last day and its latest speeds, or null when nothing was measured. */
+const live = computed(() => {
+  const speed = props.stats?.speed
+  if (!speed) return null
+  const received = latestSpeed(speed.received)
+  return received === null
+    ? null
+    : { trend: totalSpeed(speed), received, sent: latestSpeed(speed.sent) }
+})
 
 /** How alerts compare with the day before, in words that do not depend on color. */
 const alertsNote = computed(() => {
@@ -49,13 +53,9 @@ const alertsNote = computed(() => {
     </div>
     <h3 class="text-title-large card__name" data-test="interface-name">{{ item.name }}</h3>
 
-    <div
-      v-if="trend.length && received !== null"
-      class="card__traffic"
-      data-test="interface-traffic"
-    >
+    <div v-if="live" class="card__traffic" data-test="interface-traffic">
       <SparklineChart
-        :values="trend"
+        :values="live.trend"
         :label="`Traffic through ${item.name} in the last 24 hours`"
         :height="40"
       />
@@ -63,12 +63,12 @@ const alertsNote = computed(() => {
         <span class="card__speed" data-test="interface-received">
           <ArrowDown :size="16" aria-hidden="true" />
           <span class="sr-only">Received</span>
-          {{ formatBitrate(received) }}
+          {{ formatBitrate(live.received) }}
         </span>
-        <span v-if="sent !== null" class="card__speed" data-test="interface-sent">
+        <span v-if="live.sent !== null" class="card__speed" data-test="interface-sent">
           <ArrowUp :size="16" aria-hidden="true" />
           <span class="sr-only">Sent</span>
-          {{ formatBitrate(sent) }}
+          {{ formatBitrate(live.sent) }}
         </span>
       </p>
     </div>

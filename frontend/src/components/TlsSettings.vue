@@ -111,10 +111,10 @@ const verdict = computed(() => {
   return { accepted: found.value.accepted, text: found.value.verdict }
 })
 
+/** Only the review of a certificate offers this, so there is always one found. */
 function trust(test: boolean) {
-  if (!found.value) return
   mode.value = 'pinned'
-  fingerprint.value = found.value.fingerprint
+  fingerprint.value = (found.value as Review).fingerprint
   emit('trusted', test)
 }
 </script>

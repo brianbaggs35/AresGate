@@ -2,7 +2,7 @@
 import { Plus, Radar } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
-import type { Discovery, Feed, Interface, Role, Stats, Suggestion } from '@/api/interfaces'
+import type { Discovery, Feed, Interface, Listing, Role, Stats, Suggestion } from '@/api/interfaces'
 import AppPage from '@/components/AppPage.vue'
 import FeedRow from '@/components/FeedRow.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
@@ -30,17 +30,20 @@ const editTarget = ref<Interface | null>(null)
 const starter = ref<{ name: string; role: Role; feeds: number[] } | null>(null)
 const found = ref<Discovery | null>(null)
 
-const said = computed(() => (listing.value ? hero(listing.value) : null))
-const full = computed(
-  () => (listing.value?.interfaces.length ?? 0) >= (listing.value?.max_interfaces ?? Infinity),
-)
+// The two are read only once the interfaces have come.
+const said = computed(() => hero(listing.value as Listing))
+const full = computed(() => {
+  const all = listing.value as Listing
+  return all.interfaces.length >= all.max_interfaces
+})
 
 const statsOf = (id: number): Stats | undefined =>
   overview.value?.stats.find((item) => item.interface_id === id)
 
 /** The feeds a suggestion names, which are waiting to be placed or were set aside. */
 function feedsOf(suggestion: Suggestion): Feed[] {
-  const waiting = listing.value ? [...listing.value.unplaced, ...listing.value.ignored] : []
+  const all = listing.value as Listing
+  const waiting = [...all.unplaced, ...all.ignored]
   return waiting.filter((feed) => suggestion.feed_ids.includes(feed.id))
 }
 
@@ -132,7 +135,7 @@ onMounted(() => board.load())
       @retry="board.load()"
     />
 
-    <template v-else-if="listing && said">
+    <template v-else-if="listing">
       <HeroSurface
         :tone="said.tone"
         :eyebrow="said.eyebrow"

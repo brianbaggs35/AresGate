@@ -224,6 +224,16 @@ describe('InterfaceView', () => {
       expect(editor.props('interface')).toEqual(INTERNET)
     })
 
+    it('closes the editor when it asks to be closed', async () => {
+      const { find, wrapper } = await open()
+      await find('interface-edit').trigger('click')
+
+      wrapper.findComponent(InterfaceEditor).vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      expect(wrapper.findComponent(InterfaceEditor).props('modelValue')).toBe(false)
+    })
+
     it('reads it again and says so when it was saved', async () => {
       const { wrapper, list } = await open()
 

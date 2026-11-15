@@ -175,4 +175,16 @@ describe('IntegrationsView search and kinds', () => {
 
     expect(names(wrapper)).toEqual(['OPNsense', 'VirusTotal', 'Fingerbank'])
   })
+
+  it('has nothing to clear when there is no integration at all', async () => {
+    const { find, wrapper } = await open([])
+
+    expect(find('integrations-none').exists()).toBe(true)
+    expect(find('integrations-clear').exists()).toBe(false)
+
+    wrapper.findComponent({ name: 'VTextField' }).vm.$emit('update:modelValue', null)
+    await flushPromises()
+
+    expect(find('integrations-clear').exists()).toBe(false)
+  })
 })

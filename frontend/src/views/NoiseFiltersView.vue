@@ -49,8 +49,9 @@ let timer: ReturnType<typeof setTimeout> | undefined
 // Which question is the latest, so an answer to an older one is dropped.
 let asked = 0
 
-const changed = computed(() =>
-  kept.value && draft.value ? !sameDraft(draft.value, draftOf(kept.value)) : false,
+// It is asked only once there is a draft, which comes with what is kept.
+const changed = computed(
+  () => !sameDraft(draft.value as NoiseDraft, draftOf(kept.value as NoiseFilters)),
 )
 
 async function load() {

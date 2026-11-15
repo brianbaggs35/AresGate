@@ -87,6 +87,17 @@ describe('ThreatRulings', () => {
     expect(dialog().props('modelValue')).toBe(true)
   })
 
+  it('shuts the window when it asks to be shut', async () => {
+    const { find, type, dialog } = await mountRulings()
+    await type('203.0.113.7')
+    await find('rulings-form').trigger('submit')
+
+    dialog().vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(dialog().props('modelValue')).toBe(false)
+  })
+
   it('does not open the window on nothing', async () => {
     const { find, type, dialog } = await mountRulings()
     await type('   ')

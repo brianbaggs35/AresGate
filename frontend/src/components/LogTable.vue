@@ -24,6 +24,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ open: [event: LogEvent] }>()
 
+/** What the other reports of an event say, or nothing where it was reported once. */
+const note = (event: LogEvent) => agreement(event) ?? undefined
+
 const body = ref<HTMLElement | null>(null)
 
 const shown = computed(() => COLUMNS.filter(({ key }) => props.columns.includes(key)))
@@ -128,13 +131,13 @@ onBeforeUnmount(() => {
               <template v-else-if="column.key === 'source'"
                 >{{ row.event.source_name }}
                 <v-chip
-                  v-if="agreement(row.event)"
+                  v-if="note(row.event)"
                   size="x-small"
                   variant="tonal"
                   color="primary"
                   :prepend-icon="CopyCheck"
-                  :title="agreement(row.event) ?? undefined"
-                  :aria-label="agreement(row.event) ?? undefined"
+                  :title="note(row.event)"
+                  :aria-label="note(row.event)"
                   data-test="log-row-agreement"
                   >{{
                     row.event.also_reported_by.length > 0

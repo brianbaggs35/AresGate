@@ -23,7 +23,9 @@ const props = defineProps<{ version?: number }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const session = useSessionStore()
-const items = ref<Ruling[] | null>(null)
+const items = ref<Ruling[]>([])
+/** Whether the list has been read yet. */
+const loaded = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const problem = ref<string | null>(null)
@@ -32,13 +34,10 @@ const subject = ref('')
 const dialogOpen = ref(false)
 const removing = ref<string | null>(null)
 
-/** What is ruled, once it has been read. */
-const list = computed(() => items.value ?? [])
-
 /** What is ruled already of what the dialog is open on, so it says so and can take it back. */
 const current = computed(
   () =>
-    list.value.find((item) => item.subject.toLowerCase() === subject.value.toLowerCase()) ?? null,
+    items.value.find((item) => item.subject.toLowerCase() === subject.value.toLowerCase()) ?? null,
 )
 
 async function load() {
@@ -46,6 +45,7 @@ async function load() {
   error.value = null
   try {
     items.value = (await session.call(fetchRulings)).items
+    loaded.value = true
   } catch (loadError) {
     error.value = errorMessage(loadError)
   } finally {
@@ -93,7 +93,7 @@ onMounted(load)
     data-test="threat-rulings"
   >
     <LoadError
-      v-if="error && !items"
+      v-if="error && !loaded"
       :message="error"
       :loading="loading"
       retry-test-id="threat-rulings-retry"
@@ -101,7 +101,11 @@ onMounted(load)
       @retry="load"
     />
 
-    <v-skeleton-loader v-else-if="!items" type="list-item-two-line@2" data-test="rulings-loading" />
+    <v-skeleton-loader
+      v-else-if="!loaded"
+      type="list-item-two-line@2"
+      data-test="rulings-loading"
+    />
 
     <template v-else>
       <form novalidate class="rulings__add" data-test="rulings-form" @submit.prevent="rule(typed)">
@@ -133,7 +137,7 @@ onMounted(load)
       </v-alert>
 
       <EmptyState
-        v-if="!list.length"
+        v-if="!items.length"
         title="Nothing is ruled yet"
         description="When a service flags something you know is fine, or misses something that is not, say so here, or from a report or an incident."
         data-test="rulings-empty"
@@ -141,7 +145,7 @@ onMounted(load)
 
       <ul v-else class="rulings__list" data-test="rulings-list">
         <li
-          v-for="item in list"
+          v-for="item in items"
           :key="`${item.kind}-${item.subject}`"
           class="ruled"
           data-test="ruling-row"

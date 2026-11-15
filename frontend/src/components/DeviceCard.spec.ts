@@ -58,6 +58,13 @@ describe('DeviceCard', () => {
     expect(find('device-ports').exists()).toBe(false)
   })
 
+  it('keeps its facts when protocols were seen but no port was', async () => {
+    const { find } = await open(device({ ports: [], asset: deviceAsset() }))
+
+    expect(find('device-ports').exists()).toBe(false)
+    expect(find('device-asset').exists()).toBe(true)
+  })
+
   it('says how many incidents it is in', async () => {
     const one = await open(device({ incidents: { count: 1, worst: 'high' } }))
     const many = await open(device({ incidents: { count: 3, worst: 'high' } }))

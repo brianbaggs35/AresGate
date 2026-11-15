@@ -70,6 +70,8 @@ const connectionItems = computed(() => [
   ...props.connections.map(({ key, label }) => ({ title: label, value: key })),
 ])
 const labels = computed(() => new Map(props.connections.map(({ key, label }) => [key, label])))
+/** What a connection is called, or its key when it isn't one of the integration's. */
+const labelOf = (key: string): string => labels.value.get(key) ?? key
 
 function query(before?: number): CallQuery {
   const asked: CallQuery = { limit: PAGE }
@@ -131,11 +133,12 @@ const outcome = (call: Call) => (call.status_code === null ? 'No answer' : Strin
 /** The request the sheet shows, by its id, so that the list can be reloaded behind it. */
 const selected = ref<number | null>(null)
 const sheet = ref(false)
-const at = computed(() => calls.value?.findIndex((one) => one.id === selected.value) ?? -1)
-const shown = computed(() => (at.value >= 0 ? (calls.value?.[at.value] ?? null) : null))
+const list = computed(() => calls.value ?? [])
+const at = computed(() => list.value.findIndex((one) => one.id === selected.value))
+const shown = computed(() => list.value[at.value] ?? null)
 const hasNewer = computed(() => at.value > 0)
 const hasOlder = computed(
-  () => at.value >= 0 && (at.value < (calls.value?.length ?? 0) - 1 || more.value !== null),
+  () => at.value >= 0 && (at.value < list.value.length - 1 || more.value !== null),
 )
 
 function show(call: Call) {
@@ -145,13 +148,12 @@ function show(call: Call) {
 
 /** Goes to the next older or newer request, asking for the next page when the list ends. */
 async function step(direction: 'older' | 'newer') {
-  const list = calls.value ?? []
   if (direction === 'newer') {
-    selected.value = list[at.value - 1]?.id ?? selected.value
+    selected.value = list.value[at.value - 1]?.id ?? selected.value
     return
   }
-  if (at.value === list.length - 1 && more.value !== null) await load(more.value)
-  selected.value = calls.value?.[at.value + 1]?.id ?? selected.value
+  if (at.value === list.value.length - 1 && more.value !== null) await load(more.value)
+  selected.value = list.value[at.value + 1]?.id ?? selected.value
 }
 
 // A reload that no longer has the request leaves nothing to show.
@@ -259,7 +261,7 @@ onMounted(() => load())
                 · {{ outcome(call) }} · {{ call.duration_ms }} ms<template
                   v-if="connections.length > 1"
                 >
-                  · {{ labels.get(call.connection) ?? call.connection }}</template
+                  · {{ labelOf(call.connection) }}</template
                 >
               </span>
               <span
@@ -302,9 +304,7 @@ onMounted(() => load())
       v-model="sheet"
       :integration="integration"
       :call="shown"
-      :connection="
-        connections.length > 1 && shown ? (labels.get(shown.connection) ?? shown.connection) : null
-      "
+      :connection="connections.length > 1 && shown ? labelOf(shown.connection) : null"
       :has-older="hasOlder"
       :has-newer="hasNewer"
       @step="step"
