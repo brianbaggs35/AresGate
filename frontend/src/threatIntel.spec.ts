@@ -10,12 +10,16 @@ import {
   JUDGEMENT,
   JUDGEMENTS,
   KIND,
+  DEVICE_STATE,
   PROVIDERS,
   RULING,
+  TYPES,
   judgementLabel,
   providerOf,
+  providersFor,
   summaryOf,
   tallyOf,
+  typeOf,
   withRuling,
 } from '@/threatIntel'
 
@@ -66,11 +70,37 @@ describe('threatIntel', () => {
     expect(withRuling(CLEAN_LOOKUP, null)).toEqual(CLEAN_LOOKUP)
   })
 
-  it('lists the services in the order of their tabs, each with what it answers about', () => {
+  it('lists the services in the order their results come, each with the kinds it answers about', () => {
     expect(PROVIDERS.map((one) => one.key)).toEqual(['virustotal', 'otx', 'greynoise'])
     expect(PROVIDERS.map((one) => one.name)).toEqual(['VirusTotal', 'AlienVault OTX', 'GreyNoise'])
-    expect(providerOf('otx').about).toBe('an IP address or a domain')
-    expect(providerOf('greynoise').about).toBe('an IPv4 address')
+    expect(providerOf('virustotal').kinds).toEqual(['ip', 'domain', 'url'])
+    expect(providerOf('otx').kinds).toEqual(['ip', 'domain'])
+    expect(providerOf('greynoise').kinds).toEqual(['ip'])
+  })
+
+  it('finds the services that answer about a kind of subject', () => {
+    expect(providersFor('ip').map((one) => one.key)).toEqual(['virustotal', 'otx', 'greynoise'])
+    expect(providersFor('domain').map((one) => one.key)).toEqual(['virustotal', 'otx'])
+    expect(providersFor('url').map((one) => one.key)).toEqual(['virustotal'])
+  })
+
+  it('names the tabs for what the intelligence is about, not for who gives it', () => {
+    expect(TYPES.map((one) => one.key)).toEqual(['ip', 'domain', 'url', 'cve', 'device'])
+    expect(TYPES.map((one) => one.name)).toEqual([
+      'IP addresses',
+      'Domains',
+      'Web addresses',
+      'CVEs',
+      'Devices',
+    ])
+    expect(typeOf('domain').about).toBe('a domain')
+    expect(new Set(TYPES.map((one) => one.icon)).size).toBe(5)
+  })
+
+  it('says what Fingerbank made of a device, each in a way of its own', () => {
+    expect(Object.keys(DEVICE_STATE)).toEqual(['identified', 'unknown', 'private'])
+    expect(DEVICE_STATE.private.about).toContain('Fingerbank was not asked')
+    expect(new Set(Object.values(DEVICE_STATE).map((one) => one.icon)).size).toBe(3)
   })
 
   it('says what a clean answer is in the words of the service that gave it', () => {

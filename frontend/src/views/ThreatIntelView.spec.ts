@@ -1,12 +1,16 @@
 import { ApiError } from '@/api/client'
 import * as integrationsApi from '@/api/integrations'
 import type { IntegrationSummary } from '@/api/integrations'
+import * as catalogApi from '@/api/threatCatalog'
 import * as threatIntelApi from '@/api/threatIntel'
+import ThreatCves from '@/components/ThreatCves.vue'
+import ThreatDevices from '@/components/ThreatDevices.vue'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import ThreatRulings from '@/components/ThreatRulings.vue'
 import { summary } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { cvePage, deviceIntelPage } from '@/test/threatCatalog'
 import { knownPage } from '@/test/threatIntel'
 import ThreatIntelView from '@/views/ThreatIntelView.vue'
 
@@ -27,10 +31,12 @@ async function open(result: IntegrationSummary[] | Error) {
   else fetch.mockResolvedValue(result)
   const known = vi.spyOn(threatIntelApi, 'fetchKnownThreats').mockResolvedValue(knownPage())
   const rulings = vi.spyOn(threatIntelApi, 'fetchRulings').mockResolvedValue({ items: [] })
+  const cves = vi.spyOn(catalogApi, 'fetchCves').mockResolvedValue(cvePage())
+  const devices = vi.spyOn(catalogApi, 'fetchDeviceIntel').mockResolvedValue(deviceIntelPage())
   const mounted = await mountWithPlugins(ThreatIntelView, { signedIn: 'brian' })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
-  return { ...mounted, fetch, known, rulings, find }
+  return { ...mounted, fetch, known, rulings, cves, devices, find }
 }
 
 /** The integrations, with AlienVault OTX and GreyNoise as given, and VirusTotal not connected. */
@@ -47,48 +53,105 @@ describe('ThreatIntelView', () => {
     vi.restoreAllMocks()
   })
 
-  it('has a tab for each service, and opens the first that is connected', async () => {
-    const { wrapper, find } = await open(listOf('connected', 'connected'))
+  it('has a tab for each kind of threat intelligence, and opens IP addresses first', async () => {
+    const { wrapper } = await open(listOf('connected', 'connected'))
 
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
-      'VirusTotal',
-      'AlienVault OTX',
-      'GreyNoise',
+      'IP addresses',
+      'Domains',
+      'Web addresses',
+      'CVEs',
+      'Devices',
     ])
-    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('otx')
-    expect(wrapper.findComponent(ThreatKnown).props('provider')).toBe('otx')
-    expect(find('threat-intelligence-setup').exists()).toBe(false)
+    expect(wrapper.findComponent(ThreatLookup).props('kind')).toBe('ip')
+    expect(wrapper.findComponent(ThreatKnown).props('kind')).toBe('ip')
   })
 
-  it('opens VirusTotal while no service is connected', async () => {
-    const { wrapper } = await open(listOf('not_connected', 'not_connected'))
+  it('searches every connected service that answers about the kind of the open tab', async () => {
+    const { wrapper, find } = await open(listOf('connected', 'not_connected'))
 
-    expect(wrapper.findComponent(ThreatKnown).props('provider')).toBe('virustotal')
-  })
+    // VirusTotal is not connected in this list.
+    expect(wrapper.findComponent(ThreatLookup).props('services')).toEqual([
+      { key: 'otx', pause: null },
+    ])
+    expect(wrapper.findComponent(ThreatLookup).props('missing')).toEqual([
+      'virustotal',
+      'greynoise',
+    ])
 
-  it('switches to the service of a tab, with its search and what is kept of it', async () => {
-    const { wrapper, find, known } = await open(listOf('connected', 'connected'))
-    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('otx')
-
-    await find('threat-tab-greynoise').trigger('click')
+    await find('threat-tab-url').trigger('click')
     await flushPromises()
 
-    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('greynoise')
-    expect(known).toHaveBeenLastCalledWith(expect.objectContaining({ provider: 'greynoise' }))
-    expect(find('threat-intelligence-setup').exists()).toBe(false)
-  })
-
-  it('says which service needs connecting on the tab of one that is not', async () => {
-    const { find } = await open(listOf('connected', 'not_connected'))
-
-    await find('threat-tab-greynoise').trigger('click')
-    await flushPromises()
-
+    // Only VirusTotal answers about web addresses.
     expect(find('threat-lookup').exists()).toBe(false)
-    expect(find('threat-intelligence-setup').text()).toContain('GreyNoise is not connected')
+    expect(find('threat-intelligence-setup').text()).toContain('VirusTotal answers searches')
   })
 
-  it("tells the lookup of a service its own limit, not another's", async () => {
+  it('shows a service in every tab it answers about', async () => {
+    const { wrapper, find } = await open(listWith('connected'))
+    const asked = () =>
+      wrapper
+        .findComponent(ThreatLookup)
+        .props('services')
+        .map((one: { key: string }) => one.key)
+
+    expect(asked()).toEqual(['virustotal'])
+    await find('threat-tab-domain').trigger('click')
+    await flushPromises()
+    expect(asked()).toEqual(['virustotal'])
+    expect(wrapper.findComponent(ThreatLookup).props('kind')).toBe('domain')
+    await find('threat-tab-url').trigger('click')
+    await flushPromises()
+    expect(asked()).toEqual(['virustotal'])
+    expect(wrapper.findComponent(ThreatLookup).props('kind')).toBe('url')
+  })
+
+  it('lists what is kept of the kind of the tab that is open', async () => {
+    const { find, known } = await open(listOf('connected', 'connected'))
+
+    await find('threat-tab-domain').trigger('click')
+    await flushPromises()
+
+    expect(known).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'domain' }))
+    expect(find('threat-intelligence-setup').exists()).toBe(false)
+  })
+
+  it('lists the CVEs NVD answered about on the CVE tab, with no search', async () => {
+    const { wrapper, find, cves } = await open(listWith('connected'))
+
+    await find('threat-tab-cve').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatCves).exists()).toBe(true)
+    expect(cves).toHaveBeenCalledTimes(1)
+    expect(find('threat-lookup').exists()).toBe(false)
+    expect(find('threat-known').exists()).toBe(false)
+    expect(find('threat-intelligence-setup').exists()).toBe(false)
+  })
+
+  it('lists what Fingerbank made of each device on the Devices tab', async () => {
+    const { wrapper, find, devices } = await open(listWith('not_connected'))
+
+    await find('threat-tab-device').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatDevices).exists()).toBe(true)
+    expect(wrapper.findComponent(ThreatCves).exists()).toBe(false)
+    expect(devices).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the CVEs and the devices again after something is ruled or answered', async () => {
+    const { wrapper, find, cves } = await open(listWith('connected'))
+    await find('threat-tab-cve').trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(ThreatRulings).vm.$emit('changed')
+    await flushPromises()
+
+    expect(cves).toHaveBeenCalledTimes(2)
+  })
+
+  it("tells each service's lookup its own limit, not another's", async () => {
     const list = listOf('connected', 'not_connected').map((item) =>
       item.key === 'otx'
         ? { ...item, pause: { until: '2099-01-01T00:00:00Z', daily: true } }
@@ -99,36 +162,52 @@ describe('ThreatIntelView', () => {
     expect(find('threat-notice').text()).toContain("AlienVault OTX's daily limit is reached.")
   })
 
-  it('offers the lookup once VirusTotal is connected and its connection is tested', async () => {
-    const { find } = await open(listWith('connected'))
-
-    expect(find('threat-lookup').exists()).toBe(true)
-    expect(find('threat-intelligence-setup').exists()).toBe(false)
-  })
-
-  it('says a service needs connecting, and links to the Integrations page, while it is not', async () => {
+  it('says which services answer, and links to the Integrations page, while none of them is connected', async () => {
     const { find, wrapper } = await open(listWith('not_connected'))
+    await find('threat-tab-url').trigger('click')
+    await flushPromises()
 
     expect(find('threat-lookup').exists()).toBe(false)
-    expect(find('threat-intelligence-setup').text()).toContain('VirusTotal is not connected')
+    expect(find('threat-intelligence-setup').text()).toContain(
+      'VirusTotal answers searches for a web address',
+    )
+    expect(find('threat-intelligence-setup').text()).toContain(
+      'Connect VirusTotal on the Integrations page',
+    )
     const button = wrapper.find('[data-test="threat-intelligence-set-up"]')
     expect(button.text()).toBe('Go to Integrations')
     expect(button.attributes('href')).toBe('/integrations')
   })
 
-  it('says the same while VirusTotal is set up but its connection is not tested', async () => {
+  it('says to connect one of them where several answer', async () => {
+    const { find } = await open(listOf('not_connected', 'not_connected'))
+
+    expect(find('threat-intelligence-setup').text()).toContain(
+      'VirusTotal, AlienVault OTX, and GreyNoise answer searches for an IP address',
+    )
+    expect(find('threat-intelligence-setup').text()).toContain('Connect one of them')
+  })
+
+  it('says the same while a service is set up but its connection is not tested', async () => {
     const { find } = await open(listWith('untested'))
 
     expect(find('threat-lookup').exists()).toBe(false)
     expect(find('threat-intelligence-setup').exists()).toBe(true)
   })
 
-  it('says the same when VirusTotal is not in the list at all', async () => {
+  it('says the same when the services are not in the list at all', async () => {
     const { find } = await open([
       summary({ key: 'opnsense', name: 'OPNsense', status: 'connected' }),
     ])
 
     expect(find('threat-intelligence-setup').exists()).toBe(true)
+  })
+
+  it('offers the search once a service that answers is connected', async () => {
+    const { find } = await open(listWith('connected'))
+
+    expect(find('threat-lookup').exists()).toBe(true)
+    expect(find('threat-intelligence-setup').exists()).toBe(false)
   })
 
   it('says the list did not load, and tries again', async () => {
@@ -151,15 +230,7 @@ describe('ThreatIntelView', () => {
     expect(wrapper.find('[data-test="threat-intelligence-loading"]').exists()).toBe(true)
   })
 
-  it("tells the lookup of VirusTotal's limit, so that it says when searches resume", async () => {
-    const { find } = await open(
-      listWith('connected', { pause: { until: '2099-01-01T00:00:00Z', daily: true } }),
-    )
-
-    expect(find('threat-notice').text()).toContain("VirusTotal's daily limit is reached.")
-  })
-
-  it('asks for the list again when a search is refused, so that a limit VirusTotal set shows', async () => {
+  it('asks for the list again when a search is refused, so that a limit a service set shows', async () => {
     const { fetch, wrapper } = await open(listWith('connected'))
 
     wrapper.findComponent(ThreatLookup).vm.$emit('refused')

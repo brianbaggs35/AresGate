@@ -34,7 +34,7 @@ def _escaped(text: str) -> str:
 
 def page(
     db: Session,
-    provider: str,
+    provider: str | None = None,
     *,
     text: str = "",
     kind: str | None = None,
@@ -44,8 +44,11 @@ def page(
 ) -> Page:
     """The answers kept that match: the text is looked for in the address or name and in the owner.
     The counts are of everything the text and the kind match, whichever judgement is asked for. A
-    judgement is what the owner ruled where they did, so a subject ruled safe is clean here."""
-    matching: list[ColumnElement[bool]] = [IntelSubject.provider == provider]
+    judgement is what the owner ruled where they did, so a subject ruled safe is clean here. With
+    no provider, the answers of every service are read, a subject once for each that answered."""
+    matching: list[ColumnElement[bool]] = []
+    if provider is not None:
+        matching.append(IntelSubject.provider == provider)
     if text:
         pattern = _escaped(text.lower())
         matching.append(

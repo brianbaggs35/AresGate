@@ -23,6 +23,18 @@ describe('threatIntel', () => {
     )
   })
 
+  it('says what kind of subject it searches for, so that another kind is refused', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ kind: 'ip' })
+
+    await searchThreatIntel('virustotal', '203.0.113.7', 'a-security-token', false, 'ip')
+
+    expect(post).toHaveBeenCalledWith(
+      '/threat-intel/lookups',
+      { provider: 'virustotal', subject: '203.0.113.7', kind: 'ip' },
+      'a-security-token',
+    )
+  })
+
   it('asks the service again when a newer answer is wanted', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ kind: 'ip' })
 

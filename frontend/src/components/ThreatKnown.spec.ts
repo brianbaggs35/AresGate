@@ -1,11 +1,12 @@
 import { ApiError } from '@/api/client'
 import * as threatIntel from '@/api/threatIntel'
-import type { KnownPage, Lookup, Provider } from '@/api/threatIntel'
+import type { KnownPage, Lookup, SubjectKind } from '@/api/threatIntel'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import {
   CLEAN_LOOKUP,
+  GREYNOISE_LOOKUP,
   KEPT_URL,
   MALICIOUS_LOOKUP,
   OTX_LOOKUP,
@@ -14,24 +15,22 @@ import {
   knownPage,
 } from '@/test/threatIntel'
 
-async function mountKnown(
-  result: KnownPage | Error = knownPage(),
-  provider: Provider = 'virustotal',
-) {
+async function mountKnown(result: KnownPage | Error = knownPage(), kind: SubjectKind = 'ip') {
   const fetch = vi.spyOn(threatIntel, 'fetchKnownThreats')
   if (result instanceof Error) fetch.mockRejectedValue(result)
   else fetch.mockResolvedValue(result)
   const mounted = await mountWithPlugins(ThreatKnown, {
     signedIn: 'brian',
-    props: { provider, version: 0 },
+    props: { kind, version: 0 },
   })
   await flushPromises()
   const { wrapper } = mounted
   const find = (selector: string) => wrapper.find(`[data-test="${selector}"]`)
   const rows = () => wrapper.findAll('[data-test="known-row"]')
+  const answers = () => wrapper.findAll('[data-test="known-answer"]')
   const reportWindow = () =>
     document.querySelector<HTMLElement>('.v-overlay--active [data-test="threat-report"]')
-  return { ...mounted, fetch, find, rows, reportWindow }
+  return { ...mounted, fetch, find, rows, answers, reportWindow }
 }
 
 describe('ThreatKnown', () => {
@@ -43,15 +42,15 @@ describe('ThreatKnown', () => {
     const { fetch } = await mountKnown()
 
     expect(fetch).toHaveBeenCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: null,
       limit: 25,
     })
   })
 
-  it('lists each answer with its judgement, its kind, what the engines said and when it was checked', async () => {
-    const { rows, find } = await mountKnown()
+  it('lists each subject with its judgement, what the service said and when it was checked', async () => {
+    const { rows, answers, find } = await mountKnown()
 
     expect(rows().map((row) => row.find('[data-test="known-subject"]').text())).toEqual([
       '93.184.216.34',
@@ -63,59 +62,74 @@ describe('ThreatKnown', () => {
       'clean',
       'unknown',
     ])
-    expect(rows().map((row) => row.find('[data-test="known-tally"]').text())).toEqual([
+    expect(answers().map((one) => one.find('[data-test="known-tally"]').text())).toEqual([
       '4 of 84 flagged',
       '0 of 82 flagged',
       'No report',
     ])
-    expect(rows()[0]?.text()).toContain('IP address')
-    expect(rows()[0]?.find('[data-test="known-checked"]').text()).toMatch(/^Checked \S/)
-    expect(rows()[0]?.attributes('aria-label')).toBe(
-      '93.184.216.34, IP address, Malicious. Open its report.',
+    expect(answers()[0]?.find('[data-test="known-service"]').text()).toBe('VirusTotal')
+    expect(answers()[0]?.find('[data-test="known-checked"]').text()).toMatch(/^Checked \S/)
+    expect(answers()[0]?.attributes('aria-label')).toBe(
+      '93.184.216.34, VirusTotal: Malicious, 4 of 84 flagged. Open its report.',
     )
     expect(find('known-more').exists()).toBe(false)
   })
 
-  it('reads and describes the answers of the service it was given', async () => {
-    const { fetch, rows, wrapper } = await mountKnown(
+  it('puts what each service said of one subject in one row, the answer that matters most first', async () => {
+    const { rows, answers, wrapper } = await mountKnown(
       knownPage({
-        total: 1,
-        items: [OTX_LOOKUP],
-        counts: { malicious: 1, suspicious: 0, clean: 0, unknown: 0 },
+        total: 3,
+        items: [
+          GREYNOISE_LOOKUP,
+          { ...CLEAN_LOOKUP, kind: 'ip', subject: '93.184.216.34' },
+          OTX_LOOKUP,
+        ],
+        counts: { malicious: 1, suspicious: 1, clean: 1, unknown: 0 },
       }),
-      'otx',
     )
 
-    expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ provider: 'otx' }))
-    expect(rows().map((row) => row.find('[data-test="known-tally"]').text())).toEqual(['3 pulses'])
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]?.attributes('data-judgement')).toBe('malicious')
+    expect(answers().map((one) => one.attributes('data-provider'))).toEqual([
+      'greynoise',
+      'virustotal',
+      'otx',
+    ])
     expect(wrapper.find('[data-test="threat-known"]').text()).toContain(
-      'Every answer from AlienVault OTX is kept here',
+      'Every answer the services gave about IP addresses',
     )
   })
 
-  it('asks the service of the open answer again, not another', async () => {
-    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(OTX_LOOKUP)
-    const { rows, find, reportWindow } = await mountKnown(
-      knownPage({
-        total: 1,
-        items: [OTX_LOOKUP],
-        counts: { malicious: 1, suspicious: 0, clean: 0, unknown: 0 },
-      }),
-      'otx',
+  it('names the kind it lists in what it says', async () => {
+    const { wrapper } = await mountKnown(knownPage(), 'domain')
+
+    expect(wrapper.find('[data-test="threat-known"]').text()).toContain(
+      'about domains is kept here',
     )
-    await rows()[0]?.trigger('click')
+  })
+
+  it('opens the answer of the service that was picked, and asks that service again, not another', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(OTX_LOOKUP)
+    const { answers, find, reportWindow } = await mountKnown(
+      knownPage({
+        total: 2,
+        items: [MALICIOUS_LOOKUP, OTX_LOOKUP],
+        counts: { malicious: 2, suspicious: 0, clean: 0, unknown: 0 },
+      }),
+    )
+    await answers()[1]?.trigger('click')
     await flushPromises()
     reportWindow()?.querySelector<HTMLElement>('[data-test="report-refresh"]')?.click()
     await flushPromises()
 
-    expect(search).toHaveBeenCalledWith('otx', '93.184.216.34', 'a-security-token', true)
+    expect(search).toHaveBeenCalledWith('otx', '93.184.216.34', 'a-security-token', true, 'ip')
     expect(find('known-problem').exists()).toBe(false)
   })
 
   it('marks an answer that is due to be checked again', async () => {
-    const { rows } = await mountKnown()
+    const { answers } = await mountKnown()
 
-    expect(rows().map((row) => row.find('[data-test="known-stale"]').exists())).toEqual([
+    expect(answers().map((row) => row.find('[data-test="known-stale"]').exists())).toEqual([
       false,
       false,
       true,
@@ -140,7 +154,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: 'malicious',
       limit: 25,
@@ -152,7 +166,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: null,
       limit: 25,
@@ -167,7 +181,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: 'example',
       judgement: null,
       limit: 25,
@@ -177,7 +191,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: null,
       limit: 25,
@@ -222,7 +236,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: null,
       limit: 50,
@@ -238,7 +252,7 @@ describe('ThreatKnown', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith({
-      provider: 'virustotal',
+      kind: 'ip',
       q: '',
       judgement: 'clean',
       limit: 25,
@@ -258,7 +272,7 @@ describe('ThreatKnown', () => {
     vi.spyOn(threatIntel, 'fetchKnownThreats').mockReturnValue(new Promise(() => undefined))
     const { wrapper } = await mountWithPlugins(ThreatKnown, {
       signedIn: 'brian',
-      props: { provider: 'virustotal' },
+      props: { kind: 'ip' },
     })
 
     expect(wrapper.find('[data-test="known-loading"]').exists()).toBe(true)
@@ -289,9 +303,9 @@ describe('ThreatKnown', () => {
   })
 
   it('opens an answer as the report it was', async () => {
-    const { rows, reportWindow } = await mountKnown()
+    const { answers, reportWindow } = await mountKnown()
 
-    await rows()[0]?.trigger('click')
+    await answers()[0]?.trigger('click')
     await flushPromises()
 
     expect(reportWindow()?.querySelector('[data-test="report-subject"]')?.textContent).toBe(
@@ -300,8 +314,8 @@ describe('ThreatKnown', () => {
   })
 
   it('closes the report when the report asks to', async () => {
-    const { wrapper, rows, reportWindow } = await mountKnown()
-    await rows()[0]?.trigger('click')
+    const { wrapper, answers, reportWindow } = await mountKnown()
+    await answers()[0]?.trigger('click')
     await flushPromises()
 
     wrapper.findComponent(ThreatReportDialog).vm.$emit('update:modelValue', false)
@@ -314,13 +328,19 @@ describe('ThreatKnown', () => {
   it('asks VirusTotal again about an open answer, shows the newer one and reads the list again', async () => {
     const newer: Lookup = { ...MALICIOUS_LOOKUP, checks: 2 }
     const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(newer)
-    const { wrapper, fetch, rows, reportWindow } = await mountKnown()
-    await rows()[0]?.trigger('click')
+    const { wrapper, fetch, answers, reportWindow } = await mountKnown()
+    await answers()[0]?.trigger('click')
 
     wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
     await flushPromises()
 
-    expect(search).toHaveBeenCalledWith('virustotal', '93.184.216.34', 'a-security-token', true)
+    expect(search).toHaveBeenCalledWith(
+      'virustotal',
+      '93.184.216.34',
+      'a-security-token',
+      true,
+      'ip',
+    )
     expect(reportWindow()?.querySelector('[data-test="report-checks"]')?.textContent).toBe(
       '2 times',
     )
@@ -334,8 +354,8 @@ describe('ThreatKnown', () => {
       cached: true,
       notice: "VirusTotal's daily limit is reached. Searches resume at 00:00 UTC.",
     })
-    const { wrapper, rows } = await mountKnown()
-    await rows()[0]?.trigger('click')
+    const { wrapper, answers } = await mountKnown()
+    await answers()[0]?.trigger('click')
 
     wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
     await flushPromises()
@@ -347,8 +367,8 @@ describe('ThreatKnown', () => {
     vi.spyOn(threatIntel, 'searchThreatIntel').mockRejectedValue(
       new ApiError(502, 'VirusTotal answered HTTP 500.', 'bad_gateway'),
     )
-    const { wrapper, find, rows } = await mountKnown()
-    await rows()[1]?.trigger('click')
+    const { wrapper, find, answers } = await mountKnown()
+    await answers()[1]?.trigger('click')
 
     wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
     await flushPromises()
@@ -357,7 +377,7 @@ describe('ThreatKnown', () => {
     expect(wrapper.findComponent(ThreatReportDialog).props('modelValue')).toBe(false)
     expect(wrapper.emitted('refused')).toHaveLength(1)
 
-    await rows()[1]?.trigger('click')
+    await answers()[1]?.trigger('click')
     expect(find('known-problem').exists()).toBe(false)
   })
 
@@ -366,8 +386,8 @@ describe('ThreatKnown', () => {
     const search = vi
       .spyOn(threatIntel, 'searchThreatIntel')
       .mockImplementation(() => new Promise((resolve) => (answer = resolve)))
-    const { wrapper, rows } = await mountKnown()
-    await rows()[1]?.trigger('click')
+    const { wrapper, answers } = await mountKnown()
+    await answers()[1]?.trigger('click')
     const report = wrapper.findComponent(ThreatReportDialog)
 
     report.vm.$emit('refresh')
@@ -383,9 +403,9 @@ describe('ThreatKnown', () => {
   })
 
   it('offers no check for a kept web address', async () => {
-    const { rows, reportWindow } = await mountKnown()
+    const { answers, reportWindow } = await mountKnown()
 
-    await rows()[2]?.trigger('click')
+    await answers()[2]?.trigger('click')
     await flushPromises()
 
     expect(reportWindow()?.querySelector('[data-test="report-subject"]')?.textContent).toBe(
@@ -394,8 +414,8 @@ describe('ThreatKnown', () => {
     expect(reportWindow()?.querySelector('[data-test="report-refresh"]')).toBeNull()
   })
 
-  it('says what the owner ruled of an answer, which comes to the ruling and not what VirusTotal said', async () => {
-    const { rows } = await mountKnown(
+  it('says what the owner ruled of a subject, which comes to the ruling and not what VirusTotal said', async () => {
+    const { rows, answers } = await mountKnown(
       knownPage({
         items: [
           { ...RULED_LOOKUP, cached: true },
@@ -406,16 +426,16 @@ describe('ThreatKnown', () => {
 
     expect(rows()[0]?.attributes('data-judgement')).toBe('clean')
     expect(rows()[0]?.find('[data-test="known-ruled"]').text()).toBe('Ruled by you')
-    expect(rows()[0]?.find('[data-test="known-tally"]').text()).toBe('4 of 84 flagged')
-    expect(rows()[0]?.attributes('aria-label')).toBe(
-      '93.184.216.34, IP address, Clean. You ruled it safe. Open its report.',
+    expect(answers()[0]?.find('[data-test="known-tally"]').text()).toBe('4 of 84 flagged')
+    expect(answers()[0]?.attributes('aria-label')).toBe(
+      '93.184.216.34, VirusTotal: Clean, 4 of 84 flagged. You ruled it safe. Open its report.',
     )
     expect(rows()[1]?.find('[data-test="known-ruled"]').exists()).toBe(false)
   })
 
   it('shows an answer as ruled when its report was ruled, and tells the page to read again', async () => {
-    const { wrapper, rows } = await mountKnown()
-    await rows()[0]?.trigger('click')
+    const { wrapper, answers } = await mountKnown()
+    await answers()[0]?.trigger('click')
     await flushPromises()
 
     wrapper.findComponent(ThreatReportDialog).vm.$emit('ruled', SAFE_RULING)

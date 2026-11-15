@@ -9,8 +9,8 @@ import {
   type Judgement,
   type KnownPage,
   type Lookup,
-  type Provider,
   type Ruling,
+  type SubjectKind,
 } from '@/api/threatIntel'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -18,18 +18,20 @@ import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { formatAgo, formatCount } from '@/format'
 import { useSessionStore } from '@/stores/session'
-import { JUDGEMENT, JUDGEMENTS, KIND, RULING, providerOf, tallyOf, withRuling } from '@/threatIntel'
+import { JUDGEMENT, JUDGEMENTS, RULING, tallyOf, typeOf, withRuling } from '@/threatIntel'
 
 /**
- * What AresGate knows from one threat intelligence service: every answer it has kept of it, newest
- * first, whether a search or a background lookup asked for it. Looking through them asks the
- * service nothing. An answer opens as the report it was, and Check again asks the service for a
- * newer one, which counts toward its limits as a search does. Where the owner ruled an answer safe or suspicious, that is
- * what its row says, and the filters and counts follow. `version` changes when something on the page got an answer,
- * so the list is read again.
+ * What AresGate knows of one kind of subject (IP addresses, domains or web addresses): every
+ * answer it has kept, from every service, newest first, whether a search or a background lookup
+ * asked for it. A subject is one row, with a button for the answer of each service that gave one,
+ * so that what the services say of it can be told apart and compared. Looking through them asks no
+ * service anything. An answer opens as the report it was, and Check again asks its service for a
+ * newer one, which counts toward that service's limits as a search does. Where the owner ruled a
+ * subject safe or suspicious, that is what its row says, and the filters and counts follow.
+ * `version` changes when something on the page got an answer, so the list is read again.
  */
-const props = defineProps<{ provider: Provider; version?: number }>()
-const service = computed(() => providerOf(props.provider))
+const props = defineProps<{ kind: SubjectKind; version?: number }>()
+const type = computed(() => typeOf(props.kind))
 const emit = defineEmits<{ refused: []; ruled: [] }>()
 
 const PAGE = 25
@@ -73,7 +75,7 @@ async function load() {
   try {
     page.value = await session.call(() =>
       fetchKnownThreats({
-        provider: props.provider,
+        kind: props.kind,
         q: text.value,
         judgement: judgement.value,
         limit: shown.value,
@@ -114,13 +116,40 @@ function open(item: Lookup) {
   reportOpen.value = true
 }
 
-/** A sentence a screen reader says for a row, since the row is one button. */
+/** A sentence a screen reader says for the button of one service's answer. */
 function describe(item: Lookup): string {
   const ruled = item.ruling
     ? ` You ruled it ${RULING[item.ruling.verdict].short.toLowerCase()}.`
     : ''
-  return `${item.subject}, ${KIND[item.kind]}, ${JUDGEMENT[item.judgement].short}.${ruled} Open its report.`
+  return `${item.subject}, ${item.provider_name}: ${JUDGEMENT[item.judgement].short}, ${tallyOf(item)}.${ruled} Open its report.`
 }
+
+interface Subject {
+  subject: string
+  /** What the services' answers come to, the one that matters most. */
+  judgement: Judgement
+  ruling: Ruling | null
+  answers: Lookup[]
+}
+
+/** The answers by subject, in the order the newest of each came. A ruling holds for a subject
+ * whichever service answered, so every one of its answers carries it. */
+const subjects = computed<Subject[]>(() => {
+  const by = new Map<string, Lookup[]>()
+  // Only read once the list has been, so there is a page.
+  for (const item of (page.value as KnownPage).items) {
+    by.set(item.subject, [...(by.get(item.subject) ?? []), item])
+  }
+  return [...by.entries()].map(([subject, answers]) => ({
+    subject,
+    answers,
+    ruling: answers[0]?.ruling ?? null,
+    // Every answer's judgement is one of those listed, so one is found.
+    judgement: JUDGEMENTS.find((name) =>
+      answers.some((one) => one.judgement === name),
+    ) as Judgement,
+  }))
+})
 
 /** Shows the answer that is open as the owner ruled it, or as the service made it where the ruling
  * was taken back. The page is told, and reads the list again, whose counts and filters follow. */
@@ -138,7 +167,7 @@ async function checkAgain() {
   problem.value = null
   try {
     opened.value = await session.change((token) =>
-      searchThreatIntel(props.provider, item.subject, token, true),
+      searchThreatIntel(item.provider, item.subject, token, true, props.kind),
     )
     if (opened.value.notice) emit('refused')
     await load()
@@ -158,7 +187,7 @@ onMounted(load)
 <template>
   <SectionCard
     title="What AresGate knows"
-    :description="`Every answer from ${service.name} is kept here, whether you searched for it or AresGate looked it up for an incident. Looking through them asks ${service.name} nothing. An answer is checked again once it is no longer fresh: after two days if it was flagged or had no report, and after a week if nothing flagged it.`"
+    :description="`Every answer the services gave about ${type.plural} is kept here, whether you searched for it or AresGate looked it up for an incident. Looking through them asks no service anything. An answer is checked again once it is no longer fresh: after two days if it was flagged or had no report, and after a week if nothing flagged it. Answers nobody has looked at for the time set under Retention are removed.`"
     data-test="threat-known"
   >
     <LoadError
@@ -175,7 +204,7 @@ onMounted(load)
     <EmptyState
       v-else-if="!kept(page) && !filtered"
       title="Nothing is kept yet"
-      description="The first answer from a search, or from a lookup about an incident's address, shows up here."
+      :description="`The first answer from a search, or from a lookup about an incident, shows up here for ${type.plural}.`"
       data-test="known-empty"
     />
 
@@ -233,42 +262,56 @@ onMounted(load)
       </p>
 
       <ul v-else class="known__list" data-test="known-list">
-        <li v-for="item in page.items" :key="`${item.kind}:${item.subject}`">
-          <button
-            type="button"
-            class="known__row"
-            :aria-label="describe(item)"
-            :data-judgement="item.judgement"
-            data-test="known-row"
-            @click="open(item)"
-          >
+        <li
+          v-for="one in subjects"
+          :key="one.subject"
+          class="known__subject-row"
+          :data-judgement="one.judgement"
+          data-test="known-row"
+        >
+          <div class="known__head">
+            <span class="known__subject" data-test="known-subject">{{ one.subject }}</span>
             <v-chip
-              :color="JUDGEMENT[item.judgement].color"
-              :prepend-icon="JUDGEMENT[item.judgement].icon"
-              variant="tonal"
-              size="small"
-              class="known__judgement"
+              v-if="one.ruling"
+              :prepend-icon="Gavel"
+              variant="outlined"
+              size="x-small"
+              data-test="known-ruled"
             >
-              {{ JUDGEMENT[item.judgement].short }}
+              Ruled by you
             </v-chip>
-            <span class="known__subject" data-test="known-subject">{{ item.subject }}</span>
-            <span class="known__facts text-body-small text-medium-emphasis">
-              <v-chip
-                v-if="item.ruling"
-                :prepend-icon="Gavel"
-                variant="outlined"
-                size="x-small"
-                data-test="known-ruled"
+          </div>
+          <ul class="known__answers">
+            <li v-for="item in one.answers" :key="item.provider">
+              <button
+                type="button"
+                class="known__answer"
+                :aria-label="describe(item)"
+                :data-provider="item.provider"
+                data-test="known-answer"
+                @click="open(item)"
               >
-                Ruled by you
-              </v-chip>
-              <span>{{ KIND[item.kind] }}</span>
-              <span data-test="known-tally">{{ tallyOf(item) }}</span>
-              <span data-test="known-checked">Checked {{ formatAgo(item.checked_at) }}</span>
-              <span v-if="item.stale" data-test="known-stale">Due to be checked again</span>
-            </span>
-            <ChevronRight :size="18" aria-hidden="true" class="known__open" />
-          </button>
+                <v-chip
+                  :color="JUDGEMENT[item.judgement].color"
+                  :prepend-icon="JUDGEMENT[item.judgement].icon"
+                  variant="tonal"
+                  size="small"
+                  class="known__judgement"
+                >
+                  {{ JUDGEMENT[item.judgement].short }}
+                </v-chip>
+                <span class="known__service" data-test="known-service">
+                  {{ item.provider_name }}
+                </span>
+                <span class="known__facts text-body-small text-medium-emphasis">
+                  <span data-test="known-tally">{{ tallyOf(item) }}</span>
+                  <span data-test="known-checked">Checked {{ formatAgo(item.checked_at) }}</span>
+                  <span v-if="item.stale" data-test="known-stale">Due to be checked again</span>
+                </span>
+                <ChevronRight :size="18" aria-hidden="true" class="known__open" />
+              </button>
+            </li>
+          </ul>
         </li>
       </ul>
 
@@ -331,20 +374,44 @@ onMounted(load)
   list-style: none;
 }
 
-.known__list li + li {
+.known__subject-row {
+  padding: 0.75rem 0;
+}
+
+.known__subject-row + .known__subject-row {
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-.known__row {
+.known__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0 0.5rem;
+}
+
+.known__subject {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.known__answers {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.known__answer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'judgement subject open'
+    'judgement service open'
     'facts facts open';
   align-items: center;
-  gap: 0.25rem 0.75rem;
+  gap: 0.125rem 0.75rem;
   width: 100%;
-  padding: 0.75rem 0.5rem;
+  padding: 0.5rem;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -354,11 +421,11 @@ onMounted(load)
   cursor: pointer;
 }
 
-.known__row:hover {
+.known__answer:hover {
   background: rgba(var(--v-theme-on-surface), 0.04);
 }
 
-.known__row:focus-visible {
+.known__answer:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: -2px;
 }
@@ -368,11 +435,9 @@ onMounted(load)
   pointer-events: none;
 }
 
-.known__subject {
-  grid-area: subject;
+.known__service {
+  grid-area: service;
   min-width: 0;
-  overflow-wrap: anywhere;
-  font-weight: 500;
 }
 
 .known__facts {

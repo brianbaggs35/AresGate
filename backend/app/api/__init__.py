@@ -34,6 +34,7 @@ from app.api import (
     setup,
     status,
     system,
+    threat_catalog,
     threat_intel,
     threat_settings,
     threats,
@@ -74,6 +75,7 @@ api_router.include_router(noise.router)
 api_router.include_router(chains.router)
 api_router.include_router(threats.router)
 api_router.include_router(threat_intel.router)
+api_router.include_router(threat_catalog.router)
 api_router.include_router(threat_settings.router)
 api_router.include_router(retention_settings.router)
 api_router.include_router(review.router)

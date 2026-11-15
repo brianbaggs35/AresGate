@@ -4,39 +4,55 @@ import { computed, onUnmounted, ref } from 'vue'
 
 import { ApiError, errorMessage } from '@/api/client'
 import type { Pause } from '@/api/integrations'
-import { searchThreatIntel, type Lookup, type Provider, type Ruling } from '@/api/threatIntel'
+import {
+  searchThreatIntel,
+  type Lookup,
+  type Provider,
+  type Ruling,
+  type SubjectKind,
+} from '@/api/threatIntel'
 import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
+import { formatList } from '@/format'
 import { limitNotice } from '@/integrations'
 import { useSessionStore } from '@/stores/session'
-import { providerOf, withRuling } from '@/threatIntel'
+import { JUDGEMENT, providerOf, tallyOf, typeOf, withRuling } from '@/threatIntel'
 
 /**
- * Searches one service (VirusTotal, AlienVault OTX or GreyNoise) for what it answers about, once
- * its connection is tested: an internet address, a domain or a web address for VirusTotal, an
- * address or a domain for OTX, an IPv4 address for GreyNoise. What the service reports opens in a
- * window over the page, and the last search stays one click away after the window is closed. While
- * the service's own limit or a minute's wait holds, a notice says when searches resume: that is not
- * a failure. A search refused for the spacing between lookups says how long to wait. A search of
- * something AresGate has an answer kept for shows that answer when the service can't be asked, and
- * the report says why. Check again, in the report, asks the service for a newer answer than the one
- * kept. The report is where the owner rules the subject safe or suspicious, whatever the service
- * made of it.
+ * Searches for one kind of subject (an IP address, a domain or a web address) in every connected
+ * service that answers about that kind, at once. VirusTotal answers about all three, AlienVault
+ * OTX about addresses and domains, GreyNoise about IPv4 addresses. A subject of another kind is
+ * refused, so a search is never answered under the wrong tab. Each answer is one result, named for
+ * its service and opening as a report in a window over the page; where only one service answered,
+ * its report opens at once. While a service's own limit or a minute's wait holds, a notice says
+ * when its searches resume: that is not a failure, and the services that are not held still
+ * answer. A search of something AresGate has an answer kept for shows that answer when the service
+ * can't be asked, and the report says why. Check again, in the report, asks that service for a
+ * newer answer than the one kept. The report is where the owner rules the subject safe or
+ * suspicious, whatever the services made of it, which holds for every service's answer.
  */
-const props = defineProps<{ provider: Provider; pause?: Pause | null }>()
-const service = computed(() => providerOf(props.provider))
+const props = defineProps<{
+  kind: SubjectKind
+  /** The connected services that answer about the kind, each with the limit that holds it. */
+  services: { key: Provider; pause: Pause | null }[]
+  /** The services that answer about the kind and are not connected. */
+  missing: Provider[]
+}>()
 const emit = defineEmits<{ refused: []; answered: []; ruled: [] }>()
 
 const session = useSessionStore()
+const type = computed(() => typeOf(props.kind))
 const query = ref('')
 const busy = ref(false)
 const checking = ref(false)
 const problem = ref<string | null>(null)
-const refusal = ref<string | null>(null)
-const last = ref<Lookup | null>(null)
+const refusals = ref<Partial<Record<Provider, string>>>({})
+const subject = ref('')
+const answers = ref<Lookup[]>([])
+const opened = ref<Provider | null>(null)
 const reportOpen = ref(false)
 
-// The clock is read again every half minute, so the notice goes once the service's limit lifts.
+// The clock is read again every half minute, so a notice goes once its service's limit lifts.
 const now = ref(Date.now())
 const clock = setInterval(() => {
   now.value = Date.now()
@@ -45,76 +61,125 @@ onUnmounted(() => {
   clearInterval(clock)
 })
 
-const notice = computed(() => {
-  const pause = props.pause
-  if (pause && Date.parse(pause.until) > now.value)
-    return limitNotice(pause, 'Searches', service.value.name)
-  return refusal.value
-})
+const notices = computed(() => [
+  ...props.services.flatMap(({ key, pause }) =>
+    pause && Date.parse(pause.until) > now.value
+      ? [limitNotice(pause, 'Searches', providerOf(key).name)]
+      : [],
+  ),
+  ...Object.entries(refusals.value).map(
+    ([key, message]) => `${providerOf(key as Provider).name}: ${message}`,
+  ),
+])
+const open = computed(() => answers.value.find((one) => one.provider === opened.value) ?? null)
+const names = computed(() => formatList(props.services.map(({ key }) => providerOf(key).name)))
+const sharing = computed(() =>
+  props.services.flatMap(({ key }) => {
+    const text = providerOf(key).sharing
+    const name = providerOf(key).name
+    return text
+      ? [`If you use a free key, ${name} allows it for non-commercial use only. ${text}`]
+      : []
+  }),
+)
 
-/** Asks about a subject, and opens what came back. Returns whether an answer did. */
-async function ask(subject: string, refresh: boolean): Promise<boolean> {
-  problem.value = null
-  refusal.value = null
+/** One service's answer, or what went wrong asking it: a limit that holds, or anything else. */
+async function askOne(
+  provider: Provider,
+  text: string,
+  refresh: boolean,
+): Promise<{ lookup: Lookup } | { error: unknown }> {
   try {
-    last.value = await session.change((token) =>
-      searchThreatIntel(props.provider, subject, token, refresh),
-    )
-    reportOpen.value = true
-    emit('answered')
-    // A kept answer shown because a limit holds: the page asks for the limits again.
-    if (last.value.notice) emit('refused')
-    return true
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 429) {
-      refusal.value = errorMessage(error)
-      // The page asks again for the limits, so that a limit the service set shows as one.
-      emit('refused')
-    } else {
-      problem.value = errorMessage(error)
+    return {
+      lookup: await session.change((token) =>
+        searchThreatIntel(provider, text, token, refresh, props.kind),
+      ),
     }
-    return false
+  } catch (error) {
+    return { error }
   }
 }
 
+/** Asks every service about a subject and shows what came back. Where one service was asked, that
+ * is the only answer; where several, the answers sit side by side. */
+async function ask(text: string, only: Provider | null, refresh: boolean): Promise<Lookup[]> {
+  problem.value = null
+  const asked = only ? [only] : props.services.map(({ key }) => key)
+  const replies = await Promise.all(asked.map((key) => askOne(key, text, refresh)))
+  const held = (reply: (typeof replies)[number]) =>
+    'error' in reply && reply.error instanceof ApiError && reply.error.status === 429
+  // Refusals are kept for the services that were not asked this time.
+  const refused: Partial<Record<Provider, string>> = Object.fromEntries(
+    Object.entries(refusals.value).filter(([key]) => !asked.includes(key as Provider)),
+  )
+  replies.forEach((reply, index) => {
+    if (held(reply))
+      refused[asked[index] as Provider] = errorMessage((reply as { error: unknown }).error)
+    else if ('error' in reply) problem.value = errorMessage(reply.error)
+  })
+  refusals.value = refused
+  const found = replies.flatMap((reply) => ('lookup' in reply ? [reply.lookup] : []))
+  // The page asks again for the limits, so that a limit a service set shows as one, or a kept
+  // answer shown because a limit holds.
+  if (replies.some(held) || found.some((one) => one.notice)) emit('refused')
+  return found
+}
+
 async function search() {
-  const subject = query.value.trim()
-  if (!subject || busy.value) return
+  const text = query.value.trim()
+  if (!text || busy.value) return
   busy.value = true
-  await ask(subject, false)
+  const found = await ask(text, null, false)
+  subject.value = text
+  answers.value = found
+  if (found.length) {
+    emit('answered')
+    // With one answer there is nothing to choose, so its report opens.
+    if (found.length === 1) show((found[0] as Lookup).provider)
+  }
   busy.value = false
 }
 
-/** Shows the last search as the owner ruled it, or as the service made it again where the ruling was
+function show(provider: Provider) {
+  opened.value = provider
+  reportOpen.value = true
+}
+
+/** Shows every answer as the owner ruled it, or as its service made it again where the ruling was
  * taken back, and tells the page, so that what else it shows is read again. */
 function ruled(ruling: Ruling | null) {
-  // Only the report of the last search can say this, so there is one.
-  last.value = withRuling(last.value as Lookup, ruling)
+  answers.value = answers.value.map((one) => withRuling(one, ruling))
   emit('ruled')
 }
 
-/** Asks the service again about the last search, whatever is kept of it. */
+/** Asks the service of the report that is open again, whatever is kept of its answer. */
 async function checkAgain() {
-  if (!last.value || checking.value) return
+  const current = open.value
+  if (!current || checking.value) return
   checking.value = true
-  const answered = await ask(last.value.subject, true)
+  const [fresh] = await ask(current.subject, current.provider, true)
   checking.value = false
-  // What went wrong is said on the page, under the window.
-  if (!answered) reportOpen.value = false
+  if (!fresh) {
+    // What went wrong is said on the page, under the window.
+    reportOpen.value = false
+    return
+  }
+  answers.value = answers.value.map((one) => (one.provider === fresh.provider ? fresh : one))
+  emit('answered')
 }
 </script>
 
 <template>
   <SectionCard
-    title="Look up a threat"
-    :description="`Ask ${service.name} about ${service.about}. Every answer is kept, and one that is still fresh comes from what AresGate kept, with no search. Any other search counts toward ${service.name}'s limits, so AresGate spaces them out.`"
+    :title="`Look up ${type.about}`"
+    :description="`Ask ${names} at once. Every answer is kept, and one that is still fresh comes from what AresGate kept, with no search. Any other search counts toward each service's limits, so AresGate spaces them out.`"
     data-test="threat-lookup"
   >
     <form novalidate class="threat-lookup" data-test="threat-form" @submit.prevent="search">
       <v-text-field
         v-model="query"
-        :label="service.label"
-        :placeholder="service.placeholder"
+        :label="type.label"
+        :placeholder="type.placeholder"
         :prepend-inner-icon="Search"
         autocomplete="off"
         spellcheck="false"
@@ -136,7 +201,8 @@ async function checkAgain() {
     </form>
 
     <v-alert
-      v-if="notice"
+      v-for="notice in notices"
+      :key="notice"
       type="info"
       variant="tonal"
       class="threat-lookup__alert"
@@ -155,27 +221,50 @@ async function checkAgain() {
       {{ problem }}
     </v-alert>
 
-    <div v-if="last" class="threat-lookup__last" data-test="threat-last">
+    <div v-if="answers.length" class="threat-lookup__last" data-test="threat-last">
       <span class="text-body-medium text-medium-emphasis">Last search</span>
-      <span class="threat-lookup__subject" data-test="threat-last-subject">{{ last.subject }}</span>
-      <v-btn variant="tonal" size="small" data-test="threat-reopen" @click="reportOpen = true">
-        View report
+      <span class="threat-lookup__subject" data-test="threat-last-subject">{{ subject }}</span>
+      <v-btn
+        v-for="one in answers"
+        :key="one.provider"
+        variant="tonal"
+        size="small"
+        :color="JUDGEMENT[one.judgement].color"
+        :prepend-icon="JUDGEMENT[one.judgement].icon"
+        :aria-label="`View the report of ${one.provider_name}: ${JUDGEMENT[one.judgement].short}, ${tallyOf(one)}`"
+        data-test="threat-result"
+        @click="show(one.provider)"
+      >
+        {{ one.provider_name }}
+        <span class="threat-lookup__tally">{{ tallyOf(one) }}</span>
       </v-btn>
     </div>
 
     <p
-      v-if="service.sharing"
+      v-if="missing.length"
+      class="text-body-small text-medium-emphasis threat-lookup__note"
+      data-test="threat-missing"
+    >
+      {{ formatList(missing.map((key) => providerOf(key).name)) }}
+      {{ missing.length === 1 ? 'also answers' : 'also answer' }} about {{ type.about }} and
+      {{ missing.length === 1 ? 'is' : 'are' }} not connected, so
+      {{ missing.length === 1 ? 'it is' : 'they are' }} not asked.
+      <router-link :to="{ name: 'integrations' }">Go to Integrations</router-link>
+    </p>
+
+    <p
+      v-for="text in sharing"
+      :key="text"
       class="text-body-small text-medium-emphasis threat-lookup__note"
       data-test="threat-note"
     >
-      If you use a free key, {{ service.name }} allows it for non-commercial use only.
-      {{ service.sharing }}
+      {{ text }}
     </p>
 
     <ThreatReportDialog
-      v-if="last"
+      v-if="open"
       v-model="reportOpen"
-      :lookup="last"
+      :lookup="open"
       :busy="checking"
       @refresh="checkAgain"
       @ruled="ruled"
@@ -210,6 +299,11 @@ async function checkAgain() {
 .threat-lookup__subject {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.threat-lookup__tally {
+  margin-inline-start: 0.5rem;
+  opacity: 0.8;
 }
 
 .threat-lookup__note {

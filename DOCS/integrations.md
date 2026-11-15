@@ -799,11 +799,13 @@ answers are kept for good. With it AresGate keeps when the subject was first
 asked about, how many answers it has had, and when a newer answer last changed the judgement and
 what it was before. This is AresGate's own record of threat intelligence: the AI reads it, and the
 Threat intelligence page lists it under "What AresGate knows", newest first. The page has a tab for
-each service (VirusTotal, AlienVault OTX and GreyNoise), and a tab lists what that service
-answered. The list can be searched by part of an address, a name or an owner, and narrowed to one
-judgement. Reading it sends the service nothing and counts toward no limit
-(`GET /api/threat-intel/subjects?provider=virustotal|otx|greynoise`, VirusTotal where none is
-named).
+each kind of subject (IP addresses, domains and web addresses; see
+[Threat intelligence by kind](#threat-intelligence-by-kind)), and a tab lists what every service
+answered about that kind, a subject once with a button for each service that gave an answer. The
+list can be searched by part of an address, a name or an owner, and narrowed to one judgement.
+Reading it sends the service nothing and counts toward no limit (`GET
+/api/threat-intel/subjects`, narrowed with `kind=ip|domain|url` and, if you want one service's
+answers only, `provider=virustotal|otx|greynoise`; every service's where none is named).
 
 VirusTotal has no cheaper way to say whether a report changed than to give the report, so checking
 for an update costs a lookup. AresGate spends those where answers change soonest. An answer that
@@ -856,8 +858,8 @@ Each ruling and each taking back is in the audit log, with what was ruled and no
 
 ### Searching by hand
 
-Once the connection has been tested, the Threat intelligence page has a search, on the tab of the
-service. VirusTotal's takes an IP address, a domain such as `example.com`, or a web address that
+Once the connection has been tested, the Threat intelligence page has a search on the tab of each
+kind VirusTotal answers about. VirusTotal's takes an IP address, a domain such as `example.com`, or a web address that
 starts with `https://` or `http://`, and shows what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many
 engines gave a verdict and what each said, the community's score, the categories it was given, what
 else VirusTotal says (the owner and country of an address, the registrar of a domain, the title and
@@ -883,7 +885,7 @@ from what was kept says so in its report, with the time VirusTotal was asked.
 
 #### Searching the other services
 
-The **AlienVault OTX** and **GreyNoise** tabs search the same way once the service is connected
+**AlienVault OTX** and **GreyNoise** are searched the same way once the service is connected
 (`POST /api/threat-intel/lookups` with `provider` set to `otx` or `greynoise`; VirusTotal where it
 is left out). Each is asked within its own limits and only about what it answers: OTX takes IP
 addresses and domains, not web addresses, and GreyNoise takes IPv4 addresses only. Anything else is
@@ -893,6 +895,51 @@ technique; for GreyNoise its classification, and whether it is a common business
 two services have no engines, so their reports have no bar of them. A link to the service's own
 page is shown where it has one for the subject. What you rule on a subject is one ruling, whichever
 service is asked.
+
+### Threat intelligence by kind
+
+The Threat intelligence page has a tab for each kind of intelligence, named for what it is about
+and not for the service that gives it. A service can have something to say in more than one tab,
+so it shows in each of them:
+
+| Tab | Answers from |
+| --- | --- |
+| IP addresses | VirusTotal, AlienVault OTX, GreyNoise (IPv4 addresses only) |
+| Domains | VirusTotal, AlienVault OTX |
+| Web addresses | VirusTotal |
+| CVEs | NVD |
+| Devices | Fingerbank |
+
+A search on one of the first three tabs asks every connected service that answers about that
+kind, at the same moment, and shows each answer as a button named for its service, so that what
+they say can be compared. With one answer its report opens at once. A service that is held by its
+own limit is said to be (its notice names it), and the others still answer. The tab names the
+services that also answer there and are not connected. Where none is connected, it says which
+would answer, with a way to the Integrations page. A search may say what kind it is for: a
+subject of another kind is refused with the reason (`POST /api/threat-intel/lookups` takes an
+optional `kind` of `ip`, `domain` or `url`), so an address typed under Domains is not answered as
+a domain.
+
+The **CVEs** tab lists what NVD says of the CVEs that incidents name, and the **Devices** tab what
+Fingerbank made of each device. Neither is searched by hand: both are asked in the background, one
+item at a time and within the service's own limits, so the tabs read what was kept and count
+toward no limit. A CVE shows its rating and score, what it is, whether CISA lists it as exploited
+in the wild (with what CISA asks to be done and by when) and the weaknesses behind it, and opens
+as a report with a link to its page on NVD, carrying the notice NVD asks a service that shows its
+data to carry. It can be filtered by rating or by what is exploited and searched by identifier,
+description, name or weakness
+(`GET /api/threat-intel/cves?q=&rating=critical|high|medium|low|unrated&exploited=true`). A device
+shows what Fingerbank made of it (a name, a path of what it belongs to, the maker, the operating
+system and how sure Fingerbank is), who made its network card, the address it was last listed
+with, and why it was asked about: it is one of your assets, or it is in an incident. A device
+whose hardware address is private, one it made up, is listed with the reason Fingerbank was not
+asked. It can be filtered by what Fingerbank made of it and searched by what it is, its name,
+maker or address (`GET /api/threat-intel/devices?q=&state=identified|unknown|private`).
+
+Where you manage how long data is kept (see
+[Retention](operations.md#retention-and-the-size-of-the-database)), the answers of every tab but
+Devices go after the days you chose, counted from when each was last asked for. What Fingerbank
+made of a device goes with the device, and what you ruled is never removed.
 
 ### What is kept, and what the AI does with it
 

@@ -82,7 +82,8 @@ export interface Lookup {
 }
 
 /** Searches a service for an address, a domain or a web address, as far as the service answers
- * about that kind. A subject whose answer is still fresh is answered from what AresGate kept, and
+ * about that kind. Where the kind is said, a subject of another kind is refused, so that a search
+ * from the tab of one is not answered under another. A subject whose answer is still fresh is answered from what AresGate kept, and
  * no search is sent, unless `refresh` asks for one. Any other search counts toward the limits of
  * the service's access level. One that a limit holds is answered from what was kept, with a
  * notice, or refused (with the time to wait) if nothing is kept. */
@@ -91,10 +92,11 @@ export function searchThreatIntel(
   subject: string,
   csrfToken: string,
   refresh = false,
+  kind?: SubjectKind,
 ): Promise<Lookup> {
   return apiPost<Lookup>(
     '/threat-intel/lookups',
-    refresh ? { provider, subject, refresh } : { provider, subject },
+    { provider, subject, ...(kind ? { kind } : {}), ...(refresh ? { refresh } : {}) },
     csrfToken,
   )
 }
@@ -112,7 +114,7 @@ export interface KnownPage {
 }
 
 export interface KnownQuery {
-  /** Which service's answers to read. VirusTotal's, where none is named. */
+  /** Only this service's answers; every service's where none is named. */
   provider?: Provider
   /** Part of an address, a name or an owner. */
   q?: string
@@ -122,7 +124,8 @@ export interface KnownQuery {
   offset?: number
 }
 
-/** The answers AresGate has kept of one service. Reading them asks the service nothing. */
+/** The answers AresGate has kept, a subject once for each service that answered. Reading them asks
+ * no service anything. */
 export function fetchKnownThreats(query: KnownQuery = {}): Promise<KnownPage> {
   const params = new URLSearchParams()
   if (query.provider) params.set('provider', query.provider)
