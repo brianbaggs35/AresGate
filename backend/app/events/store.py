@@ -8,6 +8,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app import wakeups
 from app.config import Settings
 from app.events import retention, twins
 from app.events.event import NewEvent
@@ -44,6 +45,7 @@ def record(db: Session, settings: Settings, events: Sequence[NewEvent], now: dat
     if stored:
         times = [row["occurred_at"] for row in rows]
         twins.mark(db, stored, min(times), max(times))
+        wakeups.notify(db, wakeups.EVENTS)
     return len(stored)
 
 

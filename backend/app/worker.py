@@ -7,7 +7,7 @@ never takes the web app with it. They share the database and nothing else.
 
 import asyncio
 
-from app import logs
+from app import logs, wakeups
 from app.agents import run as agents
 from app.ai import gateway
 from app.ai import run as ai
@@ -48,11 +48,16 @@ async def serve(settings: Settings) -> None:
     new_session = get_sessionmaker()
     recorder = ApiLogRecorder(new_session)
     context = gateway.context_for_worker(settings, recorder)
+    wake = wakeups.Wakeups()
     async with asyncio.TaskGroup() as work:
+        if collecting(settings):
+            work.create_task(wakeups.listen(settings, wake))
         work.create_task(build(settings).run())
-        work.create_task(incidents.run(new_session, enabled=collecting(settings)))
+        work.create_task(incidents.run(new_session, enabled=collecting(settings), wake=wake.events))
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
-        work.create_task(agents.run(new_session, context, enabled=collecting(settings)))
+        work.create_task(
+            agents.run(new_session, context, enabled=collecting(settings), wake=wake.agent_runs)
+        )
         work.create_task(intel.run(new_session, settings, recorder, enabled=collecting(settings)))
         work.create_task(nvd.run(new_session, settings, recorder, enabled=collecting(settings)))
         work.create_task(
@@ -65,6 +70,7 @@ async def serve(settings: Settings) -> None:
                 recorder,
                 netguard.PUBLIC_INTERNET,
                 enabled=collecting(settings),
+                wake=wake.incidents,
             )
         )
 

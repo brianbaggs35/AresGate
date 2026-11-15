@@ -147,6 +147,45 @@ answer is never given to someone who isn't signed in.
   `dashboard-answer.spec.ts` checks the tag, the `304`, a change showing at once and the signed-out
   case, through nginx in the container run.
 
+## What wakes the worker's loops
+
+The worker (`app/worker.py`) is one process with a loop for each job: files signals into
+incidents, tells destinations, runs agents, and so on. Each looked in the database every few
+seconds to a minute, so an alert took up to a minute to be filed and up to another half minute to
+be told. They are now woken by PostgreSQL's `NOTIFY` (`app/wakeups.py`), and look at once.
+
+- **Three channels.** `ag_events` (events were stored, sent by `events.store.record`), `ag_incidents`
+  (the engine filed or changed incidents, sent by `incidents.run.correlate_once`) and
+  `ag_agent_runs` (a run was asked for, sent by `agents.service.queue`). A note is sent with
+  `wakeups.notify(db, channel)` inside the transaction that makes the change, so it is delivered
+  when that commits and not if it rolls back. A note carries nothing: a woken loop looks in the
+  database for what there is, as it does when its interval ends.
+- **One listener.** `wakeups.listen` holds one connection of its own (autocommit, `LISTEN` on every
+  channel) and sets the `Signal` of the loop for each note. When the connection is lost it is made
+  again after 1, 2, 4 ... 30 seconds, logs the loss once and the recovery once, and wakes every
+  loop on each reconnect, since it can't know what it missed. It only runs where the worker
+  collects, so the worker is idle in the tests and with `ARESGATE_COLLECTORS_ENABLED=false`.
+- **The intervals stay.** A loop waits `wakeups.pause(signal, interval)`, which ends at the signal
+  or at the interval. A note that is lost costs no more than the wait there was before, a loop
+  with no signal (every test of one) goes by its interval alone, and nothing depends on a note.
+- **Incidents wait for the events to settle.** The engine leaves alone events newer than
+  `engine.SETTLE` (30 seconds), so the incidents loop sleeps that long after an `ag_events` note
+  before it files: an alert is an incident about 30 seconds after it was stored, where it was 30 to
+  60. Notes that come meanwhile make it one more look, not one for each.
+- **Not woken:** the AI loop (it batches, and its pace is a cost), the threat-intelligence loop,
+  NVD and Fingerbank (they are held to the lookups their providers allow, and already look every 2
+  to 15 seconds). Add a channel and a `Signal` to `Wakeups` to wake one more.
+
+### No job library
+
+The loops are a few `while True` loops in one process, and what each looks for is in the database
+(an unsent message, a queued run, an event not yet filed), so a restart loses nothing. Procrastinate
+(a PostgreSQL queue), Celery, Dramatiq, RQ, ARQ and APScheduler were considered. Each adds a
+dependency and a way for work to be lost or doubled, and the ones with a broker need a service the
+container doesn't have and mustn't get. `LISTEN`/`NOTIFY` is all of the wake-up that is needed.
+Revisit it if there ever is a second worker process, work that has to run exactly once across
+machines, or the kinds of loop keep growing.
+
 ## Storing events from a collector
 
 A collector that reads events makes a `NewEvent` (`app/events/event.py`) for each and hands them

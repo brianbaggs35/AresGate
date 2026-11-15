@@ -7,6 +7,7 @@ from typing import Final
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app import wakeups
 from app.agents import catalog, proposals
 from app.models import Agent, AgentRun
 
@@ -53,6 +54,7 @@ def queue(db: Session, agent: Agent, trigger: str, now: datetime) -> AgentRun:
     run = AgentRun(agent_id=agent.id, trigger=trigger, status="queued", requested_at=now)
     db.add(run)
     db.flush()
+    wakeups.notify(db, wakeups.AGENT_RUNS)
     return run
 
 

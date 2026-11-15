@@ -8,7 +8,7 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import config, db, worker
+from app import config, db, wakeups, worker
 from app.ai.gateway import Context
 from app.config import Settings
 from app.integrations import netguard
@@ -125,8 +125,18 @@ class TestServing:
             async def run(self) -> None:
                 started.append("collectors")
 
-        async def file_incidents(new_session: Callable[[], Session], *, enabled: bool) -> None:
+        heard: list[wakeups.Wakeups] = []
+
+        async def listen(settings: Settings, wake: wakeups.Wakeups) -> None:
+            assert settings.environment == "production"
+            heard.append(wake)
+            started.append("listening")
+
+        async def file_incidents(
+            new_session: Callable[[], Session], *, enabled: bool, wake: wakeups.Signal
+        ) -> None:
             assert callable(new_session)
+            assert wake is heard[0].events
             started.append(f"incidents, enabled: {enabled}")
 
         async def read_incidents(
@@ -140,9 +150,14 @@ class TestServing:
             return Collecting()
 
         async def run_agents(
-            new_session: Callable[[], Session], context: Context, *, enabled: bool
+            new_session: Callable[[], Session],
+            context: Context,
+            *,
+            enabled: bool,
+            wake: wakeups.Signal,
         ) -> None:
             assert callable(new_session)
+            assert wake is heard[0].agent_runs
             assert context.settings.environment == "production"
             started.append(f"agents, enabled: {enabled}")
 
@@ -153,8 +168,10 @@ class TestServing:
             policy: object,
             *,
             enabled: bool,
+            wake: wakeups.Signal,
         ) -> None:
             assert callable(new_session)
+            assert wake is heard[0].incidents
             assert settings.environment == "production"
             assert callable(recorder)
             assert policy is netguard.PUBLIC_INTERNET
@@ -194,6 +211,7 @@ class TestServing:
             started.append(f"NVD, enabled: {enabled}")
 
         monkeypatch.setattr(worker, "build", collecting)
+        monkeypatch.setattr(worker.wakeups, "listen", listen)
         monkeypatch.setattr(worker.fingerbank, "run", identify_devices)
         monkeypatch.setattr(worker.nvd, "run", look_up_cves)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
@@ -214,7 +232,43 @@ class TestServing:
             "alerts, enabled: True",
             "collectors",
             "incidents, enabled: True",
+            "listening",
         ]
+
+    def test_where_it_collects_nothing_it_listens_for_nothing(
+        self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listening: list[str] = []
+
+        async def listen(*_: object, **__: object) -> None:
+            listening.append("listening")
+
+        class Collecting:
+            async def run(self) -> None:
+                return None
+
+        async def idle(*_: object, **__: object) -> None:
+            return None
+
+        def collecting(_: Settings) -> Collecting:
+            return Collecting()
+
+        monkeypatch.setattr(worker, "build", collecting)
+        monkeypatch.setattr(worker.wakeups, "listen", listen)
+        for loop in (
+            worker.fingerbank,
+            worker.nvd,
+            worker.incidents,
+            worker.ai,
+            worker.agents,
+            worker.intel,
+            worker.notify,
+        ):
+            monkeypatch.setattr(loop, "run", idle)
+
+        asyncio.run(worker.serve(settings))
+
+        assert listening == []
 
     def test_one_that_stops_takes_the_other_with_it(
         self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
