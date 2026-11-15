@@ -226,7 +226,7 @@ def test_a_run_shows_the_model_only_what_the_level_allows_and_keeps_its_report(
     assert call.purpose == "agent"
     assert call.about == f"agent {found.id} run {run_id}"
     assert done.call_ids == [call.id]
-    asked_step = steps_of(session, run_id)[-2]
+    asked_step = steps_of(session, run_id)[-3]
     assert asked_step.title.startswith("Asked Anthropic, ")
     assert asked_step.detail["call_id"] == call.id
 
@@ -938,6 +938,68 @@ def test_a_run_is_told_what_the_last_one_reported_and_says_which_findings_are_on
         ("port 22 is being HAMMERED!", "ongoing"),
         ("A new printer appeared", "new"),
     ]
+
+
+def test_a_finding_that_names_something_nobody_looked_at_is_no_longer_sure_of_itself(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    with_incident(session)
+    provider = Scripted(
+        said(
+            findings=[
+                finding(title="A scan from the one that was seen", evidence=[f"From {ATTACKER}."]),
+                finding(
+                    title="Something from out of nowhere",
+                    detail="Seems to be CVE-2099-12345 against 198.51.100.77.",
+                ),
+            ]
+        )
+    )
+    server = serve(provider)
+    ready(session, settings)
+    run_id = asked(session, made(session))
+
+    execute(session, settings, run_id, server.url)
+
+    done = finished(session, run_id)
+    assert [(item["title"], item["confidence"]) for item in done.findings] == [
+        ("A scan from the one that was seen", "high"),
+        ("Something from out of nowhere", "low"),
+    ]
+    [check] = [step for step in steps_of(session, run_id) if step.title.startswith("Checked")]
+    assert check.title == (
+        "Checked the findings against what it looked at: 1 of 2 named something it never saw, "
+        "so their confidence is lowered"
+    )
+    assert check.detail == {
+        "checked": 2,
+        "not_seen": {"Something from out of nowhere": ["198.51.100.77", "CVE-2099-12345"]},
+        "summary": "Something from out of nowhere: 198.51.100.77, CVE-2099-12345",
+    }
+
+
+def test_what_the_last_run_said_and_what_the_owner_wrote_count_as_seen(
+    session: Session, settings: Settings, serve: Serve
+) -> None:
+    provider = Scripted(
+        said(
+            findings=[
+                finding(title="Back again", detail="From 198.51.100.9 once more."),
+                finding(title="Told to watch it", detail="Is 198.51.100.10 doing it?"),
+            ]
+        )
+    )
+    server = serve(provider)
+    ready(session, settings)
+    found = made(session, goal="Watch 198.51.100.10 especially.")
+    kept_run(session, found, summary="198.51.100.9 scanned the firewall.")
+    run_id = asked(session, found)
+
+    execute(session, settings, run_id, server.url)
+
+    assert [item["confidence"] for item in finished(session, run_id).findings] == ["high", "high"]
+    [check] = [step for step in steps_of(session, run_id) if step.title.startswith("Checked")]
+    assert check.title.endswith("everything they name was there")
 
 
 def test_a_first_run_is_not_told_of_one_before_it_and_its_findings_are_new(
