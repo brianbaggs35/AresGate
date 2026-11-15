@@ -277,10 +277,11 @@ def test_a_call_that_says_how_big_its_answer_may_be_reads_that_much(
 
 def test_an_answer_over_what_the_call_says_it_may_be_is_not_read(serve: Serve) -> None:
     server = serve(lambda seen: Answer(body="x" * 5000))
+    where = target(server)
     log = Log()
 
     with pytest.raises(CallFailed, match="more than AresGate reads"):
-        request(target(server), log, "GET", "/x", max_bytes=4000)
+        request(where, log, "GET", "/x", max_bytes=4000)
 
 
 def test_an_untrusted_certificate_says_how_to_trust_it(serve: Serve) -> None:
