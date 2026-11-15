@@ -233,6 +233,7 @@ describe('ThreatSettingsView', () => {
     wrapper.findAllComponents(VSwitch)[1]?.vm.$emit('update:modelValue', false)
     wrapper.findComponent(VRadioGroup).vm.$emit('update:modelValue', 'none')
     wrapper.findComponent(VTextarea).vm.$emit('update:modelValue', 'A web server')
+    wrapper.findAllComponents(VSwitch)[2]?.vm.$emit('update:modelValue', true)
     await settle()
     await wait()
 
@@ -240,6 +241,7 @@ describe('ThreatSettingsView', () => {
       expect.objectContaining({
         ai_may_clear: false,
         ai_confirms: false,
+        ai_gives_verdicts: true,
         exposure: 'none',
         notes: 'A web server',
       }),

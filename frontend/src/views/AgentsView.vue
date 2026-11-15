@@ -35,8 +35,9 @@ const making = ref(false)
 const starter = ref<string | null>(null)
 const notice = ref<{ show: (done: { text: string; undo: null }) => void } | null>(null)
 
-const agents = computed(() => overview.value?.agents ?? [])
-const templates = computed(() => overview.value?.templates ?? [])
+// Both are read only once the overview has come.
+const agents = computed(() => (overview.value as Overview).agents)
+const templates = computed(() => (overview.value as Overview).templates)
 
 async function load(quiet = false) {
   if (!quiet) loading.value = true

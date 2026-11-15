@@ -19,10 +19,12 @@ export const RANGES: readonly { key: UsageRange; label: string; long: string; be
 /** What the daily chart and the bars can show. */
 export type Metric = 'cost' | 'tokens' | 'calls'
 
+const METRIC_LABELS: Record<Metric, string> = { cost: 'Cost', tokens: 'Tokens', calls: 'Calls' }
+
 export const METRICS: readonly { key: Metric; label: string }[] = [
-  { key: 'cost', label: 'Cost' },
-  { key: 'tokens', label: 'Tokens' },
-  { key: 'calls', label: 'Calls' },
+  { key: 'cost', label: METRIC_LABELS.cost },
+  { key: 'tokens', label: METRIC_LABELS.tokens },
+  { key: 'calls', label: METRIC_LABELS.calls },
 ]
 
 const MICROS = 1_000_000
@@ -114,7 +116,7 @@ export function groupSeries(groups: readonly UsageGroup[], metric: Metric): BarS
   return [
     {
       id: metric,
-      label: METRICS.find(({ key }) => key === metric)?.label ?? metric,
+      label: METRIC_LABELS[metric],
       values: groups.map((group) => valueOf(metric, group)),
     },
   ]

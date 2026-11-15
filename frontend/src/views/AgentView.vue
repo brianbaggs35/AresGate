@@ -68,9 +68,9 @@ const now = ref(Date.now())
 const notice = ref<{ show: (done: { text: string; undo: null }) => void } | null>(null)
 
 const id = computed(() => Number(route.params.id))
-const state = computed(() => (agent.value ? AGENT_STATE[agent.value.state] : null))
+const state = computed(() => AGENT_STATE[(agent.value as AgentDetail).state])
 const live = computed(() => isLive(run.value) || agent.value?.state === 'running')
-const status = computed(() => (run.value ? RUN_STATUS[run.value.status] : null))
+const status = computed(() => RUN_STATUS[(run.value as RunDetail).status])
 const blocked = computed(() => !!agent.value?.active && !agent.value.allow_active)
 const lastRun = computed(() => agent.value?.runs[0] ?? null)
 const worstTone = computed(() => {
@@ -79,7 +79,7 @@ const worstTone = computed(() => {
   return SEVERITY[severityOf(last.worst)].color === 'error' ? 'bad' : 'warning'
 })
 const finished = computed(() =>
-  (agent.value?.runs ?? []).filter(
+  (agent.value as AgentDetail).runs.filter(
     (each) => each.status === 'succeeded' || each.status === 'failed',
   ),
 )
@@ -88,7 +88,7 @@ const succeeded = computed(
 )
 /** Whether this agent writes the daily briefing, so that its summary is read as one. */
 const briefs = computed(() => agent.value?.template === 'daily_briefing')
-const took = computed(() => (run.value ? formatElapsed(elapsedMs(run.value, now.value)) : ''))
+const took = computed(() => formatElapsed(elapsedMs(run.value as RunDetail, now.value)))
 
 async function loadRun(quiet: boolean) {
   const shown = chosen.value
@@ -142,7 +142,7 @@ async function act(request: (token: string) => Promise<unknown>) {
 }
 
 const start = () => act((token) => startRun(id.value, token))
-const stop = () => act((token) => cancelRun(id.value, run.value?.id ?? 0, token))
+const stop = () => act((token) => cancelRun(id.value, (run.value as RunDetail).id, token))
 
 async function saved(text: string) {
   await load(true)
@@ -168,7 +168,7 @@ onMounted(() => load())
       @retry="load()"
     />
 
-    <template v-else-if="agent && state">
+    <template v-else-if="agent">
       <PageHeader
         :title="agent.name"
         :description="agent.template_info.tagline"
@@ -298,7 +298,6 @@ onMounted(() => load())
             </p>
           </div>
           <v-chip
-            v-if="status"
             :color="status.color"
             :prepend-icon="status.icon"
             variant="tonal"

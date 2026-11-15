@@ -49,6 +49,16 @@ describe('InterfaceCard', () => {
     expect(find('interface-sent').exists()).toBe(false)
   })
 
+  it('says so when only the sent side was ever measured', async () => {
+    const { find } = await open(
+      WITH_FEEDS,
+      stats({ speed: speed({ received: [null], sent: [500_000] }) }),
+    )
+
+    expect(find('interface-traffic').exists()).toBe(false)
+    expect(find('interface-no-traffic').text()).toBe('No traffic measured yet.')
+  })
+
   it('says so when nothing has been measured', async () => {
     const { find } = await open(WITH_FEEDS, stats({ speed: null }))
     expect(find('interface-no-traffic').text()).toBe('No traffic measured yet.')

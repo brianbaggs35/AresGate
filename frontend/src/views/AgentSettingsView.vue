@@ -80,8 +80,8 @@ const current = computed<AiProvider | undefined>(() =>
   ai.value?.providers.find((item) => item.key === chosen.value),
 )
 const modelChoices = computed(() => {
-  const provider = current.value
-  if (!provider) return []
+  // Only shown with a provider that is chosen.
+  const provider = current.value as AiProvider
   const same = {
     value: null,
     title: provider.model ? `As set up (${provider.model})` : 'As set up',

@@ -365,6 +365,17 @@ describe('AgentView', () => {
     })
   })
 
+  it('says a run was started by its schedule, here and in the runs before it', async () => {
+    const { find, wrapper } = await open({
+      agent: detail({ runs: [run({ id: 7, trigger: 'schedule' }), run({ id: 6 })] }),
+      runs: { 7: runDetail({ id: 7, trigger: 'schedule' }) },
+    })
+
+    expect(find('run-meta').text()).toContain('By its schedule')
+    expect(wrapper.text()).toContain('Run 7 ·')
+    expect(wrapper.text()).toContain('By its schedule')
+  })
+
   describe('asking for a run', () => {
     it('starts one and follows it', async () => {
       const { find, click, start, get } = await open()

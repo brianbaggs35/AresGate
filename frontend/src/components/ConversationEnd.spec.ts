@@ -385,6 +385,40 @@ describe('ConversationEnd', () => {
 
     dialog.vm.$emit('changed', null)
     expect(wrapper.emitted('ruled')).toHaveLength(1)
+
+    dialog.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(wrapper.findComponent(ThreatRulingDialog).props('modelValue')).toBe(false)
+  })
+
+  it('draws what OTX and GreyNoise said quietly where the owner has ruled', async () => {
+    const wrapper = await show({
+      location: 'remote',
+      reputation: {
+        ...FLAGGED,
+        judgement: 'clean',
+        ruling: 'safe',
+        otx: {
+          judgement: 'malicious',
+          pulses: 2,
+          naming: 0,
+          names: null,
+          link: 'https://otx.alienvault.com/indicator/ip/203.0.113.7',
+        },
+        greynoise: {
+          judgement: 'malicious',
+          classification: 'malicious',
+          business: null,
+          actor: null,
+          tags: null,
+          link: 'https://viz.greynoise.io/ip/203.0.113.7',
+        },
+      },
+    })
+
+    for (const chip of ['end-otx', 'end-greynoise']) {
+      expect(wrapper.find(`[data-test="${chip}"]`).classes()).toContain('v-chip--variant-outlined')
+    }
   })
 
   it('offers to change a ruling that was made, which the window starts from', async () => {

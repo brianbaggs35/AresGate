@@ -1,6 +1,7 @@
 import * as client from '@/api/client'
 import {
   callFamily,
+  dismissSuggestion,
   fetchChain,
   fetchChains,
   fetchFamilies,
@@ -93,5 +94,13 @@ describe('threats', () => {
 
     await expect(fetchChain(4)).resolves.toEqual({ id: 4 })
     expect(get).toHaveBeenCalledWith('/threats/chains/4')
+  })
+
+  it('says not now to what is offered about a kind', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ id: 4 })
+
+    await expect(dismissSuggestion(4, 'token')).resolves.toEqual({ id: 4 })
+
+    expect(post).toHaveBeenCalledWith('/threats/families/4/suggestion/dismiss', {}, 'token')
   })
 })

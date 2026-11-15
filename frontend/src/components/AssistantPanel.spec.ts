@@ -136,6 +136,17 @@ describe('AssistantPanel', () => {
     expect(find('panel-off').exists()).toBe(true)
   })
 
+  it('closes the panel when the way to set the AI up is followed', async () => {
+    const { find, assistant } = await open()
+    assistant.ready = false
+    await flushPromises()
+    const hide = vi.spyOn(assistant, 'hide')
+
+    await find('panel-off').find('a').trigger('click')
+
+    expect(hide).toHaveBeenCalled()
+  })
+
   it('shows the conversation, with what it suggests, and asks a failed answer again', async () => {
     const retried = vi.spyOn(chatApi, 'retryConversation').mockResolvedValue(conversation())
     const { wrapper, find, assistant } = await open()

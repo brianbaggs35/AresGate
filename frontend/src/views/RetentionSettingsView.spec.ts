@@ -183,4 +183,17 @@ describe('RetentionSettingsView', () => {
     expect(find('retention-over').text()).toContain('nothing more can be removed')
     expect(find('retention-usage-oldest').text()).toBe('None yet')
   })
+
+  it('shows how much of the limit is used without a warning while under it', async () => {
+    const { find } = await open(
+      retentionSettings({
+        managed: true,
+        quota_gb: 4,
+        usage: { ...retentionSettings().usage, quota_bytes: 4_294_967_296, over_quota: false },
+      }),
+    )
+
+    expect(find('retention-usage-bar').exists()).toBe(true)
+    expect(find('retention-over').exists()).toBe(false)
+  })
 })

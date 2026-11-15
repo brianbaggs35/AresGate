@@ -3,7 +3,14 @@ import { Pencil } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import type { Feed, OverviewWindow, Placement } from '@/api/interfaces'
+import type {
+  Feed,
+  Interface,
+  Listing,
+  Overview,
+  OverviewWindow,
+  Placement,
+} from '@/api/interfaces'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -39,8 +46,10 @@ const range = ref<OverviewWindow>('24h')
 const id = computed(() => Number(route.params.id))
 const item = computed(() => listing.value?.interfaces.find((each) => each.id === id.value))
 const stats = computed(() => overview.value?.stats.find((each) => each.interface_id === id.value))
-const role = computed(() => (item.value ? roleInfo(item.value.role) : null))
-const times = computed(() => (overview.value?.times ?? []).map((time) => Date.parse(time)))
+// These are read only once the interface has come, which is with the stats.
+const role = computed(() => roleInfo((item.value as Interface).role))
+const peers = computed(() => (listing.value as Listing).interfaces)
+const times = computed(() => (overview.value as Overview).times.map((time) => Date.parse(time)))
 const series = computed(() =>
   stats.value?.speed
     ? [
@@ -96,7 +105,7 @@ onMounted(() => board.load(range.value))
       @retry="board.load(range)"
     />
 
-    <template v-else-if="item && role">
+    <template v-else-if="item">
       <PageHeader
         :title="item.name"
         :description="item.notes || role.description"
@@ -213,7 +222,7 @@ onMounted(() => board.load(range.value))
             v-for="feed in item.feeds"
             :key="feed.id"
             :feed="feed"
-            :interfaces="listing?.interfaces ?? []"
+            :interfaces="peers"
             :disabled="busy"
             :can-create="false"
             @move="move(feed, $event)"

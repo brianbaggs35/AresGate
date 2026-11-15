@@ -25,10 +25,11 @@ const category = ref(ALL)
 
 const isSetUp = ({ status }: IntegrationSummary) => status !== 'not_connected'
 
-const categories = computed(() => categoriesOf(integrations.value ?? []))
+// They are shown only once the list has come.
+const categories = computed(() => categoriesOf(integrations.value as IntegrationSummary[]))
 const shown = computed(() =>
   narrowIntegrations(
-    integrations.value ?? [],
+    integrations.value as IntegrationSummary[],
     query.value ?? '',
     category.value === ALL ? '' : category.value,
   ),

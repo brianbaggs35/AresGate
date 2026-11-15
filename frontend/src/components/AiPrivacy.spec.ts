@@ -40,7 +40,8 @@ describe('AiPrivacy', () => {
   it('says a level was chosen only when it is another one', async () => {
     const { input, changes } = await open()
 
-    await input('balanced').setValue(true)
+    // As when a radio button that was pressed, and the change refused, is pressed again.
+    await input('balanced').trigger('change')
     await input('strict').setValue(true)
     await flushPromises()
 

@@ -35,7 +35,8 @@ watch(
   () => props.busy,
   (busy) => {
     if (busy) return
-    for (const input of group.value?.querySelectorAll('input') ?? []) {
+    // The watch is set up where the group is drawn, so there is a group once it has run.
+    for (const input of (group.value as HTMLElement).querySelectorAll('input')) {
       input.checked = input.value === props.level
     }
   },

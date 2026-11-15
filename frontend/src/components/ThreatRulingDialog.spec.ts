@@ -1,3 +1,5 @@
+import { VDialog } from 'vuetify/components'
+
 import ThreatRulingDialog from '@/components/ThreatRulingDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { SAFE_RULING } from '@/test/threatIntel'
@@ -71,5 +73,22 @@ describe('ThreatRulingDialog', () => {
     const { inWindow } = await mountDialog({}, { width: 400 })
 
     expect(inWindow('[data-test="ruling-dialog"]')?.classList).toContain('dialog--screen')
+  })
+
+  it('moves the keyboard to what it is about once it has opened', async () => {
+    const { wrapper, inWindow } = await mountDialog()
+
+    wrapper.findComponent(VDialog).vm.$emit('afterEnter')
+
+    expect(document.activeElement).toBe(inWindow('[data-test="ruling-subject"]'))
+  })
+
+  it('says so when the window asks to be closed', async () => {
+    const onUpdate = vi.fn()
+    const { wrapper } = await mountDialog({}, { onUpdate })
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+
+    expect(onUpdate).toHaveBeenCalledWith(false)
   })
 })

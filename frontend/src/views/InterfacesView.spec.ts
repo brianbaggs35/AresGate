@@ -174,6 +174,17 @@ describe('InterfacesView', () => {
       expect(editor.props('starter')).toEqual({ name: 'Guests', role: 'guest', feeds: [2, 3] })
     })
 
+    it('closes the editor when it asks to be closed', async () => {
+      const { wrapper } = await open()
+      wrapper.findComponent(SuggestionCard).vm.$emit('change')
+      await flushPromises()
+
+      wrapper.findComponent(InterfaceEditor).vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      expect(wrapper.findComponent(InterfaceEditor).props('modelValue')).toBe(false)
+    })
+
     it('can all be confirmed at once, when there are several', async () => {
       const several = {
         ...FULL,

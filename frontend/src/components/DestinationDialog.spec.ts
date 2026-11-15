@@ -1,3 +1,5 @@
+import { VDialog } from 'vuetify/components'
+
 import { defineComponent, h, ref } from 'vue'
 
 import type { Destination, DestinationKind } from '@/api/alerts'
@@ -341,5 +343,15 @@ describe('DestinationDialog', () => {
 
     expect(open.value).toBe(false)
     expect(document.activeElement).toBe(wrapper.find('[data-test="opener"]').element)
+  })
+
+  it('closes when the window asks to be, as when the page behind it is pressed', async () => {
+    const { openIt, wrapper, open } = await mountDialog()
+    await openIt()
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(open.value).toBe(false)
   })
 })

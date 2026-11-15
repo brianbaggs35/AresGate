@@ -1,5 +1,5 @@
 import { defineComponent, h, ref } from 'vue'
-import { VSelect } from 'vuetify/components'
+import { VDialog, VSelect } from 'vuetify/components'
 
 import type { MailServer, MailServerChange, Security } from '@/api/alerts'
 import MailServerDialog from '@/components/MailServerDialog.vue'
@@ -276,5 +276,15 @@ describe('MailServerDialog', () => {
 
     expect(open.value).toBe(false)
     expect(document.activeElement).toBe(wrapper.find('[data-test="opener"]').element)
+  })
+
+  it('closes when the window asks to be, as when the page behind it is pressed', async () => {
+    const { openIt, wrapper, open } = await mountDialog()
+    await openIt()
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(open.value).toBe(false)
   })
 })

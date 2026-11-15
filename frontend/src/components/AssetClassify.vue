@@ -73,11 +73,17 @@ onMounted(async () => {
   }
 })
 
+/** What is kept of the device now, or what a device with nothing kept starts as. */
+const kept = computed(() => ({
+  kind: props.asset.profile?.kind ?? null,
+  purpose: props.asset.profile?.purpose ?? '',
+  importance: props.asset.profile?.importance ?? 'normal',
+}))
 const dirty = computed(
   () =>
-    kind.value !== (props.asset.profile?.kind ?? null) ||
-    purpose.value.trim() !== (props.asset.profile?.purpose ?? '') ||
-    importance.value !== (props.asset.profile?.importance ?? 'normal'),
+    kind.value !== kept.value.kind ||
+    purpose.value.trim() !== kept.value.purpose ||
+    importance.value !== kept.value.importance,
 )
 const picked = computed(() =>
   groups.value.flatMap((group) => group.kinds).find((item) => item.key === kind.value),

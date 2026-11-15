@@ -4,6 +4,7 @@ import { VSelect } from 'vuetify/components'
 import { ApiError } from '@/api/client'
 import * as integrationsApi from '@/api/integrations'
 import type { Call, CallPage } from '@/api/integrations'
+import ApiCallDialog from '@/components/ApiCallDialog.vue'
 import ApiLog from '@/components/ApiLog.vue'
 import { call, callFull } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -386,6 +387,38 @@ describe('ApiLog', () => {
       await sheetClick('sheet-older')
 
       expect(title()).toBe('GET /newest')
+    })
+
+    it('stays on the newest when asked for a newer one that is not there', async () => {
+      const { rows, wrapper } = await opened()
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+
+      wrapper.findComponent(ApiCallDialog).vm.$emit('step', 'newer')
+      await flushPromises()
+
+      expect(title()).toBe('GET /newest')
+    })
+
+    it('goes when the dialog asks to be closed', async () => {
+      const { rows, wrapper } = await opened()
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+      expect(document.querySelector('.v-overlay--active')).not.toBeNull()
+
+      wrapper.findComponent(ApiCallDialog).vm.$emit('update:modelValue', false)
+      await flushPromises()
+
+      expect(document.querySelector('.v-overlay--active')).toBeNull()
+    })
+
+    it('names a connection the integration does not list by its key', async () => {
+      const { rows } = await opened(page([call({ id: 3, path: '/newest', connection: 'extra' })]))
+
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+
+      expect(inSheet('sheet-connection')?.textContent).toBe('extra')
     })
 
     it('closes when a reload no longer has the request', async () => {

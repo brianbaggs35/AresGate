@@ -81,9 +81,6 @@ const outcome = computed(() => {
 })
 /** A 429 is a limit that held the request back, which says nothing of the connection being broken. */
 const limited = computed(() => props.call?.status_code === 429)
-const times = computed(() =>
-  detail.value && props.call ? timings(detail.value, props.call.duration_ms) : [],
-)
 const answered = computed(() => !!detail.value?.status_line)
 
 const shown = (pair: CallPair) => pair.value ?? 'hidden'
@@ -265,7 +262,7 @@ onBeforeUnmount(() => {
           <section aria-labelledby="sheet-timing" class="api-detail__section">
             <h3 id="sheet-timing" class="text-title-medium">How long it took</h3>
             <dl class="api-detail__pairs" data-test="sheet-timing">
-              <div v-for="time in times" :key="time.label">
+              <div v-for="time in timings(detail, call.duration_ms)" :key="time.label">
                 <dt>{{ time.label }}</dt>
                 <dd>{{ time.ms }} ms</dd>
               </div>

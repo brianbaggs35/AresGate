@@ -31,17 +31,15 @@ const callOpen = ref(false)
 const thread = ref<HTMLElement | null>(null)
 const box = ref<{ focus: () => void } | null>(null)
 
-function scrollToEnd() {
-  void nextTick(() => {
-    const element = thread.value
-    if (element) element.scrollTop = element.scrollHeight
-  })
-}
-
-// The newest word is in view, and the box is ready to type in when the panel opens.
+// The newest word is in view, and the box is ready to type in when the panel opens. The scrolling
+// waits until the page has been drawn, and is dropped with the panel if that goes first.
 watch(
   () => [messages.value.length, assistant.pending, assistant.sending, assistant.writing],
-  scrollToEnd,
+  () => {
+    const element = thread.value as HTMLElement
+    element.scrollTop = element.scrollHeight
+  },
+  { flush: 'post' },
 )
 watch(
   () => assistant.open,
