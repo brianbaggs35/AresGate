@@ -8,29 +8,39 @@ import {
 } from '@/api/threatIntel'
 
 describe('threatIntel', () => {
-  it('asks VirusTotal about one subject with the security token', async () => {
+  it('asks a service about one subject with the security token', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ kind: 'ip' })
 
-    await expect(searchThreatIntel('203.0.113.7', 'a-security-token')).resolves.toEqual({
+    await expect(
+      searchThreatIntel('virustotal', '203.0.113.7', 'a-security-token'),
+    ).resolves.toEqual({
       kind: 'ip',
     })
     expect(post).toHaveBeenCalledWith(
       '/threat-intel/lookups',
-      { subject: '203.0.113.7' },
+      { provider: 'virustotal', subject: '203.0.113.7' },
       'a-security-token',
     )
   })
 
-  it('asks VirusTotal again when a newer answer is wanted', async () => {
+  it('asks the service again when a newer answer is wanted', async () => {
     const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ kind: 'ip' })
 
-    await searchThreatIntel('203.0.113.7', 'a-security-token', true)
+    await searchThreatIntel('otx', '203.0.113.7', 'a-security-token', true)
 
     expect(post).toHaveBeenCalledWith(
       '/threat-intel/lookups',
-      { subject: '203.0.113.7', refresh: true },
+      { provider: 'otx', subject: '203.0.113.7', refresh: true },
       'a-security-token',
     )
+  })
+
+  it('reads what is kept of one service', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ total: 0 })
+
+    await fetchKnownThreats({ provider: 'greynoise' })
+
+    expect(get).toHaveBeenCalledWith('/threat-intel/subjects?provider=greynoise')
   })
 
   it('reads everything kept when nothing narrows it', async () => {

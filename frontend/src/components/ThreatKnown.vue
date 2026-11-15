@@ -9,6 +9,7 @@ import {
   type Judgement,
   type KnownPage,
   type Lookup,
+  type Provider,
   type Ruling,
 } from '@/api/threatIntel'
 import EmptyState from '@/components/EmptyState.vue'
@@ -17,17 +18,18 @@ import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { formatAgo, formatCount } from '@/format'
 import { useSessionStore } from '@/stores/session'
-import { JUDGEMENT, JUDGEMENTS, KIND, RULING, withRuling } from '@/threatIntel'
+import { JUDGEMENT, JUDGEMENTS, KIND, RULING, providerOf, tallyOf, withRuling } from '@/threatIntel'
 
 /**
- * What AresGate knows from threat intelligence: every answer it has kept, newest first, whether a
- * search or a background lookup asked for it. Looking through them asks VirusTotal nothing. An
- * answer opens as the report it was, and Check again asks VirusTotal for a newer one, which counts
- * toward its limits as a search does. Where the owner ruled an answer safe or suspicious, that is
+ * What AresGate knows from one threat intelligence service: every answer it has kept of it, newest
+ * first, whether a search or a background lookup asked for it. Looking through them asks the
+ * service nothing. An answer opens as the report it was, and Check again asks the service for a
+ * newer one, which counts toward its limits as a search does. Where the owner ruled an answer safe or suspicious, that is
  * what its row says, and the filters and counts follow. `version` changes when something on the page got an answer,
  * so the list is read again.
  */
-const props = defineProps<{ version?: number }>()
+const props = defineProps<{ provider: Provider; version?: number }>()
+const service = computed(() => providerOf(props.provider))
 const emit = defineEmits<{ refused: []; ruled: [] }>()
 
 const PAGE = 25
@@ -70,7 +72,12 @@ async function load() {
   error.value = null
   try {
     page.value = await session.call(() =>
-      fetchKnownThreats({ q: text.value, judgement: judgement.value, limit: shown.value }),
+      fetchKnownThreats({
+        provider: props.provider,
+        q: text.value,
+        judgement: judgement.value,
+        limit: shown.value,
+      }),
     )
   } catch (loadError) {
     error.value = errorMessage(loadError)
@@ -115,14 +122,7 @@ function describe(item: Lookup): string {
   return `${item.subject}, ${KIND[item.kind]}, ${JUDGEMENT[item.judgement].short}.${ruled} Open its report.`
 }
 
-/** How many engines flagged it, of how many gave a verdict. */
-function tally(item: Lookup): string {
-  if (item.reported_judgement === 'unknown') return 'No report'
-  const engines = item.malicious + item.suspicious + item.harmless + item.undetected
-  return `${formatCount(item.malicious + item.suspicious)} of ${formatCount(engines)} flagged`
-}
-
-/** Shows the answer that is open as the owner ruled it, or as VirusTotal made it where the ruling
+/** Shows the answer that is open as the owner ruled it, or as the service made it where the ruling
  * was taken back. The page is told, and reads the list again, whose counts and filters follow. */
 function ruled(ruling: Ruling | null) {
   // Only the report that is open can say this, so there is one.
@@ -130,14 +130,16 @@ function ruled(ruling: Ruling | null) {
   emit('ruled')
 }
 
-/** Asks VirusTotal again about the answer that is open, and shows what came back. */
+/** Asks the service again about the answer that is open, and shows what came back. */
 async function checkAgain() {
   const item = opened.value
   if (!item || checking.value) return
   checking.value = true
   problem.value = null
   try {
-    opened.value = await session.change((token) => searchThreatIntel(item.subject, token, true))
+    opened.value = await session.change((token) =>
+      searchThreatIntel(props.provider, item.subject, token, true),
+    )
     if (opened.value.notice) emit('refused')
     await load()
   } catch (checkError) {
@@ -156,7 +158,7 @@ onMounted(load)
 <template>
   <SectionCard
     title="What AresGate knows"
-    description="Every answer from threat intelligence is kept here, whether you searched for it or AresGate looked it up for an incident. Looking through them asks VirusTotal nothing. An answer is checked again once it is no longer fresh: after two days if it was flagged or had no report, and after a week if no engine flagged it."
+    :description="`Every answer from ${service.name} is kept here, whether you searched for it or AresGate looked it up for an incident. Looking through them asks ${service.name} nothing. An answer is checked again once it is no longer fresh: after two days if it was flagged or had no report, and after a week if nothing flagged it.`"
     data-test="threat-known"
   >
     <LoadError
@@ -231,7 +233,7 @@ onMounted(load)
       </p>
 
       <ul v-else class="known__list" data-test="known-list">
-        <li v-for="item in page.items" :key="item.link">
+        <li v-for="item in page.items" :key="`${item.kind}:${item.subject}`">
           <button
             type="button"
             class="known__row"
@@ -261,7 +263,7 @@ onMounted(load)
                 Ruled by you
               </v-chip>
               <span>{{ KIND[item.kind] }}</span>
-              <span data-test="known-tally">{{ tally(item) }}</span>
+              <span data-test="known-tally">{{ tallyOf(item) }}</span>
               <span data-test="known-checked">Checked {{ formatAgo(item.checked_at) }}</span>
               <span v-if="item.stale" data-test="known-stale">Due to be checked again</span>
             </span>

@@ -27,6 +27,20 @@ Every release's notes are here, newest first. The format follows
   the assistant is read only. Nothing moves for a person who asked their device for less motion.
   See [The assistant](DOCS/operations.md).
 
+- **Threat intelligence has a tab for each service.** The Threat intelligence page searches
+  AlienVault OTX and GreyNoise as well as VirusTotal, each on its own tab with its own search and
+  its own list of what AresGate kept from it. A service is only asked what it answers: OTX takes
+  addresses and domains, GreyNoise IPv4 addresses. Its report says what that service counts, such
+  as the pulses that name an address, instead of engines, and a clean answer is said in the
+  service's words. What you rule safe or suspicious is still one ruling whichever service is asked.
+  See [Searching the other services](DOCS/integrations.md#searching-the-other-services).
+
+- **Old threat intelligence answers go after the days you chose.** The answers kept from threat
+  intelligence had no time of their own and stayed for ever. Where you manage how long data is
+  kept, they now go after the number of days you chose, like the rest. What you ruled safe or
+  suspicious is never removed. See
+  [Retention](DOCS/operations.md#retention-and-the-size-of-the-database).
+
 ### Fixed
 
 - **"It answered with more than AresGate reads" after setting Wazuh up as the guide says.** Once

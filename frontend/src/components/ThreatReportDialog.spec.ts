@@ -3,7 +3,7 @@ import { VDialog } from 'vuetify/components'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import type { Lookup } from '@/api/threatIntel'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { MALICIOUS_LOOKUP, RULED_LOOKUP } from '@/test/threatIntel'
+import { GREYNOISE_LOOKUP, MALICIOUS_LOOKUP, OTX_LOOKUP, RULED_LOOKUP } from '@/test/threatIntel'
 
 const MALICIOUS = MALICIOUS_LOOKUP
 
@@ -164,6 +164,62 @@ describe('ThreatReportDialog', () => {
     )
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('reports an answer of AlienVault OTX by its pulses, with no bar of engines', async () => {
+    const { inWindow } = await mountReport(OTX_LOOKUP)
+
+    expect(inWindow('[data-test="report-kind"]')?.textContent.trim()).toBe(
+      'AlienVault OTX · IP address',
+    )
+    expect(inWindow('[data-test="report-summary"]')?.textContent.trim()).toBe(
+      '3 pulses name it, 2 of them also naming malware, an adversary or an attack technique.',
+    )
+    expect(inWindow('[data-test="report-bar"]')).toBeNull()
+    expect(inWindow('[data-test="report-counts"]')).toBeNull()
+    expect(inWindow('[data-test="report-reputation"]')?.textContent).toBe('-3')
+    expect(inWindow('[data-test="report-analysed"]')).toBeNull()
+    expect(document.querySelector('.v-overlay--active')?.textContent).toContain('Pulses')
+    expect(document.querySelector('.v-overlay--active')?.textContent).not.toContain('shared data')
+    expect(inWindow('[data-test="report-asked"]')?.textContent).toMatch(/^AlienVault OTX answered/)
+  })
+
+  it("says a clean answer in the words of the service, and opens the subject on that service's page", async () => {
+    const { inWindow } = await mountReport({
+      ...OTX_LOOKUP,
+      judgement: 'clean',
+      reported_judgement: 'clean',
+    })
+
+    expect(inWindow('[data-test="report-judgement"]')?.textContent).toContain('Listed as safe')
+    const link = inWindow('[data-test="report-open"]') as HTMLAnchorElement
+    expect(link.textContent.trim()).toBe('Open in AlienVault OTX')
+    expect(link.getAttribute('href')).toBe('https://otx.alienvault.com/indicator/ip/93.184.216.34')
+  })
+
+  it('reports an answer of GreyNoise by its classification, with no score', async () => {
+    const { inWindow } = await mountReport(GREYNOISE_LOOKUP)
+
+    expect(inWindow('[data-test="report-summary"]')?.textContent.trim()).toBe(
+      "GreyNoise has seen it scanning the internet, and doesn't classify it.",
+    )
+    expect(inWindow('[data-test="report-bar"]')).toBeNull()
+    expect(inWindow('[data-test="report-reputation"]')).toBeNull()
+    expect(document.querySelector('.v-overlay--active')?.textContent).toContain('Classification')
+  })
+
+  it('offers no link to the service where it has no page about the subject', async () => {
+    const { inWindow } = await mountReport({ ...OTX_LOOKUP, link: null })
+
+    expect(inWindow('[data-test="report-open"]')).toBeNull()
+  })
+
+  it('says which service a kept answer was kept from, and that nothing was sent to it', async () => {
+    const { inWindow } = await mountReport({ ...GREYNOISE_LOOKUP, cached: true })
+
+    expect(inWindow('[data-test="report-cached"]')?.textContent).toContain(
+      'so nothing was sent to GreyNoise',
+    )
   })
 
   it('closes from its close button', async () => {

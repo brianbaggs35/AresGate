@@ -7,17 +7,19 @@ import type { Lookup, Ruling } from '@/api/threatIntel'
 import ThreatRuling from '@/components/ThreatRuling.vue'
 import { useKeyboardReturn } from '@/dialog'
 import { formatCount, formatDateTime } from '@/format'
-import { JUDGEMENT, KIND, RULING } from '@/threatIntel'
+import { JUDGEMENT, KIND, RULING, judgementLabel, providerOf, summaryOf } from '@/threatIntel'
 
 /**
- * What VirusTotal reported of one search, in a window over the page: the judgement first, then
- * the counts of its engines, the community's score, the categories it was given and what else
- * VirusTotal says, and what AresGate has kept of the subject: when it first asked, how often, and
- * whether the judgement changed. The counts are shown beside the judgement, because one engine's
- * flag can be a false positive. Where the owner has ruled the subject safe or suspicious, that is
- * what it is shown as, and what VirusTotal said stays beside it; the owner can rule here, or take
- * the ruling back, and the page that opened the window is told. Check again asks VirusTotal for a
- * newer answer, which the page that opened the window sends. The whole screen on a phone.
+ * What a service reported of one search, in a window over the page: the judgement first, then
+ * what it is made of (for VirusTotal the counts of its engines, as a bar), the service's score,
+ * the categories it was given and what else the service says, and what AresGate has kept of the
+ * subject: when it first asked, how often, and whether the judgement changed. What the service
+ * counts is shown beside the judgement, because one engine's flag, or one pulse naming an
+ * address, can be a false positive. Where the owner has ruled the subject safe or suspicious,
+ * that is what it is shown as, and what the service said stays beside it; the owner can rule
+ * here, or take the ruling back, and the page that opened the window is told. Check again asks
+ * the service for a newer answer, which the page that opened the window sends. A link to the
+ * service's own page is offered where it has one. The whole screen on a phone.
  */
 const props = defineProps<{ lookup: Lookup; busy?: boolean }>()
 const emit = defineEmits<{ refresh: []; ruled: [ruling: Ruling | null] }>()
@@ -34,6 +36,11 @@ function takeTheKeyboard() {
 }
 
 const appearance = computed(() => JUDGEMENT[props.lookup.judgement])
+const provider = computed(() => providerOf(props.lookup.provider))
+/** Whether the report has the bar of what its engines said, which only VirusTotal has. */
+const engineBar = computed(
+  () => props.lookup.provider === 'virustotal' && props.lookup.reported_judgement !== 'unknown',
+)
 /** What the owner ruled, and how that is shown, if they ruled. */
 const ruled = computed(() => (props.lookup.ruling ? RULING[props.lookup.ruling.verdict] : null))
 const engines = computed(
@@ -44,20 +51,8 @@ const engines = computed(
     props.lookup.undetected,
 )
 
-/** What the counts say, in a sentence: what VirusTotal made of it, whatever the owner ruled. */
-const summary = computed(() => {
-  const { lookup } = props
-  switch (lookup.reported_judgement) {
-    case 'malicious':
-      return `${lookup.malicious} of ${engines.value} engines flagged it as malicious.`
-    case 'suspicious':
-      return `${lookup.suspicious} of ${engines.value} engines flagged it as suspicious.`
-    case 'clean':
-      return `None of the ${engines.value} engines flagged it.`
-    case 'unknown':
-      return 'VirusTotal has no report on it yet.'
-  }
-})
+/** What the counts say, in a sentence: what the service made of it, whatever the owner ruled. */
+const summary = computed(() => summaryOf(props.lookup))
 
 /** Each kind of engine verdict as a share of the bar, in the order the bar reads. */
 const segments = computed(() => {
@@ -120,11 +115,12 @@ const change = computed(() => {
 const source = computed(() => {
   const { lookup } = props
   const checked = formatDateTime(lookup.checked_at)
-  if (!lookup.cached) return `VirusTotal answered ${checked}, and AresGate kept the answer.`
+  const name = lookup.provider_name
+  if (!lookup.cached) return `${name} answered ${checked}, and AresGate kept the answer.`
   if (lookup.stale) {
     return `This is the answer AresGate kept from ${checked}. It is due to be checked again.`
   }
-  return `This is the answer AresGate kept from ${checked}, so nothing was sent to VirusTotal. It is checked again after ${formatDateTime(lookup.fresh_until)}.`
+  return `This is the answer AresGate kept from ${checked}, so nothing was sent to ${name}. It is checked again after ${formatDateTime(lookup.fresh_until)}.`
 })
 </script>
 
@@ -148,7 +144,7 @@ const source = computed(() => {
       <header class="report__head">
         <div class="report__heading">
           <p class="text-label-large text-medium-emphasis report__kind" data-test="report-kind">
-            VirusTotal · {{ KIND[lookup.kind] }}
+            {{ lookup.provider_name }} · {{ KIND[lookup.kind] }}
           </p>
           <h2
             :id="titleId"
@@ -181,14 +177,15 @@ const source = computed(() => {
             data-test="report-judgement"
             :data-judgement="lookup.judgement"
           >
-            {{ ruled ? ruled.label : appearance.label }}
+            {{ ruled ? ruled.label : judgementLabel(lookup.provider, lookup.judgement) }}
           </v-chip>
           <p v-if="lookup.ruling?.note" class="report__why" data-test="report-ruling-note">
             “{{ lookup.ruling.note }}”
           </p>
           <p class="text-body-large report__summary" data-test="report-summary">
             <template v-if="ruled">
-              VirusTotal said: {{ JUDGEMENT[lookup.reported_judgement].short.toLowerCase() }}.
+              {{ lookup.provider_name }} said:
+              {{ JUDGEMENT[lookup.reported_judgement].short.toLowerCase() }}.
             </template>
             {{ summary }}
           </p>
@@ -204,12 +201,7 @@ const source = computed(() => {
           {{ lookup.notice }} This is the answer AresGate kept.
         </v-alert>
 
-        <div
-          v-if="lookup.reported_judgement !== 'unknown'"
-          class="verdict-bar"
-          aria-hidden="true"
-          data-test="report-bar"
-        >
+        <div v-if="engineBar" class="verdict-bar" aria-hidden="true" data-test="report-bar">
           <span
             v-for="part in segments"
             :key="part.key"
@@ -218,11 +210,7 @@ const source = computed(() => {
             :data-part="part.key"
           />
         </div>
-        <ul
-          v-if="lookup.reported_judgement !== 'unknown'"
-          class="verdict-legend"
-          data-test="report-counts"
-        >
+        <ul v-if="engineBar" class="verdict-legend" data-test="report-counts">
           <li v-for="part in segments" :key="part.key">
             <span
               class="verdict-legend__dot"
@@ -235,11 +223,11 @@ const source = computed(() => {
 
         <section class="report__section" aria-label="Details">
           <dl class="report__facts">
-            <div>
-              <dt>Community score</dt>
+            <div v-if="provider.score">
+              <dt>{{ provider.score }}</dt>
               <dd data-test="report-reputation">{{ reputation }}</dd>
             </div>
-            <div>
+            <div v-if="provider.analysis">
               <dt>Last analysed</dt>
               <dd data-test="report-analysed">{{ analysed }}</dd>
             </div>
@@ -298,13 +286,13 @@ const source = computed(() => {
 
         <p class="text-body-small text-medium-emphasis report__note">
           <span :data-test="lookup.cached ? 'report-cached' : 'report-asked'">{{ source }}</span>
-          What you search for is added to VirusTotal's shared data, so keep private names out of
-          searches.
+          <template v-if="provider.sharing">{{ provider.sharing }}</template>
         </p>
       </v-card-text>
 
       <footer class="report__actions">
         <v-btn
+          v-if="lookup.link"
           :href="lookup.link"
           target="_blank"
           rel="noopener noreferrer"
@@ -312,7 +300,7 @@ const source = computed(() => {
           :append-icon="ExternalLink"
           data-test="report-open"
         >
-          Open in VirusTotal
+          Open in {{ lookup.provider_name }}
         </v-btn>
         <v-spacer />
         <v-btn

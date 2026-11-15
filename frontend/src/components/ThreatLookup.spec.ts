@@ -1,15 +1,19 @@
 import { ApiError } from '@/api/client'
 import type { Pause } from '@/api/integrations'
 import * as threatIntel from '@/api/threatIntel'
+import type { Provider } from '@/api/threatIntel'
 import ThreatLookup from '@/components/ThreatLookup.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
-import { CLEAN_LOOKUP, SAFE_RULING } from '@/test/threatIntel'
+import { CLEAN_LOOKUP, OTX_LOOKUP, SAFE_RULING } from '@/test/threatIntel'
 
 const CLEAN = CLEAN_LOOKUP
 
-async function mountLookup(pause: Pause | null = null) {
-  const mounted = await mountWithPlugins(ThreatLookup, { signedIn: 'brian', props: { pause } })
+async function mountLookup(pause: Pause | null = null, provider: Provider = 'virustotal') {
+  const mounted = await mountWithPlugins(ThreatLookup, {
+    signedIn: 'brian',
+    props: { provider, pause },
+  })
   const { wrapper } = mounted
   const type = async (text: string) => {
     await wrapper.find<HTMLInputElement>('[data-test="threat-subject"] input').setValue(text)
@@ -38,6 +42,35 @@ describe('ThreatLookup', () => {
     expect(wrapper.find('[data-test="threat-search"]').attributes('disabled')).toBeUndefined()
   })
 
+  it('asks about what its service answers about, in its words', async () => {
+    const { wrapper } = await mountLookup(null, 'greynoise')
+
+    expect(wrapper.find('[data-test="threat-lookup"]').text()).toContain(
+      'Ask GreyNoise about an IPv4 address.',
+    )
+    expect(wrapper.find('[data-test="threat-subject"] input').attributes('placeholder')).toBe(
+      '203.0.113.7',
+    )
+    expect(wrapper.find('[data-test="threat-note"]').exists()).toBe(false)
+  })
+
+  it('searches the service it was given', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(OTX_LOOKUP)
+    const { wrapper, type, submit } = await mountLookup(null, 'otx')
+    await type('93.184.216.34')
+
+    await submit()
+
+    expect(search).toHaveBeenCalledWith('otx', '93.184.216.34', 'a-security-token', false)
+    expect(wrapper.find('[data-test="threat-last-subject"]').text()).toBe('93.184.216.34')
+  })
+
+  it("keeps VirusTotal's note about a free key and what is searched for", async () => {
+    const { wrapper } = await mountLookup()
+
+    expect(wrapper.find('[data-test="threat-note"]').text()).toContain('non-commercial use only')
+  })
+
   it('searches what is typed without its spaces, with the security token, and opens the report', async () => {
     const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(CLEAN)
     const { wrapper, type, submit, reportWindow } = await mountLookup()
@@ -45,7 +78,7 @@ describe('ThreatLookup', () => {
 
     await submit()
 
-    expect(search).toHaveBeenCalledWith('example.com', 'a-security-token', false)
+    expect(search).toHaveBeenCalledWith('virustotal', 'example.com', 'a-security-token', false)
     expect(wrapper.find('[data-test="threat-last-subject"]').text()).toBe('example.com')
     expect(reportWindow()).not.toBeNull()
     expect(wrapper.find('[data-test="threat-problem"]').exists()).toBe(false)
@@ -135,7 +168,7 @@ describe('ThreatLookup', () => {
     wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
     await flushPromises()
 
-    expect(search).toHaveBeenLastCalledWith('example.com', 'a-security-token', true)
+    expect(search).toHaveBeenLastCalledWith('virustotal', 'example.com', 'a-security-token', true)
     expect(reportWindow()?.querySelector('[data-test="report-checks"]')?.textContent).toBe(
       '2 times',
     )

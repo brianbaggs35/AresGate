@@ -2,6 +2,8 @@ import type { KnownPage, Lookup, Ruling } from '@/api/threatIntel'
 
 /** A domain no engine flagged, as a search that asked VirusTotal answers. */
 export const CLEAN_LOOKUP: Lookup = {
+  provider: 'virustotal',
+  provider_name: 'VirusTotal',
   kind: 'domain',
   subject: 'example.com',
   judgement: 'clean',
@@ -63,6 +65,38 @@ export const KEPT_URL: Lookup = {
   reputation: null,
   details: [],
   link: 'https://www.virustotal.com/gui/url/0f1e2d',
+}
+
+/** An address AlienVault OTX has pulses about, two of which name malware: it counts as malicious. */
+export const OTX_LOOKUP: Lookup = {
+  ...MALICIOUS_LOOKUP,
+  provider: 'otx',
+  provider_name: 'AlienVault OTX',
+  malicious: 2,
+  suspicious: 1,
+  harmless: 0,
+  undetected: 0,
+  reputation: -3,
+  categories: ['Emotet'],
+  details: [{ label: 'Pulses', value: '3' }],
+  link: 'https://otx.alienvault.com/indicator/ip/93.184.216.34',
+}
+
+/** An address GreyNoise has seen scanning the internet, as it answers about an IPv4 address. */
+export const GREYNOISE_LOOKUP: Lookup = {
+  ...MALICIOUS_LOOKUP,
+  provider: 'greynoise',
+  provider_name: 'GreyNoise',
+  judgement: 'suspicious',
+  reported_judgement: 'suspicious',
+  malicious: 0,
+  suspicious: 1,
+  harmless: 0,
+  undetected: 0,
+  reputation: 0,
+  categories: [],
+  details: [{ label: 'Classification', value: 'unknown' }],
+  link: 'https://viz.greynoise.io/ip/93.184.216.34',
 }
 
 /** What is kept: one answer of each of three judgements, newest first. */

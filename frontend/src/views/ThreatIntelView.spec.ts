@@ -33,9 +33,70 @@ async function open(result: IntegrationSummary[] | Error) {
   return { ...mounted, fetch, known, rulings, find }
 }
 
+/** The integrations, with AlienVault OTX and GreyNoise as given, and VirusTotal not connected. */
+function listOf(otx: IntegrationSummary['status'], greynoise: IntegrationSummary['status']) {
+  return [
+    ...listWith('not_connected'),
+    summary({ key: 'otx', name: 'AlienVault OTX', status: otx }),
+    summary({ key: 'greynoise', name: 'GreyNoise', status: greynoise }),
+  ]
+}
+
 describe('ThreatIntelView', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('has a tab for each service, and opens the first that is connected', async () => {
+    const { wrapper, find } = await open(listOf('connected', 'connected'))
+
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
+      'VirusTotal',
+      'AlienVault OTX',
+      'GreyNoise',
+    ])
+    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('otx')
+    expect(wrapper.findComponent(ThreatKnown).props('provider')).toBe('otx')
+    expect(find('threat-intelligence-setup').exists()).toBe(false)
+  })
+
+  it('opens VirusTotal while no service is connected', async () => {
+    const { wrapper } = await open(listOf('not_connected', 'not_connected'))
+
+    expect(wrapper.findComponent(ThreatKnown).props('provider')).toBe('virustotal')
+  })
+
+  it('switches to the service of a tab, with its search and what is kept of it', async () => {
+    const { wrapper, find, known } = await open(listOf('connected', 'connected'))
+    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('otx')
+
+    await find('threat-tab-greynoise').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ThreatLookup).props('provider')).toBe('greynoise')
+    expect(known).toHaveBeenLastCalledWith(expect.objectContaining({ provider: 'greynoise' }))
+    expect(find('threat-intelligence-setup').exists()).toBe(false)
+  })
+
+  it('says which service needs connecting on the tab of one that is not', async () => {
+    const { find } = await open(listOf('connected', 'not_connected'))
+
+    await find('threat-tab-greynoise').trigger('click')
+    await flushPromises()
+
+    expect(find('threat-lookup').exists()).toBe(false)
+    expect(find('threat-intelligence-setup').text()).toContain('GreyNoise is not connected')
+  })
+
+  it("tells the lookup of a service its own limit, not another's", async () => {
+    const list = listOf('connected', 'not_connected').map((item) =>
+      item.key === 'otx'
+        ? { ...item, pause: { until: '2099-01-01T00:00:00Z', daily: true } }
+        : item,
+    )
+    const { find } = await open(list)
+
+    expect(find('threat-notice').text()).toContain("AlienVault OTX's daily limit is reached.")
   })
 
   it('offers the lookup once VirusTotal is connected and its connection is tested', async () => {
@@ -45,13 +106,11 @@ describe('ThreatIntelView', () => {
     expect(find('threat-intelligence-setup').exists()).toBe(false)
   })
 
-  it('says an integration is needed, and links to the Integrations page, while none is connected', async () => {
+  it('says a service needs connecting, and links to the Integrations page, while it is not', async () => {
     const { find, wrapper } = await open(listWith('not_connected'))
 
     expect(find('threat-lookup').exists()).toBe(false)
-    expect(find('threat-intelligence-setup').text()).toContain(
-      'needs at least one threat intelligence integration connected',
-    )
+    expect(find('threat-intelligence-setup').text()).toContain('VirusTotal is not connected')
     const button = wrapper.find('[data-test="threat-intelligence-set-up"]')
     expect(button.text()).toBe('Go to Integrations')
     expect(button.attributes('href')).toBe('/integrations')
