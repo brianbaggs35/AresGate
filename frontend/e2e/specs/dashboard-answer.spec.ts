@@ -1,5 +1,11 @@
 import { expect, test } from '../support'
 
+/** The tag without the mark of a weak one: nginx adds it to a body it compresses but leaves it off
+ * an empty reply, so the same tag reaches the browser written two ways. */
+function strong(tag: string | undefined): string {
+  return (tag ?? '').replace(/^W\//, '')
+}
+
 /** What the browser and the API say to each other about the dashboard's numbers: the answer comes
  * with a tag, a poll that names it gets no body while it is still the answer, and a change that
  * was made shows at once instead of when the seconds that an answer is kept for have passed. */
@@ -20,7 +26,7 @@ test.describe('the dashboard answer', () => {
     const again = await page.request.get('/api/dashboard', { headers: { 'If-None-Match': etag } })
     expect(again.status()).toBe(304)
     expect(await again.text()).toBe('')
-    expect(again.headers()['etag']).toBe(etag)
+    expect(strong(again.headers()['etag'])).toBe(strong(etag))
   })
 
   test('shows what the person just changed on the very next poll', async ({
@@ -37,7 +43,7 @@ test.describe('the dashboard answer', () => {
 
     const next = await page.request.get('/api/dashboard', { headers: { 'If-None-Match': etag } })
     expect(next.status()).toBe(200)
-    expect(next.headers()['etag']).not.toBe(etag)
+    expect(strong(next.headers()['etag'])).not.toBe(strong(etag))
     const body = (await next.json()) as { alerts: { total: number } }
     expect(body.alerts.total).toBe(2)
   })
