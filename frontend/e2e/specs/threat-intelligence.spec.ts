@@ -17,9 +17,13 @@ async function showVirusTotalConnected(page: Page) {
 /** An answer about example.com that no engine flagged, as the API gives one. */
 function answer(overrides: Record<string, unknown> = {}) {
   return {
+    provider: 'virustotal',
+    provider_name: 'VirusTotal',
     kind: 'domain',
     subject: 'example.com',
     judgement: 'clean',
+    reported_judgement: 'clean',
+    ruling: null,
     checked_at: '2026-11-09T12:00:00Z',
     cached: false,
     stale: false,
@@ -47,6 +51,7 @@ const FLAGGED = answer({
   kind: 'ip',
   subject: '203.0.113.9',
   judgement: 'malicious',
+  reported_judgement: 'malicious',
   cached: true,
   malicious: 5,
   suspicious: 1,
@@ -56,7 +61,92 @@ const FLAGGED = answer({
   link: 'https://www.virustotal.com/gui/ip-address/203.0.113.9',
 })
 
+/** The list as it is after AlienVault OTX's connection has been tested. */
+async function showOtxConnected(page: Page) {
+  await page.route('**/api/integrations', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { key: string; status: string }[]
+    for (const item of body) {
+      if (item.key === 'otx') item.status = 'connected'
+    }
+    await route.fulfill({ status: response.status(), json: body })
+  })
+}
+
 test.describe('threat intelligence page', () => {
+  test('has a tab for each service, and says on the tab of one that is not connected that it needs connecting', async ({
+    page,
+    shell,
+  }) => {
+    await page.goto('/')
+    await shell.dashboardLink.waitFor()
+    await shell.goTo('threat-intelligence')
+
+    await expect(page.getByRole('tab')).toHaveText(['VirusTotal', 'AlienVault OTX', 'GreyNoise'])
+
+    await page.getByRole('tab', { name: 'AlienVault OTX' }).click()
+
+    await expect(page.getByTestId('threat-intelligence-setup')).toContainText(
+      'AlienVault OTX is not connected',
+    )
+    await expect(page.locator('[data-test="threat-known"]')).toContainText(
+      'Every answer from AlienVault OTX is kept here',
+    )
+  })
+
+  test('searches AlienVault OTX from its tab and reports the pulses that name the address', async ({
+    page,
+    shell,
+  }) => {
+    await showOtxConnected(page)
+    const sent: { provider: string; subject: string }[] = []
+    await page.route('**/api/threat-intel/lookups', async (route) => {
+      sent.push(route.request().postDataJSON() as { provider: string; subject: string })
+      await route.fulfill({
+        json: answer({
+          provider: 'otx',
+          provider_name: 'AlienVault OTX',
+          kind: 'ip',
+          subject: '203.0.113.9',
+          judgement: 'malicious',
+          reported_judgement: 'malicious',
+          malicious: 2,
+          suspicious: 1,
+          harmless: 0,
+          undetected: 0,
+          reputation: -3,
+          details: [{ label: 'Pulses', value: '3' }],
+          link: 'https://otx.alienvault.com/indicator/ip/203.0.113.9',
+        }),
+      })
+    })
+
+    await page.goto('/')
+    await shell.dashboardLink.waitFor()
+    await shell.goTo('threat-intelligence')
+
+    // The first service that is connected is the one whose tab opens.
+    const panel = page.locator('[data-test="threat-lookup"]')
+    await panel
+      .getByRole('textbox', { name: 'IP address or domain', exact: true })
+      .fill('203.0.113.9')
+    await panel.getByRole('button', { name: 'Search' }).click()
+
+    const report = page.locator('[data-test="threat-report"]')
+    await expect(report.locator('[data-test="report-kind"]')).toHaveText(
+      'AlienVault OTX · IP address',
+    )
+    await expect(report.locator('[data-test="report-summary"]')).toContainText(
+      '3 pulses name it, 2 of them also naming malware',
+    )
+    await expect(report.locator('[data-test="report-bar"]')).toHaveCount(0)
+    await expect(report.getByRole('link', { name: 'Open in AlienVault OTX' })).toHaveAttribute(
+      'href',
+      'https://otx.alienvault.com/indicator/ip/203.0.113.9',
+    )
+    expect(sent).toEqual([{ provider: 'otx', subject: '203.0.113.9' }])
+  })
+
   test('is in the menu, and says an integration must be connected before it can search', async ({
     page,
     shell,
@@ -70,7 +160,7 @@ test.describe('threat intelligence page', () => {
     await shell.expectCurrent('threat-intelligence')
     await expect(page.getByTestId('page-heading')).toHaveText('Threat intelligence')
     await expect(page.getByTestId('threat-intelligence-setup')).toContainText(
-      'needs at least one threat intelligence integration connected',
+      'VirusTotal is not connected',
     )
     await expect(
       page.getByRole('textbox', { name: 'IP address, domain or web address', exact: true }),
@@ -205,9 +295,11 @@ test.describe('threat intelligence page', () => {
         },
       })
     })
-    const sent: { subject: string; refresh?: boolean }[] = []
+    const sent: { provider: string; subject: string; refresh?: boolean }[] = []
     await page.route('**/api/threat-intel/lookups', async (route) => {
-      sent.push(route.request().postDataJSON() as { subject: string; refresh?: boolean })
+      sent.push(
+        route.request().postDataJSON() as { provider: string; subject: string; refresh?: boolean },
+      )
       await route.fulfill({
         json: { ...FLAGGED, cached: false, checks: 2, checked_at: '2026-11-10T12:00:00Z' },
       })
@@ -236,7 +328,7 @@ test.describe('threat intelligence page', () => {
     await known.getByRole('textbox', { name: 'Find in what is kept' }).fill('203.0')
     await known.getByRole('button', { name: 'Find', exact: true }).click()
     await expect(rows).toHaveCount(1)
-    expect(asked.at(-1)).toBe('q=203.0&limit=25')
+    expect(asked.at(-1)).toBe('provider=virustotal&q=203.0&limit=25')
 
     await known
       .getByRole('button', { name: '203.0.113.9, IP address, Malicious. Open its report.' })
@@ -254,7 +346,7 @@ test.describe('threat intelligence page', () => {
     await expect(report.locator('[data-test="report-asked"]')).toContainText(
       'AresGate kept the answer',
     )
-    expect(sent).toEqual([{ subject: '203.0.113.9', refresh: true }])
+    expect(sent).toEqual([{ provider: 'virustotal', subject: '203.0.113.9', refresh: true }])
   })
 
   test('shows the answer kept, and why it is old, when a limit holds a search', async ({

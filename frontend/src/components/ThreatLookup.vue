@@ -4,24 +4,27 @@ import { computed, onUnmounted, ref } from 'vue'
 
 import { ApiError, errorMessage } from '@/api/client'
 import type { Pause } from '@/api/integrations'
-import { searchThreatIntel, type Lookup, type Ruling } from '@/api/threatIntel'
+import { searchThreatIntel, type Lookup, type Provider, type Ruling } from '@/api/threatIntel'
 import SectionCard from '@/components/SectionCard.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { limitNotice } from '@/integrations'
 import { useSessionStore } from '@/stores/session'
-import { withRuling } from '@/threatIntel'
+import { providerOf, withRuling } from '@/threatIntel'
 
 /**
- * Searches VirusTotal for an internet address, a domain or a web address, once the connection is
- * tested. What VirusTotal reports opens in a window over the page, and the last search stays one
- * click away after the window is closed. While VirusTotal's own daily limit or a minute's wait
- * holds, a notice says when searches resume: that is not a failure. A search refused for the
- * spacing between lookups says how long to wait. A search of something AresGate has an answer
- * kept for shows that answer when VirusTotal can't be asked, and the report says why. Check again,
- * in the report, asks VirusTotal for a newer answer than the one kept. The report is where the
- * owner rules the subject safe or suspicious, whatever VirusTotal made of it.
+ * Searches one service (VirusTotal, AlienVault OTX or GreyNoise) for what it answers about, once
+ * its connection is tested: an internet address, a domain or a web address for VirusTotal, an
+ * address or a domain for OTX, an IPv4 address for GreyNoise. What the service reports opens in a
+ * window over the page, and the last search stays one click away after the window is closed. While
+ * the service's own limit or a minute's wait holds, a notice says when searches resume: that is not
+ * a failure. A search refused for the spacing between lookups says how long to wait. A search of
+ * something AresGate has an answer kept for shows that answer when the service can't be asked, and
+ * the report says why. Check again, in the report, asks the service for a newer answer than the one
+ * kept. The report is where the owner rules the subject safe or suspicious, whatever the service
+ * made of it.
  */
-const props = defineProps<{ pause?: Pause | null }>()
+const props = defineProps<{ provider: Provider; pause?: Pause | null }>()
+const service = computed(() => providerOf(props.provider))
 const emit = defineEmits<{ refused: []; answered: []; ruled: [] }>()
 
 const session = useSessionStore()
@@ -33,7 +36,7 @@ const refusal = ref<string | null>(null)
 const last = ref<Lookup | null>(null)
 const reportOpen = ref(false)
 
-// The clock is read again every half minute, so the notice goes once VirusTotal's limit lifts.
+// The clock is read again every half minute, so the notice goes once the service's limit lifts.
 const now = ref(Date.now())
 const clock = setInterval(() => {
   now.value = Date.now()
@@ -44,7 +47,8 @@ onUnmounted(() => {
 
 const notice = computed(() => {
   const pause = props.pause
-  if (pause && Date.parse(pause.until) > now.value) return limitNotice(pause, 'Searches')
+  if (pause && Date.parse(pause.until) > now.value)
+    return limitNotice(pause, 'Searches', service.value.name)
   return refusal.value
 })
 
@@ -53,7 +57,9 @@ async function ask(subject: string, refresh: boolean): Promise<boolean> {
   problem.value = null
   refusal.value = null
   try {
-    last.value = await session.change((token) => searchThreatIntel(subject, token, refresh))
+    last.value = await session.change((token) =>
+      searchThreatIntel(props.provider, subject, token, refresh),
+    )
     reportOpen.value = true
     emit('answered')
     // A kept answer shown because a limit holds: the page asks for the limits again.
@@ -62,7 +68,7 @@ async function ask(subject: string, refresh: boolean): Promise<boolean> {
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       refusal.value = errorMessage(error)
-      // The page asks again for the limits, so that a limit VirusTotal set shows as one.
+      // The page asks again for the limits, so that a limit the service set shows as one.
       emit('refused')
     } else {
       problem.value = errorMessage(error)
@@ -79,7 +85,7 @@ async function search() {
   busy.value = false
 }
 
-/** Shows the last search as the owner ruled it, or as VirusTotal made it again where the ruling was
+/** Shows the last search as the owner ruled it, or as the service made it again where the ruling was
  * taken back, and tells the page, so that what else it shows is read again. */
 function ruled(ruling: Ruling | null) {
   // Only the report of the last search can say this, so there is one.
@@ -87,7 +93,7 @@ function ruled(ruling: Ruling | null) {
   emit('ruled')
 }
 
-/** Asks VirusTotal again about the last search, whatever is kept of it. */
+/** Asks the service again about the last search, whatever is kept of it. */
 async function checkAgain() {
   if (!last.value || checking.value) return
   checking.value = true
@@ -101,14 +107,14 @@ async function checkAgain() {
 <template>
   <SectionCard
     title="Look up a threat"
-    description="Ask VirusTotal about an IP address, a domain or a web address. Every answer is kept, and one that is still fresh comes from what AresGate kept, with no search. Any other search counts toward VirusTotal's limits, so AresGate spaces them out."
+    :description="`Ask ${service.name} about ${service.about}. Every answer is kept, and one that is still fresh comes from what AresGate kept, with no search. Any other search counts toward ${service.name}'s limits, so AresGate spaces them out.`"
     data-test="threat-lookup"
   >
     <form novalidate class="threat-lookup" data-test="threat-form" @submit.prevent="search">
       <v-text-field
         v-model="query"
-        label="IP address, domain or web address"
-        placeholder="203.0.113.7, example.com or https://example.com/login"
+        :label="service.label"
+        :placeholder="service.placeholder"
         :prepend-inner-icon="Search"
         autocomplete="off"
         spellcheck="false"
@@ -157,9 +163,13 @@ async function checkAgain() {
       </v-btn>
     </div>
 
-    <p class="text-body-small text-medium-emphasis threat-lookup__note">
-      If you use a free key, VirusTotal allows it for non-commercial use only. What you search for
-      is added to VirusTotal's shared data, so keep private names out of searches.
+    <p
+      v-if="service.sharing"
+      class="text-body-small text-medium-emphasis threat-lookup__note"
+      data-test="threat-note"
+    >
+      If you use a free key, {{ service.name }} allows it for non-commercial use only.
+      {{ service.sharing }}
     </p>
 
     <ThreatReportDialog

@@ -791,13 +791,19 @@ allowances, not by the background's spacing.
 
 ### What is kept
 
-Every answer is kept for good, one for each address, domain and web address that was asked about,
-and a newer answer takes the older one's place. With it AresGate keeps when the subject was first
+Every answer is kept, one for each address, domain and web address that was asked about, and a
+newer answer takes the older one's place. Where you have switched on **Manage how long data is
+kept** (see [Retention](operations.md#retention-and-the-size-of-the-database)), an answer that was
+last asked for longer ago than the days you chose is forgotten; what you ruled is never. Otherwise
+answers are kept for good. With it AresGate keeps when the subject was first
 asked about, how many answers it has had, and when a newer answer last changed the judgement and
 what it was before. This is AresGate's own record of threat intelligence: the AI reads it, and the
-Threat intelligence page lists it under "What AresGate knows", newest first. The list can be
-searched by part of an address, a name or an owner, and narrowed to one judgement. Reading it
-sends VirusTotal nothing and counts toward no limit (`GET /api/threat-intel/subjects`).
+Threat intelligence page lists it under "What AresGate knows", newest first. The page has a tab for
+each service (VirusTotal, AlienVault OTX and GreyNoise), and a tab lists what that service
+answered. The list can be searched by part of an address, a name or an owner, and narrowed to one
+judgement. Reading it sends the service nothing and counts toward no limit
+(`GET /api/threat-intel/subjects?provider=virustotal|otx|greynoise`, VirusTotal where none is
+named).
 
 VirusTotal has no cheaper way to say whether a report changed than to give the report, so checking
 for an update costs a lookup. AresGate spends those where answers change soonest. An answer that
@@ -850,9 +856,9 @@ Each ruling and each taking back is in the audit log, with what was ruled and no
 
 ### Searching by hand
 
-Once the connection has been tested, the Threat intelligence page has a search. It takes an IP
-address, a domain such as `example.com`, or a web address that starts with `https://` or `http://`,
-and shows what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many
+Once the connection has been tested, the Threat intelligence page has a search, on the tab of the
+service. VirusTotal's takes an IP address, a domain such as `example.com`, or a web address that
+starts with `https://` or `http://`, and shows what VirusTotal reported: whether engines flagged it as malicious or suspicious, how many
 engines gave a verdict and what each said, the community's score, the categories it was given, what
 else VirusTotal says (the owner and country of an address, the registrar of a domain, the title and
 final address of a web address), and a link to its page on VirusTotal's own site.
@@ -874,6 +880,19 @@ an answer kept for the subject, however old, the search shows it, and the report
 checked again. The same goes for a search VirusTotal didn't answer. With nothing kept, the search is
 refused with the seconds to wait (HTTP 429, with a `Retry-After` header). A search that is answered
 from what was kept says so in its report, with the time VirusTotal was asked.
+
+#### Searching the other services
+
+The **AlienVault OTX** and **GreyNoise** tabs search the same way once the service is connected
+(`POST /api/threat-intel/lookups` with `provider` set to `otx` or `greynoise`; VirusTotal where it
+is left out). Each is asked within its own limits and only about what it answers: OTX takes IP
+addresses and domains, not web addresses, and GreyNoise takes IPv4 addresses only. Anything else is
+refused with the reason, and nothing is sent. A report says what the service counts: for OTX the
+pulses that name the subject, and how many of them also name malware, an adversary or an attack
+technique; for GreyNoise its classification, and whether it is a common business service. These
+two services have no engines, so their reports have no bar of them. A link to the service's own
+page is shown where it has one for the subject. What you rule on a subject is one ruling, whichever
+service is asked.
 
 ### What is kept, and what the AI does with it
 

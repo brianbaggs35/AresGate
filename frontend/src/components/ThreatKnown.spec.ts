@@ -1,6 +1,6 @@
 import { ApiError } from '@/api/client'
 import * as threatIntel from '@/api/threatIntel'
-import type { KnownPage, Lookup } from '@/api/threatIntel'
+import type { KnownPage, Lookup, Provider } from '@/api/threatIntel'
 import ThreatKnown from '@/components/ThreatKnown.vue'
 import ThreatReportDialog from '@/components/ThreatReportDialog.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -8,16 +8,23 @@ import {
   CLEAN_LOOKUP,
   KEPT_URL,
   MALICIOUS_LOOKUP,
+  OTX_LOOKUP,
   RULED_LOOKUP,
   SAFE_RULING,
   knownPage,
 } from '@/test/threatIntel'
 
-async function mountKnown(result: KnownPage | Error = knownPage()) {
+async function mountKnown(
+  result: KnownPage | Error = knownPage(),
+  provider: Provider = 'virustotal',
+) {
   const fetch = vi.spyOn(threatIntel, 'fetchKnownThreats')
   if (result instanceof Error) fetch.mockRejectedValue(result)
   else fetch.mockResolvedValue(result)
-  const mounted = await mountWithPlugins(ThreatKnown, { signedIn: 'brian', props: { version: 0 } })
+  const mounted = await mountWithPlugins(ThreatKnown, {
+    signedIn: 'brian',
+    props: { provider, version: 0 },
+  })
   await flushPromises()
   const { wrapper } = mounted
   const find = (selector: string) => wrapper.find(`[data-test="${selector}"]`)
@@ -35,7 +42,12 @@ describe('ThreatKnown', () => {
   it('reads the first page of everything kept', async () => {
     const { fetch } = await mountKnown()
 
-    expect(fetch).toHaveBeenCalledWith({ q: '', judgement: null, limit: 25 })
+    expect(fetch).toHaveBeenCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: null,
+      limit: 25,
+    })
   })
 
   it('lists each answer with its judgement, its kind, what the engines said and when it was checked', async () => {
@@ -62,6 +74,42 @@ describe('ThreatKnown', () => {
       '93.184.216.34, IP address, Malicious. Open its report.',
     )
     expect(find('known-more').exists()).toBe(false)
+  })
+
+  it('reads and describes the answers of the service it was given', async () => {
+    const { fetch, rows, wrapper } = await mountKnown(
+      knownPage({
+        total: 1,
+        items: [OTX_LOOKUP],
+        counts: { malicious: 1, suspicious: 0, clean: 0, unknown: 0 },
+      }),
+      'otx',
+    )
+
+    expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ provider: 'otx' }))
+    expect(rows().map((row) => row.find('[data-test="known-tally"]').text())).toEqual(['3 pulses'])
+    expect(wrapper.find('[data-test="threat-known"]').text()).toContain(
+      'Every answer from AlienVault OTX is kept here',
+    )
+  })
+
+  it('asks the service of the open answer again, not another', async () => {
+    const search = vi.spyOn(threatIntel, 'searchThreatIntel').mockResolvedValue(OTX_LOOKUP)
+    const { rows, find, reportWindow } = await mountKnown(
+      knownPage({
+        total: 1,
+        items: [OTX_LOOKUP],
+        counts: { malicious: 1, suspicious: 0, clean: 0, unknown: 0 },
+      }),
+      'otx',
+    )
+    await rows()[0]?.trigger('click')
+    await flushPromises()
+    reportWindow()?.querySelector<HTMLElement>('[data-test="report-refresh"]')?.click()
+    await flushPromises()
+
+    expect(search).toHaveBeenCalledWith('otx', '93.184.216.34', 'a-security-token', true)
+    expect(find('known-problem').exists()).toBe(false)
   })
 
   it('marks an answer that is due to be checked again', async () => {
@@ -91,14 +139,24 @@ describe('ThreatKnown', () => {
     await find('known-filter-malicious').trigger('click')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: '', judgement: 'malicious', limit: 25 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: 'malicious',
+      limit: 25,
+    })
     expect(find('known-filter-malicious').attributes('aria-pressed')).toBe('true')
     expect(find('known-filter-all').attributes('aria-pressed')).toBe('false')
 
     await find('known-filter-all').trigger('click')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: '', judgement: null, limit: 25 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: null,
+      limit: 25,
+    })
   })
 
   it('finds what is typed, without its spaces, and everything again once it is cleared', async () => {
@@ -108,12 +166,22 @@ describe('ThreatKnown', () => {
     await find('known-form').trigger('submit')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: 'example', judgement: null, limit: 25 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: 'example',
+      judgement: null,
+      limit: 25,
+    })
 
     await wrapper.find('[data-test="known-text"] .v-field__clearable .v-icon').trigger('click')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: '', judgement: null, limit: 25 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: null,
+      limit: 25,
+    })
   })
 
   it('says when nothing kept matches, and keeps the search and filters there', async () => {
@@ -153,7 +221,12 @@ describe('ThreatKnown', () => {
     await find('known-more').trigger('click')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: '', judgement: null, limit: 50 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: null,
+      limit: 50,
+    })
   })
 
   it('starts from the first page again when the filter changes', async () => {
@@ -164,7 +237,12 @@ describe('ThreatKnown', () => {
     await find('known-filter-clean').trigger('click')
     await flushPromises()
 
-    expect(fetch).toHaveBeenLastCalledWith({ q: '', judgement: 'clean', limit: 25 })
+    expect(fetch).toHaveBeenLastCalledWith({
+      provider: 'virustotal',
+      q: '',
+      judgement: 'clean',
+      limit: 25,
+    })
   })
 
   it('reads the list again when the page says something was answered', async () => {
@@ -178,7 +256,10 @@ describe('ThreatKnown', () => {
 
   it('shows a placeholder while the list is on its way', async () => {
     vi.spyOn(threatIntel, 'fetchKnownThreats').mockReturnValue(new Promise(() => undefined))
-    const { wrapper } = await mountWithPlugins(ThreatKnown, { signedIn: 'brian' })
+    const { wrapper } = await mountWithPlugins(ThreatKnown, {
+      signedIn: 'brian',
+      props: { provider: 'virustotal' },
+    })
 
     expect(wrapper.find('[data-test="known-loading"]').exists()).toBe(true)
   })
@@ -239,7 +320,7 @@ describe('ThreatKnown', () => {
     wrapper.findComponent(ThreatReportDialog).vm.$emit('refresh')
     await flushPromises()
 
-    expect(search).toHaveBeenCalledWith('93.184.216.34', 'a-security-token', true)
+    expect(search).toHaveBeenCalledWith('virustotal', '93.184.216.34', 'a-security-token', true)
     expect(reportWindow()?.querySelector('[data-test="report-checks"]')?.textContent).toBe(
       '2 times',
     )

@@ -310,8 +310,10 @@ log and the alert log, 90 for the record of AI requests, and 365 for the activit
 page lists them. Switch **Manage how long data is kept** on to use what you choose instead:
 
 - **Keep it for a number of days** (1 to 3650, 30 by default) sets one time for events,
-  measurements, the API log, the record of AI requests and the log of alerts sent. An integration
-  that you gave its own time on the **Data** page keeps that time. The activity log, which is the
+  measurements, the API log, the record of AI requests and the log of alerts sent, and the answers
+  kept from threat intelligence (an answer goes once it was last asked for longer ago than this;
+  what you ruled safe or suspicious is never removed). An integration that you gave its own time
+  on the **Data** page keeps that time. The activity log, which is the
   record of what was done in AresGate, keeps its own period (`ARESGATE_AUDIT_RETENTION_DAYS`).
 - **Keep everything forever** deletes nothing because of its age or the size of the database, the
   activity log included, and stores events and measurements however old they are. The database

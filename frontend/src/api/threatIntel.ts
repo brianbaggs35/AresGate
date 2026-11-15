@@ -3,7 +3,10 @@ import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 /** What a search is about: an internet address, a domain, or a web address. */
 export type SubjectKind = 'ip' | 'domain' | 'url'
 
-/** What VirusTotal makes of the subject, from the counts of its engines. */
+/** The threat intelligence services AresGate asks, by the key of their integration. */
+export type Provider = 'virustotal' | 'otx' | 'greynoise'
+
+/** What a service makes of the subject, from the counts of its sources. */
 export type Judgement = 'malicious' | 'suspicious' | 'clean' | 'unknown'
 
 /** What the owner of the network says of a subject, whatever the services made of it. */
@@ -25,14 +28,17 @@ export interface Ruling {
 /** What is known of a ruling where it was not read as one: what was ruled, and why. */
 export type Ruled = Pick<Ruling, 'verdict' | 'note'> & Partial<Pick<Ruling, 'set_at'>>
 
-/** One thing VirusTotal says beyond the counts, such as who owns an address. */
+/** One thing a service says beyond the counts, such as who owns an address. */
 export interface Detail {
   label: string
   value: string
 }
 
-/** What VirusTotal reported of a search, with the counts its judgement is made from. */
+/** What a service reported of a search, with the counts its judgement is made from. */
 export interface Lookup {
+  /** Which service answered, as its key and as it is called. */
+  provider: Provider
+  provider_name: string
   kind: SubjectKind
   /** The subject as it was searched for. */
   subject: string
@@ -71,22 +77,24 @@ export interface Lookup {
   reputation: number | null
   categories: string[]
   details: Detail[]
-  /** The subject's page on VirusTotal's own website. */
-  link: string
+  /** The subject's page on the service's own website, or null if it has none for this subject. */
+  link: string | null
 }
 
-/** Searches VirusTotal for an address, a domain or a web address. A subject whose answer is still
- * fresh is answered from what AresGate kept, and no search is sent, unless `refresh` asks for one.
- * Any other search counts toward the limits of the access level. One that a limit holds is answered
- * from what was kept, with a notice, or refused (with the time to wait) if nothing is kept. */
+/** Searches a service for an address, a domain or a web address, as far as the service answers
+ * about that kind. A subject whose answer is still fresh is answered from what AresGate kept, and
+ * no search is sent, unless `refresh` asks for one. Any other search counts toward the limits of
+ * the service's access level. One that a limit holds is answered from what was kept, with a
+ * notice, or refused (with the time to wait) if nothing is kept. */
 export function searchThreatIntel(
+  provider: Provider,
   subject: string,
   csrfToken: string,
   refresh = false,
 ): Promise<Lookup> {
   return apiPost<Lookup>(
     '/threat-intel/lookups',
-    refresh ? { subject, refresh } : { subject },
+    refresh ? { provider, subject, refresh } : { provider, subject },
     csrfToken,
   )
 }
@@ -104,6 +112,8 @@ export interface KnownPage {
 }
 
 export interface KnownQuery {
+  /** Which service's answers to read. VirusTotal's, where none is named. */
+  provider?: Provider
   /** Part of an address, a name or an owner. */
   q?: string
   kind?: SubjectKind | null
@@ -112,9 +122,10 @@ export interface KnownQuery {
   offset?: number
 }
 
-/** The answers AresGate has kept. Reading them asks VirusTotal nothing. */
+/** The answers AresGate has kept of one service. Reading them asks the service nothing. */
 export function fetchKnownThreats(query: KnownQuery = {}): Promise<KnownPage> {
   const params = new URLSearchParams()
+  if (query.provider) params.set('provider', query.provider)
   if (query.q) params.set('q', query.q)
   if (query.kind) params.set('kind', query.kind)
   if (query.judgement) params.set('judgement', query.judgement)

@@ -191,7 +191,7 @@ onMounted(load)
     <template v-if="draft.managed">
       <SectionCard
         title="How long to keep data"
-        description="Events and measurements from your integrations, the API log, the record of AI requests and of alerts sent."
+        description="Events and measurements from your integrations, the API log, the record of AI requests and of alerts sent, and the answers kept from threat intelligence. What you ruled safe or suspicious is never removed."
         data-test="retention-time-card"
       >
         <v-radio-group
