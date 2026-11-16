@@ -45,7 +45,7 @@ class Template:
     proposes: bool = False
     # Whether it may ask another kind of agent to look into something (a hand-off, recorded and
     # limited: app/agents/handoffs.py), and whether the steps it plans wait for the owner to
-    # approve or dismiss them (app/agents/steps.py).
+    # approve or dismiss them (app/agents/plans.py).
     hands_off: bool = False
     plans: bool = False
     needs: tuple[str, ...] = ()
@@ -754,3 +754,9 @@ HANDOFF_KINDS: Final = tuple(item.key for item in TEMPLATES if not item.active)
 
 def template(key: str) -> Template | None:
     return next((item for item in TEMPLATES if item.key == key), None)
+
+
+def name_of(key: str) -> str:
+    """What a kind of agent is called, or the key itself for one that is not known."""
+    found = template(key)
+    return found.name if found else key

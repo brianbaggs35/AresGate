@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.api import (
     account,
+    agent_work,
     agents,
     ai,
     ai_chat,
@@ -65,6 +66,7 @@ api_router.include_router(assets.router)
 api_router.include_router(baselines.router)
 api_router.include_router(devices.router)
 api_router.include_router(flow.router)
+api_router.include_router(agent_work.router)
 api_router.include_router(agents.router)
 api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)

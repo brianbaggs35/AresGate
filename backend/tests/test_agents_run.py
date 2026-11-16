@@ -885,6 +885,8 @@ def test_every_template_names_only_tools_that_exist_and_lookups_the_model_may_as
             "findings",
             "lookups",
             *(["rejects"] if item.proposes else []),
+            *(["handoffs"] if item.hands_off else []),
+            *(["plan"] if item.plans else []),
         ]
 
 

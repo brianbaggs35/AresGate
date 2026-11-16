@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import wakeups
-from app.agents import catalog, proposals
+from app.agents import catalog, plans, proposals
 from app.models import Agent, AgentRun
 
 # How long a run is kept after it is over.
@@ -116,3 +116,4 @@ def prune(db: Session, now: datetime) -> None:
         )
     )
     proposals.forget(db, now)
+    plans.forget(db, now)
