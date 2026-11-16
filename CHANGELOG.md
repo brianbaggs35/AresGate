@@ -14,6 +14,11 @@ Every release's notes are here, newest first. The format follows
   has a new *Denied suggestions* card that lists them, with *Forget* for each and *Forget all*. See
   [the assistant panel](DOCS/ui.md).
 
+- **Clear an integration's API log.** The API log on an integration's page has a *Clear the log*
+  button, which asks first and then deletes every request kept of that integration. It is in the
+  audit log, and the log fills again with what AresGate asks next. See
+  [Integrations](DOCS/ui.md#integrations).
+
 ## 0.1.8
 
 ### Added

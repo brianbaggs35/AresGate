@@ -1,20 +1,22 @@
 <script setup lang="ts">
-import { CircleAlert, CircleCheck, Clock, RefreshCw } from '@lucide/vue'
+import { CircleAlert, CircleCheck, Clock, RefreshCw, Trash2 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/client'
-import { fetchCalls, type Call, type CallQuery } from '@/api/integrations'
+import { clearCalls, fetchCalls, type Call, type CallQuery } from '@/api/integrations'
 import ApiCallDialog from '@/components/ApiCallDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import SectionCard from '@/components/SectionCard.vue'
-import { formatTimestamp } from '@/format'
+import { formatCount, formatTimestamp } from '@/format'
 import { useSessionStore } from '@/stores/session'
 
 /**
  * Every request AresGate made to an integration, newest first. Each is a button that opens all
  * that was kept of it (`ApiCallDialog`). Nothing that is a secret is recorded, and what the system
- * answered is its own text, so it is shown as plain text and nothing more.
+ * answered is its own text, so it is shown as plain text and nothing more. The whole log can be
+ * cleared, after asking.
  */
 const props = defineProps<{
   integration: string
@@ -112,6 +114,29 @@ async function load(before?: number) {
   }
 }
 
+/** The question before the log is cleared, and the clearing under way. */
+const asking = ref(false)
+const clearing = ref(false)
+const clearFailure = ref<string | null>(null)
+const cleared = ref<number | null>(null)
+
+async function clearLog() {
+  clearing.value = true
+  clearFailure.value = null
+  try {
+    const result = await session.change((token) => clearCalls(props.integration, token))
+    cleared.value = result.cleared
+    asking.value = false
+    selected.value = null
+    await load()
+  } catch (failure) {
+    clearFailure.value = errorMessage(failure)
+    asking.value = false
+  } finally {
+    clearing.value = false
+  }
+}
+
 function clearFilters() {
   Object.assign(filters, { connection: 'all', result: 'all', method: 'all', period: 'all' })
 }
@@ -184,7 +209,42 @@ onMounted(() => load())
       >
         Refresh
       </v-btn>
+      <v-btn
+        variant="text"
+        :prepend-icon="Trash2"
+        :disabled="clearing || (calls !== null && calls.length === 0 && !filtered)"
+        data-test="log-clear-all"
+        @click="asking = true"
+      >
+        Clear the log
+      </v-btn>
     </template>
+
+    <v-alert
+      v-if="cleared !== null"
+      type="success"
+      variant="tonal"
+      closable
+      class="mb-4"
+      data-test="log-cleared"
+      @click:close="cleared = null"
+    >
+      {{
+        cleared === 0
+          ? 'The log was already empty.'
+          : `Cleared ${formatCount(cleared)} ${cleared === 1 ? 'request' : 'requests'}.`
+      }}
+    </v-alert>
+    <v-alert
+      v-if="clearFailure"
+      type="error"
+      variant="tonal"
+      role="alert"
+      class="mb-4"
+      data-test="log-clear-failure"
+    >
+      {{ clearFailure }}
+    </v-alert>
 
     <div class="api-log__filters">
       <v-select
@@ -300,6 +360,17 @@ onMounted(() => load())
         Clear the filters
       </v-btn>
     </EmptyState>
+    <ConfirmDialog
+      v-model="asking"
+      title="Clear the API log?"
+      confirm-label="Clear the log"
+      destructive
+      :busy="clearing"
+      @confirm="clearLog"
+    >
+      Every request kept of this system is deleted, filtered out or not. It can't be undone, and
+      AresGate goes on logging the requests it makes from now on.
+    </ConfirmDialog>
     <ApiCallDialog
       v-model="sheet"
       :integration="integration"

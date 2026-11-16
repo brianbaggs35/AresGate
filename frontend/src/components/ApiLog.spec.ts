@@ -1,3 +1,4 @@
+import type { VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { VSelect } from 'vuetify/components'
 
@@ -6,6 +7,7 @@ import * as integrationsApi from '@/api/integrations'
 import type { Call, CallPage } from '@/api/integrations'
 import ApiCallDialog from '@/components/ApiCallDialog.vue'
 import ApiLog from '@/components/ApiLog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { call, callFull } from '@/test/integrations'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -464,5 +466,102 @@ describe('ApiLog', () => {
     expect(fetch).toHaveBeenCalledOnce()
     expect(wrapper.find('.v-skeleton-loader').exists()).toBe(true)
     expect(wrapper.find('[data-test="log-calls"]').exists()).toBe(false)
+  })
+
+  describe('clearing the log', () => {
+    const confirm = async (wrapper: Pick<VueWrapper, 'findComponent'>) => {
+      wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+      await flushPromises()
+    }
+
+    it('asks first, and deletes nothing until it is confirmed', async () => {
+      const clear = vi.spyOn(integrationsApi, 'clearCalls')
+      const { wrapper, click } = await open()
+
+      await click('log-clear-all')
+
+      expect(wrapper.findComponent(ConfirmDialog).props('modelValue')).toBe(true)
+      expect(clear).not.toHaveBeenCalled()
+    })
+
+    it('clears the log, says how many requests went, and loads the empty log', async () => {
+      const clear = vi.spyOn(integrationsApi, 'clearCalls').mockResolvedValue({ cleared: 3 })
+      const { wrapper, click, fetch, find } = await open()
+      fetch.mockResolvedValue(page([]))
+
+      await click('log-clear-all')
+      await confirm(wrapper)
+
+      expect(clear).toHaveBeenCalledWith('ntopng', expect.any(String))
+      expect(find('log-cleared').text()).toBe('Cleared 3 requests.')
+      expect(find('log-empty').exists()).toBe(true)
+      expect(wrapper.findComponent(ConfirmDialog).props('modelValue')).toBe(false)
+    })
+
+    it('says so for one request, and for none', async () => {
+      const clear = vi.spyOn(integrationsApi, 'clearCalls').mockResolvedValue({ cleared: 1 })
+      const { wrapper, click, find } = await open()
+
+      await click('log-clear-all')
+      await confirm(wrapper)
+      expect(find('log-cleared').text()).toBe('Cleared 1 request.')
+
+      clear.mockResolvedValue({ cleared: 0 })
+      await click('log-clear-all')
+      await confirm(wrapper)
+      expect(find('log-cleared').text()).toBe('The log was already empty.')
+    })
+
+    it('puts away the sheet of a request that is gone', async () => {
+      vi.spyOn(integrationsApi, 'clearCalls').mockResolvedValue({ cleared: 1 })
+      vi.spyOn(integrationsApi, 'fetchCall').mockResolvedValue(callFull())
+      const { wrapper, click, fetch, rows } = await open()
+      await rows()[0]?.trigger('click')
+      await flushPromises()
+      fetch.mockResolvedValue(page([]))
+
+      await click('log-clear-all')
+      await confirm(wrapper)
+
+      expect(wrapper.findComponent(ApiCallDialog).props('modelValue')).toBe(false)
+    })
+
+    it('says why it could not clear, and keeps what is listed', async () => {
+      vi.spyOn(integrationsApi, 'clearCalls').mockRejectedValue(
+        new ApiError(500, 'Broke.', 'server_error'),
+      )
+      const { wrapper, click, find, rows } = await open()
+
+      await click('log-clear-all')
+      await confirm(wrapper)
+
+      expect(find('log-clear-failure').text()).toBe('Broke.')
+      expect(rows()).toHaveLength(1)
+      expect(wrapper.findComponent(ConfirmDialog).props('modelValue')).toBe(false)
+    })
+
+    it('can be put away when the question is, and the note can be closed', async () => {
+      vi.spyOn(integrationsApi, 'clearCalls').mockResolvedValue({ cleared: 2 })
+      const { wrapper, click, find } = await open()
+
+      await click('log-clear-all')
+      wrapper.findComponent(ConfirmDialog).vm.$emit('update:modelValue', false)
+      await flushPromises()
+      expect(wrapper.findComponent(ConfirmDialog).props('modelValue')).toBe(false)
+
+      await click('log-clear-all')
+      await confirm(wrapper)
+      await wrapper.find('[data-test="log-cleared"] button').trigger('click')
+      await flushPromises()
+      expect(find('log-cleared').exists()).toBe(false)
+    })
+
+    it('cannot clear a log that is empty, but can when a filter hides what is there', async () => {
+      const { find, choose } = await open(page([]))
+      expect(find('log-clear-all').attributes('disabled')).toBeDefined()
+
+      await choose('result', 'failed')
+      expect(find('log-clear-all').attributes('disabled')).toBeUndefined()
+    })
   })
 })

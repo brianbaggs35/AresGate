@@ -1,5 +1,6 @@
 import * as client from '@/api/client'
 import {
+  clearCalls,
   disconnectIntegration,
   fetchCall,
   fetchCalls,
@@ -126,6 +127,12 @@ describe('integrations', () => {
   })
 
   describe('the API log', () => {
+    it('clears it', async () => {
+      const del = vi.spyOn(client, 'apiDelete').mockResolvedValue({ cleared: 4 })
+      await expect(clearCalls('opnsense', TOKEN)).resolves.toEqual({ cleared: 4 })
+      expect(del).toHaveBeenCalledWith('/integrations/opnsense/calls', TOKEN)
+    })
+
     it('opens one request', async () => {
       const get = vi.spyOn(client, 'apiGet').mockResolvedValue({ id: 7 })
       await expect(fetchCall('opnsense', 7)).resolves.toEqual({ id: 7 })

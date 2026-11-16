@@ -59,6 +59,8 @@ export class IntegrationPage {
   readonly logRefresh: Locator
   readonly logOlder: Locator
   readonly logClear: Locator
+  readonly logClearAll: Locator
+  readonly logCleared: Locator
   /** The sheet that opens a request of the log: everything that was kept of it. */
   readonly callSheet: Locator
   readonly sheetTitle: Locator
@@ -121,6 +123,8 @@ export class IntegrationPage {
     this.logRefresh = page.getByTestId('log-refresh')
     this.logOlder = page.getByTestId('log-older')
     this.logClear = page.getByTestId('log-clear')
+    this.logClearAll = page.getByTestId('log-clear-all')
+    this.logCleared = page.getByTestId('log-cleared')
     this.callSheet = page.getByTestId('call-sheet')
     this.sheetTitle = page.getByTestId('sheet-title')
     this.sheetAddress = page.getByTestId('sheet-address')

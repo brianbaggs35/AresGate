@@ -57,6 +57,7 @@ def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> 
         ("post", f"{BASE}/opnsense/certificate"),
         ("get", f"{BASE}/opnsense/calls"),
         ("get", f"{BASE}/opnsense/calls/1"),
+        ("delete", f"{BASE}/opnsense/calls"),
     ):
         response = client.request(method, path)
         assert response.status_code == 401, (method, path)
@@ -178,6 +179,7 @@ def test_an_integration_that_does_not_exist_is_not_found(
         ("post", f"{BASE}/nothing/certificate", {"url": "https://192.168.1.1"}),
         ("get", f"{BASE}/nothing/calls", None),
         ("get", f"{BASE}/nothing/calls/1", None),
+        ("delete", f"{BASE}/nothing/calls", None),
     ]
     for method, path, body in requests:
         response = client.request(method, path, headers=headers(csrf_token), json=body)
@@ -378,6 +380,47 @@ def test_a_test_that_works_marks_it_connected_and_logs_the_call(
     event = session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc())).first()
     assert event is not None
     assert (event.action, event.outcome) == (Action.INTEGRATION_TESTED, Outcome.SUCCESS)
+
+
+def test_the_log_of_one_integration_is_cleared_and_only_that_one(
+    client: TestClient, csrf_token: str, serve: Serve, session: Session
+) -> None:
+    server = serve(lambda seen: Answer())
+    put(client, csrf_token, "crowdsec", crowdsec_body(server))
+    client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token))
+    other = ApiCall(
+        occurred_at=utcnow(),
+        integration="wazuh",
+        connection="manager",
+        method="GET",
+        path="/x",
+        status_code=200,
+        duration_ms=1,
+    )
+    session.add(other)
+    session.commit()
+    assert client.get(f"{BASE}/crowdsec/calls").json()["calls"]
+
+    response = client.delete(f"{BASE}/crowdsec/calls", headers=headers(csrf_token))
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared": 1}
+    assert client.get(f"{BASE}/crowdsec/calls").json()["calls"] == []
+    assert len(client.get(f"{BASE}/wazuh/calls").json()["calls"]) == 1
+    event = session.scalars(
+        select(AuditEvent).where(AuditEvent.action == Action.INTEGRATION_LOG_CLEARED)
+    ).one()
+    assert event.detail == {"integration": "crowdsec", "requests": 1}
+
+
+def test_clearing_an_empty_log_says_so_and_a_change_needs_the_token(
+    client: TestClient, csrf_token: str
+) -> None:
+    assert client.delete(f"{BASE}/crowdsec/calls").status_code == 403
+
+    response = client.delete(f"{BASE}/crowdsec/calls", headers=headers(csrf_token))
+
+    assert response.json() == {"cleared": 0}
 
 
 def test_one_request_is_opened_to_show_everything_kept_of_it(

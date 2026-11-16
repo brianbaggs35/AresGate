@@ -102,6 +102,18 @@ def test_a_long_list_is_paged(session: Session) -> None:
     assert third.next_before is None
 
 
+def test_clearing_deletes_every_call_of_one_integration_and_no_other(session: Session) -> None:
+    mine = [add(session), add(session, connection="other", at=NOW - timedelta(days=400))]
+    kept = add(session, integration="wazuh")
+
+    assert apilog.clear(session, "opnsense") == len(mine)
+    session.commit()
+
+    assert apilog.list_calls(session, "opnsense").calls == []
+    assert ids(apilog.list_calls(session, "wazuh")) == [kept]
+    assert apilog.clear(session, "opnsense") == 0
+
+
 def test_the_calls_past_the_retention_period_are_deleted(
     session: Session, settings: Settings
 ) -> None:
