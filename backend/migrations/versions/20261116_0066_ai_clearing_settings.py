@@ -60,16 +60,21 @@ def upgrade() -> None:
         if_not_exists=True,
     )
     # An owner who had turned the AI giving verdicts on keeps it on, as sure as they had asked it
-    # to be, and still able to clear what it could (high, short of critical).
-    op.execute(
-        """
-        INSERT INTO ai_clearing_settings (id, mode, minimum, ceiling, updated_at)
-        SELECT 1, 'automatic', LEAST(GREATEST(clear_from, 50), 99), 'high', now()
-        FROM threat_settings
-        WHERE ai_gives_verdicts
-        ON CONFLICT (id) DO NOTHING
-        """
-    )
+    # to be, and still able to clear what it could (high, short of critical). Run again on a
+    # database that has the change, there is no switch left to read.
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("threat_settings")
+    }
+    if "ai_gives_verdicts" in columns:
+        op.execute(
+            """
+            INSERT INTO ai_clearing_settings (id, mode, minimum, ceiling, updated_at)
+            SELECT 1, 'automatic', LEAST(GREATEST(clear_from, 50), 99), 'high', now()
+            FROM threat_settings
+            WHERE ai_gives_verdicts
+            ON CONFLICT (id) DO NOTHING
+            """
+        )
     op.drop_column("threat_settings", "ai_gives_verdicts", if_exists=True)
 
 
