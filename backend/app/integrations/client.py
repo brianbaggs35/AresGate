@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 # More than any answer AresGate asks for is, so a system that never stops sending can't fill
 # the memory.
 MAX_BODY = 2 * 1024 * 1024
+ONLY_READ = "This service is only read, so AresGate sends it nothing that changes."
+TOO_LONG = "It answered with more than AresGate reads."
 # The whole request, from connecting to the last byte.
 DEADLINE = 20.0
 # How long to wait for the next of an answer, which a model that is thinking takes longer to start.
@@ -336,9 +338,7 @@ class ApiClient:
         seen: calldetail.Seen | None = None
         try:
             if self._policy.read_only and method.upper() != "GET":
-                raise CallFailed(
-                    "This service is only read, so AresGate sends it nothing that changes."
-                )
+                raise CallFailed(ONLY_READ)
             built = self._http.build_request(method, path, json=json_body, headers=headers)
             async with asyncio.timeout(self._deadline):
                 response = await self._http.send(built, stream=True)
@@ -355,7 +355,7 @@ class ApiClient:
                         async for line in response.aiter_lines():
                             read += len(line) + 1
                             if read > MAX_BODY:
-                                raise CallFailed("It answered with more than AresGate reads.")
+                                raise CallFailed(TOO_LONG)
                             if len(kept) < calldetail.EXCERPT_CHARS:
                                 kept += line.encode() + b"\n"
                             yield line
@@ -382,9 +382,7 @@ class ApiClient:
         started: float,
     ) -> Reply:
         if self._policy.read_only and built.method != "GET":
-            raise CallFailed(
-                "This service is only read, so AresGate sends it nothing that changes."
-            )
+            raise CallFailed(ONLY_READ)
         async with asyncio.timeout(self._deadline):
             response = await self._http.send(built, stream=True, auth=auth)
             try:
@@ -396,7 +394,7 @@ class ApiClient:
                     body += chunk
                     if len(body) > limit:
                         if keep_bytes is None:
-                            raise CallFailed("It answered with more than AresGate reads.")
+                            raise CallFailed(TOO_LONG)
                         del body[limit:]
                         cut = True
                         break
@@ -480,9 +478,7 @@ class ApiClient:
         path = request.url.path
         try:
             if self._policy.read_only and method != "GET":
-                raise CallFailed(
-                    "This service is only read, so AresGate sends it nothing that changes."
-                )
+                raise CallFailed(ONLY_READ)
             response = await self._transport.handle_async_request(request)
             response.request = request
         except Exception as problem:
@@ -564,7 +560,7 @@ class _Watched(httpx2.AsyncByteStream):
             async for chunk in self._body:
                 self._read += len(chunk)
                 if self._read > MAX_BODY:
-                    raise CallFailed("It answered with more than AresGate reads.")
+                    raise CallFailed(TOO_LONG)
                 if len(self._kept) < calldetail.EXCERPT_CHARS:
                     self._kept += chunk
                 yield chunk
