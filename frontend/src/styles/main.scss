@@ -186,17 +186,4 @@
       border-inline-start: 4px solid CanvasText;
     }
   }
-
-  // When the system asks for less motion, nothing moves for long: whatever animates (the hero's
-  // sweep, a pulsing alarm, a fade in) ends at once, and nothing repeats.
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
-    }
-  }
 }

@@ -796,15 +796,15 @@ the keyboard are not in it yet.
   column until the page has room for two. A *Wall display* scales with the screen (`zoom` 1.25,
   then 1.5, 2 and 3 from 1920, 2560 and 3840 px wide).
 - **Tables.** A table that can be wider than its box goes in `DataTable`: it scrolls sideways in its
-  own region (never the page), the region is focusable and named, an edge fades where there is more
-  that way, and `sticky-first` keeps the first column while the rest scrolls. A table that turns
+  own region (never the page), the region is a named `section` (what scrolls holds controls, so the
+  keyboard reaches it), an edge fades where there is more that way, and `sticky-first` keeps the first column while the rest scrolls. A table that turns
   into cards on a narrow box does it with a container query (`DeviceConnections`), not a media
   query, so it follows its box and not the window. The logs table keeps its heading under the top
   bar, so it is not in a scrolling box (a sticky heading cannot be, inside one).
 - **High contrast and motion.** Windows high contrast removes backgrounds and shadows, so what a
   chip, a card, a row or the page you are on in the menu says is also in a border, an icon or
-  words (`styles/main.scss`), and a chart's series keep their textures. Every animation is behind
-  `prefers-reduced-motion`, and the global rule there is a net: nothing runs for long or repeats.
+  words (`styles/main.scss`), and a chart's series keep their textures. Every animation that repeats
+  is behind `prefers-reduced-motion: no-preference`, and the sweep checks that none is left running.
 - **Numbers and long text.** Cells, times, figures and counts in chips use `tabular-nums` (set once,
   in `styles/main.scss`). Text that is cut off with an ellipsis has the whole of it as a `title`, and
   is whole in the page for a screen reader.

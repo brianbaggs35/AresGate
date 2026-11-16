@@ -142,17 +142,19 @@ test.describe('every main page, at every size', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await arrive(page, '/')
 
-    const running = await page.evaluate(
-      () =>
-        document
-          .getAnimations()
-          .filter(
-            (animation) =>
-              animation.playState === 'running' &&
-              animation.effect?.getComputedTiming().iterations === Infinity,
-          ).length,
-    )
+    const running = () =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === 'running' &&
+                animation.effect?.getComputedTiming().iterations === Infinity,
+            ).length,
+      )
 
-    expect(running).toBe(0)
+    // A spinner that is still loading is allowed to finish and go.
+    await expect.poll(running).toBe(0)
   })
 })
