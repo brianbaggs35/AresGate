@@ -12,6 +12,10 @@ describe('DensityToggle', () => {
     )
     expect(wrapper.find('[data-test="density-comfortable"]').classes()).toContain('v-btn--active')
     expect(wrapper.find('[data-test="density-compact"]').classes()).not.toContain('v-btn--active')
+    expect(wrapper.find('[data-test="density-comfortable"]').attributes('aria-pressed')).toBe(
+      'true',
+    )
+    expect(wrapper.find('[data-test="density-compact"]').attributes('aria-pressed')).toBe('false')
   })
 
   it('makes the list compact, and roomy again', async () => {

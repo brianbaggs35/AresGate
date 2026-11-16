@@ -26,6 +26,7 @@ const density = useDensityStore()
       value="comfortable"
       :icon="Rows3"
       aria-label="Comfortable"
+      :aria-pressed="density.preference === 'comfortable'"
       title="Comfortable"
       data-test="density-comfortable"
     />
@@ -33,6 +34,7 @@ const density = useDensityStore()
       value="compact"
       :icon="Rows4"
       aria-label="Compact"
+      :aria-pressed="density.preference === 'compact'"
       title="Compact"
       data-test="density-compact"
     />
