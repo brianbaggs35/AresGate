@@ -103,7 +103,7 @@ describe('BaselinesView', () => {
 
   it('opens the places of a device, and puts it in the address', async () => {
     const { wrapper, router, find } = await open()
-    expect(find('places-card').exists()).toBe(false)
+    expect(find('baseline-places').exists()).toBe(false)
 
     await wrapper.find('[data-test="talker"]').trigger('click')
     await flushPromises()

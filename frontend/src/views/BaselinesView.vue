@@ -204,12 +204,7 @@ function open(address: string | null) {
       </template>
     </SectionCard>
 
-    <BaselinePlaces
-      v-if="device"
-      :address="device"
-      data-test="places-card"
-      @changed="loadTalkers"
-    />
+    <BaselinePlaces v-if="device" :address="device" @changed="loadTalkers" />
   </AppPage>
 </template>
 
