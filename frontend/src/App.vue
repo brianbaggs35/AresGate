@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 
+import ChartPatterns from '@/charts/ChartPatterns.vue'
 import AppBar from '@/components/AppBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AssistantHost from '@/components/AssistantHost.vue'
@@ -14,6 +15,7 @@ import { usePolling } from '@/polling'
 import { useShortcuts } from '@/shortcuts'
 import { useAssistantStore } from '@/stores/assistant'
 import { useDensityStore } from '@/stores/density'
+import { usePatternsStore } from '@/stores/patterns'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -90,6 +92,16 @@ watch(
   { immediate: true },
 )
 
+// Whether charts are textured as well as colored is the owner's choice too, kept the same way.
+const patterns = usePatternsStore()
+watch(
+  () => patterns.preference,
+  (preference) => {
+    document.documentElement.dataset.patterns = preference
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   window.addEventListener('keydown', paletteShortcut)
 })
@@ -126,6 +138,7 @@ function skipToContent() {
 
 <template>
   <v-app>
+    <ChartPatterns />
     <a href="#main-content" class="skip-link" data-test="skip-link" @click.prevent="skipToContent">
       Skip to the page
     </a>

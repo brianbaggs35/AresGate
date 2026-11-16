@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ChartColumn, Table2 } from '@lucide/vue'
+import { ChartColumn, Table2, Layers } from '@lucide/vue'
 import { computed, ref, useId } from 'vue'
 
 import ChartLegend from '@/charts/ChartLegend.vue'
 import ChartTable from '@/charts/ChartTable.vue'
 import type { ChartTableData, LegendItem } from '@/charts/types'
 import EmptyState from '@/components/EmptyState.vue'
+import { usePatternsStore } from '@/stores/patterns'
 
 /**
  * What every chart sits in: its title and what it shows, the legend when there is more than one
@@ -28,6 +29,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:hidden': [ids: string[]] }>()
 
+const patterns = usePatternsStore()
+/** Whether there is a texture to turn on: a chart of series has them, a heatmap's scale doesn't. */
+const textured = computed(() => props.legend.some(({ texture }) => texture))
 const asTable = ref(false)
 const titleId = useId()
 const showTable = computed(() => asTable.value && !props.empty)
@@ -47,16 +51,30 @@ const showTable = computed(() => asTable.value && !props.empty)
           {{ caption }}
         </p>
       </div>
-      <v-btn
-        v-if="!empty"
-        variant="text"
-        size="small"
-        :prepend-icon="showTable ? ChartColumn : Table2"
-        data-test="chart-view"
-        @click="asTable = !asTable"
-      >
-        {{ showTable ? 'Show chart' : 'Show as table' }}
-      </v-btn>
+      <div v-if="!empty" class="chart-frame__actions">
+        <slot name="actions" />
+        <v-btn
+          v-if="textured && !showTable"
+          variant="text"
+          size="small"
+          :prepend-icon="Layers"
+          :aria-pressed="patterns.preference === 'on'"
+          :active="patterns.preference === 'on'"
+          data-test="chart-patterns-toggle"
+          @click="patterns.setPreference(patterns.preference === 'on' ? 'off' : 'on')"
+        >
+          Use patterns
+        </v-btn>
+        <v-btn
+          variant="text"
+          size="small"
+          :prepend-icon="showTable ? ChartColumn : Table2"
+          data-test="chart-view"
+          @click="asTable = !asTable"
+        >
+          {{ showTable ? 'Show chart' : 'Show as table' }}
+        </v-btn>
+      </div>
     </div>
 
     <ChartLegend
@@ -91,6 +109,13 @@ const showTable = computed(() => asTable.value && !props.empty)
   justify-content: space-between;
   gap: 0.5rem 1rem;
   margin-bottom: 0.5rem;
+}
+
+.chart-frame__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 0.25rem;
 }
 
 .chart-frame__titles {

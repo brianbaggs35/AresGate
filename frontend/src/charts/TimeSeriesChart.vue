@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { RotateCcw } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 import type { IconProps } from 'vuetify'
 
 import ChartFrame from '@/charts/ChartFrame.vue'
@@ -8,6 +10,7 @@ import { stepIndex, useElementWidth } from '@/charts/interaction'
 import { placeMarks, readingOf, type Flag } from '@/charts/marks'
 import { areaPath, linePath, type Point } from '@/charts/paths'
 import { seriesColor } from '@/charts/palette'
+import { dashClass, textureOf } from '@/charts/patterns'
 import { formatTick, linear, nearest, timeTicks, valueAxis } from '@/charts/scales'
 import type { ChartMark, ChartTableData, LegendItem, TooltipRow } from '@/charts/types'
 import { formatCompact, formatCount, formatDateTime } from '@/format'
@@ -43,6 +46,14 @@ const props = withDefaults(
     /** Things that happened at a moment, flagged above the chart with a link to each. Flags that
      * would overlap are drawn as one that says how many it stands for. */
     marks?: readonly ChartMark[]
+    /** Where a moment leads, or null for one that leads nowhere: a click on the plot, or Enter,
+     * opens it, and the tooltip says it can be. Without it the plot is not a link. */
+    to?: (time: number) => RouteLocationRaw | null
+    /** Dragging across the plot (or Shift and the arrow keys, then Enter) picks a span, which is
+     * told to whoever listens (`zoom`). The page narrows its range to it and gives the chart the
+     * narrower numbers; `zoomed` says that it has, and shows the button that puts it back. */
+    zoomable?: boolean
+    zoomed?: boolean
     loading?: boolean
     emptyTitle?: string
     emptyDescription?: string
@@ -53,12 +64,18 @@ const props = withDefaults(
     format: undefined,
     height: 220,
     marks: () => [],
+    to: undefined,
+    zoomable: false,
+    zoomed: false,
     loading: false,
     emptyTitle: undefined,
     emptyDescription: undefined,
   },
 )
 
+const emit = defineEmits<{ zoom: [from: number, to: number]; reset: [] }>()
+
+const router = useRouter()
 const CHARACTER = 7
 const TOP = 12
 const BOTTOM = 28
@@ -86,7 +103,11 @@ const valueText = computed(() => props.format ?? formatCount)
 const tickText = computed(() => props.format ?? formatCompact)
 
 const colored = computed(() =>
-  props.series.map((series, index) => ({ ...series, color: series.color ?? seriesColor(index) })),
+  props.series.map((series, index) => ({
+    ...series,
+    color: series.color ?? seriesColor(index),
+    texture: textureOf(index),
+  })),
 )
 const shown = computed(() => colored.value.filter(({ id }) => !hidden.value.includes(id)))
 const empty = computed(
@@ -96,7 +117,14 @@ const empty = computed(
 )
 
 const legend = computed<LegendItem[]>(() =>
-  colored.value.map(({ id, label, color, icon }) => ({ id, label, color, shape: 'line', icon })),
+  colored.value.map(({ id, label, color, icon, texture }) => ({
+    id,
+    label,
+    color,
+    shape: 'line',
+    icon,
+    texture,
+  })),
 )
 const when = (time: number) => formatDateTime(new Date(time).toISOString())
 /** What happened at each reading, for the table: the marks that fall between it and the next. */
@@ -111,6 +139,12 @@ const table = computed<ChartTableData>(() => ({
     ...props.series.map(({ label }) => label),
     ...(props.marks.length ? ['Incidents'] : []),
   ],
+  textures: [
+    null,
+    ...colored.value.map(({ texture }) => texture),
+    ...(props.marks.length ? [null] : []),
+  ],
+  textureShape: 'line',
   rows: props.times.map((time, index) => [
     when(time),
     ...props.series.map(({ values }) => {
@@ -199,7 +233,7 @@ watch(flags, () => {
 })
 
 const lines = computed(() =>
-  shown.value.map(({ id, color, values }) => {
+  shown.value.map(({ id, color, texture, values }) => {
     const points: Point[] = props.times.map((time, index) => {
       const value = values[index] ?? null
       return [x.value(time), value === null ? null : y.value(value)]
@@ -207,6 +241,7 @@ const lines = computed(() =>
     return {
       id,
       color,
+      texture,
       line: linePath(points),
       area: props.area ? areaPath(points, rise.value) : '',
     }
@@ -241,28 +276,133 @@ const anchor = computed(() => {
   }
 })
 const readout = computed(() => {
+  if (selection.value) {
+    const [lo, hi] = selection.value
+    return `Zoom from ${when(props.times[lo] as number)} to ${when(props.times[hi] as number)}. Press Enter to zoom in, or Escape to cancel.`
+  }
   if (active.value === null) return ''
   const values = rows.value.map(({ value, label }) => `${value} ${label}`).join(', ')
   return `${when(props.times[active.value] as number)}: ${values}`
 })
 
-/** The moment under the pointer. */
-function point(event: PointerEvent) {
+/** The reading under a pointer. */
+function readingAt(event: PointerEvent) {
   const box = (svg.value as SVGSVGElement).getBoundingClientRect()
   const along = (event.clientX - box.left - left.value) / length.value
-  active.value = nearest(props.times, first.value + along * (last.value - first.value))
+  return nearest(props.times, first.value + along * (last.value - first.value))
+}
+
+/** The readings a drag or Shift and the arrow keys has picked, from the first to the last. */
+const selection = ref<readonly [number, number] | null>(null)
+/** Where Shift and the arrow keys started from. */
+const anchored = ref<number | null>(null)
+/** A press that has not been let go: where it began, whether it has become a drag, and whether it
+ * counts as a click (a finger reads a moment with its first tap and opens it with the next). */
+let pressed: { index: number; dragged: boolean; armed: boolean } | null = null
+
+/** Where a moment leads, if anywhere. */
+const destination = (index: number) => props.to?.(props.times[index] as number) ?? null
+const hint = computed(() => {
+  if (selection.value) return 'Enter to zoom in'
+  if (active.value !== null && destination(active.value) !== null) return 'Click to open'
+  return props.zoomable ? 'Drag to zoom in' : undefined
+})
+
+function open(index: number) {
+  const place = destination(index)
+  if (place !== null) void router.push(place)
+}
+
+function zoomIn() {
+  const [lo, hi] = selection.value as readonly [number, number]
+  selection.value = null
+  anchored.value = null
+  emit('zoom', props.times[lo] as number, props.times[hi] as number)
+}
+
+function press(event: PointerEvent) {
+  const index = readingAt(event)
+  pressed = {
+    index,
+    dragged: false,
+    armed: event.pointerType !== 'touch' || active.value === index,
+  }
+  active.value = index
+  // Keeps the drag going when it leaves the plot, so it ends where the pointer is let go.
+  ;(event.currentTarget as Element).setPointerCapture(event.pointerId)
+}
+
+function move(event: PointerEvent) {
+  const index = readingAt(event)
+  active.value = index
+  if (!pressed || !props.zoomable || index === pressed.index) return
+  pressed.dragged = true
+  selection.value = [Math.min(pressed.index, index), Math.max(pressed.index, index)]
+}
+
+function release() {
+  const done = pressed
+  pressed = null
+  if (!done) return
+  if (done.dragged) {
+    if (selection.value) zoomIn()
+  } else if (done.armed) {
+    open(done.index)
+  }
+}
+
+/** A press that was taken away (a scroll began, say) picks nothing. */
+function cancel() {
+  pressed = null
+  selection.value = null
 }
 
 function onKey(event: KeyboardEvent) {
+  if (props.zoomable && event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    event.preventDefault()
+    const step = event.key === 'ArrowRight' ? 1 : -1
+    const from = anchored.value ?? active.value ?? (step > 0 ? 0 : props.times.length - 1)
+    const next = Math.min(props.times.length - 1, Math.max(0, (active.value ?? from) + step))
+    anchored.value = from
+    active.value = next
+    selection.value = [Math.min(from, next), Math.max(from, next)]
+    return
+  }
+  if (event.key === 'Enter') {
+    if (selection.value) {
+      event.preventDefault()
+      if (selection.value[0] !== selection.value[1]) zoomIn()
+      return
+    }
+    if (active.value !== null && destination(active.value) !== null) {
+      event.preventDefault()
+      open(active.value)
+      return
+    }
+  }
+  if (event.key === 'Escape' && selection.value) {
+    event.preventDefault()
+    selection.value = null
+    anchored.value = null
+    return
+  }
   const next = stepIndex(event.key, active.value, props.times.length)
   if (next === undefined) return
   event.preventDefault()
+  anchored.value = null
+  selection.value = null
   active.value = next
+}
+
+function lose() {
+  active.value = null
+  selection.value = null
+  anchored.value = null
 }
 
 /** A finger stays on what it touched until it touches something else; a pointer leaves with it. */
 function leave(event: PointerEvent) {
-  if (event.pointerType !== 'touch') active.value = null
+  if (event.pointerType !== 'touch' && !pressed) active.value = null
 }
 </script>
 
@@ -278,6 +418,18 @@ function leave(event: PointerEvent) {
     :empty-description="emptyDescription"
     :loading="loading"
   >
+    <template #actions>
+      <v-btn
+        v-if="zoomed"
+        variant="text"
+        size="small"
+        :prepend-icon="RotateCcw"
+        data-test="chart-zoom-reset"
+        @click="emit('reset')"
+      >
+        Reset zoom
+      </v-btn>
+    </template>
     <div ref="plot" class="time-series" data-test="time-series">
       <svg
         ref="svg"
@@ -286,11 +438,13 @@ function leave(event: PointerEvent) {
         tabindex="0"
         :width="width"
         :height="height"
-        :aria-label="`${title}. Use the left and right arrow keys to read each moment, or show it as a table.`"
+        :aria-label="`${title}. Use the left and right arrow keys to read each moment${zoomable ? ', hold Shift to pick a span to zoom in on' : ''}${to ? ', Enter to open it' : ''}, or show it as a table.`"
         @keydown="onKey"
-        @blur="active = null"
-        @pointermove="point"
-        @pointerdown="point"
+        @blur="lose"
+        @pointermove="move"
+        @pointerdown="press"
+        @pointerup="release"
+        @pointercancel="cancel"
         @pointerleave="leave"
       >
         <g v-for="tick in axis.ticks" :key="tick">
@@ -335,6 +489,17 @@ function leave(event: PointerEvent) {
             :stroke="flag.marks[0].color"
             data-test="chart-flag-line"
           />
+          <rect
+            v-if="selection"
+            class="time-series__selection"
+            :x="x(times[selection[0]] as number)"
+            :y="0"
+            :width="
+              Math.max(2, x(times[selection[1]] as number) - x(times[selection[0]] as number))
+            "
+            :height="rise"
+            data-test="chart-selection"
+          />
           <line
             v-if="active !== null"
             class="chart-axis"
@@ -353,6 +518,7 @@ function leave(event: PointerEvent) {
               stroke-width="2"
               stroke-linejoin="round"
               stroke-linecap="round"
+              :class="dashClass(line.texture)"
               data-test="line"
             />
           </g>
@@ -439,6 +605,7 @@ function leave(event: PointerEvent) {
         :flip="anchor.x > width / 2"
         :heading="when(times[active] as number)"
         :rows="rows"
+        :hint="hint"
       />
       <output class="chart-readout">{{ readout }}</output>
     </div>
@@ -511,6 +678,15 @@ function leave(event: PointerEvent) {
 .time-series__flag-line {
   stroke-dasharray: 3 4;
   stroke-opacity: 0.6;
+}
+
+/* The span that a drag or Shift and the arrow keys has picked. */
+.time-series__selection {
+  fill: rgb(var(--v-theme-primary));
+  fill-opacity: 0.14;
+  stroke: rgb(var(--v-theme-primary));
+  stroke-width: 1;
+  pointer-events: none;
 }
 
 /* A dot is ringed in the card's own color, so it stands clear of whatever it sits on. */

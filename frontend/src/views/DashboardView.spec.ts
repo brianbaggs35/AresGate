@@ -20,6 +20,7 @@ import {
 import { incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import { given } from '@/test/verdicts'
+import BarChart from '@/charts/BarChart.vue'
 import TrafficCard from '@/components/TrafficCard.vue'
 import DashboardView from '@/views/DashboardView.vue'
 
@@ -536,6 +537,72 @@ describe('DashboardView', () => {
     it('flag nothing when no incident began in the window', async () => {
       const { wrapper } = await open()
       expect(wrapper.findComponent(TrafficCard).props('marks')).toEqual([])
+    })
+
+    describe('zooming and opening', () => {
+      const alertsChart = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+        wrapper
+          .findAllComponents(BarChart)
+          .find((chart) => chart.props('title') === 'Alerts by severity')
+      const sourcesChart = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+        wrapper
+          .findAllComponents(BarChart)
+          .find((chart) => chart.props('title') === 'Most blocked addresses')
+
+      it('narrows the traffic and the alerts to a span dragged across the traffic, and puts them back', async () => {
+        const { wrapper, find } = await open()
+        const { buckets } = dashboard().window
+        const traffic = wrapper.findComponent(TrafficCard)
+        expect(alertsChart(wrapper)?.props('categories')).toHaveLength(buckets.length)
+        expect(traffic.props('span')).toBeNull()
+
+        traffic.vm.$emit('zoom', Date.parse(buckets[4] as string), Date.parse(buckets[9] as string))
+        await flushPromises()
+
+        expect(wrapper.findComponent(TrafficCard).props('span')).toEqual([
+          Date.parse(buckets[4] as string),
+          Date.parse(buckets[9] as string),
+        ])
+        expect(alertsChart(wrapper)?.props('categories')).toHaveLength(6)
+
+        wrapper.findComponent(TrafficCard).vm.$emit('reset')
+        await flushPromises()
+        expect(wrapper.findComponent(TrafficCard).props('span')).toBeNull()
+        expect(alertsChart(wrapper)?.props('categories')).toHaveLength(buckets.length)
+
+        traffic.vm.$emit('zoom', Date.parse(buckets[4] as string), Date.parse(buckets[9] as string))
+        await flushPromises()
+        await find('range-7d').trigger('click')
+        await flushPromises()
+        expect(wrapper.findComponent(TrafficCard).props('span')).toBeNull()
+      })
+
+      it('opens the alerts of a bar in the logs, for that hour', async () => {
+        const { wrapper } = await open()
+        const { buckets, end } = dashboard().window
+        const to = alertsChart(wrapper)?.props('to') as (category: number) => unknown
+
+        expect(to(2)).toEqual({
+          name: 'logs',
+          query: {
+            q: `kind:alert since:${new Date(buckets[2] as string).toISOString().replace('.000Z', 'Z')} before:${new Date(buckets[3] as string).toISOString().replace('.000Z', 'Z')}`,
+          },
+        })
+        expect((to(buckets.length - 1) as { query: { q: string } }).query.q).toContain(
+          `before:${new Date(end).toISOString().replace('.000Z', 'Z')}`,
+        )
+      })
+
+      it('opens the blocks from an address in the logs, and nothing for a bar that is not there', async () => {
+        const { wrapper } = await open()
+        const to = sourcesChart(wrapper)?.props('to') as (category: number) => unknown
+
+        expect(to(0)).toEqual({
+          name: 'logs',
+          query: { q: 'kind:firewall severity>=low from:203.0.113.9 since:24h' },
+        })
+        expect(to(9)).toBeNull()
+      })
     })
 
     it('say so when there is no traffic yet', async () => {

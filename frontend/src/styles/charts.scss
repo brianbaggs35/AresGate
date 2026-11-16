@@ -39,6 +39,7 @@
     --chart-axis: #cbd5e1;
     --chart-text: #64748b;
     --chart-empty: #eef2f6;
+    --chart-ink: rgba(255, 255, 255, 0.75);
   }
 
   .v-theme--dark {
@@ -68,6 +69,7 @@
     --chart-axis: #2f3d5a;
     --chart-text: #94a3b8;
     --chart-empty: #16213a;
+    --chart-ink: rgba(14, 22, 38, 0.7);
   }
 }
 
@@ -121,5 +123,47 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+// Textures. A series is also told by its texture, not by color alone, in forced-colors mode, in
+// print and when the owner turns on *Use patterns* (src/stores/patterns.ts). A mark takes the
+// class of its series' texture (`chart-pat-1` to `chart-pat-8`, see src/charts/patterns.ts) and a
+// line takes a dash (`chart-dash-1` to `chart-dash-8`). The textures themselves are the
+// `<pattern>`s of src/charts/ChartPatterns.vue.
+$dashes: none, '6 3', '2 3', '8 3 2 3', '1 4', '10 4', '4 2 1 2', '3 3 9 3';
+
+@mixin chart-textures {
+  @for $i from 1 through 8 {
+    .chart-pat-#{$i} {
+      fill: url('#chart-pattern-#{$i}');
+    }
+
+    .chart-dash-#{$i} {
+      stroke-dasharray: #{nth($dashes, $i)};
+    }
+  }
+
+  // A key's texture goes over its flat color, in the legend and in the table's headings.
+  .chart-textured {
+    display: inline-block;
+  }
+}
+
+@layer aresgate-components {
+  .chart-textured {
+    display: none;
+  }
+
+  :root[data-patterns='on'] {
+    @include chart-textures;
+  }
+
+  @media print {
+    @include chart-textures;
+  }
+
+  @media (forced-colors: active) {
+    @include chart-textures;
   }
 }

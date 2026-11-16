@@ -1,6 +1,7 @@
 import type { Collector, CollectorsReport } from '@/api/collectors'
 import type { AlertCounts } from '@/api/dashboard'
 import {
+  bucketRange,
   bucketLabel,
   changeOf,
   collectionOf,
@@ -392,5 +393,23 @@ describe('marksOf', () => {
 
   it('has no flags for no incidents', () => {
     expect(marksOf([])).toEqual([])
+  })
+})
+
+describe('bucketRange', () => {
+  const starts = ['2026-10-26T10:00:00Z', '2026-10-26T11:00:00Z']
+
+  it('runs from the start of a bucket to the start of the next, as the logs search writes it', () => {
+    expect(bucketRange(starts, 0, '2026-10-26T12:00:00Z')).toEqual({
+      start: '2026-10-26T10:00:00Z',
+      end: '2026-10-26T11:00:00Z',
+    })
+  })
+
+  it('ends the last bucket where the window ends', () => {
+    expect(bucketRange(starts, 1, '2026-10-26T11:59:59Z')).toEqual({
+      start: '2026-10-26T11:00:00Z',
+      end: '2026-10-26T11:59:59Z',
+    })
   })
 })

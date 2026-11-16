@@ -154,6 +154,31 @@ describe('AssetView', () => {
     expect(chart.props('times')).toHaveLength(24)
   })
 
+  it('narrows the chart to a span that was dragged, and puts it back, and when the range changes', async () => {
+    const { wrapper } = await open({
+      answer: detail({ traffic: traffic({ measured: true, hours, days }) }),
+    })
+    const chart = () => wrapper.findComponent(TimeSeriesChart)
+    const all = chart().props('times')
+    expect(chart().props('zoomed')).toBe(false)
+
+    chart().vm.$emit('zoom', all[3], all[8])
+    await flushPromises()
+    expect(chart().props('times')).toEqual(all.slice(3, 9))
+    expect(chart().props('zoomed')).toBe(true)
+
+    chart().vm.$emit('reset')
+    await flushPromises()
+    expect(chart().props('times')).toEqual(all)
+
+    chart().vm.$emit('zoom', all[3], all[8])
+    await flushPromises()
+    await wrapper.findAll('[data-test="asset-window"] .v-btn').at(1)?.trigger('click')
+    await flushPromises()
+    expect(chart().props('zoomed')).toBe(false)
+    expect(chart().props('times')).toHaveLength(7)
+  })
+
   it('says which interfaces it is on', async () => {
     const { findAll } = await open({
       answer: detail({

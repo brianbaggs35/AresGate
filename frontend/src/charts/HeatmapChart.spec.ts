@@ -253,4 +253,81 @@ describe('HeatmapChart', () => {
       expect(wrapper.find('.chart-frame__plot--loading').exists()).toBe(true)
     })
   })
+
+  describe('opening a cell', () => {
+    const to = (row: number, column: number) =>
+      row === 1 && column === 1
+        ? null
+        : { name: 'logs', query: { q: `${row.toString()}/${column.toString()}` } }
+    const cell = (wrapper: Awaited<ReturnType<typeof mountMap>>['wrapper'], index: number) =>
+      wrapper.findAll('[data-test="heatmap-cell"]')[index] as {
+        element: Element
+        classes: () => string[]
+      }
+
+    it('goes where a cell leads when it is clicked, and says that it can', async () => {
+      const { wrapper, router } = await mountMap({ to })
+      const push = vi.spyOn(router, 'push')
+
+      await point(cell(wrapper, 2).element, 'pointerenter')
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Click to open')
+      await point(cell(wrapper, 2).element, 'pointerdown')
+      cell(wrapper, 2).element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+      expect(push).toHaveBeenCalledExactlyOnceWith({ name: 'logs', query: { q: '0/2' } })
+      expect(cell(wrapper, 2).classes()).toContain('heatmap__cell--pick')
+      expect(wrapper.find('.chart-svg').attributes('aria-label')).toContain('Enter')
+    })
+
+    it('opens the cell the keyboard is on with Enter', async () => {
+      const { wrapper, router } = await mountMap({ to })
+      const push = vi.spyOn(router, 'push')
+      const chart = wrapper.find('.chart-svg')
+
+      await chart.trigger('keydown', { key: 'Enter' })
+      await chart.trigger('keydown', { key: 'ArrowRight' })
+      await chart.trigger('keydown', { key: 'Enter' })
+
+      expect(push).toHaveBeenCalledExactlyOnceWith({ name: 'logs', query: { q: '0/0' } })
+    })
+
+    it('leaves a cell that leads nowhere alone', async () => {
+      const { wrapper, router } = await mountMap({ to })
+      const push = vi.spyOn(router, 'push')
+
+      await point(cell(wrapper, 5).element, 'pointerenter')
+      await point(cell(wrapper, 5).element, 'pointerdown')
+      cell(wrapper, 5).element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await wrapper.find('.chart-svg').trigger('keydown', { key: 'Enter' })
+
+      expect(push).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+    })
+
+    it('reads a cell with the first tap of a finger and opens it with the next', async () => {
+      const { wrapper, router } = await mountMap({ to })
+      const push = vi.spyOn(router, 'push')
+      const tap = async (index: number) => {
+        await point(cell(wrapper, index).element, 'pointerenter', 'touch')
+        await point(cell(wrapper, index).element, 'pointerdown', 'touch')
+        cell(wrapper, index).element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        await nextTick()
+      }
+
+      await tap(2)
+      expect(push).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(true)
+      await tap(2)
+      expect(push).toHaveBeenCalledTimes(1)
+    })
+
+    it('is not a link without one', async () => {
+      const { wrapper } = await mountMap()
+
+      await point(cell(wrapper, 2).element, 'pointerenter')
+
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+      expect(cell(wrapper, 2).classes()).not.toContain('heatmap__cell--pick')
+    })
+  })
 })

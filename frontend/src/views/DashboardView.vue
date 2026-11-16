@@ -19,6 +19,7 @@ import { LIVE_PATH } from '@/api/dashboardLayout'
 import { fetchDashboard, WINDOWS, type Dashboard, type DashboardWindow } from '@/api/dashboard'
 import { fetchIncidents, type IncidentPage } from '@/api/incidents'
 import BarChart from '@/charts/BarChart.vue'
+import { indexesWithin, useZoom } from '@/charts/zoom'
 import { severityColor } from '@/charts/palette'
 import AppPage from '@/components/AppPage.vue'
 import BlockedCard from '@/components/BlockedCard.vue'
@@ -41,6 +42,7 @@ import WidgetNeeds from '@/components/WidgetNeeds.vue'
 import {
   alertsHint,
   bucketLabel,
+  bucketRange,
   changeOf,
   collectionOf,
   marksOf,
@@ -52,6 +54,8 @@ import {
 } from '@/dashboard'
 import { connectWords, shownPlaces, widgetInfo, type WidgetId } from '@/dashboardLayout'
 import { formatCount, formatFigure } from '@/format'
+import { withinRange } from '@/logs'
+import { deviceQuery } from '@/blocked'
 import { usePolling } from '@/polling'
 import { takePrefetched } from '@/prefetch'
 import { useServerEvents } from '@/serverEvents'
@@ -70,6 +74,8 @@ const route = useRoute()
 const router = useRouter()
 
 const range = ref<DashboardWindow>('24h')
+/** The span the owner dragged across the traffic, which narrows what the page charts. */
+const zoom = useZoom()
 const data = ref<Dashboard | null>(null)
 const collection = ref<Collection | null>(null)
 /** The integrations that have a collector, which is what a widget that needs one looks for. */
@@ -133,6 +139,7 @@ function judged(verdict: Judged) {
 
 function pick(next: DashboardWindow) {
   range.value = next
+  zoom.reset()
   void load()
 }
 
@@ -204,13 +211,22 @@ const collectionTile = computed(() => {
   }
 })
 
+/** Which buckets of the window the alerts are drawn for: all of them, or those of the span the
+ * owner zoomed to on the traffic. */
+const alertBuckets = computed(() =>
+  indexesWithin(view.value.shown.window.buckets.map(Date.parse), zoom.span.value),
+)
 const alertCategories = computed(() =>
-  view.value.shown.window.buckets.map((start) => bucketLabel(start, view.value.shown.window.key)),
+  alertBuckets.value.map((index) =>
+    bucketLabel(view.value.shown.window.buckets[index] as string, view.value.shown.window.key),
+  ),
 )
 /** The severities there were any of, least serious first so the worst sit on top. */
 const alertSeries = computed(() =>
   SEVERITIES.flatMap((severity) => {
-    const values = view.value.shown.alerts.by_severity[severity]
+    const values = alertBuckets.value.map(
+      (index) => view.value.shown.alerts.by_severity[severity][index] as number,
+    )
     return values.some((count) => count > 0)
       ? [
           {
@@ -246,6 +262,24 @@ const traffic = computed(() => {
     })),
   }
 })
+
+/** A bar of the alerts opens the logs of the alerts in that stretch of time. */
+function alertsOf(category: number) {
+  const { buckets, end } = view.value.shown.window
+  const bucket = alertBuckets.value[category] as number
+  return {
+    name: 'logs',
+    query: { q: withinRange('kind:alert', bucketRange(buckets, bucket, end)) },
+  }
+}
+
+/** A bar of the most blocked addresses opens the firewall's refusals from that address. */
+function blockedFrom(index: number) {
+  const source = view.value.shown.blocked.top_sources[index]
+  return source
+    ? { name: 'logs', query: { q: deviceQuery(source.address, view.value.shown.window.key) } }
+    : null
+}
 
 /** The incidents that began in the window, flagged on the traffic. */
 const marks = computed(() => marksOf(view.value.shown.marks))
@@ -497,7 +531,10 @@ onBeforeUnmount(() => void leaveFullScreen())
             :times="traffic.times"
             :traffic="traffic.interfaces"
             :marks="marks"
+            :span="zoom.span.value"
             :loading="loading"
+            @zoom="zoom.zoom"
+            @reset="zoom.reset"
           />
 
           <v-card v-else-if="place.id === 'alerts'" class="pa-5 pa-sm-6" data-test="alerts-card">
@@ -510,6 +547,7 @@ onBeforeUnmount(() => void leaveFullScreen())
               whole
               :categories="alertCategories"
               :series="alertSeries"
+              :to="alertsOf"
               :loading="loading"
               empty-title="No alerts"
               :empty-description="`Nothing was reported in ${lastWords}.`"
@@ -545,6 +583,7 @@ onBeforeUnmount(() => void leaveFullScreen())
               whole
               :categories="data.blocked.top_sources.map(({ address }) => address)"
               :series="sourceSeries"
+              :to="blockedFrom"
               :loading="loading"
               empty-title="Nothing was blocked"
               :empty-description="`The firewall refused no connections in ${lastWords}.`"

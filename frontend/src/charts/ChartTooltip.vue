@@ -19,6 +19,8 @@ const props = defineProps<{
   flip: boolean
   heading: string
   rows: readonly TooltipRow[]
+  /** What can be done with what is under the pointer, such as that it can be opened. */
+  hint?: string
 }>()
 
 const tip = useTemplateRef<HTMLElement>('tip')
@@ -76,6 +78,9 @@ watch(
       }}</span>
       <span class="text-body-medium text-medium-emphasis">{{ row.label }}</span>
     </p>
+    <p v-if="hint" class="chart-tooltip__hint text-label-medium" data-test="chart-tooltip-hint">
+      {{ hint }}
+    </p>
   </div>
 </template>
 
@@ -106,6 +111,11 @@ watch(
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.chart-tooltip__hint {
+  margin-top: 0.25rem;
+  color: rgb(var(--v-theme-primary));
 }
 
 .chart-tooltip__value {

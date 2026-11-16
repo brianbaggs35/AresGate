@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { fetchAsset, type AssetDetail } from '@/api/assets'
 import { ApiError, errorMessage } from '@/api/client'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
+import { isZoomed, trimToSpan, useZoom } from '@/charts/zoom'
 import AppPage from '@/components/AppPage.vue'
 import AssetCapture from '@/components/AssetCapture.vue'
 import AssetClassify from '@/components/AssetClassify.vue'
@@ -46,6 +47,8 @@ const missing = ref(false)
 const loadError = ref<string | null>(null)
 const loading = ref(false)
 const range = ref<'24h' | '7d'>('24h')
+/** The span the owner dragged across the traffic, which narrows what the chart draws. */
+const zoom = useZoom()
 
 /**
  * Fetches the page. A refresh in the background leaves what is on screen as it is, and an answer
@@ -73,9 +76,15 @@ async function load(quiet = false) {
   }
 }
 
+/** The traffic of the range, and of it what the owner zoomed to. They are only read once the
+ * asset has come. */
+const full = computed(() => chartOf((data.value as AssetDetail).traffic, range.value))
+const traffic = computed(() => trimToSpan(full.value.times, full.value.series, zoom.span.value))
+
 /** Shows the traffic of the last day by the hour, or of the last week by the day. */
 function pick(next: unknown) {
   range.value = next === '7d' ? '7d' : '24h'
+  zoom.reset()
 }
 
 watch(key, () => {
@@ -165,7 +174,10 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           <v-btn value="7d" :aria-pressed="range === '7d'">7 days</v-btn>
         </v-btn-toggle>
         <TimeSeriesChart
-          v-bind="chartOf(data.traffic, range)"
+          :times="traffic.times"
+          :series="traffic.series"
+          zoomable
+          :zoomed="isZoomed(full.times, traffic.times)"
           title="Traffic"
           caption="What ntopng counted going to and from it, in each stretch of time."
           :format="formatBytes"
@@ -173,6 +185,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           empty-title="No traffic measured yet"
           empty-description="ntopng measures the traffic of the devices it can see. Once it has read this one, its traffic is charted here."
           data-test="asset-chart"
+          @zoom="zoom.zoom"
+          @reset="zoom.reset"
         />
       </v-card>
 

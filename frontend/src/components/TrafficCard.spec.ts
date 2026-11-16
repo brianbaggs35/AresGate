@@ -92,4 +92,60 @@ describe('TrafficCard', () => {
     const { wrapper } = await mount([igc0], true)
     expect(wrapper.find('.chart-frame__plot--loading').exists()).toBe(true)
   })
+
+  describe('zooming and opening', () => {
+    it('draws only the span the page is zoomed to, with the incidents that fall in it', async () => {
+      const inside: ChartMark = {
+        id: 'incident-1',
+        time: 1_000_000,
+        weight: 1,
+        label: 'In',
+        heading: 'In',
+        rows: [{ label: 'High', value: 'In' }],
+        color: 'red',
+        icon: Siren,
+        to: { name: 'incident', params: { id: 1 } },
+      }
+      const outside: ChartMark = { ...inside, id: 'incident-2', time: 2_700_000, label: 'Out' }
+      const { wrapper } = await mountWithPlugins(TrafficCard, {
+        props: { times, traffic: [igc0], marks: [inside, outside], span: [900_000, 1_800_000] },
+      })
+
+      const chart = wrapper.findComponent(TimeSeriesChart)
+      expect(chart.props('times')).toEqual([900_000, 1_800_000])
+      expect(chart.props('series')[0]?.values).toEqual([8_000_000, 80_000_000])
+      expect(chart.props('marks')).toEqual([inside])
+      expect(chart.props('zoomed')).toBe(true)
+      expect(chart.props('zoomable')).toBe(true)
+    })
+
+    it('draws all of it with no span, and is not zoomed', async () => {
+      const { wrapper } = await mount([igc0])
+
+      const chart = wrapper.findComponent(TimeSeriesChart)
+      expect(chart.props('times')).toEqual(times)
+      expect(chart.props('zoomed')).toBe(false)
+    })
+
+    it('passes on a zoom and a reset', async () => {
+      const { wrapper } = await mount([igc0])
+      const chart = wrapper.findComponent(TimeSeriesChart)
+
+      chart.vm.$emit('zoom', 900_000, 1_800_000)
+      chart.vm.$emit('reset')
+
+      expect(wrapper.emitted('zoom')).toEqual([[900_000, 1_800_000]])
+      expect(wrapper.emitted('reset')).toEqual([[]])
+    })
+
+    it('opens the firewall logs of the stretch of time a reading stands for', async () => {
+      const { wrapper } = await mount([igc0])
+      const to = wrapper.findComponent(TimeSeriesChart).props('to') as (time: number) => unknown
+
+      expect(to(900_000)).toEqual({
+        name: 'logs',
+        query: { q: 'kind:firewall since:1970-01-01T00:15:00Z before:1970-01-01T00:30:00Z' },
+      })
+    })
+  })
 })

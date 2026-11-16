@@ -102,4 +102,48 @@ describe('ChartFrame', () => {
     expect(wrapper.find('.chart-frame__plot').classes()).not.toContain('chart-frame__plot--loading')
     expect(wrapper.find('[data-test="chart"]').attributes('aria-busy')).toBeUndefined()
   })
+
+  describe('textures', () => {
+    const textured: LegendItem[] = [
+      { id: 'a', label: 'Received', color: 'red', shape: 'line', texture: 1 },
+      { id: 'b', label: 'Sent', color: 'blue', shape: 'line', texture: 2 },
+    ]
+
+    it('offers to use patterns, remembers the choice, and shows it is on', async () => {
+      const { wrapper } = await mountFrame({ legend: textured })
+      const toggle = wrapper.find('[data-test="chart-patterns-toggle"]')
+      expect(toggle.attributes('aria-pressed')).toBe('false')
+
+      await toggle.trigger('click')
+
+      expect(toggle.attributes('aria-pressed')).toBe('true')
+      expect(localStorage.getItem('aresgate.patterns')).toBe('on')
+
+      await toggle.trigger('click')
+
+      expect(toggle.attributes('aria-pressed')).toBe('false')
+      expect(localStorage.getItem('aresgate.patterns')).toBe('off')
+    })
+
+    it('has nothing to offer a chart with no textures, a table or an empty chart', async () => {
+      const plain = await mountFrame()
+      expect(plain.wrapper.find('[data-test="chart-patterns-toggle"]').exists()).toBe(false)
+
+      const asTable = await mountFrame({ legend: textured })
+      await asTable.wrapper.find('[data-test="chart-view"]').trigger('click')
+      expect(asTable.wrapper.find('[data-test="chart-patterns-toggle"]').exists()).toBe(false)
+
+      const empty = await mountFrame({ legend: textured, empty: true })
+      expect(empty.wrapper.find('[data-test="chart-patterns-toggle"]').exists()).toBe(false)
+    })
+
+    it('has room beside them for what a chart adds', async () => {
+      const { wrapper } = await mountWithPlugins(ChartFrame, {
+        props: { title: 'Throughput', legend, table, hidden: [] },
+        slots: { ...slots, actions: '<button data-test="added">Reset</button>' },
+      })
+
+      expect(wrapper.find('.chart-frame__actions [data-test="added"]').exists()).toBe(true)
+    })
+  })
 })

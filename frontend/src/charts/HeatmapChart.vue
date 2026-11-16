@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 
 import ChartFrame from '@/charts/ChartFrame.vue'
 import ChartTooltip from '@/charts/ChartTooltip.vue'
@@ -29,6 +30,9 @@ const props = withDefaults(
     /** What is counted, in plural, for the tooltip: "alerts". */
     unit: string
     format?: (value: number) => string
+    /** Where a cell leads, or null for one that leads nowhere: a click, Enter or a second tap opens
+     * it, and the tooltip says it can be. Without it a cell is not a link. */
+    to?: (row: number, column: number) => RouteLocationRaw | null
     loading?: boolean
     emptyTitle?: string
     emptyDescription?: string
@@ -37,6 +41,7 @@ const props = withDefaults(
     caption: undefined,
     rowLabel: 'Row',
     format: formatCount,
+    to: undefined,
     loading: false,
     emptyTitle: undefined,
     emptyDescription: undefined,
@@ -49,6 +54,7 @@ const CELL_HEIGHT = 28
 const CELL_MINIMUM = 24
 const HEADER = 24
 
+const router = useRouter()
 const plot = ref<HTMLElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 const width = useElementWidth(plot, 640)
@@ -107,7 +113,33 @@ const readout = computed(() =>
   active.value === null ? '' : `${heading.value}: ${rowsShown.value[0]?.value} ${props.unit}`,
 )
 
+/** Where a cell leads, if anywhere. */
+const destination = (row: number, column: number) => props.to?.(row, column) ?? null
+const hint = computed(() => {
+  const [row, column] = active.value as readonly [number, number]
+  return destination(row, column) === null ? undefined : 'Click to open'
+})
+
+function open(row: number, column: number) {
+  const place = destination(row, column)
+  if (place !== null) void router.push(place)
+}
+
+/** Whether what is being pressed was already being read: a finger reads a cell with its first tap
+ * and opens it with the next, a pointer does both at once. */
+let armed = true
+
+function press(row: number, column: number, event: PointerEvent) {
+  armed = event.pointerType !== 'touch' || (active.value?.[0] === row && active.value[1] === column)
+  active.value = [row, column]
+}
+
 function onKey(event: KeyboardEvent) {
+  if (event.key === 'Enter' && active.value && destination(...active.value) !== null) {
+    event.preventDefault()
+    open(...active.value)
+    return
+  }
   const [row, column] = active.value ?? [-1, -1]
   const last = [props.rows.length - 1, props.columns.length - 1] as const
   const moves: Record<string, readonly [number, number] | null> = {
@@ -150,7 +182,7 @@ function leave(event: PointerEvent) {
           tabindex="0"
           :width="labelWidth + columns.length * cell"
           :height="HEADER + rows.length * CELL_HEIGHT"
-          :aria-label="`${title}. Use the arrow keys to read each cell, or show it as a table.`"
+          :aria-label="`${title}. Use the arrow keys to read each cell${to ? ', Enter to open it' : ''}, or show it as a table.`"
           @keydown="onKey"
           @blur="active = null"
           @pointerleave="leave"
@@ -185,6 +217,7 @@ function leave(event: PointerEvent) {
             class="heatmap__cell"
             :class="{
               'heatmap__cell--active': active?.[0] === shape.row && active[1] === shape.column,
+              'heatmap__cell--pick': to !== undefined,
             }"
             :x="labelWidth + shape.column * cell + 1"
             :y="HEADER + shape.row * CELL_HEIGHT + 1"
@@ -193,8 +226,9 @@ function leave(event: PointerEvent) {
             rx="4"
             :fill="shape.fill"
             data-test="heatmap-cell"
-            @pointerdown="active = [shape.row, shape.column]"
-            @pointerenter="active = [shape.row, shape.column]"
+            @pointerdown="press(shape.row, shape.column, $event)"
+            @pointerenter="$event.pointerType !== 'touch' && (active = [shape.row, shape.column])"
+            @click="armed && open(shape.row, shape.column)"
           />
         </svg>
       </div>
@@ -205,6 +239,7 @@ function leave(event: PointerEvent) {
         :flip="anchor.x > width / 2"
         :heading="heading"
         :rows="rowsShown"
+        :hint="hint"
       />
       <div class="heatmap__scale text-body-medium" data-test="heatmap-scale">
         <span class="text-medium-emphasis">None</span>
@@ -231,6 +266,10 @@ function leave(event: PointerEvent) {
   position: relative;
   overflow-x: auto;
   padding-bottom: 2px;
+}
+
+.heatmap__cell--pick {
+  cursor: pointer;
 }
 
 .heatmap__cell--active {

@@ -11,11 +11,18 @@ export interface LegendItem {
   shape: 'line' | 'square'
   /** Shown beside the label for what must never rest on color alone, such as a severity. */
   icon?: NonNullable<IconProps['icon']>
+  /** Its texture, 1 to 8 (see `textureOf`), for when charts are textured. */
+  texture?: number | null
 }
 
 /** A chart's numbers as a table, which is how anyone who can't use the chart reads them. */
 export interface ChartTableData {
   columns: readonly string[]
+  /** The texture of each column's series, parallel to `columns` (null where there is none), shown
+   * in its heading when charts are textured. */
+  textures?: readonly (number | null)[]
+  /** How those textures are drawn: a dash for a line, a hatching for a bar. */
+  textureShape?: LegendItem['shape']
   rows: readonly (readonly (string | number)[])[]
 }
 
