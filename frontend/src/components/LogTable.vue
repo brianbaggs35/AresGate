@@ -229,10 +229,6 @@ onBeforeUnmount(() => {
   vertical-align: middle;
 }
 
-:global(:root[data-density='compact']) .log-table td {
-  padding-block: 0.1875rem;
-}
-
 .log-table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -330,5 +326,13 @@ td.log-table__summary {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: -2px;
   border-radius: 0.25rem;
+}
+</style>
+
+<style>
+/* Not scoped: Vue drops the part after `:global(...)` in a scoped style, which would make this
+ * rule apply to the whole page. The class names are specific to this component. */
+:root[data-density='compact'] .log-table td {
+  padding-block: 0.1875rem;
 }
 </style>
