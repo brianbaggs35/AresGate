@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, Minus } from '@lucide/vue'
+import { ArrowDown, ArrowUp, ChevronRight, Minus } from '@lucide/vue'
 import type { RouteLocationRaw } from 'vue-router'
 import type { IconProps } from 'vuetify'
 
@@ -26,6 +26,9 @@ const props = defineProps<{
   /** What the line shows, in words. */
   trendLabel?: string
   to?: RouteLocationRaw
+  /** For a tile that leads somewhere: what it says, for a screen reader, in a sentence such as
+   * "12 open incidents, show them". Without it a link is only named by what is on the tile. */
+  toLabel?: string
   /** Without a card of its own, for a tile that sits inside another surface. */
   flat?: boolean
 }>()
@@ -37,6 +40,7 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
 <template>
   <v-card
     :to="to"
+    :aria-label="to !== undefined ? toLabel : undefined"
     :hover="to !== undefined"
     class="stat-tile pa-5"
     :class="{ 'stat-tile--flat': flat }"
@@ -51,6 +55,14 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
         aria-hidden="true"
       />
       <span data-test="stat-label">{{ label }}</span>
+      <v-icon
+        v-if="to !== undefined"
+        :icon="ChevronRight"
+        size="18"
+        class="stat-tile__go"
+        aria-hidden="true"
+        data-test="stat-go"
+      />
     </div>
     <div class="stat-tile__figures">
       <p class="stat-tile__value text-headline-large" data-test="stat-value">{{ value }}</p>
@@ -91,6 +103,15 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.stat-tile__go {
+  margin-inline-start: auto;
+}
+
+.stat-tile:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
 
 .stat-tile__label {

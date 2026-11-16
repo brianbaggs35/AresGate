@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Every number opens what it counts, and the dashboard says what is new.** The Alerts and
+  Blocked tiles open the Logs page with the search that finds exactly the events they count in the
+  same window, say so to a screen reader ("5 alerts in the last 24 hours, show them"), show a
+  chevron, and have a visible focus ring. **Since you last looked** above the status lists the
+  incidents that began (by severity), what the AI cleared and the devices that appeared since the
+  account last opened the dashboard, each a link to what it counted; the server remembers the
+  time for each account, the first visit and a quiet one say nothing, and dismissing it or leaving
+  the page counts as looking. Incidents can be searched by when they began (`began:`). See
+  [UI](DOCS/ui.md#since-you-last-looked).
 - **Export and views on every list.** The Incidents, Alerts (the delivery log), Devices and Assets
   pages can each save **everything their filters show, in order**, as a CSV or JSON file (up to
   10,000 rows, columns in words, times in your time zone, anything a spreadsheet could run

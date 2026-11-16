@@ -46,7 +46,7 @@ from app.models.base import Base, UTCDateTime, utcnow
 from app.models.baselines import KnownDestination, TrafficBaseline
 from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
-from app.models.dashboard import DashboardLayout
+from app.models.dashboard import DashboardLayout, DashboardVisit
 from app.models.devices import (
     AssetProfile,
     Device,
@@ -122,6 +122,7 @@ __all__ = [
     "Base",
     "CollectorHealth",
     "DashboardLayout",
+    "DashboardVisit",
     "Device",
     "DeviceAddress",
     "DeviceIdentity",

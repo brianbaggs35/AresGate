@@ -36,11 +36,13 @@ import ClearedNudge from '@/components/ClearedNudge.vue'
 import ReviewNudge from '@/components/ReviewNudge.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import StatTile from '@/components/StatTile.vue'
+import SinceBanner from '@/components/SinceBanner.vue'
 import StatusHero from '@/components/StatusHero.vue'
 import TrafficCard from '@/components/TrafficCard.vue'
 import WidgetNeeds from '@/components/WidgetNeeds.vue'
 import {
   alertsHint,
+  alertsQuery,
   bucketLabel,
   bucketRange,
   changeOf,
@@ -55,7 +57,7 @@ import {
 import { connectWords, shownPlaces, widgetInfo, type WidgetId } from '@/dashboardLayout'
 import { formatCount, formatFigure } from '@/format'
 import { withinRange } from '@/logs'
-import { deviceQuery } from '@/blocked'
+import { blockedQuery, deviceQuery } from '@/blocked'
 import { usePolling } from '@/polling'
 import { takePrefetched } from '@/prefetch'
 import { useServerEvents } from '@/serverEvents'
@@ -444,6 +446,8 @@ onBeforeUnmount(() => void leaveFullScreen())
         </template>
       </v-alert>
 
+      <SinceBanner />
+
       <StatusHero :posture="posture" :action="postureAction">
         <StatTile
           flat
@@ -455,6 +459,8 @@ onBeforeUnmount(() => void leaveFullScreen())
           :delta="alertsTile.delta"
           :trend="alertsTile.trend"
           :trend-label="alertsTile.trendLabel"
+          :to="{ name: 'logs', query: { q: alertsQuery(view.shown.window.key) } }"
+          :to-label="`${alertsTile.value} alerts in ${lastWords}, show them`"
           data-test="tile-alerts"
         />
         <StatTile
@@ -466,6 +472,8 @@ onBeforeUnmount(() => void leaveFullScreen())
           :delta="blockedTile.delta"
           :trend="blockedTile.trend"
           :trend-label="blockedTile.trendLabel"
+          :to="{ name: 'logs', query: { q: blockedQuery(view.shown.window.key) } }"
+          :to-label="`${blockedTile.value} blocked connections in ${lastWords}, show them`"
           data-test="tile-blocked"
         />
         <StatTile

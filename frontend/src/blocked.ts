@@ -59,6 +59,11 @@ export function sidesSummary(blocked: Pick<BlockedCounts, Side>): string {
   return `${formatCount(inbound)} came from the internet, the firewall doing its job. ${turned} ${plural} from your own devices were refused: worth a look if one device keeps trying.`
 }
 
+/** The search of the Logs page for every block in the window, which is what the dashboard counts. */
+export function blockedQuery(window: DashboardWindow): string {
+  return `kind:firewall severity>=low since:${window}`
+}
+
 /** The search of the Logs page for the blocks of one device in the window. */
 export function deviceQuery(address: string, window: DashboardWindow): string {
   return `kind:firewall severity>=low from:${address} since:${window}`

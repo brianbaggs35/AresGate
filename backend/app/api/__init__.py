@@ -23,6 +23,7 @@ from app.api import (
     credentials,
     dashboard,
     dashboard_layout,
+    dashboard_since,
     devices,
     events,
     exports,
@@ -81,6 +82,7 @@ api_router.include_router(alerts.router)
 api_router.include_router(collectors.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(dashboard_layout.router)
+api_router.include_router(dashboard_since.router)
 api_router.include_router(events.router)
 api_router.include_router(incident_response.router)
 api_router.include_router(incidents.router)

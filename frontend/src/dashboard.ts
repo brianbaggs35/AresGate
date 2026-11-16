@@ -272,3 +272,8 @@ export function bucketRange(
   const start = Date.parse(starts[index] as string)
   return { start: written(start), end: written(Date.parse(starts[index + 1] ?? windowEnd)) }
 }
+
+/** The search of the Logs page for every alert in the window, which is what the dashboard counts. */
+export function alertsQuery(window: DashboardWindow): string {
+  return `kind:alert since:${window}`
+}

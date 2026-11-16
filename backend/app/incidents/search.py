@@ -168,6 +168,11 @@ def _before(clause: Clause, context: Context) -> Compiled:
     return Incident.first_seen_at < when, f"Began before: {shown}"
 
 
+def _began(clause: Clause, context: Context) -> Compiled:
+    when, shown = moment(only_one(clause, "began"), context)
+    return Incident.first_seen_at >= when, f"Began since: {shown}"
+
+
 def _text(clause: Clause, _context: Context) -> Compiled:
     value = word(clause, "text")
     found = or_(
@@ -195,6 +200,7 @@ FIELDS: Final = (
     Field("hunted", _hunted),
     Field("since", _since),
     Field("before", _before),
+    Field("began", _began),
 )
 # Other names for them that people reach for.
 ALIASES: Final = {

@@ -3,6 +3,7 @@ import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
 import * as layoutApi from '@/api/dashboardLayout'
 import * as incidentsApi from '@/api/incidents'
+import * as sinceApi from '@/api/since'
 import * as verdictsApi from '@/api/verdicts'
 import { useDashboardLayoutStore } from '@/stores/dashboardLayout'
 import { prefetchDashboard, takePrefetched } from '@/prefetch'
@@ -98,6 +99,8 @@ interface Mocks {
   incidents?: incidentsApi.IncidentPage | Error
   /** How the account has laid out the dashboard. The default one, unless given. */
   layout?: layoutApi.PlaceOut[]
+  /** What is new since the owner last looked. Nothing, unless given. */
+  since?: Partial<sinceApi.Since>
 }
 
 function mocks({
@@ -105,7 +108,17 @@ function mocks({
   collectors = report([collector()]),
   incidents = page([]),
   layout = [],
+  since = {},
 }: Mocks = {}) {
+  vi.spyOn(sinceApi, 'fetchSince').mockResolvedValue({
+    since: '2026-11-16T08:00:00Z',
+    incidents: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+    cleared_by_ai: 0,
+    new_devices: 0,
+    total: 0,
+    ...since,
+  })
+  vi.spyOn(sinceApi, 'markSeen').mockResolvedValue(undefined)
   vi.spyOn(layoutApi, 'fetchLayout').mockResolvedValue({
     preset: null,
     widgets: layout,
@@ -267,6 +280,18 @@ describe('DashboardView', () => {
     })
   })
 
+  describe('what is new', () => {
+    it('is told above the status, with a way to the lists', async () => {
+      const { find } = await open({ since: { new_devices: 2, total: 2 } })
+      expect(find('since').text()).toContain('2 new devices')
+    })
+
+    it('says nothing when nothing changed', async () => {
+      const { find } = await open()
+      expect(find('since').exists()).toBe(false)
+    })
+  })
+
   describe('the tiles', () => {
     it('count the alerts and compare them with the time before', async () => {
       const { text } = await open()
@@ -283,6 +308,24 @@ describe('DashboardView', () => {
       expect(text('tile-blocked')).toContain('25% more than the day before')
       expect(find('tile-blocked').find('[data-test="stat-delta"]').classes()).not.toContain(
         'text-error',
+      )
+    })
+
+    it('open the alerts they count, in the window they count', async () => {
+      const { find } = await open()
+      expect(find('tile-alerts').attributes('href')).toBe('/logs?q=kind:alert+since:24h')
+      expect(find('tile-alerts').attributes('aria-label')).toBe(
+        '9 alerts in the last 24 hours, show them',
+      )
+    })
+
+    it('open the blocks they count, in the window they count', async () => {
+      const { find } = await open()
+      expect(find('tile-blocked').attributes('href')).toBe(
+        '/logs?q=kind:firewall+severity%3E=low+since:24h',
+      )
+      expect(find('tile-blocked').attributes('aria-label')).toBe(
+        '1,250 blocked connections in the last 24 hours, show them',
       )
     })
 

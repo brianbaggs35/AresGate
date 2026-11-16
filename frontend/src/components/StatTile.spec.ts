@@ -140,4 +140,27 @@ describe('StatTile', () => {
       expect(wrapper.find('[role="img"]').exists()).toBe(false)
     })
   })
+
+  it('says where a linked tile leads, in a sentence, and shows that it does', async () => {
+    const { wrapper } = await mountWithPlugins(StatTile, {
+      props: {
+        label: 'Alerts',
+        value: 5,
+        to: '/logs',
+        toLabel: '5 alerts in the last 24 hours, show them',
+      },
+    })
+    expect(wrapper.find('a').attributes('aria-label')).toBe(
+      '5 alerts in the last 24 hours, show them',
+    )
+    expect(wrapper.find('[data-test="stat-go"]').exists()).toBe(true)
+  })
+
+  it('has no arrow and no sentence when it leads nowhere', async () => {
+    const { wrapper } = await mountWithPlugins(StatTile, {
+      props: { label: 'Alerts', value: 5, toLabel: 'never shown' },
+    })
+    expect(wrapper.find('[data-test="stat-go"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="never shown"]').exists()).toBe(false)
+  })
 })

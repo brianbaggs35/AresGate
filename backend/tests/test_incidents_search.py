@@ -418,6 +418,13 @@ class TestWhatItFinds:
         assert found(session, "before:30d") == {"six"}
         assert found(session, "since:7d before:1h") == {"attack", "scan"}
 
+    def test_began_is_what_began_after_a_time(
+        self, session: Session, incidents: dict[str, Incident]
+    ) -> None:
+        assert found(session, "began:1h") == {"rule"}
+        assert found(session, "began:30d") == {"attack", "scan", "rule"}
+        assert found(session, "began:30d before:1h") == {"attack", "scan"}
+
     def test_today_and_yesterday_are_where_the_person_is(
         self, session: Session, incidents: dict[str, Incident]
     ) -> None:
