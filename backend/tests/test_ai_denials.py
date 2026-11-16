@@ -124,7 +124,7 @@ class TestRecording:
         found = incident(session)
         session.commit()
 
-        for body in (
+        bodies: list[dict[str, Any]] = [
             {"kind": "status", "value": "threat", "incident_ids": [found.id]},
             {"kind": "verdict", "value": "dismissed", "incident_ids": [found.id]},
             {"kind": "status", "value": "dismissed", "incident_ids": []},
@@ -132,7 +132,8 @@ class TestRecording:
             {"kind": "status", "value": "dismissed", "incident_ids": [found.id] * 21},
             {"kind": "open", "value": "dismissed", "incident_ids": [found.id]},
             {"kind": "status", "value": "dismissed", "incident_ids": [found.id], "more": 1},
-        ):
+        ]
+        for body in bodies:
             response = client.post(BASE, headers=headers(csrf_token), json=body)
             assert response.status_code == 422, body
 
@@ -196,7 +197,9 @@ class TestWhatStands:
         assert not denials.is_denied({"kind": "status", "value": "dismissed"}, denied)
 
     def test_a_suggestion_to_open_a_page_is_never_dropped(self, session: Session) -> None:
-        opening = [{"kind": "open", "target_key": "3", "also": [], "value": None}]
+        opening: list[dict[str, Any]] = [
+            {"kind": "open", "target_key": "3", "also": [], "value": None}
+        ]
 
         assert denials.without_denied(session, opening, NOW) == opening
 
