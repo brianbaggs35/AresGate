@@ -328,7 +328,7 @@ def schema(template: Template) -> Mapping[str, object]:
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "kind": {"type": "string", "enum": list(catalog.HANDOFF_KINDS)},
+                    "kind": {"type": "string", "enum": list(catalog.handoff_kinds())},
                     "subject": {"type": "string"},
                     "reason": {"type": "string"},
                 },
@@ -555,7 +555,7 @@ def _ask(item: object) -> Ask | None:
     if fields is None:
         return None
     kind, subject, reason = fields.get("kind"), fields.get("subject"), fields.get("reason")
-    if not (isinstance(kind, str) and kind in catalog.HANDOFF_KINDS):
+    if not (isinstance(kind, str) and kind in catalog.handoff_kinds()):
         return None
     if not (isinstance(subject, str) and subject.strip()):
         return None
@@ -594,21 +594,19 @@ def parse(text: str, template: Template) -> Reading | None:
     findings = [kept for item in _items(found) if (kept := _finding(item)) is not None]
     lookups = [kept for item in _items(asked) if (kept := _lookup(item, template)) is not None]
     rejects = [item for item in _items(fields.get("rejects")) if isinstance(item, str)]
+    asks = [kept for item in _items(fields.get("handoffs")) if (kept := _ask(item)) is not None]
+    plan = [kept for item in _items(fields.get("plan")) if (kept := _plan(item)) is not None]
+    if not template.hands_off:
+        asks = []
+    if not template.plans:
+        plan = []
     return Reading(
         summary=(audit.clean(summary, MAX_SUMMARY) or "") if isinstance(summary, str) else "",
         findings=findings[:MAX_FINDINGS],
         lookups=lookups[:MAX_LOOKUPS],
         rejects=[audit.clean(item, 60) or "" for item in rejects[: MAX_FINDINGS * 3]],
-        asks=(
-            [kept for item in _items(fields.get("handoffs")) if (kept := _ask(item)) is not None]
-            if template.hands_off
-            else []
-        )[: handoffs.PER_RUN + 1],
-        plan=(
-            [kept for item in _items(fields.get("plan")) if (kept := _plan(item)) is not None]
-            if template.plans
-            else []
-        )[: plans.MAX_STEPS],
+        asks=asks[: handoffs.PER_RUN + 1],
+        plan=plan[: plans.MAX_STEPS],
     )
 
 

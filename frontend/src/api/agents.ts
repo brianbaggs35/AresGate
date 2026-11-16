@@ -441,8 +441,10 @@ export interface Moment {
 
 export const fetchHandoffs = () => apiGet<HandoffList>(`${BASE}/handoffs`)
 
-export const fetchPlanSteps = (incident: number | null = null) =>
-  apiGet<PlanStepList>(`${BASE}/plan-steps${incident === null ? '' : `?incident_id=${incident}`}`)
+export const fetchPlanSteps = (incident: number | null = null) => {
+  const query = incident === null ? '' : `?incident_id=${incident.toString()}`
+  return apiGet<PlanStepList>(`${BASE}/plan-steps${query}`)
+}
 
 export const approveStep = (id: number, csrfToken: string) =>
   apiPost<PlanStep>(`${BASE}/plan-steps/${id}/approve`, undefined, csrfToken)

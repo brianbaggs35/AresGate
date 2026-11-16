@@ -12,6 +12,10 @@ from alembic import op
 
 revision: str = "0069"
 down_revision: str | Sequence[str] | None = "0068"
+
+AGENT_ID = "agents.id"
+RUN_ID = "agent_runs.id"
+SET_NULL = "SET NULL"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 # Alembic reads these by name, so they're exported, which also tells CodeQL they're used.
@@ -45,27 +49,27 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["run_id"],
-            ["agent_runs.id"],
+            [RUN_ID],
             name=op.f("fk_agent_handoffs_run_id_agent_runs"),
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["from_agent_id"],
-            ["agents.id"],
+            [AGENT_ID],
             name=op.f("fk_agent_handoffs_from_agent_id_agents"),
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["to_agent_id"],
-            ["agents.id"],
+            [AGENT_ID],
             name=op.f("fk_agent_handoffs_to_agent_id_agents"),
-            ondelete="SET NULL",
+            ondelete=SET_NULL,
         ),
         sa.ForeignKeyConstraint(
             ["to_run_id"],
-            ["agent_runs.id"],
+            [RUN_ID],
             name=op.f("fk_agent_handoffs_to_run_id_agent_runs"),
-            ondelete="SET NULL",
+            ondelete=SET_NULL,
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_agent_handoffs")),
         if_not_exists=True,
@@ -93,15 +97,15 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["agent_id"],
-            ["agents.id"],
+            [AGENT_ID],
             name=op.f("fk_agent_plan_steps_agent_id_agents"),
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["run_id"],
-            ["agent_runs.id"],
+            [RUN_ID],
             name=op.f("fk_agent_plan_steps_run_id_agent_runs"),
-            ondelete="SET NULL",
+            ondelete=SET_NULL,
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_agent_plan_steps")),
         sa.UniqueConstraint("agent_id", "key", name="uq_agent_plan_steps_agent_id_key"),
