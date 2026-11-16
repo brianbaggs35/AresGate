@@ -129,8 +129,8 @@ async function clearLog() {
     asking.value = false
     selected.value = null
     await load()
-  } catch (failure) {
-    clearFailure.value = errorMessage(failure)
+  } catch (clearError) {
+    clearFailure.value = errorMessage(clearError)
     asking.value = false
   } finally {
     clearing.value = false

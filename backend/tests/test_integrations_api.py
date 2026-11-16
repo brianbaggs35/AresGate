@@ -416,7 +416,9 @@ def test_the_log_of_one_integration_is_cleared_and_only_that_one(
 def test_clearing_an_empty_log_says_so_and_a_change_needs_the_token(
     client: TestClient, csrf_token: str
 ) -> None:
-    assert client.delete(f"{BASE}/crowdsec/calls").status_code == 403
+    refused = client.delete(f"{BASE}/crowdsec/calls")
+
+    assert refused.status_code == 403
 
     response = client.delete(f"{BASE}/crowdsec/calls", headers=headers(csrf_token))
 
