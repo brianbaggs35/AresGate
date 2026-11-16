@@ -20,6 +20,7 @@ test.describe('Settings > AI', () => {
       'AI provider',
       'What the provider sees',
       'Clearing',
+      'Denied suggestions',
     ])
     for (const [key, name] of [
       ['ollama', 'Ollama (on your computer)'],
