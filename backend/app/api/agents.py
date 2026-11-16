@@ -471,11 +471,17 @@ def _activity(db: Session) -> list[ActivityOut]:
         ActivityOut(
             agent_id=agent.id,
             agent_name=agent.name,
-            icon=item.icon if (item := catalog.template(agent.template)) else "bot",
+            icon=_icon(agent),
             run=_run_out(run),
         )
         for run, agent in rows
     ]
+
+
+def _icon(agent: Agent) -> str:
+    """The icon of the kind of agent it is, or a robot for one of a kind that is gone."""
+    template = catalog.template(agent.template)
+    return template.icon if template else "bot"
 
 
 def _days(db: Session, now: datetime, agent_id: int) -> list[DayOut]:
