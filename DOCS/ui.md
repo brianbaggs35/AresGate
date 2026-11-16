@@ -79,6 +79,13 @@ button. A program that is not connected is said in an alert with a link to Integ
 then "no response" may only mean that nobody can tell. On a phone the page is reached through
 More: `behindMore` in `src/navigation.ts` leaves the bar to the places that are used most.
 
+The side menu is divided under headings (Overview, Security, AI, Network and System), each a
+`role="group"` named by its heading. A place says which heading it is under (`category` in
+`src/navigation.ts`), the places of a heading are together in the list, and `navGroups` makes the
+groups, so a page that adds itself to the menu says where. In a rail the headings are only for a
+screen reader and a line divides the groups; the bottom bar and the command palette use the flat
+list, in the order of the groups.
+
 The search is `SearchBox`: a labelled text field in a `role="search"` landmark, a panel
 behind its help button (a disclosure, not a menu, so it is plain buttons that work with a screen
 reader and a thumb) with the saved searches, the ways to search and the searches made before, and one button for each
@@ -220,8 +227,7 @@ of rows (not a table) that stack on a phone, and each row opens `AiCallDialog`, 
 provider was sent and what it answered. The page asks again when the range changes or *Refresh* is
 pressed, and keeps what it showed, with a warning, if asking again fails.
 
-The Assistant is a place in the menu of its own, third after Incidents (so it is in a phone's bottom
-bar). On a wide screen the conversations are a card beside the chat; on a phone they are behind a
+The Assistant is a place in the menu of its own, under the AI heading. On a wide screen the conversations are a card beside the chat; on a phone they are behind a
 *Conversations* button that opens a sheet. The chat is a `role="log"` list of `ChatMessage`s: what the
 owner asked sits to the right, tinted, and an answer sits on a surface of its own with who said it,
 the text (paragraphs and lists, with `[incident 3]` and `[device 12]` turned into links by `ChatText`), a *Looked at*

@@ -1,4 +1,4 @@
-import { BOTTOM_BAR_LIMIT, bottomBar, navItems } from '@/navigation'
+import { BOTTOM_BAR_LIMIT, NAV_CATEGORIES, bottomBar, navGroups, navItems } from '@/navigation'
 import { routes } from '@/router'
 
 describe('navigation', () => {
@@ -31,41 +31,91 @@ describe('navigation', () => {
     const { bar, more } = bottomBar(navItems, 5)
 
     expect(bar.map((item) => item.route)).toEqual(['home', 'threats', 'incidents', 'review'])
-    expect(more.map((item) => item.route).slice(0, 2)).toEqual(['incident-response', 'assistant'])
+    expect(more.map((item) => item.route).slice(0, 2)).toEqual(['incident-response', 'alerts'])
     expect(bar.some((item) => item.behindMore)).toBe(false)
   })
 
   it('has more behind it than the bar has room for only when it must', () => {
     const items = [
-      { route: 'a', title: 'A', icon: 'x' },
-      { route: 'b', title: 'B', icon: 'x', behindMore: true },
-      { route: 'c', title: 'C', icon: 'x' },
+      { route: 'a', title: 'A', icon: 'x', category: 'overview' as const },
+      { route: 'b', title: 'B', icon: 'x', behindMore: true, category: 'overview' as const },
+      { route: 'c', title: 'C', icon: 'x', category: 'overview' as const },
     ]
 
     expect(bottomBar(items, 3)).toEqual({ bar: items, more: [] })
     expect(bottomBar(items, 2)).toEqual({ bar: [items[0]], more: [items[1], items[2]] })
   })
 
-  it('keeps the places in the order they are listed, Threats next to the Dashboard, Incident response and Review next to Incidents, and the Assistant and Agents after them', () => {
+  it('keeps the places in the order they are listed, under their headings: the Dashboard, then what to defend against, the AI, the network and the system', () => {
     expect(navItems.map((item) => item.route)).toEqual([
       'home',
       'threats',
       'incidents',
       'incident-response',
       'review',
+      'alerts',
+      'trust',
+      'threat-intelligence',
       'assistant',
       'agents',
-      'logs',
+      'ai-usage',
       'assets',
       'devices',
-      'integrations',
-      'threat-intelligence',
       'interfaces',
-      'ai-usage',
-      'trust',
-      'alerts',
+      'logs',
+      'integrations',
       'status',
       'settings',
+    ])
+  })
+
+  it('puts each place under a heading, and the places of a heading together', () => {
+    const headings = navItems.map((item) => item.category)
+
+    expect(headings.every((key) => NAV_CATEGORIES.some((category) => category.key === key))).toBe(
+      true,
+    )
+    // Once a heading has ended, it does not start again.
+    expect(
+      new Set(
+        headings
+          .join(',')
+          .replace(/(\w+)(,\1)+/g, '$1')
+          .split(','),
+      ),
+    ).toHaveProperty('size', new Set(headings).size)
+  })
+
+  it('divides the menu under its headings, in order, with every place once', () => {
+    const groups = navGroups()
+
+    expect(groups.map((group) => group.title)).toEqual([
+      'Overview',
+      'Security',
+      'AI',
+      'Network',
+      'System',
+    ])
+    expect(groups.flatMap((group) => group.items)).toEqual(navItems)
+    expect(groups[1]?.items.map((item) => item.route)).toEqual([
+      'threats',
+      'incidents',
+      'incident-response',
+      'review',
+      'alerts',
+      'trust',
+      'threat-intelligence',
+    ])
+  })
+
+  it('leaves out a heading that has no places', () => {
+    const items = navItems.filter((item) => item.category !== 'ai')
+
+    expect(navGroups(items).map((group) => group.key)).toEqual([
+      'overview',
+      'security',
+      'network',
+      'system',
     ])
   })
 })

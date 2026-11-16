@@ -28,6 +28,35 @@ describe('AppDrawer', () => {
     expect(dashboard.classes()).toContain('v-list-item--active')
   })
 
+  it('divides the places under headings, each group named for a screen reader', async () => {
+    const { wrapper } = await open(COMPUTER)
+
+    const headings = wrapper.findAll('[data-test="nav-heading"]')
+    expect(headings.map((heading) => heading.text())).toEqual([
+      'Overview',
+      'Security',
+      'AI',
+      'Network',
+      'System',
+    ])
+    const security = wrapper.find('[data-test="nav-group-security"]')
+    expect(security.attributes('role')).toBe('group')
+    expect(security.attributes('aria-labelledby')).toBe('nav-heading-security')
+    expect(security.find('#nav-heading-security').text()).toBe('Security')
+    expect(security.find('[data-test="nav-threats"]').exists()).toBe(true)
+    expect(security.find('[data-test="nav-agents"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="nav-group-ai"] [data-test="nav-agents"]').exists()).toBe(true)
+    expect(headings[0]?.classes()).not.toContain('sr-only')
+  })
+
+  it('keeps the headings for a screen reader only when it is a rail', async () => {
+    const { wrapper } = await open(TABLET)
+
+    const headings = wrapper.findAll('[data-test="nav-heading"]')
+    expect(headings).toHaveLength(5)
+    expect(headings.every((heading) => heading.classes().includes('sr-only'))).toBe(true)
+  })
+
   it('keeps Integrations marked on the page of one of them', async () => {
     const { wrapper } = await mountWithPlugins(AppDrawer, {
       withApp: true,
