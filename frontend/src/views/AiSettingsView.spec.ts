@@ -1,9 +1,11 @@
 import * as aiApi from '@/api/ai'
+import * as clearingApi from '@/api/aiClearing'
 import { ApiError } from '@/api/client'
 import AiProviderForm from '@/components/AiProviderForm.vue'
 import AiProviderPicker from '@/components/AiProviderPicker.vue'
 import AiUseSwitch from '@/components/AiUseSwitch.vue'
 import { ai, anthropic, ollama, openai } from '@/test/ai'
+import { clearing } from '@/test/aiClearing'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AiSettingsView from '@/views/AiSettingsView.vue'
 
@@ -21,6 +23,7 @@ async function open(answer: aiApi.Ai | Error = ai()) {
   if (answer instanceof Error) fetchIt.mockRejectedValue(answer)
   else fetchIt.mockResolvedValue(answer)
   const use = vi.spyOn(aiApi, 'useAi')
+  vi.spyOn(clearingApi, 'fetchClearing').mockResolvedValue(clearing())
   const mounted = await mountWithPlugins(AiSettingsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -178,6 +181,16 @@ describe('AiSettingsView', () => {
     expect(find('ai-privacy-card').text()).toContain('stand-ins that only AresGate can turn back')
     expect(find('ai-privacy-card').text()).toContain('recorded exactly as it was sent')
     expect(find('privacy-balanced').find('input').element).toHaveProperty('checked', true)
+  })
+
+  it('has a card on what the AI may clear, below the others', async () => {
+    const { wrapper } = await open()
+
+    expect(wrapper.findAll('[data-test="section-title"]').map((title) => title.text())).toEqual([
+      'AI provider',
+      'What the provider sees',
+      'Clearing',
+    ])
   })
 
   it('changes what is shown without changing the use of AI', async () => {

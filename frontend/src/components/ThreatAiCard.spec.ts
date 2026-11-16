@@ -9,7 +9,6 @@ async function show(props: Record<string, unknown> = {}) {
       mayClear: true,
       clearFrom: 80,
       confirms: true,
-      givesVerdicts: false,
       defaultClearFrom: 80,
       minClearFrom: 50,
       watching: true,
@@ -54,24 +53,22 @@ describe('ThreatAiCard', () => {
 
   it('tells the page what is changed', async () => {
     const { wrapper } = await show()
-    const [clear, confirm, verdicts] = wrapper.findAllComponents(VSwitch)
+    const [clear, confirm] = wrapper.findAllComponents(VSwitch)
 
     clear?.vm.$emit('update:modelValue', false)
     confirm?.vm.$emit('update:modelValue', null)
-    verdicts?.vm.$emit('update:modelValue', true)
     wrapper.findComponent(VSlider).vm.$emit('update:modelValue', 90)
 
     expect(wrapper.emitted('update:mayClear')).toEqual([[false]])
     expect(wrapper.emitted('update:confirms')).toEqual([[false]])
-    expect(wrapper.emitted('update:givesVerdicts')).toEqual([[true]])
     expect(wrapper.emitted('update:clearFrom')).toEqual([[90]])
   })
 
-  it('says the AI gives verdicts only when you let it, and that they can be taken back', async () => {
-    const { wrapper } = await show()
+  it('says where the AI is let clear false positives', async () => {
+    const { find } = await show()
 
-    expect(wrapper.text()).toContain('Let the AI clear false positives')
-    expect(wrapper.text()).toContain('you can take it back there')
+    expect(find('threat-clearing-link').attributes('href')).toBe('/settings/ai')
+    expect(find('threat-ai-card').text()).toContain('Clearing card in Settings > AI')
   })
 
   it('offers to go back to the default once it is another, and not before', async () => {

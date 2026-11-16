@@ -16,7 +16,11 @@ test.describe('Settings > AI', () => {
     await expect(page).toHaveURL('/settings/ai')
     await expect(page).toHaveTitle('Settings · AresGate')
     await expect(settings.aiLink).toHaveAttribute('aria-current', 'page')
-    await expect(aiSettings.headings).toHaveText(['AI provider', 'What the provider sees'])
+    await expect(aiSettings.headings).toHaveText([
+      'AI provider',
+      'What the provider sees',
+      'Clearing',
+    ])
     for (const [key, name] of [
       ['ollama', 'Ollama (on your computer)'],
       ['ollama_cloud', 'Ollama Cloud'],

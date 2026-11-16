@@ -7,6 +7,7 @@ from app.api import (
     agents,
     ai,
     ai_chat,
+    ai_clearing,
     ai_usage,
     alerts,
     assets,
@@ -61,6 +62,7 @@ api_router.include_router(devices.router)
 api_router.include_router(agents.router)
 api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)
+api_router.include_router(ai_clearing.router)
 api_router.include_router(ai_usage.router)
 api_router.include_router(alerts.router)
 api_router.include_router(collectors.router)

@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Say how much the AI may clear, and see what it would do first.** Settings > AI has a
+  *Clearing* card: the AI can be off, *suggest, then confirm* (the default) or *automatic*; how sure
+  it must be is *careful*, *balanced* or *thorough*, or a number of your own from 50 to 99; it may
+  clear noise, probes and what it can't tell, never an attack or a compromise; you can limit it to
+  the programs you name and to incidents no more serious than low, medium or high (critical is
+  always yours); and *automatic* has a cap for each 24 hours. It stops, and says so, when the cap
+  or the AI spending limit is reached. As you change it, the card shows how many of the incidents
+  the AI read in the last 7 days it would have cleared. The switch for giving verdicts moves here
+  from Threat detection: if it was on, it stays *automatic*. See
+  [When the AI clears a false positive](DOCS/threats.md#when-the-ai-clears-a-false-positive).
+
 - **Five more kinds of agent, and a feed of what the team has been doing.** The Security triage
   agent groups the alerts that are the same activity and says what to look at first; the Network
   threat analyst reads the firewall and the traffic for scanning, strange connections and data

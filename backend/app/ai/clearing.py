@@ -23,7 +23,7 @@ Each clear is in the audit log.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from ipaddress import ip_address
 from typing import Final
 
@@ -31,6 +31,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.ai import clearing_settings
+from app.ai.clearing_settings import Policy
 from app.audit import Action, Outcome
 from app.incidents import attention, engine
 from app.incidents.verdicts import MUTING
@@ -40,6 +42,9 @@ from app.threats.settings import Tuning
 GIVER_AI: Final = "ai"
 GIVER_OWNER: Final = "owner"
 MAX_NOTE: Final = 500
+# How far back the preview looks, and the most readings it weighs.
+PREVIEW_DAYS: Final = 7
+PREVIEW_LIMIT: Final = 5000
 
 
 @dataclass(frozen=True)
@@ -91,28 +96,31 @@ def _taken(db: Session, match: Match) -> bool:
     return vetoed is not None or said is not None
 
 
-def clears(incident: Incident, reading: AiTriage, tuning: Tuning) -> bool:
-    """Whether the reading is a verdict the AI may give on the incident: the owner's switch is on,
-    it says the incident is nothing and is sure enough (as sure as the owner asks of the AI before
-    it sets something aside), the incident is going on, is not critical or more than scanning, and
-    the owner has said nothing of it."""
+def clears(incident: Incident, reading: AiTriage, tuning: Tuning, policy: Policy) -> bool:
+    """Whether the reading is a verdict the AI may give on the incident: the owner has it clearing
+    by itself, the policy allows this reading of this incident, it is going on and the owner has
+    said nothing of it."""
     return (
-        tuning.ai_gives_verdicts
-        and reading.verdict in MUTING
-        and reading.confidence >= tuning.clear_from
+        policy.mode == "automatic"
         and incident.status in attention.ACTIVE
         and incident.verdict is None
-        and incident.severity < attention.CLEARABLE_BELOW
-        and not attention.escalated(incident, tuning)
+        and clearing_settings.blocked(incident, reading, policy, tuning) is None
     )
 
 
 def clear(
-    db: Session, incident: Incident, reading: AiTriage, tuning: Tuning, now: datetime
+    db: Session,
+    incident: Incident,
+    reading: AiTriage,
+    tuning: Tuning,
+    now: datetime,
+    policy: Policy | None = None,
 ) -> VerdictRule | None:
     """Gives the verdict the AI read of the incident, if it may, and returns the rule, or None
-    where it may not. The caller commits, with the reading."""
-    if not clears(incident, reading, tuning):
+    where it may not (the cap for the day or the spending limit, too). The caller commits, with
+    the reading."""
+    policy = policy or clearing_settings.load(db)
+    if not clears(incident, reading, tuning, policy) or clearing_settings.held(db, policy, now):
         return None
     match = _match(db, incident)
     if match is None or _taken(db, match):
@@ -211,3 +219,31 @@ def take_back(db: Session, rule: VerdictRule) -> None:
     ).first()
     if exists is None:
         db.add(AiClearVeto(address=rule.address, source=rule.source, signature=rule.signature))
+
+
+@dataclass(frozen=True)
+class Preview:
+    """What a policy comes to for the incidents the AI read lately."""
+
+    read: int
+    would_clear: int
+
+
+def preview(db: Session, policy: Policy, tuning: Tuning, now: datetime) -> Preview:
+    """How many of the incidents the AI read in the last 7 days it would have cleared under the
+    policy, leaving out those the owner had given a verdict of their own."""
+    rows = db.execute(
+        select(Incident, AiTriage)
+        .join(AiTriage, AiTriage.incident_id == Incident.id)
+        .where(Incident.last_seen_at >= now - timedelta(days=PREVIEW_DAYS))
+        .order_by(Incident.last_seen_at.desc())
+        .limit(PREVIEW_LIMIT)
+    ).all()
+    given = of(db, [incident for incident, _ in rows])
+    would = sum(
+        1
+        for incident, reading in rows
+        if (incident.verdict is None or incident.id in given)
+        and clearing_settings.blocked(incident, reading, policy, tuning) is None
+    )
+    return Preview(len(rows), would)

@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy import text as sql
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UTCDateTime, utcnow
@@ -85,6 +85,43 @@ class AiSettings(Base):
     provider: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("ai_providers.provider", ondelete="SET NULL"), default=None
     )
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AiClearingSettings(Base):
+    """What the owner lets the AI clear as a false positive, and when (app/ai/clearing.py). There
+    is only ever one row, and until the owner first saves, the defaults apply."""
+
+    __tablename__ = "ai_clearing_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        CheckConstraint("mode IN ('off', 'suggest', 'automatic')", name="mode"),
+        CheckConstraint("minimum BETWEEN 50 AND 99", name="minimum"),
+        CheckConstraint("ceiling IN ('low', 'medium', 'high')", name="ceiling"),
+        CheckConstraint("daily_cap BETWEEN 0 AND 500", name="daily_cap"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
+    # ``off`` (it clears nothing and suggests nothing), ``suggest`` (it marks what looks like a
+    # false positive and waits for a tap) or ``automatic`` (it gives the verdict, which the owner
+    # can take back).
+    mode: Mapped[str] = mapped_column(String(9), default="suggest", server_default="suggest")
+    # How sure the AI has to be, as it says so itself.
+    minimum: Mapped[int] = mapped_column(SmallInteger, default=80, server_default="80")
+    # The kinds of reading it may clear, and the programs whose incidents it may. No program
+    # named is any program.
+    classes: Mapped[list[str]] = mapped_column(
+        ARRAY(String(12)),
+        default=lambda: ["noise", "probe", "unclear"],
+        server_default=sql("'{noise,probe,unclear}'"),
+    )
+    sources: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), default=list, server_default=sql("'{}'")
+    )
+    # The most serious an incident can be and still be cleared. Critical never is.
+    ceiling: Mapped[str] = mapped_column(String(6), default="medium", server_default="medium")
+    # The most it clears by itself in 24 hours.
+    daily_cap: Mapped[int] = mapped_column(SmallInteger, default=25, server_default="25")
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 

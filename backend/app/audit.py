@@ -58,6 +58,7 @@ class Action(StrEnum):
     AI_CHOSEN = "ai.settings_changed"
     AI_LIMITS_CHANGED = "ai.limits_changed"
     AI_LEVEL_CHANGED = "ai.level_changed"
+    AI_CLEARING_CHANGED = "ai.clearing_changed"
     EVENT_RETENTION_CHANGED = "events.retention_changed"
     METRIC_RETENTION_CHANGED = "metrics.retention_changed"
     RETENTION_SETTINGS_CHANGED = "retention.settings_changed"

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import clearing
+from app.ai.clearing_settings import Policy
 from app.audit import Action, Outcome
 from app.config import Settings
 from app.events.event import Severity
@@ -580,7 +581,9 @@ class TestWhatTheAiGave:
             provider="anthropic",
             model="claude-haiku-5-5",
         )
-        rule = clearing.clear(session, found, reading, Tuning(ai_gives_verdicts=True), NOW)
+        rule = clearing.clear(
+            session, found, reading, Tuning(), NOW, Policy(mode="automatic", ceiling="high")
+        )
         session.commit()
         assert rule is not None
         return rule

@@ -42,8 +42,6 @@ class Tuning:
     # devices (``app/threats/importance.py``).
     important_drop: int = DEFAULT_IMPORTANT_DROP
     low_raise: int = DEFAULT_LOW_RAISE
-    # Whether the AI may give a verdict that clears an incident it is sure is a false positive.
-    ai_gives_verdicts: bool = False
     confirming: bool = False
 
     def confirming_when(self, confirming: bool) -> Tuning:
@@ -85,7 +83,6 @@ def _stored(db: Session) -> Tuning:
         row.notes,
         row.important_drop,
         row.low_raise,
-        row.ai_gives_verdicts,
     )
 
 
@@ -113,7 +110,6 @@ def save(db: Session, tuning: Tuning) -> bool:
     row.notes = tuning.notes
     row.important_drop = tuning.important_drop
     row.low_raise = tuning.low_raise
-    row.ai_gives_verdicts = tuning.ai_gives_verdicts
     db.flush()
     return True
 

@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { fetchAi, useAi, type Ai, type AiProvider, type Redaction } from '@/api/ai'
 import { errorMessage } from '@/api/client'
 import { useNote } from '@/ai'
+import AiClearingCard from '@/components/AiClearingCard.vue'
 import AiPrivacy from '@/components/AiPrivacy.vue'
 import AiProviderForm from '@/components/AiProviderForm.vue'
 import AiProviderPicker from '@/components/AiProviderPicker.vue'
@@ -163,6 +164,7 @@ onMounted(load)
         @change="show"
       />
     </SectionCard>
+    <AiClearingCard />
   </template>
   <v-skeleton-loader v-else type="card, card" />
 </template>
