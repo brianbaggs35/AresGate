@@ -113,7 +113,7 @@ class PerformanceOut(BaseModel):
 
 class RunOut(BaseModel):
     id: int
-    trigger: Literal["manual", "schedule"]
+    trigger: Literal["manual", "schedule", "handoff"]
     status: Status
     requested_at: AwareDatetime
     started_at: AwareDatetime | None
@@ -365,7 +365,7 @@ def _run_out(run: AgentRun) -> RunOut:
     )
     return RunOut(
         id=run.id,
-        trigger="schedule" if run.trigger == "schedule" else "manual",
+        trigger=cast("Literal['manual', 'schedule', 'handoff']", run.trigger),
         status=_status(run.status),
         requested_at=run.requested_at,
         started_at=run.started_at,

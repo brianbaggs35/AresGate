@@ -25,7 +25,7 @@ from app.agents.graph import State, Work
 from app.ai.gateway import Context
 from app.integrations import netguard
 from app.integrations.netguard import AddressPolicy
-from app.models import Agent, AgentRun, AgentStep, AiCall
+from app.models import Agent, AgentHandoff, AgentRun, AgentStep, AiCall
 from app.models.base import utcnow
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,21 @@ def _begin(new_session: Callable[[], Session], run_id: int) -> graph.Snapshot | 
             allow_active=agent.allow_active,
             template=template,
             previous=previous,
+            asked=_asked(db, run.id),
         )
+
+
+def _asked(db: Session, run_id: int) -> graph.Request | None:
+    """What another agent asked this run to look into, if a hand-off started it."""
+    row = db.execute(
+        select(AgentHandoff, Agent.name)
+        .join(Agent, Agent.id == AgentHandoff.from_agent_id)
+        .where(AgentHandoff.to_run_id == run_id)
+    ).first()
+    if row is None:
+        return None
+    handoff, name = row
+    return graph.Request(name, handoff.subject, handoff.reason, handoff.incident_id)
 
 
 def _previous(db: Session, agent_id: int, run_id: int) -> graph.Previous | None:
