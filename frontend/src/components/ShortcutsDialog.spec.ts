@@ -44,6 +44,18 @@ describe('ShortcutsDialog', () => {
     expect(one('shortcuts')?.querySelectorAll('dd')).toHaveLength(SHORTCUTS.length)
   })
 
+  it('closes when the dialog itself asks to, as it does for the escape key', async () => {
+    const { wrapper, one, opener, open } = await mountDialog()
+    await opener.trigger('click')
+    await flushPromises()
+    expect(one('shortcuts')).not.toBeNull()
+
+    wrapper.findComponent(VDialog).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(open.value).toBe(false)
+  })
+
   it('closes with its button and gives the keyboard back to what opened it', async () => {
     const { wrapper, one, opener, open } = await mountDialog()
     opener.element.focus()
