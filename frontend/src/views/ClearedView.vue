@@ -135,9 +135,8 @@ async function act(
     const result = await request()
     confirming.value = false
     if (result) {
-      const gone = result.skipped
-        ? ` ${things(result.skipped)} ${result.skipped === 1 ? 'was' : 'were'} no longer there.`
-        : ''
+      const verb = result.skipped === 1 ? 'was' : 'were'
+      const gone = result.skipped ? ` ${things(result.skipped)} ${verb} no longer there.` : ''
       notice.value = `${what} ${things(result.done)}.${gone}`
     } else {
       notice.value = `${what} 1 incident.`
