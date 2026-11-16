@@ -5,15 +5,21 @@ import { RouterLink } from 'vue-router'
 
 import type { Family } from '@/api/threats'
 import SeverityChip from '@/components/SeverityChip.vue'
+import TrendSpark from '@/components/TrendSpark.vue'
 import { formatAgo, formatCount } from '@/format'
 import { OWNER_CALL, reachOf, verdictOf } from '@/threats'
 import { CLASSIFICATION } from '@/triage'
+import { sparkLabel } from '@/trends'
 
 /**
  * A kind of incident in a list: what its incidents say, where they come from, how many there are
  * and what is thought of all of them, by you or by the AI. The card is the way to the kind's page.
  */
-const props = defineProps<{ family: Family }>()
+const props = defineProps<{
+  family: Family
+  /** How many incidents of the kind began each day of the last week, oldest first. */
+  trend?: readonly number[]
+}>()
 
 const reach = computed(() => reachOf(props.family.reach))
 const verdict = computed(() => verdictOf(props.family))
@@ -92,6 +98,11 @@ const lanes = computed(() =>
           {{ formatCount(lane.count) }} {{ lane.label }}
         </li>
       </ul>
+      <TrendSpark
+        v-if="trend"
+        :values="trend"
+        :label="sparkLabel('incidents began', trend, 'the last 7 days')"
+      />
     </RouterLink>
   </v-card>
 </template>

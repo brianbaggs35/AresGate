@@ -12,6 +12,7 @@ import {
   type DevicePage,
 } from '@/api/devices'
 import { errorMessage } from '@/api/client'
+import { fetchAddressTrends } from '@/api/trends'
 import AppPage from '@/components/AppPage.vue'
 import AssetSearch from '@/components/AssetSearch.vue'
 import DeviceCard from '@/components/DeviceCard.vue'
@@ -33,6 +34,7 @@ import {
 import { formatCount } from '@/format'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
+import { activityOf, useTrend } from '@/trends'
 
 /** How many devices the page asks for at a time. */
 const PAGE_SIZE = 30
@@ -66,6 +68,14 @@ const loadingMore = ref(false)
 const updatedAt = ref<Date | null>(null)
 /** Which load is the newest, so the answer to an older one (for other filters) is dropped. */
 let latest = 0
+
+// How each device on screen has been going this week, asked once for all of them after the list.
+const { trend: week } = useTrend(
+  () => (items.value.length ? items.value.map(({ address }) => address).join(',') : null),
+  () => fetchAddressTrends(items.value.map(({ address }) => address)),
+)
+const activity = (address: string) =>
+  (week.value ? activityOf(week.value, address) : null) ?? undefined
 
 /** Fetches the devices. A refresh in the background (`quiet`) leaves what is on screen as it is
  * until the answer comes, and keeps it if there is none. A `fresh` one starts from the first page,
@@ -299,7 +309,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       <h2 class="sr-only">Devices</h2>
       <ul v-if="items.length" class="devices__list" data-test="device-list">
         <li v-for="item in items" :key="item.address">
-          <DeviceCard :device="item" />
+          <DeviceCard :device="item" :trend="activity(item.address)" />
         </li>
       </ul>
       <v-card v-else-if="!loading" class="pa-5 pa-sm-6" data-test="devices-empty">

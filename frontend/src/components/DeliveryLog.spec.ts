@@ -1,3 +1,5 @@
+import { deliveryTrend } from '@/test/trends'
+import * as trendsApi from '@/api/trends'
 import { VSelect } from 'vuetify/components'
 
 import * as alertsApi from '@/api/alerts'
@@ -326,5 +328,19 @@ describe('DeliveryLog', () => {
     await flushPromises()
     expect(find('delivery-error').exists()).toBe(false)
     expect(rows()).toHaveLength(2)
+  })
+
+  describe('the chart above it', () => {
+    it('asks for the hours of the destination and state it is filtered to', async () => {
+      const trend = vi.spyOn(trendsApi, 'fetchDeliveryTrend').mockResolvedValue(deliveryTrend())
+      const { choose, find } = await open(deliveries(), TWO)
+      expect(trend).toHaveBeenLastCalledWith({ destination_id: undefined, state: undefined })
+      expect(find('delivery-trend').exists()).toBe(true)
+
+      await choose('destination', '2')
+      await choose('state', 'failed')
+
+      expect(trend).toHaveBeenLastCalledWith({ destination_id: 2, state: 'failed' })
+    })
   })
 })

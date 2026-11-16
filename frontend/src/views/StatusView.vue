@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import { fetchStatus, type Part, type StatusReport } from '@/api/status'
+import { fetchIntegrationTrends } from '@/api/trends'
 import AppPage from '@/components/AppPage.vue'
 import FactList from '@/components/FactList.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -13,6 +14,7 @@ import SectionCard from '@/components/SectionCard.vue'
 import UsageMeter from '@/components/UsageMeter.vue'
 import { formatBytes, formatDateTime, formatDuration } from '@/format'
 import { useSessionStore } from '@/stores/session'
+import { useTrend } from '@/trends'
 
 /** A computer's clock more than this far from AresGate's is worth saying so. */
 const CLOCK_TOLERANCE_SECONDS = 60
@@ -22,6 +24,12 @@ const CERTIFICATE_WARNING_DAYS = 14
 const session = useSessionStore()
 
 const report = ref<StatusReport | null>(null)
+// How each integration has been doing for the last day, asked after the page itself.
+const { trend: hours } = useTrend(
+  () => (report.value ? 'integrations' : null),
+  () => fetchIntegrationTrends(),
+)
+const history = computed(() => hours.value?.items)
 /** How far this computer's clock was ahead of AresGate's when the report arrived, in seconds
  * (behind when negative). */
 const clockSkew = ref(0)
@@ -300,7 +308,7 @@ onMounted(load)
         description="The systems AresGate watches the network through."
         data-test="status-parts"
       >
-        <PartList :parts="partsOf('integration')" />
+        <PartList :parts="partsOf('integration')" :history="history" />
       </SectionCard>
 
       <SectionCard

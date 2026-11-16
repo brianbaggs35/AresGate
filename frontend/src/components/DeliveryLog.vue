@@ -12,6 +12,7 @@ import {
 } from '@/api/alerts'
 import { errorMessage } from '@/api/client'
 import { DELIVERY_REASONS, DELIVERY_STATES, deliveryTitle, deliveryTotals } from '@/alerts'
+import DeliveryTrend from '@/components/DeliveryTrend.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import LoadError from '@/components/LoadError.vue'
@@ -161,6 +162,12 @@ onMounted(() => load())
     <p v-if="answer" class="text-body-large mb-3" aria-live="polite" data-test="delivery-totals">
       {{ deliveryTotals(answer.counts) }}
     </p>
+
+    <DeliveryTrend
+      class="mb-3"
+      :destination="filters.destination === 'all' ? undefined : Number(filters.destination)"
+      :state="filters.state === 'all' ? undefined : filters.state"
+    />
 
     <div class="delivery-log__filters">
       <v-select

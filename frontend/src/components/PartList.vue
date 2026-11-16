@@ -2,13 +2,19 @@
 import { ChevronRight, CircleAlert, CircleCheck, CircleDashed, Unplug } from '@lucide/vue'
 
 import type { Part, PartState } from '@/api/status'
+import type { HourState } from '@/api/trends'
+import HealthStrip from '@/components/HealthStrip.vue'
 import { formatAgo } from '@/format'
 
 /**
  * Parts of AresGate that can be healthy or not, each with its state in words and a shape as well
  * as a colour, what it says about itself and, where there is a page for it, a way there.
  */
-defineProps<{ parts: readonly Part[] }>()
+defineProps<{
+  parts: readonly Part[]
+  /** How each integration's last hours went, by the integration's key, once they are known. */
+  history?: Readonly<Record<string, readonly HourState[]>>
+}>()
 
 /** How each state of a part looks. */
 const STATES = {
@@ -50,6 +56,11 @@ const note = (part: Part) =>
             {{ look(part).label }}
           </v-chip>
         </div>
+        <HealthStrip
+          v-if="part.group === 'integration' && part.integration && history?.[part.integration]"
+          :states="history[part.integration] as readonly HourState[]"
+          :name="part.name"
+        />
         <div
           v-if="note(part)"
           class="text-body-medium text-medium-emphasis"

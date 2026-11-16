@@ -5,8 +5,10 @@ import { computed } from 'vue'
 import type { Device } from '@/api/devices'
 import { connectionsOf, incomingShare, nameOf, SCOPE } from '@/devices'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
+import TrendSpark from '@/components/TrendSpark.vue'
 import { describePort } from '@/ports'
 import { JUDGEMENT } from '@/threatIntel'
+import { sparkLabel } from '@/trends'
 
 /**
  * A device in the list: its address and what it is called, whose it is, how many connections were
@@ -14,7 +16,11 @@ import { JUDGEMENT } from '@/threatIntel'
  * the incidents it is in and what threat intelligence kept of it. On a computer the facts sit in
  * columns; on a phone they stack.
  */
-const props = defineProps<{ device: Device }>()
+const props = defineProps<{
+  device: Device
+  /** The events it was in each day of the last week, oldest first, once they are known. */
+  trend?: readonly number[]
+}>()
 
 const name = computed(() => nameOf(props.device))
 const share = computed(() => incomingShare(props.device))
@@ -108,6 +114,11 @@ const total = computed(() => connectionsOf(props.device))
         </span>
         <span v-if="total === 0" class="text-medium-emphasis">No connections this week</span>
       </p>
+      <TrendSpark
+        v-if="trend"
+        :values="trend"
+        :label="sparkLabel('events', trend, 'the last 7 days')"
+      />
     </div>
 
     <dl v-if="device.ports.length || device.protocols.length" class="device__facts">

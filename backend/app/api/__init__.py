@@ -47,6 +47,7 @@ from app.api import (
     threat_intel,
     threat_settings,
     threats,
+    trends,
     trust,
     two_factor,
     verdicts,
@@ -83,6 +84,7 @@ api_router.include_router(collectors.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(dashboard_layout.router)
 api_router.include_router(dashboard_since.router)
+api_router.include_router(trends.router)
 api_router.include_router(events.router)
 api_router.include_router(incident_response.router)
 api_router.include_router(incidents.router)

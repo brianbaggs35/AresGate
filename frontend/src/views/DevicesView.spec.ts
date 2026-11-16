@@ -1,3 +1,5 @@
+import { addressTrends } from '@/test/trends'
+import * as trendsApi from '@/api/trends'
 import type { VueWrapper } from '@vue/test-utils'
 import { VBtnToggle, VSelect } from 'vuetify/components'
 
@@ -475,6 +477,38 @@ describe('DevicesView', () => {
       await flushPromises()
 
       expect(find('devices-stale').exists()).toBe(false)
+    })
+  })
+
+  describe('how the week went', () => {
+    it('asks once for all the addresses on screen, and draws it for those it has', async () => {
+      const trends = vi
+        .spyOn(trendsApi, 'fetchAddressTrends')
+        .mockResolvedValue(
+          addressTrends({ '192.168.1.20': { incoming: [0, 2, 3], outgoing: [1, 0, 0] } }),
+        )
+      const { wrapper } = await open()
+
+      expect(trends).toHaveBeenCalledOnce()
+      expect(trends).toHaveBeenCalledWith(['192.168.1.20', '52.1.2.3', '8.8.8.8'])
+      expect(wrapper.findAll('[data-test="trend-spark"]')).toHaveLength(1)
+    })
+
+    it('does not ask when there are no devices', async () => {
+      const trends = vi.spyOn(trendsApi, 'fetchAddressTrends').mockResolvedValue(addressTrends())
+
+      await open({ answer: devicePage([]) })
+
+      expect(trends).not.toHaveBeenCalled()
+    })
+
+    it('shows the list without it when it cannot be had', async () => {
+      vi.spyOn(trendsApi, 'fetchAddressTrends').mockRejectedValue(new Error('down'))
+
+      const { wrapper } = await open()
+
+      expect(wrapper.findAll('[data-test="device-card"]').length).toBeGreaterThan(0)
+      expect(wrapper.find('[data-test="trend-spark"]').exists()).toBe(false)
     })
   })
 })

@@ -17,6 +17,14 @@ Every release's notes are here, newest first. The format follows
   time for each account, the first visit and a quiet one say nothing, and dismissing it or leaving
   the page counts as looking. Incidents can be searched by when they began (`began:`). See
   [UI](DOCS/ui.md#since-you-last-looked).
+- **Trends where there were only lists.** The Alerts page charts the messages of the last two days
+  by hour and severity above its log (for the destination and state it is filtered to); each kind of
+  threat, each listed attacker and each device in the list has a small line of the last week; a
+  device's page charts its connections in and out by the hour for the week; and the Status page
+  shows a strip of the last 24 hours for each integration (working, problem, no calls; never
+  colour alone). They are read from what is stored with a few cheap queries
+  (`/api/trends/deliveries`, `/addresses`, `/kinds`, `/integrations`), appear after the page has
+  loaded and are left out if they cannot be had. See [UI](DOCS/ui.md#trends-beside-the-lists).
 - **Export and views on every list.** The Incidents, Alerts (the delivery log), Devices and Assets
   pages can each save **everything their filters show, in order**, as a CSV or JSON file (up to
   10,000 rows, columns in words, times in your time zone, anything a spreadsheet could run
