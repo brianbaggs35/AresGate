@@ -85,7 +85,7 @@ const density = useDensityStore()
 watch(
   () => density.preference,
   (preference) => {
-    document.documentElement.setAttribute('data-density', preference)
+    document.documentElement.dataset.density = preference
   },
   { immediate: true },
 )
