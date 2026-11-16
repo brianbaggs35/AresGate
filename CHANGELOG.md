@@ -8,6 +8,13 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Incidents as a table.** A new layout toggle on the Incidents page shows the incidents as a
+  table you can sort by severity, name, address, confidence, status, last seen or signals, and
+  *Group by address* gathers the incidents about one address under a header you can fold away or
+  tick as a whole. Sorting covers the incidents loaded so far, and the table says how many more
+  are not. Your choice is remembered, and a phone keeps the cards. See
+  [Incidents](DOCS/ui.md#incidents).
+
 - **The assistant remembers what you denied.** When you press *Deny* on a change the assistant
   proposed, it is not proposed again for 30 days, or sooner if the incident's status or verdict
   changes, and the assistant is told what you refused so that it stops suggesting it. Settings > AI

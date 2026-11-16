@@ -2,6 +2,7 @@
 import { RefreshCw, ShieldCheck } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
+import { useDisplay } from 'vuetify'
 
 import { ApiError, errorMessage } from '@/api/client'
 import {
@@ -23,6 +24,8 @@ import BulkNotice from '@/components/BulkNotice.vue'
 import DensityToggle from '@/components/DensityToggle.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
+import IncidentLayoutToggle from '@/components/IncidentLayoutToggle.vue'
+import IncidentTable from '@/components/IncidentTable.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -55,6 +58,7 @@ import {
 import { useSelection } from '@/selection'
 import { useShortcuts } from '@/shortcuts'
 import { SEVERITIES, type Severity } from '@/severity'
+import { useIncidentLayoutStore } from '@/stores/incident-layout'
 import { useSessionStore } from '@/stores/session'
 import type { Judged } from '@/verdicts'
 
@@ -66,6 +70,10 @@ const REFRESH_SECONDS = 30
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
+const layout = useIncidentLayoutStore()
+const { xs: phone } = useDisplay()
+/** A table needs room: on a phone the incidents stay cards, whatever was chosen. */
+const asTable = computed(() => layout.layout === 'table' && !phone.value)
 
 /** What the list is narrowed to is in the address of the page, so a link or the back button
  * brings it back as it was. Anything in it that isn't one of the choices is ignored. */
@@ -428,6 +436,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       description="Alerts and bans from every integration that belong together, so you see one story instead of many rows."
     >
       <template #actions>
+        <IncidentLayoutToggle v-if="!phone" />
         <DensityToggle />
         <v-btn
           variant="text"
@@ -585,7 +594,16 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         @verdict="askVerdict"
       />
 
-      <ul v-if="items.length" class="incidents__list" data-test="incident-list">
+      <IncidentTable
+        v-if="items.length && asTable"
+        :incidents="items"
+        :grouped="layout.grouping === 'address'"
+        :has="picking.has"
+        :more="remaining"
+        @select="(id, range) => picking.toggle(id, range)"
+        @select-many="picking.toggleMany"
+      />
+      <ul v-else-if="items.length" class="incidents__list" data-test="incident-list">
         <li v-for="item in items" :key="item.id">
           <IncidentCard
             :incident="item"
