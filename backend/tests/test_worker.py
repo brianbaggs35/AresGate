@@ -210,8 +210,16 @@ class TestServing:
             assert callable(recorder)
             started.append(f"NVD, enabled: {enabled}")
 
+        async def learn_baselines(
+            new_session: Callable[[], Session], settings: Settings, *, enabled: bool
+        ) -> None:
+            assert callable(new_session)
+            assert settings.environment == "production"
+            started.append(f"baselines, enabled: {enabled}")
+
         monkeypatch.setattr(worker, "build", collecting)
         monkeypatch.setattr(worker.wakeups, "listen", listen)
+        monkeypatch.setattr(worker.baselines, "run", learn_baselines)
         monkeypatch.setattr(worker.fingerbank, "run", identify_devices)
         monkeypatch.setattr(worker.nvd, "run", look_up_cves)
         monkeypatch.setattr(worker.incidents, "run", file_incidents)
@@ -230,6 +238,7 @@ class TestServing:
             "VirusTotal, enabled: True",
             "agents, enabled: True",
             "alerts, enabled: True",
+            "baselines, enabled: True",
             "collectors",
             "incidents, enabled: True",
             "listening",
@@ -259,6 +268,7 @@ class TestServing:
             worker.fingerbank,
             worker.nvd,
             worker.incidents,
+            worker.baselines,
             worker.ai,
             worker.agents,
             worker.intel,
@@ -269,6 +279,48 @@ class TestServing:
         asyncio.run(worker.serve(settings))
 
         assert listening == []
+
+    def test_it_does_not_learn_baselines_when_they_are_turned_off(
+        self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        learning: list[bool] = []
+
+        class Collecting:
+            async def run(self) -> None:
+                return None
+
+        async def listen(*_: object, **__: object) -> None:
+            return None
+
+        async def learn(*_: object, enabled: bool, **__: object) -> None:
+            learning.append(enabled)
+
+        def collecting(_: Settings) -> Collecting:
+            return Collecting()
+
+        async def idle(*_: object, **__: object) -> None:
+            return None
+
+        monkeypatch.setattr(worker, "build", collecting)
+        monkeypatch.setattr(worker.wakeups, "listen", listen)
+        for loop in (
+            worker.fingerbank,
+            worker.nvd,
+            worker.incidents,
+            worker.ai,
+            worker.agents,
+            worker.intel,
+            worker.notify,
+        ):
+            monkeypatch.setattr(loop, "run", idle)
+        monkeypatch.setattr(worker.baselines, "run", learn)
+        production = settings.model_copy(
+            update={"environment": "production", "baselines_enabled": False}
+        )
+
+        asyncio.run(worker.serve(production))
+
+        assert learning == [False]
 
     def test_one_that_stops_takes_the_other_with_it(
         self, settings: Settings, worker_database: None, monkeypatch: pytest.MonkeyPatch
@@ -296,6 +348,7 @@ class TestServing:
         monkeypatch.setattr(worker.fingerbank, "run", waiting("Fingerbank"))
         monkeypatch.setattr(worker.nvd, "run", waiting("NVD"))
         monkeypatch.setattr(worker.incidents, "run", waiting("incidents"))
+        monkeypatch.setattr(worker.baselines, "run", waiting("baselines"))
         monkeypatch.setattr(worker.ai, "run", waiting("AI"))
         monkeypatch.setattr(worker.agents, "run", waiting("agents"))
         monkeypatch.setattr(worker.intel, "run", waiting("VirusTotal"))
@@ -314,6 +367,7 @@ class TestServing:
             "VirusTotal",
             "agents",
             "alerts",
+            "baselines",
             "incidents",
         ]
 

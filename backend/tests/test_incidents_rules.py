@@ -250,3 +250,9 @@ class TestTitles:
 
         assert len(title) == rules.MAX_TITLE
         assert title.endswith("…")
+
+
+def test_the_learned_baselines_have_a_name_of_their_own() -> None:
+    assert rules.name_of("baseline") == "Learned baselines"
+    assert rules.name_of("opnsense") == "OPNsense"
+    assert rules.name_of("somenew") == "somenew"

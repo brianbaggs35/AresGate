@@ -12,6 +12,7 @@ from app.agents import run as agents
 from app.ai import gateway
 from app.ai import run as ai
 from app.alerts import notify
+from app.baselines import run as baselines
 from app.collectors.scheduler import Scheduler
 from app.config import Settings, get_settings
 from app.db import get_sessionmaker
@@ -54,6 +55,11 @@ async def serve(settings: Settings) -> None:
             work.create_task(wakeups.listen(settings, wake))
         work.create_task(build(settings).run())
         work.create_task(incidents.run(new_session, enabled=collecting(settings), wake=wake.events))
+        work.create_task(
+            baselines.run(
+                new_session, settings, enabled=collecting(settings) and settings.baselines_enabled
+            )
+        )
         work.create_task(ai.run(new_session, context, enabled=collecting(settings)))
         work.create_task(
             agents.run(new_session, context, enabled=collecting(settings), wake=wake.agent_runs)

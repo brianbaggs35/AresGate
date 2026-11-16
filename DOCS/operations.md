@@ -455,6 +455,35 @@ and why, and lists the signals in the order they happened. The worker files them
 - **Pausing it.** Turning collecting off (`ARESGATE_COLLECTORS_ENABLED=false`) pauses filing too:
   nothing new is stored, so there is nothing to file.
 
+### Learned baselines
+
+AresGate learns what is normal on your network from what it has already stored, and files what is
+not as alerts the incident engine can correlate. It uses a few plain statistics that can be
+explained in a sentence: no AI provider is involved, nothing is sent anywhere and it costs no
+tokens. A run every 5 minutes learns and checks, in the worker. Each deviation is an alert from
+*Learned baselines* with a low severity (a medium one when it is far beyond normal) and a confidence
+in its record, so on its own it never needs you; it matters when something else agrees with it.
+
+- **Traffic.** What each interface carries in an hour of the day is learned from the last four
+  weeks (the median, and how far the hours stray from it, a weekday apart from a weekend day once
+  there are eight of each). An hour that carried more than six spreads above the median, three
+  times the median and at least 50 MB is a deviation: *Interface igc0 received 3.0 GB between
+  11:00 and 12:00 UTC on Monday, 15 times the 200.0 MB that is usual for that hour.* It needs a
+  week or two of the firewall's interface counters before it can say anything.
+- **Places a device talks to.** Each connection a program saw from a device on your network to the
+  internet teaches a device where it goes (a /24 or a /64, and the port). Once a device has been
+  watched for a week and is known to talk to at least 20 places, reaching a place it never has is
+  a deviation, and reaching 10 at once is a more serious one. What happened more than an hour ago
+  only teaches, so turning this on does not alarm for the past. Places not visited for 90 days are
+  forgotten.
+- **New devices.** The devices there are when this first runs are normal. A device that appears
+  after that is a deviation once the network has had at least 3 devices for a week; on a new
+  install every device is new, and saying so would be no use.
+- **Your verdicts apply.** A deviation is an alert like any other, so *not suspicious* or *low
+  priority* on one stops it filing again, and a place that has been flagged once is learned.
+- **Pausing it.** `ARESGATE_BASELINES_ENABLED=false` stops learning and filing, and keeps what was
+  learned. Turning collecting off pauses it too.
+
 ### What was done about an incident
 
 Every incident says what became of its address, from events AresGate already has, so it asks

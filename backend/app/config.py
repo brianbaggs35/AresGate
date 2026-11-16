@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # Whether the worker collects from the integrations. Turned off, it keeps running and says
     # so on the status page, which is how to pause collecting without stopping the container.
     collectors_enabled: bool = True
+    # Whether the worker learns what is normal on the network and files what is not (see
+    # app/baselines). Off, nothing is learned and nothing is filed, and what was learned is kept.
+    baselines_enabled: bool = True
 
     @field_validator("release", "commit", "built_at", mode="before")
     @classmethod

@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Final, Literal
 
+from app import baselines
 from app.events.event import Severity
 from app.integrations import registry
 
@@ -103,6 +104,8 @@ def level_of(confidence: int) -> Level:
 
 def name_of(source: str) -> str:
     """What an integration is called, or its key for one this version doesn't know."""
+    if source == baselines.SOURCE:
+        return baselines.NAME
     known = registry.INTEGRATIONS.get(source)
     return known.name if known else source
 
