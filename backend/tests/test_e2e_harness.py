@@ -1807,7 +1807,7 @@ class TestTheAssistantInTheChatThatWalksThrough:
         assert [action["kind"] for action in said["actions"]] == ["verdict"]
 
     def test_the_chat_answers_a_request_to_walk_through_with_it(self) -> None:
-        asked = {
+        asked: dict[str, Any] = {
             "output_config": {"format": {"schema": {"properties": {"lookups": {}}}}},
             "messages": [{"content": "The owner asks: Walk me through the new incidents"}],
         }
