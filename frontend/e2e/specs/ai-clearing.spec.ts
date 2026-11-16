@@ -24,13 +24,27 @@ test.describe('Settings > AI > Clearing', () => {
 
   test('says how many incidents it would have cleared before anything is saved', async ({
     aiSettings,
+    harness,
   }) => {
+    // The preview counts the incidents the AI has read lately, so it has read one.
+    await harness.createIncidents([{ address: '8.8.4.10', severity: 'medium', signals: 2 }])
+    await harness.createDecisions([
+      {
+        address: '8.8.4.10',
+        subject: 'incident',
+        ai_class: 'noise',
+        confidence: 92,
+        headline: 'The scanner of a research project.',
+      },
+    ])
     await aiSettings.goto()
 
     await aiSettings.preset('careful').click()
 
     await expect(aiSettings.minimum).toHaveText('90% sure')
-    await expect(aiSettings.clearingPreview).toContainText('would have cleared')
+    await expect(aiSettings.clearingPreview).toContainText(
+      /Of the 1 incident the AI read in the last 7 days, these settings would have cleared/,
+    )
     await expect(aiSettings.clearingSave).toBeEnabled()
   })
 
