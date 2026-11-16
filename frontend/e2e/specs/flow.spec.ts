@@ -86,7 +86,7 @@ test.describe('network flow', () => {
       await expect(flow.detail).toHaveCount(0)
 
       await page.getByTestId('chart-view').first().click()
-      await expect(page.getByRole('table').first()).toContainText(`${LAPTOP}`)
+      await expect(page.getByRole('table').first()).toContainText(LAPTOP)
     })
 
     test('narrows to one direction and one window, which are in the address', async ({
