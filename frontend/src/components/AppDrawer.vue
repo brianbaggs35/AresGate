@@ -34,10 +34,9 @@ const rail = computed(() => (store.width ? store.width === 'rail' : display.sm.v
 
     <!-- The list's own role (list) wants list items, and these are links, so it steps aside. -->
     <v-list nav role="presentation" tabindex="-1" class="px-3 app-drawer__list">
-      <div
+      <section
         v-for="group in navGroups()"
         :key="group.key"
-        role="group"
         :aria-labelledby="`nav-heading-${group.key}`"
         class="app-drawer__group"
         :data-test="`nav-group-${group.key}`"
@@ -75,7 +74,7 @@ const rail = computed(() => (store.width ? store.width === 'rail' : display.sm.v
             data-test="menu-tooltip"
           />
         </v-list-item>
-      </div>
+      </section>
     </v-list>
 
     <template #append>

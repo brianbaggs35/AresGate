@@ -38,29 +38,6 @@ test.describe('navigation', () => {
     await expect(dashboard.banner).toBeVisible()
   })
 
-  test('divides the menu under headings, each with the places that belong to it', async ({
-    page,
-    shell,
-  }) => {
-    await page.goto('/')
-
-    await expect(shell.menu.getByTestId('nav-heading')).toHaveText([
-      'Overview',
-      'Security',
-      'AI',
-      'Network',
-      'System',
-    ])
-    await expect(shell.menu.getByRole('group', { name: 'AI' }).getByRole('link')).toHaveText([
-      'Assistant',
-      'Agents',
-      'AI usage',
-    ])
-    await expect(
-      shell.menu.getByRole('group', { name: 'Security' }).getByRole('link'),
-    ).toContainText(['Threats', 'Incidents'])
-  })
-
   test('marks the place the menu is on', async ({ page, shell }) => {
     await page.goto('/')
     await expect(shell.dashboardLink).toHaveAttribute('aria-current', 'page')

@@ -40,7 +40,7 @@ describe('AppDrawer', () => {
       'System',
     ])
     const security = wrapper.find('[data-test="nav-group-security"]')
-    expect(security.attributes('role')).toBe('group')
+    expect(security.element.tagName).toBe('SECTION')
     expect(security.attributes('aria-labelledby')).toBe('nav-heading-security')
     expect(security.find('#nav-heading-security').text()).toBe('Security')
     expect(security.find('[data-test="nav-threats"]').exists()).toBe(true)
