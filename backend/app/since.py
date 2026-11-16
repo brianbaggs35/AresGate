@@ -14,10 +14,10 @@ from app.models import DashboardVisit, Device, Incident, VerdictRule
 
 @dataclass(frozen=True)
 class Since:
-    """Counts of what is new, and since when. ``since`` is None on a first visit, when there is
+    """Counts of what is new, and since when. ``after`` is None on a first visit, when there is
     nothing to compare with."""
 
-    since: datetime | None
+    after: datetime | None
     # By severity (0 to 4, as in app/events/event.py): incidents that began, which the owner has not
     # called not suspicious or low priority, as the incident list shows them by default.
     incidents: dict[int, int]
@@ -38,7 +38,7 @@ def _count(db: Session, since: datetime) -> Since:
         )
         .group_by(Incident.severity)
     )
-    by_severity = {severity: count for severity, count in rows}
+    by_severity = dict(rows.all())
     cleared = db.scalar(
         select(func.count())
         .select_from(VerdictRule)

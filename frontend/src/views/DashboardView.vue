@@ -460,7 +460,7 @@ onBeforeUnmount(() => void leaveFullScreen())
           :trend="alertsTile.trend"
           :trend-label="alertsTile.trendLabel"
           :to="{ name: 'logs', query: { q: alertsQuery(view.shown.window.key) } }"
-          :to-label="`${alertsTile.value} alerts in ${lastWords}, show them`"
+          :to-label="`Shows the alerts of ${lastWords}`"
           data-test="tile-alerts"
         />
         <StatTile
@@ -473,7 +473,7 @@ onBeforeUnmount(() => void leaveFullScreen())
           :trend="blockedTile.trend"
           :trend-label="blockedTile.trendLabel"
           :to="{ name: 'logs', query: { q: blockedQuery(view.shown.window.key) } }"
-          :to-label="`${blockedTile.value} blocked connections in ${lastWords}, show them`"
+          :to-label="`Shows the blocked connections of ${lastWords}`"
           data-test="tile-blocked"
         />
         <StatTile
