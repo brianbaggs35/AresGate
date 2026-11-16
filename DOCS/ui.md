@@ -298,10 +298,18 @@ it is looking at (`pageOf` in `src/pageContext.ts`: the incident or device on sc
 the logs or incidents, or only the page), hands that to every question, and starts with questions
 that fit the page. It is the same conversation the Assistant page lists (*Open the Assistant page*
 carries it on there, and *New conversation* begins another). What an answer suggests you do comes
-as buttons (`ChatActions`): *open* a page, or change an incident's status or give it a verdict. The
-assistant changes nothing itself: pressing a button makes the same audited request the incident
-pages make, and a change can be taken back with *Undo* at once. On a phone, opening a page puts the
-sheet away.
+as buttons and proposals (`ChatActions`): a page to *open* is a button; a change of an incident's
+status, or a verdict on what it is about, is a proposal that says what it would do and waits for
+*Approve* or *Deny*. The assistant changes nothing itself: approving makes the same audited request
+the incident pages make (`POST /api/incidents/bulk`), and a change can be taken back with *Undo* at
+once. A proposal can name several incidents the assistant was shown (up to 20, as `also`), which are
+approved as one. A status about one incident whose address is known also offers *Also the earlier
+incidents about* that address: ticking it asks the same endpoint what it would come to (`preview`),
+says how many incidents that is and how many would change, and then changes them all, whatever their
+status. A verdict needs no such box, since it is remembered for everything about the address (or the
+alert) and judges every incident about it that is not over, now and later; the proposal says so.
+Denying changes nothing and is not remembered: the proposal is there again after a reload. On a
+phone, opening a page puts the sheet away.
 
 ## Threats
 

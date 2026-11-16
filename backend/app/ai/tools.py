@@ -94,6 +94,8 @@ class Ref:
     kind: str
     key: str
     label: str
+    # For an incident, what it is about: an address, or the rule that raised it.
+    subject: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,7 +172,10 @@ def open_incidents(db: Session, redactor: Redactor, args: Args, now: datetime) -
         return Found(["There are no open incidents."], [], "no open incidents")
     return Found(
         [_incident_line(incident, reading, redactor) for incident, reading in rows],
-        [Ref("incident", str(incident.id), f"Incident {incident.id}") for incident, _ in rows],
+        [
+            Ref("incident", str(incident.id), f"Incident {incident.id}", incident.subject)
+            for incident, _ in rows
+        ],
         _plural(len(rows), "open incident"),
     )
 
@@ -183,7 +188,9 @@ def incident(db: Session, redactor: Redactor, args: Args, now: datetime) -> Foun
         return Found([f"There is no incident {args.id}."], [], "no such incident")
     lines = [f"[incident {found.id}]", *triage.prompt_for(db, found, redactor).splitlines()]
     return Found(
-        lines, [Ref("incident", str(found.id), f"Incident {found.id}")], f"incident {found.id}"
+        lines,
+        [Ref("incident", str(found.id), f"Incident {found.id}", found.subject)],
+        f"incident {found.id}",
     )
 
 

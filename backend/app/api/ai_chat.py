@@ -1,7 +1,7 @@
 """The chat with the assistant: conversations, asking, and asking again after a failure. For
 someone signed in. The assistant only reads (app/ai/tools.py): nothing here changes the network
 or AresGate's settings, only the conversations themselves. What it suggests the owner do comes back
-as ``actions``, which the owner approves by pressing a button that makes the same request the
+as ``actions``, which the owner approves (or denies) with a button that makes the same request the
 page for it would."""
 
 import json
@@ -84,6 +84,12 @@ class ActionOut(BaseModel):
     value: str | None
     note: str | None
     label: str
+    # For a ``status`` or a ``verdict``: the other incidents (by id) it is about, as well as
+    # ``target_key``. The owner approves or denies it as a whole.
+    also: list[str] = []
+    # For a suggestion about one incident: the address it is about, when it is about one, which
+    # the owner may apply a status to every earlier incident of.
+    address: str | None = None
 
 
 class MessageOut(BaseModel):

@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Clear and classify incidents by talking to the assistant, and approve or deny what it
+  proposes.** When the assistant suggests changing an incident's status or giving it a verdict, you
+  now see a proposal with its reason and what it would do, and *Approve* or *Deny* it, instead of a
+  button that changes things at once. It can propose the same for several incidents together, a
+  status can be given to every earlier incident about the same address (the proposal says how many
+  that is first), and a verdict is remembered for everything about the address. Approving can still
+  be taken back with *Undo*, and is in the audit log as yours. See
+  [the assistant panel](DOCS/ui.md).
+
 - **Change many trust decisions and verdicts at once.** On the Trust page and under
   Settings > Verdicts, tick some rows (hold Shift to tick all between two) or all of them and take
   them back together, after one question. Where the AI suggests several things to trust, tick the

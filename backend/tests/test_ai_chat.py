@@ -22,6 +22,7 @@ from app.models import (
     AiMessage,
     Device,
     DeviceAddress,
+    Incident,
     IntegrationConnection,
 )
 from tests.stubs import Answer as Reply
@@ -445,9 +446,13 @@ class TestTheConversationSoFar:
 
 
 def suggest(
-    kind: str, target: str, value: str | None = None, note: str | None = None
-) -> dict[str, str | None]:
-    return {"kind": kind, "target": target, "value": value, "note": note}
+    kind: str,
+    target: str,
+    value: str | None = None,
+    note: str | None = None,
+    also: list[str] | None = None,
+) -> dict[str, object]:
+    return {"kind": kind, "target": target, "value": value, "note": note, "also": also or []}
 
 
 class TestSuggestingWhatToDo:
@@ -483,6 +488,8 @@ class TestSuggestingWhatToDo:
                 "value": None,
                 "note": None,
                 "label": f"Open Incident {found.id}",
+                "also": [],
+                "address": None,
             },
             {
                 "kind": "status",
@@ -491,6 +498,8 @@ class TestSuggestingWhatToDo:
                 "value": "dismissed",
                 "note": None,
                 "label": f"Dismiss Incident {found.id}",
+                "also": [],
+                "address": ATTACKER,
             },
             {
                 "kind": "verdict",
@@ -499,6 +508,8 @@ class TestSuggestingWhatToDo:
                 "value": "not_suspicious",
                 "note": "A known scanner.",
                 "label": f"Call Incident {found.id} not suspicious",
+                "also": [],
+                "address": ATTACKER,
             },
         ]
 
@@ -563,12 +574,12 @@ class TestSuggestingWhatToDo:
         session: Session,
         settings: Settings,
         serve: Serve,
-        suggestion: dict[str, str | None],
+        suggestion: dict[str, object],
     ) -> None:
         found = incident(session, severity=3)
         session.commit()
         # The incident the model was shown, named as the model names it.
-        target = (suggestion["target"] or "").replace("@", str(found.id))
+        target = str(suggestion["target"] or "").replace("@", str(found.id))
         suggestion = {**suggestion, "target": target}
         provider = Scripted(
             reply(lookups=[look("incident", id=found.id)], answer=""),
@@ -596,6 +607,172 @@ class TestSuggestingWhatToDo:
         assert chat.parse(reply(actions="none")) == chat.Step(
             lookups=[], answer="All quiet.", cites=[], actions=[]
         )
+
+
+class TestSuggestingSeveralIncidents:
+    """A status or a verdict can be about several incidents the model was shown, which the owner
+    approves or denies as one."""
+
+    def shown(self, session: Session) -> list[Incident]:
+        found = [
+            incident(session, severity=2, subject=f"198.51.100.{number}", title=f"Scan {number}")
+            for number in range(1, 5)
+        ]
+        found.append(incident(session, severity=2, subject="rule:wazuh:5710", title="Rule"))
+        session.commit()
+        return found
+
+    def test_one_suggestion_names_the_others_and_says_how_many(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = self.shown(session)
+        first, second, third = (f"incident {each.id}" for each in found[:3])
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(
+                actions=[
+                    suggest("status", first, "dismissed", also=[second, f"[{third}]"]),
+                    suggest("verdict", first, "not_suspicious", "My printer.", [second]),
+                ]
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        dismiss, verdict = history[1].actions
+        assert dismiss["label"] == "Dismiss 3 incidents"
+        assert dismiss["target_key"] == str(found[0].id)
+        assert dismiss["also"] == [str(found[1].id), str(found[2].id)]
+        assert dismiss["address"] is None
+        assert verdict["label"] == "Call 2 incidents not suspicious"
+        assert verdict["note"] == "My printer."
+
+    def test_what_it_was_not_shown_and_what_is_not_an_incident_is_left_out(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = self.shown(session)
+        first = f"incident {found[0].id}"
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(
+                actions=[
+                    suggest(
+                        "status",
+                        first,
+                        "resolved",
+                        also=[
+                            "incident 999",
+                            "device 1",
+                            "nonsense",
+                            first,
+                            f"incident {found[1].id}",
+                        ],
+                    )
+                ]
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        (action,) = history[1].actions
+        assert action["also"] == [str(found[1].id)]
+        assert action["label"] == "Mark 2 incidents as resolved"
+
+    def test_that_all_are_left_out_leaves_the_one(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = self.shown(session)
+        first = f"incident {found[0].id}"
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(actions=[suggest("status", first, "resolved", also=["incident 999"])]),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        (action,) = history[1].actions
+        assert action["also"] == []
+        assert action["label"] == f"Mark Incident {found[0].id} as resolved"
+        assert action["address"] == "198.51.100.1"
+
+    def test_a_suggestion_is_for_no_more_than_the_most_it_may_name(
+        self,
+        session: Session,
+        settings: Settings,
+        serve: Serve,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(chat, "MAX_INCIDENTS", 3)
+        found = [
+            incident(session, severity=2, subject=f"198.51.100.{number}") for number in range(1, 7)
+        ]
+        session.commit()
+        names = [f"incident {each.id}" for each in found]
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(actions=[suggest("status", names[0], "dismissed", also=names[1:])]),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        (action,) = history[1].actions
+        assert len(action["also"]) == 2  # type: ignore[arg-type]
+
+    def test_an_incident_about_a_rule_has_no_address_to_apply_to(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = self.shown(session)
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(actions=[suggest("status", f"incident {found[4].id}", "dismissed")]),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        (action,) = history[1].actions
+        assert action["address"] is None
+
+    def test_the_same_suggestion_about_other_incidents_is_another_suggestion(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        found = self.shown(session)
+        first, second = f"incident {found[0].id}", f"incident {found[1].id}"
+        provider = Scripted(
+            reply(lookups=[look("open_incidents", limit=10)], answer=""),
+            reply(
+                actions=[
+                    suggest("status", first, "dismissed", also=[second]),
+                    suggest("status", first, "dismissed", also=[second]),
+                    suggest("status", first, "dismissed"),
+                ]
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        assert [action["label"] for action in history[1].actions] == [
+            "Dismiss 2 incidents",
+            f"Dismiss Incident {found[0].id}",
+        ]
+
+    def test_the_names_it_gives_are_read_as_text_and_at_most_twenty(self) -> None:
+        step = chat.parse(
+            reply(
+                actions=[
+                    {
+                        "kind": "status",
+                        "target": "incident 1",
+                        "value": "open",
+                        "also": [*[f"incident {n}" for n in range(2, 40)], 5, None],
+                    }
+                ]
+            )
+        )
+
+        assert step is not None
+        (suggestion,) = step.actions
+        assert len(suggestion.also) == chat.MAX_INCIDENTS
+        assert all(isinstance(name, str) for name in suggestion.also)
 
 
 class TestThePageTheOwnerIsOn:

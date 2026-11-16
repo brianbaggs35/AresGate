@@ -1,6 +1,7 @@
 """The end-to-end tests' harness: the baseline, cleaning the database and making records."""
 
 import base64
+import json
 import socket
 from collections.abc import Iterator
 from datetime import datetime, timedelta
@@ -39,6 +40,7 @@ from app.models import (
 )
 from app.security import passwords, setup_code
 from e2e import factories
+from e2e import stand_ins as stand_in_module
 from e2e.api import STAND_INS
 from e2e.baseline import (
     BASELINE_ACCOUNT,
@@ -1711,3 +1713,63 @@ def test_how_much_of_what_the_ai_decides_waits_can_be_set(e2e: TestClient) -> No
     assert again.json() == {"mode": "auto", "auto_from": 85, "learn": True}
     sign_in(e2e)
     assert e2e.get("/api/review/settings").json()["mode"] == "auto"
+
+
+class TestTheAssistantInTheChatThatChangesIncidents:
+    """What the stand-in for the AI says to a request to change incidents."""
+
+    SHOWN = '<data label="open incidents">[incident 4] [incident 7] [incident 4]</data>'
+
+    def test_a_request_that_is_not_one_is_left_to_the_rest(self) -> None:
+        assert (
+            stand_in_module.answer_to_a_change_in_the_chat("", "what needs my attention?") is None
+        )
+
+    def test_it_looks_at_the_open_incidents_first(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_change_in_the_chat("", "dismiss the noise") or ""
+        )
+
+        assert said["lookups"][0]["tool"] == "open_incidents"
+        assert said["answer"] == ""
+
+    def test_it_says_when_nothing_is_open(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_change_in_the_chat(
+                '<data label="open incidents">none</data>', "dismiss it"
+            )
+            or ""
+        )
+
+        assert said["answer"] == "There is nothing open."
+        assert said["actions"] == []
+
+    def test_to_dismiss_is_one_suggestion_that_names_the_others(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_change_in_the_chat(self.SHOWN, "dismiss the noise") or ""
+        )
+
+        assert said["actions"] == [
+            {
+                "kind": "status",
+                "target": "incident 4",
+                "value": "dismissed",
+                "note": None,
+                "also": ["incident 7"],
+            }
+        ]
+        assert said["cites"] == ["incident 4"]
+
+    def test_a_printer_is_a_verdict_on_the_first_with_why(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_change_in_the_chat(self.SHOWN, "that is my printer") or ""
+        )
+
+        (action,) = said["actions"]
+        assert (action["kind"], action["target"], action["value"]) == (
+            "verdict",
+            "incident 4",
+            "not_suspicious",
+        )
+        assert action["note"] == "Your printer, which does this every day."
+        assert action["also"] == []

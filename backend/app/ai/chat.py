@@ -56,9 +56,10 @@ MAX_TITLE: Final = 80
 MAX_MESSAGES: Final = 100
 MAX_TOKENS: Final = 1500
 MAX_NAMES: Final = 500
-# What the assistant may suggest the owner do with one answer, and how long a search it suggests
-# may be.
+# What the assistant may suggest the owner do with one answer, how many incidents one suggestion
+# may be about, and how long a search it suggests may be.
 MAX_ACTIONS: Final = 3
+MAX_INCIDENTS: Final = 20
 MAX_SEARCH: Final = 200
 # The statuses an incident can be put in, and the pages an action can open.
 STATUSES: Final = ("open", "investigating", "resolved", "dismissed")
@@ -95,8 +96,13 @@ were given.
 opnsense", or "logs" with the search to run in "value"); "status" sets the status of an incident \
 (target "incident 3", "value" one of {", ".join(STATUSES)}); "verdict" says what the owner thinks \
 of an incident (target "incident 3", "value" one of {", ".join(VERDICTS)}, and why in "note"). \
-Only suggest it about incidents and devices that appeared in what you were given, and suggest \
-"dismissed" or a verdict that quiets an incident only when you are sure it is nothing.
+A "status" or "verdict" suggestion is about one incident, or about several that you are sure are \
+the same thing: name the first in "target" and up to {MAX_INCIDENTS - 1} more in "also" (for \
+example "incident 5"), and leave "also" empty for one. The owner approves or denies each, and can \
+apply a status to the earlier incidents about the same address, so do not list those yourself. \
+A verdict is remembered for everything about the address (or alert) of the incident, now and \
+later. Only suggest it about incidents and devices that appeared in what you were given, and \
+suggest "dismissed" or a verdict that quiets an incident only when you are sure it is nothing.
 
 Answer only with the JSON you are asked for.\
 """
@@ -121,8 +127,9 @@ ACTION: Final[Mapping[str, object]] = {
         "target": {"type": "string"},
         "value": {"type": ["string", "null"]},
         "note": {"type": ["string", "null"]},
+        "also": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["kind", "target", "value", "note"],
+    "required": ["kind", "target", "value", "note", "also"],
 }
 SCHEMA: Final[Mapping[str, object]] = {
     "type": "object",
@@ -160,6 +167,8 @@ class Suggestion:
     target: str
     value: str | None
     note: str | None
+    # More incidents, for a status or a verdict that is about several.
+    also: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -224,8 +233,13 @@ def _suggestion(item: object) -> Suggestion | None:
     kind, target = _text_or_none(fields.get("kind")), _text_or_none(fields.get("target"))
     if kind is None or target is None:
         return None
+    also = tuple(name for name in _items(fields.get("also")) if isinstance(name, str))
     return Suggestion(
-        kind, target, _text_or_none(fields.get("value")), _text_or_none(fields.get("note"))
+        kind,
+        target,
+        _text_or_none(fields.get("value")),
+        _text_or_none(fields.get("note")),
+        also[:MAX_INCIDENTS],
     )
 
 
@@ -430,6 +444,9 @@ def build_question(
 # -- the answer
 
 
+ActionDict = dict[str, str | list[str] | None]
+
+
 @dataclass(frozen=True)
 class Reply:
     """What came of a question: an answer, or why there was none."""
@@ -440,7 +457,7 @@ class Reply:
     cites: list[dict[str, str]]
     call_ids: list[int]
     # What it suggests the owner do, each kept only if it is about something it was shown.
-    actions: list[dict[str, str | None]] = field(default_factory=lambda: [])
+    actions: list[ActionDict] = field(default_factory=lambda: [])
 
 
 def _failed(reason: str, call_ids: list[int]) -> Reply:
@@ -466,9 +483,23 @@ _VERDICT_LABELS: Final = {
 }
 
 
+def _address_of(subject: str | None) -> str | None:
+    """The subject of an incident when it is an address, and not the rule that raised it (or not
+    known, which is no address either)."""
+    try:
+        return str(ip_address(subject or ""))
+    except ValueError:
+        return None
+
+
 def _action(
-    kind: str, target: Ref | str, value: str | None, note: str | None, label: str
-) -> dict[str, str | None]:
+    kind: str,
+    target: Ref | str,
+    value: str | None,
+    note: str | None,
+    label: str,
+    also: list[str] | None = None,
+) -> ActionDict:
     where = target if isinstance(target, Ref) else None
     return {
         "kind": kind,
@@ -477,10 +508,14 @@ def _action(
         "value": value,
         "note": note,
         "label": label,
+        "also": also or [],
+        # Of one incident only: the address it is about, which the owner may apply a status to
+        # every earlier incident of.
+        "address": _address_of(where.subject) if where and kind != "open" and not also else None,
     }
 
 
-def _search_of_logs(item: Suggestion) -> dict[str, str | None] | None:
+def _search_of_logs(item: Suggestion) -> ActionDict | None:
     """The search of the logs a suggestion opens, or None if it names no text to look for."""
     search = audit.clean(item.value, MAX_SEARCH) if item.value else ""
     if not search:
@@ -488,7 +523,15 @@ def _search_of_logs(item: Suggestion) -> dict[str, str | None] | None:
     return _action("open", "logs", search, None, f'Search the logs for "{search}"')
 
 
-def _made(item: Suggestion, ref: Ref | None) -> dict[str, str | None] | None:
+def _others(item: Suggestion, ref: Ref, known: dict[str, Ref]) -> list[str]:
+    """The ids of the other incidents a suggestion is about, that the model was really shown, each
+    once and not the first."""
+    found = (known.get(name.strip(" []").lower()) for name in item.also)
+    keys = {other.key: None for other in found if other and other.kind == "incident"}
+    return [key for key in keys if key != ref.key][: MAX_INCIDENTS - 1]
+
+
+def _made(item: Suggestion, ref: Ref | None, known: dict[str, Ref]) -> ActionDict | None:
     """The one thing a suggestion means, or None if it is not something the owner can do."""
     value = item.value.strip().lower() if item.value else None
     note = audit.clean(item.note, 200) if item.note else None
@@ -498,26 +541,32 @@ def _made(item: Suggestion, ref: Ref | None) -> dict[str, str | None] | None:
         return _action("open", ref, None, None, f"Open {ref.label}")
     if ref is None or ref.kind != "incident" or value is None:
         return None
+    also = _others(item, ref, known)
+    what = ref.label if not also else f"{len(also) + 1} incidents"
     if item.kind == "status" and value in _STATUS_LABELS:
-        return _action("status", ref, value, None, _STATUS_LABELS[value].format(ref.label))
+        return _action("status", ref, value, None, _STATUS_LABELS[value].format(what), also)
     if item.kind == "verdict" and value in _VERDICT_LABELS:
-        return _action("verdict", ref, value, note, _VERDICT_LABELS[value].format(ref.label))
+        return _action("verdict", ref, value, note, _VERDICT_LABELS[value].format(what), also)
     return None
 
 
-def _proposed(
-    suggestions: list[Suggestion], ran: list[tuple[Lookup, Found]]
-) -> list[dict[str, str | None]]:
+def _proposed(suggestions: list[Suggestion], ran: list[tuple[Lookup, Found]]) -> list[ActionDict]:
     """What the model suggests that is something the owner can really do: about an incident, a
     device or an integration it was shown (or a search of the logs), with a value that is one of
     the allowed ones. Anything else is dropped, so a suggestion can't name what the lookups did
     not return, and it is the owner who presses the button."""
     known = _known(ran)
-    kept: dict[tuple[str, str, str | None], dict[str, str | None]] = {}
+    kept: dict[tuple[str, str, str | None, tuple[str, ...]], ActionDict] = {}
     for item in suggestions:
-        made = _made(item, known.get(item.target.strip(" []").lower()))
+        made = _made(item, known.get(item.target.strip(" []").lower()), known)
         if made is not None:
-            kept.setdefault((item.kind, item.target.lower(), made["value"]), made)
+            key = (
+                item.kind,
+                item.target.lower(),
+                cast(str | None, made["value"]),
+                tuple(cast(list[str], made["also"])),
+            )
+            kept.setdefault(key, made)
     return list(kept.values())[:MAX_ACTIONS]
 
 

@@ -45,7 +45,7 @@ test.describe('the assistant panel', () => {
     await expect(assistantPanel.panel).toBeHidden()
   })
 
-  test('answers, and suggests what to do as buttons: open the incident, or start on it, and take that back', async ({
+  test('answers, and suggests what to do: a button to open the incident, and a proposal to start on it, which can be taken back', async ({
     harness,
     aiSettings,
     assistantPanel,
@@ -60,27 +60,121 @@ test.describe('the assistant panel', () => {
     await assistantPanel.ask('What needs my attention right now?')
 
     await expect(assistantPanel.answers).toContainText('Start with incident')
-    await expect(assistantPanel.actions).toHaveText(
-      ['Open incident', 'Start investigating incident'].map((label) => new RegExp(label, 'i')),
-    )
+    await expect(assistantPanel.actions).toHaveText([/Open incident/i])
+    await expect(assistantPanel.proposals).toContainText(/Start investigating incident/i)
+    await expect(assistantPanel.proposals).toContainText('Changes this incident only.')
 
-    // Nothing changes until a button is pressed; pressing is a change the owner made, and can be
-    // taken back.
+    // Nothing changes until it is approved; approving is a change the owner made, and can be taken
+    // back.
     await expect(incident.status).toHaveText('Open')
-    await assistantPanel.actions.nth(1).click()
-    await expect(assistantPanel.done).toBeVisible()
+    await assistantPanel.approve.click()
+    await expect(assistantPanel.done).toContainText('Approved. 1 incident changed.')
     await assistantPanel.undo.click()
     await expect(assistantPanel.undone).toBeVisible()
     await page.reload()
     await expect(incident.status).toHaveText('Open')
 
-    // Pressed again and not taken back, it stays.
+    // Approved again and not taken back, it stays.
     await assistantPanel.opener.click()
     await assistantPanel.ask('What needs my attention right now?')
-    await assistantPanel.actions.nth(1).click()
+    await assistantPanel.approve.click()
     await expect(assistantPanel.done).toBeVisible()
     await page.reload()
     await expect(incident.status).toHaveText('Investigating')
+  })
+
+  test('changes nothing when a proposal is denied', async ({
+    harness,
+    aiSettings,
+    assistantPanel,
+    incident,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN])
+    await turnOnAi(harness, aiSettings)
+    await openIncident(page)
+    await assistantPanel.opener.click()
+    await assistantPanel.ask('What needs my attention right now?')
+
+    await assistantPanel.deny.click()
+
+    await expect(assistantPanel.denied).toHaveText('Denied. Nothing was changed.')
+    await expect(assistantPanel.approve).toHaveCount(0)
+    await page.reload()
+    await expect(incident.status).toHaveText('Open')
+  })
+
+  test('proposes dismissing several incidents together, and dismisses them all when approved', async ({
+    harness,
+    aiSettings,
+    assistantPanel,
+    incident,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN, { ...SCAN, address: '151.101.1.69' }])
+    await turnOnAi(harness, aiSettings)
+    await page.goto('/')
+    await assistantPanel.opener.click()
+
+    await assistantPanel.ask('Please dismiss the background noise.')
+
+    await expect(assistantPanel.proposals).toContainText('Dismiss 2 incidents')
+    await expect(assistantPanel.proposals).toContainText('Changes these 2 incidents.')
+    await assistantPanel.approve.click()
+    await expect(assistantPanel.done).toContainText('Approved. 2 incidents changed.')
+
+    for (const address of [ATTACKER, '151.101.1.69']) {
+      await page.goto('/incidents?view=all')
+      await page.getByTestId('incident').filter({ hasText: address }).click()
+      await expect(page).toHaveURL(/\/incidents\/\d+$/)
+      await expect(incident.status).toHaveText('Dismissed')
+    }
+  })
+
+  test('offers to give a status to the earlier incidents about the same address, and says how many', async ({
+    harness,
+    aiSettings,
+    assistantPanel,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN])
+    await turnOnAi(harness, aiSettings)
+    await openIncident(page)
+    await assistantPanel.opener.click()
+    await assistantPanel.ask('What needs my attention right now?')
+
+    await page.getByTestId('proposal-earlier').getByRole('checkbox').check()
+
+    await expect(page.getByTestId('proposal-look')).toHaveText(
+      '1 incident in all, and 1 would change.',
+    )
+    await expect(assistantPanel.proposals).toContainText(
+      `Changes every incident about ${ATTACKER}, earlier ones too.`,
+    )
+    await assistantPanel.approve.click()
+    await expect(assistantPanel.done).toContainText('Approved. 1 incident changed.')
+  })
+
+  test('proposes a verdict that is remembered for everything about the address', async ({
+    harness,
+    aiSettings,
+    assistantPanel,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN])
+    await turnOnAi(harness, aiSettings)
+    await page.goto('/')
+    await assistantPanel.opener.click()
+
+    await assistantPanel.ask('That is my printer, it does that every day.')
+
+    await expect(assistantPanel.proposals).toContainText('not suspicious')
+    await expect(assistantPanel.proposals).toContainText('Why: Your printer')
+    await expect(assistantPanel.proposals).toContainText(`everything about ${ATTACKER}`)
+    await assistantPanel.approve.click()
+    await expect(assistantPanel.done).toContainText('Approved. Remembered 1 verdict')
+    await page.goto('/settings/verdicts')
+    await expect(page.getByTestId('verdict-about')).toContainText(ATTACKER)
   })
 
   test('carries the conversation to the Assistant page', async ({

@@ -14,8 +14,13 @@ export class AssistantPanelPage {
   readonly newConversation: Locator
   readonly full: Locator
   readonly close: Locator
-  /** The buttons for what the assistant suggests you do. */
+  /** The buttons for what the assistant suggests you open. */
   readonly actions: Locator
+  /** What it suggests you change, which waits for you to approve or deny it. */
+  readonly proposals: Locator
+  readonly approve: Locator
+  readonly deny: Locator
+  readonly denied: Locator
   readonly done: Locator
   readonly undo: Locator
   readonly undone: Locator
@@ -32,6 +37,10 @@ export class AssistantPanelPage {
     this.full = page.getByTestId('panel-full')
     this.close = page.getByTestId('panel-close')
     this.actions = page.getByTestId('action')
+    this.proposals = page.getByTestId('proposal')
+    this.approve = page.getByTestId('proposal-approve')
+    this.deny = page.getByTestId('proposal-deny')
+    this.denied = page.getByTestId('action-denied')
     this.done = page.getByTestId('action-done')
     this.undo = page.getByTestId('action-undo')
     this.undone = page.getByTestId('action-undone')
