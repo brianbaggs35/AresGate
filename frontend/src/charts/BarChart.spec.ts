@@ -12,6 +12,9 @@ function mountBars(props: Record<string, unknown> = {}) {
   })
 }
 
+const slot = (wrapper: Awaited<ReturnType<typeof mountBars>>['wrapper'], index: number) =>
+  wrapper.findAll('[data-test="bar-slot"]')[index]
+
 /** What the chart's own text says: the bar values and the readout a screen reader hears. */
 const values = (wrapper: { findAll: (selector: string) => { text: () => string }[] }) =>
   wrapper.findAll('[data-test="bar-value"]').map((value) => value.text())
@@ -267,9 +270,6 @@ describe('BarChart', () => {
   })
 
   describe('picking a category', () => {
-    const slot = (wrapper: Awaited<ReturnType<typeof mountBars>>['wrapper'], index: number) =>
-      wrapper.findAll('[data-test="bar-slot"]')[index]
-
     it('says nothing unless it is told that categories can be picked', async () => {
       const { wrapper } = await mountBars()
 
@@ -328,6 +328,121 @@ describe('BarChart', () => {
       await slot(wrapper, 0)?.trigger('pointerdown', { pointerType: 'touch' })
       await slot(wrapper, 0)?.trigger('click')
       expect(wrapper.emitted('select')).toEqual([[2]])
+    })
+  })
+
+  describe('on a touch screen', () => {
+    it('gives each row of a ranking room for a fingertip', async () => {
+      const rowHeight = async () => {
+        const { wrapper } = await mountBars()
+        return Number(wrapper.find('.chart-svg').attributes('height')) / hosts.length
+      }
+      const mouse = await rowHeight()
+      const asked = window.matchMedia.bind(window)
+      const matches = vi
+        .spyOn(window, 'matchMedia')
+        .mockImplementation((query) =>
+          query === '(pointer: coarse)' ? ({ matches: true } as MediaQueryList) : asked(query),
+        )
+
+      const finger = await rowHeight()
+
+      expect(matches).toHaveBeenCalledWith('(pointer: coarse)')
+      expect(mouse).toBeLessThan(44)
+      expect(finger).toBe(44)
+    })
+  })
+
+  describe('opening what a bar counts', () => {
+    const to = (category: number) =>
+      category === 2 ? null : { name: 'logs', query: { q: `host:${category.toString()}` } }
+
+    it('goes where a category leads when it is clicked, and says that it can', async () => {
+      const { wrapper, router } = await mountBars({ to })
+      const push = vi.spyOn(router, 'push')
+
+      await slot(wrapper, 0)?.trigger('pointerenter', { pointerType: 'mouse' })
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Click to open')
+      await slot(wrapper, 1)?.trigger('pointerdown', { pointerType: 'mouse' })
+      await slot(wrapper, 1)?.trigger('click')
+
+      expect(push).toHaveBeenCalledExactlyOnceWith({ name: 'logs', query: { q: 'host:1' } })
+      expect(slot(wrapper, 1)?.classes()).toContain('bar-chart__slot--pick')
+      expect(wrapper.find('.chart-svg').attributes('aria-label')).toContain('Enter')
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('opens the one the keyboard is on with Enter', async () => {
+      const { wrapper, router } = await mountBars({ to })
+      const push = vi.spyOn(router, 'push')
+      const chart = wrapper.find('.chart-svg')
+
+      await chart.trigger('keydown', { key: 'ArrowDown' })
+      await chart.trigger('keydown', { key: 'Enter' })
+
+      expect(push).toHaveBeenCalledExactlyOnceWith({ name: 'logs', query: { q: 'host:0' } })
+    })
+
+    it('does not open a category that leads nowhere, nor say that it can', async () => {
+      const { wrapper, router } = await mountBars({ to })
+      const push = vi.spyOn(router, 'push')
+
+      await slot(wrapper, 2)?.trigger('pointerenter', { pointerType: 'mouse' })
+      await slot(wrapper, 2)?.trigger('pointerdown', { pointerType: 'mouse' })
+      await slot(wrapper, 2)?.trigger('click')
+
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+      expect(push).not.toHaveBeenCalled()
+    })
+
+    it('says which one was picked as well, when it is selectable', async () => {
+      const { wrapper } = await mountBars({ to, selectable: true })
+
+      await slot(wrapper, 0)?.trigger('pointerdown', { pointerType: 'mouse' })
+      await slot(wrapper, 0)?.trigger('click')
+
+      expect(wrapper.emitted('select')).toEqual([[0]])
+    })
+
+    it('is not a link without one', async () => {
+      const { wrapper } = await mountBars()
+
+      await slot(wrapper, 0)?.trigger('pointerenter', { pointerType: 'mouse' })
+
+      expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+      expect(slot(wrapper, 0)?.classes()).not.toContain('bar-chart__slot--pick')
+    })
+  })
+
+  describe('textures', () => {
+    it('gives each series the texture of its hue, in the bars, the legend and the table', async () => {
+      const { wrapper } = await mountBars({
+        series: [
+          { id: 'a', label: 'A', values: [3, 2, 1] },
+          { id: 'b', label: 'B', values: [1, 2, 3], color: 'var(--chart-severity-high)' },
+        ],
+      })
+
+      const bars = wrapper.findAll('[data-test="bar"]')
+      expect(bars[0]?.classes()).toContain('chart-pat-1')
+      expect(bars.at(-1)?.classes()).toContain('chart-pat-2')
+      expect(wrapper.findAll('[data-test="chart-texture"]')).toHaveLength(2)
+
+      await wrapper.find('[data-test="chart-view"]').trigger('click')
+      expect(wrapper.findAll('[data-test="chart-table-texture"]')).toHaveLength(2)
+    })
+
+    it('gives none to a series past the eighth, which is all "other"', async () => {
+      const many = Array.from({ length: 9 }, (_, index) => ({
+        id: `s${index.toString()}`,
+        label: `S${index.toString()}`,
+        values: [1, 1, 1],
+      }))
+      const { wrapper } = await mountBars({ series: many })
+
+      const bars = wrapper.findAll('[data-test="bar"]')
+      expect(bars.at(-1)?.classes().join(' ')).not.toContain('chart-pat')
+      expect(wrapper.findAll('[data-test="chart-texture"]')).toHaveLength(8)
     })
   })
 

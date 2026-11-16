@@ -21,6 +21,9 @@ globalThis.ResizeObserver = ResizeObserverStub
 // jsdom has no layout, so nothing scrolls, and an element can't be scrolled into view.
 Element.prototype.scrollIntoView = () => {}
 
+// ...and it has no pointer capture, which a drag across a chart takes.
+Element.prototype.setPointerCapture = () => {}
+
 // Tests run as if motion were reduced: Vuetify animates a field's label by reading computed
 // styles, which jsdom is far too slow at, and there is nothing to see here. What the animation
 // looks like is checked in a real browser. Vuetify also finds its breakpoints by asking whether

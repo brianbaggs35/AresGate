@@ -8,6 +8,14 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Charts you can act on.** A bar, a moment of the traffic or a heatmap cell can lead somewhere:
+  on the dashboard an hour of the alerts opens the logs of that hour, an address among the most
+  blocked opens the firewall's refusals from it, and a moment of the traffic opens the firewall
+  logs of that stretch of time. Drag across the traffic (or hold Shift and use the arrow keys, then
+  Enter) to zoom the dashboard, and a device's or interface's traffic, to a span; *Reset zoom*
+  puts it back. *Use patterns* above a chart gives each series a texture as well as a color, which
+  is also drawn in forced-colors mode and in print. Rows of a ranking are 44 px tall on a touch
+  screen. See [UI](DOCS/ui.md#charts).
 - **Agents work together.** The Security orchestrator and Security triage can ask another kind of
   agent to look into an incident, a device or an address they really looked at. The request is
   kept (who, which kind, about what, why), starts a run of your agent of that kind, and is refused,

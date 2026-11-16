@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 import type { IconProps } from 'vuetify'
 
 import { layoutBars } from '@/charts/bars'
@@ -7,6 +8,7 @@ import ChartFrame from '@/charts/ChartFrame.vue'
 import ChartTooltip from '@/charts/ChartTooltip.vue'
 import { stepIndex, useElementWidth } from '@/charts/interaction'
 import { seriesColor } from '@/charts/palette'
+import { textureClass, textureOf } from '@/charts/patterns'
 import { linear, valueAxis } from '@/charts/scales'
 import type { ChartTableData, LegendItem, TooltipRow } from '@/charts/types'
 import { formatCompact, formatCount } from '@/format'
@@ -44,6 +46,9 @@ const props = withDefaults(
     height?: number
     /** Each category can be picked, with a click, Enter, or a second tap: the chart says which. */
     selectable?: boolean
+    /** Where a category leads, or null for one that leads nowhere: a click, Enter or a second tap
+     * opens it, and the tooltip says it can be. Without it a bar is not a link. */
+    to?: (category: number) => RouteLocationRaw | null
     loading?: boolean
     emptyTitle?: string
     emptyDescription?: string
@@ -57,6 +62,7 @@ const props = withDefaults(
     whole: false,
     height: 220,
     selectable: false,
+    to: undefined,
     loading: false,
     emptyTitle: undefined,
     emptyDescription: undefined,
@@ -67,10 +73,12 @@ const emit = defineEmits<{ select: [category: number] }>()
 
 /** About how wide a character of the 12px labels is. */
 const CHARACTER = 7
-const ROW = 36
+/** A row of a ranking is at least as tall as a fingertip on a touch screen. */
+const ROW = window.matchMedia('(pointer: coarse)').matches ? 44 : 36
 const TOP = 16
 const BOTTOM = 28
 
+const router = useRouter()
 const plot = ref<HTMLElement | null>(null)
 const width = useElementWidth(plot, 480)
 const hidden = ref<string[]>([])
@@ -80,9 +88,13 @@ const vertical = computed(() => props.orientation === 'vertical')
 const valueText = computed(() => props.format ?? formatCount)
 const tickText = computed(() => props.format ?? formatCompact)
 
-/** Each series with the color it keeps whatever is turned off. */
+/** Each series with the color and texture it keeps whatever is turned off. */
 const colored = computed(() =>
-  props.series.map((series, index) => ({ ...series, color: series.color ?? seriesColor(index) })),
+  props.series.map((series, index) => ({
+    ...series,
+    color: series.color ?? seriesColor(index),
+    texture: textureOf(index),
+  })),
 )
 const shown = computed(() => colored.value.filter(({ id }) => !hidden.value.includes(id)))
 const empty = computed(
@@ -92,7 +104,14 @@ const empty = computed(
 )
 
 const legend = computed<LegendItem[]>(() =>
-  colored.value.map(({ id, label, color, icon }) => ({ id, label, color, shape: 'square', icon })),
+  colored.value.map(({ id, label, color, icon, texture }) => ({
+    id,
+    label,
+    color,
+    shape: 'square',
+    icon,
+    texture,
+  })),
 )
 const table = computed<ChartTableData>(() => {
   const total = props.stacked && props.series.length > 1
@@ -102,6 +121,8 @@ const table = computed<ChartTableData>(() => {
       ...props.series.map(({ label }) => label),
       ...(total ? ['Total'] : []),
     ],
+    textures: [null, ...colored.value.map(({ texture }) => texture), ...(total ? [null] : [])],
+    textureShape: 'square',
     rows: props.categories.map((category, index) => [
       category,
       ...props.series.map(({ values }) => valueText.value(values[index] ?? 0)),
@@ -164,6 +185,7 @@ const shapes = computed(() =>
   layout.value.shapes.map((shape) => ({
     ...shape,
     color: (shown.value[shape.series] as { color: string }).color,
+    texture: (shown.value[shape.series] as { texture: number | null }).texture,
   })),
 )
 const labels = computed(() =>
@@ -214,10 +236,25 @@ const readout = computed(() => {
   return `${props.categories[active.value] as string}: ${values}`
 })
 
+/** Where a category leads, if anywhere. */
+const destination = (index: number) => props.to?.(index) ?? null
+const pickable = computed(() => props.selectable || props.to !== undefined)
+/** What the tooltip says can be done with the category being read. */
+const hint = computed(() =>
+  active.value !== null && destination(active.value) !== null ? 'Click to open' : undefined,
+)
+
+/** What choosing a category does: tell whoever is listening, and go where it leads. */
+function choose(index: number) {
+  if (props.selectable) emit('select', index)
+  const place = destination(index)
+  if (place !== null) void router.push(place)
+}
+
 function onKey(event: KeyboardEvent) {
-  if (props.selectable && active.value !== null && (event.key === 'Enter' || event.key === ' ')) {
+  if (pickable.value && active.value !== null && (event.key === 'Enter' || event.key === ' ')) {
     event.preventDefault()
-    emit('select', active.value)
+    choose(active.value)
     return
   }
   const next = stepIndex(event.key, active.value, props.categories.length)
@@ -236,7 +273,7 @@ function press(index: number, event: PointerEvent) {
 }
 
 function pick(index: number) {
-  if (props.selectable && armed) emit('select', index)
+  if (pickable.value && armed) choose(index)
 }
 
 /** A pointer reads what it is over. A finger reads what it touches only once it presses, since
@@ -270,7 +307,7 @@ function leave(event: PointerEvent) {
         tabindex="0"
         :width="width"
         :height="drawnHeight"
-        :aria-label="`${title}. Use the arrow keys to read each one${selectable ? ', Enter to look at it' : ''}, or show it as a table.`"
+        :aria-label="`${title}. Use the arrow keys to read each one${pickable ? ', Enter to look at it' : ''}, or show it as a table.`"
         @keydown="onKey"
         @blur="active = null"
         @pointerleave="leave"
@@ -312,7 +349,10 @@ function leave(event: PointerEvent) {
             :key="`${shape.series}/${shape.category}`"
             :d="shape.path"
             :fill="shape.color"
-            :class="{ 'bar-chart__mark--dim': active !== null && active !== shape.category }"
+            :class="[
+              { 'bar-chart__mark--dim': active !== null && active !== shape.category },
+              textureClass(shape.texture),
+            ]"
             class="bar-chart__mark"
             data-test="bar"
           />
@@ -353,7 +393,7 @@ function leave(event: PointerEvent) {
           :width="vertical ? band : width"
           :height="vertical ? drawnHeight : band"
           fill="transparent"
-          :class="{ 'bar-chart__slot--pick': selectable }"
+          :class="{ 'bar-chart__slot--pick': pickable }"
           data-test="bar-slot"
           @pointerdown="press(index, $event)"
           @pointerenter="hover(index, $event)"
@@ -367,6 +407,7 @@ function leave(event: PointerEvent) {
         :flip="anchor.x > width / 2"
         :heading="categories[active] as string"
         :rows="rows"
+        :hint="hint"
       />
       <output class="chart-readout">{{ readout }}</output>
     </div>

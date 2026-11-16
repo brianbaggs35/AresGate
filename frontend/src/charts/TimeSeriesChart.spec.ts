@@ -532,4 +532,294 @@ describe('TimeSeriesChart', () => {
       expect(wrapper.find('[data-test="chart-flags"]').exists()).toBe(false)
     })
   })
+  describe('acting on it', () => {
+    /** jsdom has no pointer events with positions, so this is a mouse event under the name. */
+    function pointer(chart: Element, type: string, clientX: number, pointerType = 'mouse') {
+      const event = new MouseEvent(type, { clientX, bubbles: true })
+      Object.assign(event, { pointerType })
+      chart.dispatchEvent(event)
+      return nextTick()
+    }
+
+    /** The pixel of reading `index` along the chart, from the first gridline and the plot's length. */
+    async function plotOf(props: Record<string, unknown> = {}) {
+      const { wrapper, router } = await mountLines(props)
+      const chart = wrapper.find('.chart-svg').element
+      const left = Number(wrapper.find('.chart-grid').attributes('x1'))
+      await pointer(chart, 'pointermove', left + 100_000)
+      const length = Number(wrapper.find('[data-test="crosshair"]').attributes('x1'))
+      await pointer(chart, 'pointerleave', 0)
+      return { wrapper, router, chart, at: (index: number) => left + (length * index) / 24 }
+    }
+
+    describe('zooming', () => {
+      it('picks the span that a drag crosses, and says it when the pointer is let go', async () => {
+        const { wrapper, chart, at } = await plotOf({ zoomable: true })
+
+        await pointer(chart, 'pointerdown', at(6))
+        await pointer(chart, 'pointermove', at(12))
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Enter to zoom in')
+        await pointer(chart, 'pointerup', at(12))
+
+        expect(wrapper.emitted('zoom')).toEqual([[times[6], times[12]]])
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+      })
+
+      it('picks the same span when dragged the other way', async () => {
+        const { wrapper, chart, at } = await plotOf({ zoomable: true })
+
+        await pointer(chart, 'pointerdown', at(18))
+        await pointer(chart, 'pointermove', at(3))
+        await pointer(chart, 'pointerup', at(3))
+
+        expect(wrapper.emitted('zoom')).toEqual([[times[3], times[18]]])
+      })
+
+      it('does not pick a span unless it can zoom, nor from a press that stays on one reading', async () => {
+        const plain = await plotOf()
+        await pointer(plain.chart, 'pointerdown', plain.at(6))
+        await pointer(plain.chart, 'pointermove', plain.at(12))
+        await pointer(plain.chart, 'pointerup', plain.at(12))
+        expect(plain.wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+        expect(plain.wrapper.emitted('zoom')).toBeUndefined()
+
+        const { wrapper, chart, at } = await plotOf({ zoomable: true })
+        await pointer(chart, 'pointerdown', at(6))
+        await pointer(chart, 'pointermove', at(6) + 1)
+        await pointer(chart, 'pointerup', at(6) + 1)
+        expect(wrapper.emitted('zoom')).toBeUndefined()
+      })
+
+      it('lets go of a drag that is taken away or that loses the focus', async () => {
+        const { wrapper, chart, at } = await plotOf({ zoomable: true })
+
+        await pointer(chart, 'pointerdown', at(6))
+        await pointer(chart, 'pointermove', at(12))
+        await pointer(chart, 'pointercancel', at(12))
+        await pointer(chart, 'pointerup', at(12))
+        expect(wrapper.emitted('zoom')).toBeUndefined()
+
+        await pointer(chart, 'pointerdown', at(6))
+        await pointer(chart, 'pointermove', at(12))
+        await wrapper.find('.chart-svg').trigger('blur')
+        await pointer(chart, 'pointerup', at(12))
+        expect(wrapper.emitted('zoom')).toBeUndefined()
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+      })
+
+      it('keeps the readout while a drag leaves the plot, and puts it away after', async () => {
+        const { wrapper, chart, at } = await plotOf({ zoomable: true })
+
+        await pointer(chart, 'pointerdown', at(6))
+        await pointer(chart, 'pointerleave', 0)
+        expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(true)
+        await pointer(chart, 'pointerup', at(6))
+        await pointer(chart, 'pointerleave', 0)
+        expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(false)
+      })
+
+      it('picks a span with Shift and the arrow keys, and zooms to it with Enter', async () => {
+        const { wrapper } = await plotOf({ zoomable: true })
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'ArrowRight' })
+        await chart.trigger('keydown', { key: 'ArrowRight' })
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(true)
+        expect(wrapper.find('output').text()).toContain('Press Enter to zoom in')
+        await chart.trigger('keydown', { key: 'Enter' })
+
+        expect(wrapper.emitted('zoom')).toEqual([[times[1], times[3]]])
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+      })
+
+      it('starts from the first reading going right, and from the last going left', async () => {
+        const { wrapper } = await plotOf({ zoomable: true })
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        await chart.trigger('keydown', { key: 'Enter' })
+        await chart.trigger('keydown', { key: 'Escape' })
+        await chart.trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
+        await chart.trigger('keydown', { key: 'Enter' })
+
+        expect(wrapper.emitted('zoom')).toEqual([
+          [times[0], times[1]],
+          [times[23], times[24]],
+        ])
+      })
+
+      it('does not go past the ends, and a span of one reading is not a span', async () => {
+        const { wrapper } = await plotOf({ zoomable: true })
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'End' })
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        await chart.trigger('keydown', { key: 'Enter' })
+
+        expect(wrapper.emitted('zoom')).toBeUndefined()
+      })
+
+      it('gives up a span with Escape, and with a plain arrow key', async () => {
+        const { wrapper } = await plotOf({ zoomable: true })
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        await chart.trigger('keydown', { key: 'Escape' })
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="chart-tooltip"]').exists()).toBe(true)
+
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+        await chart.trigger('keydown', { key: 'ArrowRight' })
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+      })
+
+      it('ignores Shift and the arrow keys on a chart that cannot zoom', async () => {
+        const { wrapper } = await plotOf()
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+
+        expect(wrapper.find('[data-test="chart-selection"]').exists()).toBe(false)
+      })
+
+      it('says how to zoom, and shows the way back only once it has', async () => {
+        const { wrapper, at, chart } = await plotOf({ zoomable: true })
+
+        await pointer(chart, 'pointermove', at(3))
+        expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Drag to zoom in')
+        expect(wrapper.find('.chart-svg').attributes('aria-label')).toContain('Shift')
+        expect(wrapper.find('[data-test="chart-zoom-reset"]').exists()).toBe(false)
+
+        await wrapper.setProps({ zoomed: true })
+        await wrapper.find('[data-test="chart-zoom-reset"]').trigger('click')
+
+        expect(wrapper.emitted('reset')).toEqual([[]])
+      })
+    })
+
+    describe('opening a moment', () => {
+      const to = (time: number) =>
+        time === times[5] ? null : { name: 'logs', query: { since: time.toString() } }
+
+      it('goes where a moment leads when it is clicked, and says that it can', async () => {
+        const { wrapper, router, chart, at } = await plotOf({ to })
+        const push = vi.spyOn(router, 'push')
+
+        await pointer(chart, 'pointerdown', at(8))
+        expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Click to open')
+        await pointer(chart, 'pointerup', at(8))
+
+        expect(push).toHaveBeenCalledExactlyOnceWith({
+          name: 'logs',
+          query: { since: times[8]?.toString() },
+        })
+        expect(wrapper.find('.chart-svg').attributes('aria-label')).toContain('Enter')
+      })
+
+      it('goes there with Enter on the moment the keyboard is on', async () => {
+        const { wrapper, router } = await plotOf({ to })
+        const push = vi.spyOn(router, 'push')
+        const chart = wrapper.find('.chart-svg')
+
+        await chart.trigger('keydown', { key: 'Enter' })
+        expect(push).not.toHaveBeenCalled()
+        await chart.trigger('keydown', { key: 'Home' })
+        await chart.trigger('keydown', { key: 'Enter' })
+
+        expect(push).toHaveBeenCalledExactlyOnceWith({
+          name: 'logs',
+          query: { since: times[0]?.toString() },
+        })
+      })
+
+      it('leaves a moment that leads nowhere alone', async () => {
+        const { wrapper, router, chart, at } = await plotOf({ to })
+        const push = vi.spyOn(router, 'push')
+
+        await pointer(chart, 'pointerdown', at(5))
+        await pointer(chart, 'pointerup', at(5))
+        await wrapper.find('.chart-svg').trigger('keydown', { key: 'ArrowRight' })
+        await wrapper.find('.chart-svg').trigger('keydown', { key: 'Home' })
+        for (let step = 0; step < 5; step++) {
+          await wrapper.find('.chart-svg').trigger('keydown', { key: 'ArrowRight' })
+        }
+        await wrapper.find('.chart-svg').trigger('keydown', { key: 'Enter' })
+
+        expect(push).not.toHaveBeenCalled()
+        expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+      })
+
+      it('reads a moment with the first tap of a finger and opens it with the next', async () => {
+        const { router, chart, at } = await plotOf({ to })
+        const push = vi.spyOn(router, 'push')
+
+        await pointer(chart, 'pointerdown', at(8), 'touch')
+        await pointer(chart, 'pointerup', at(8), 'touch')
+        expect(push).not.toHaveBeenCalled()
+
+        await pointer(chart, 'pointerdown', at(8), 'touch')
+        await pointer(chart, 'pointerup', at(8), 'touch')
+        expect(push).toHaveBeenCalledTimes(1)
+      })
+
+      it('is not a link, and a press that was never made opens nothing, without one', async () => {
+        const { wrapper, chart, at } = await plotOf()
+
+        await pointer(chart, 'pointerup', at(8))
+        await pointer(chart, 'pointerdown', at(8))
+        await pointer(chart, 'pointerup', at(8))
+
+        expect(wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+        expect(wrapper.find('.chart-svg').attributes('aria-label')).not.toContain('Enter')
+      })
+    })
+
+    describe('textures', () => {
+      const two = {
+        series: [
+          { id: 'down', label: 'Download', values: down },
+          { id: 'up', label: 'Upload', values: up },
+        ],
+      }
+
+      it('dashes each line by its hue, and gives the legend and table the same', async () => {
+        const { wrapper } = await mountLines(two)
+
+        const lines = wrapper.findAll('[data-test="line"]')
+        expect(
+          lines.map((line) => line.classes().find((name) => name.startsWith('chart-dash'))),
+        ).toEqual(['chart-dash-1', 'chart-dash-2'])
+        expect(wrapper.findAll('[data-test="chart-texture"]')).toHaveLength(2)
+
+        await wrapper.find('[data-test="chart-view"]').trigger('click')
+        expect(wrapper.findAll('[data-test="chart-table-texture"]')).toHaveLength(2)
+      })
+
+      it('leaves the column of incidents without one', async () => {
+        const { wrapper } = await mountLines({
+          ...two,
+          marks: [
+            {
+              id: 'incident-7',
+              time: start + 6 * HOUR,
+              weight: 7,
+              label: 'Incident 7',
+              heading: 'Began at hour 6',
+              rows: [{ value: 'High', label: 'About 7', color: 'red' }],
+              color: 'red',
+              icon: Siren,
+              to: { name: 'incident', params: { id: 7 } },
+            },
+          ],
+        })
+
+        await wrapper.find('[data-test="chart-view"]').trigger('click')
+
+        expect(wrapper.findAll('[data-test="chart-table-texture"]')).toHaveLength(2)
+      })
+    })
+  })
 })

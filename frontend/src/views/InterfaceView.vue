@@ -12,6 +12,7 @@ import type {
   Placement,
 } from '@/api/interfaces'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
+import { isZoomed, trimToSpan, useZoom } from '@/charts/zoom'
 import AppPage from '@/components/AppPage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FeedRow from '@/components/FeedRow.vue'
@@ -42,6 +43,8 @@ const WINDOWS: readonly { key: OverviewWindow; label: string }[] = [
 const notice = ref<{ show: (done: Done) => void } | null>(null)
 const editing = ref(false)
 const range = ref<OverviewWindow>('24h')
+/** The span the owner dragged across the traffic, which narrows what the chart draws. */
+const zoom = useZoom()
 
 const id = computed(() => Number(route.params.id))
 const item = computed(() => listing.value?.interfaces.find((each) => each.id === id.value))
@@ -58,6 +61,8 @@ const series = computed(() =>
       ]
     : [],
 )
+/** What the chart draws: the range, or the span the owner zoomed to. */
+const shown = computed(() => trimToSpan(times.value, series.value, zoom.span.value))
 const received = computed(() =>
   stats.value?.speed ? latestSpeed(stats.value.speed.received) : null,
 )
@@ -75,6 +80,7 @@ function move(feed: Feed, placement: Placement) {
 
 function pick(next: OverviewWindow) {
   range.value = next
+  zoom.reset()
   return board.load(next)
 }
 
@@ -189,13 +195,17 @@ onMounted(() => board.load(range.value))
               ? `Speed through ${item.name}, from ${stats.speed.source_name}'s byte counters.`
               : undefined
           "
-          :times="times"
-          :series="series"
+          :times="shown.times"
+          :series="shown.series"
+          zoomable
+          :zoomed="isZoomed(times, shown.times)"
           :format="formatBitrate"
           :loading="loading"
           empty-title="No traffic measured yet"
           empty-description="Place the firewall's or ntopng's interface on this one, and the bytes through it are charted here."
           data-test="interface-chart"
+          @zoom="zoom.zoom"
+          @reset="zoom.reset"
         />
       </v-card>
 

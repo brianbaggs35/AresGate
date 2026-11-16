@@ -1,6 +1,7 @@
 import { ApiError } from '@/api/client'
 import * as interfacesApi from '@/api/interfaces'
 import type { Listing } from '@/api/interfaces'
+import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import FeedMove from '@/components/FeedMove.vue'
 import InterfaceEditor from '@/components/InterfaceEditor.vue'
 import { feed, iface, listing, overview, speed, stats } from '@/test/interfaces'
@@ -157,6 +158,37 @@ describe('InterfaceView', () => {
     it('says so when nothing is placed on it yet', async () => {
       const { find } = await open({ result: listing({ interfaces: [{ ...INTERNET, feeds: [] }] }) })
       expect(find('interface-no-sources').text()).toContain('Nothing is placed on this interface')
+    })
+  })
+
+  describe('zooming the traffic', () => {
+    it('narrows the chart to the span that was dragged, and puts it back', async () => {
+      const { wrapper } = await open()
+      const chart = () => wrapper.findComponent(TimeSeriesChart)
+      const all = chart().props('times')
+      expect(chart().props('zoomed')).toBe(false)
+
+      chart().vm.$emit('zoom', all[1], all[2])
+      await flushPromises()
+
+      expect(chart().props('times')).toEqual(all.slice(1))
+      expect(chart().props('zoomed')).toBe(true)
+
+      chart().vm.$emit('reset')
+      await flushPromises()
+      expect(chart().props('times')).toEqual(all)
+    })
+
+    it('is put back when another range is asked for', async () => {
+      const { wrapper, find } = await open()
+      const all = wrapper.findComponent(TimeSeriesChart).props('times')
+      wrapper.findComponent(TimeSeriesChart).vm.$emit('zoom', all[1], all[2])
+      await flushPromises()
+
+      await find('interface-window').findAll('button')[1]!.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.findComponent(TimeSeriesChart).props('zoomed')).toBe(false)
     })
   })
 

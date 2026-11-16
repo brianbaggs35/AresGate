@@ -57,4 +57,22 @@ describe('ChartLegend', () => {
 
     expect(wrapper.emitted('update:hidden')).toBeUndefined()
   })
+
+  it("shows a series' texture over its color, for when charts are textured", async () => {
+    const { wrapper } = await mountWithPlugins(ChartLegend, {
+      props: {
+        items: [
+          { id: 'a', label: 'Received', color: 'red', shape: 'square', texture: 1 },
+          { id: 'b', label: 'Sent', color: 'blue', shape: 'line', texture: 2 },
+          { id: 'c', label: 'Other', color: 'gray', shape: 'square', texture: null },
+        ],
+        hidden: [],
+      },
+    })
+
+    const textures = wrapper.findAll('[data-test="chart-texture"]')
+    expect(textures).toHaveLength(2)
+    expect(textures[0]?.find('rect').classes()).toContain('chart-pat-1')
+    expect(textures[1]?.find('line').classes()).toContain('chart-dash-2')
+  })
 })

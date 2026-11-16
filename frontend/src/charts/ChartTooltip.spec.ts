@@ -121,4 +121,21 @@ describe('ChartTooltip', () => {
       expect(top(wrapper)).toBe('290px')
     })
   })
+
+  it('says what can be done with what it reads, when something can', async () => {
+    const props = {
+      x: 10,
+      y: 10,
+      flip: false,
+      heading: 'Mon',
+      rows: [{ label: 'alerts', value: '5' }],
+    }
+    const { wrapper } = await mountWithPlugins(ChartTooltip, {
+      props: { ...props, hint: 'Click to open' },
+    })
+    expect(wrapper.find('[data-test="chart-tooltip-hint"]').text()).toBe('Click to open')
+
+    const plain = await mountWithPlugins(ChartTooltip, { props })
+    expect(plain.wrapper.find('[data-test="chart-tooltip-hint"]').exists()).toBe(false)
+  })
 })

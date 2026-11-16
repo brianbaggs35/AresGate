@@ -8,6 +8,7 @@ import ShortcutsDialog from '@/components/ShortcutsDialog.vue'
 import { guardRoutes } from '@/router/guard'
 import { useAssistantStore } from '@/stores/assistant'
 import { useDensityStore } from '@/stores/density'
+import { usePatternsStore } from '@/stores/patterns'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -105,6 +106,17 @@ describe('App', () => {
     await flushPromises()
 
     expect(document.documentElement.getAttribute('data-density')).toBe('compact')
+  })
+
+  it('says on the page whether charts are textured, and gives them their textures once', async () => {
+    const { pinia, wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+    expect(document.documentElement.getAttribute('data-patterns')).toBe('off')
+    expect(wrapper.findAll('[data-test="chart-patterns"]')).toHaveLength(1)
+
+    usePatternsStore(pinia).setPreference('on')
+    await flushPromises()
+
+    expect(document.documentElement.getAttribute('data-patterns')).toBe('on')
   })
 
   it('shows the sign-in page on its own, with no menu', async () => {

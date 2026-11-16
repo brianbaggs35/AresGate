@@ -4,7 +4,9 @@ import { computed, ref } from 'vue'
 import type { InterfaceTraffic } from '@/api/dashboard'
 import TimeSeriesChart from '@/charts/TimeSeriesChart.vue'
 import type { ChartMark } from '@/charts/types'
+import { isZoomed, marksWithin, readingRange, trimToSpan, type Span } from '@/charts/zoom'
 import { formatBitrate } from '@/format'
+import { withinRange } from '@/logs'
 
 /**
  * How fast data went through one of the firewall's interfaces, received and sent. The busiest
@@ -17,10 +19,13 @@ const props = withDefaults(
     times: readonly number[]
     traffic: readonly InterfaceTraffic[]
     marks?: readonly ChartMark[]
+    /** The span the page is zoomed to, or null for all of the window. */
+    span?: Span | null
     loading?: boolean
   }>(),
-  { marks: () => [], loading: false },
+  { marks: () => [], span: null, loading: false },
 )
+const emit = defineEmits<{ zoom: [from: number, to: number]; reset: [] }>()
 
 const chosen = ref<string | null>(null)
 const names = computed(() => props.traffic.map(({ interface: name }) => name))
@@ -28,7 +33,7 @@ const names = computed(() => props.traffic.map(({ interface: name }) => name))
 const current = computed(
   () => props.traffic.find(({ interface: name }) => name === chosen.value) ?? props.traffic[0],
 )
-const series = computed(() =>
+const full = computed(() =>
   current.value
     ? [
         { id: 'received', label: 'Received', values: current.value.received },
@@ -36,6 +41,17 @@ const series = computed(() =>
       ]
     : [],
 )
+/** What the chart draws: the window, or the span the page is zoomed to. */
+const shown = computed(() => trimToSpan(props.times, full.value, props.span))
+const flagged = computed(() => marksWithin(props.marks, props.span))
+
+/** A moment of the traffic opens the firewall's logs for that stretch of time. */
+function logsOf(time: number) {
+  return {
+    name: 'logs',
+    query: { q: withinRange('kind:firewall', readingRange(shown.value.times, time)) },
+  }
+}
 </script>
 
 <template>
@@ -59,14 +75,19 @@ const series = computed(() =>
           ? `Speed through ${current.interface}, from the firewall's byte counters.`
           : undefined
       "
-      :times="times"
-      :series="series"
+      :times="shown.times"
+      :series="shown.series"
       :format="formatBitrate"
-      :marks="marks"
+      :marks="flagged"
+      :to="logsOf"
+      zoomable
+      :zoomed="isZoomed(times, shown.times)"
       :loading="loading"
       empty-title="No traffic recorded yet"
       empty-description="Once OPNsense is connected, the bytes through each of its interfaces are read every minute and charted here."
       data-test="traffic-chart"
+      @zoom="(from, to) => emit('zoom', from, to)"
+      @reset="emit('reset')"
     />
   </v-card>
 </template>

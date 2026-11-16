@@ -260,3 +260,15 @@ export function marksOf(marks: readonly IncidentMark[], locale?: string): ChartM
     }
   })
 }
+
+/** The stretch of time one bucket of the window covers, from its start to the next bucket's (the
+ * window's end for the last), as the Logs search writes it. */
+export function bucketRange(
+  starts: readonly string[],
+  index: number,
+  windowEnd: string,
+): { start: string; end: string } {
+  const written = (ms: number) => new Date(ms).toISOString().replace('.000Z', 'Z')
+  const start = Date.parse(starts[index] as string)
+  return { start: written(start), end: written(Date.parse(starts[index + 1] ?? windowEnd)) }
+}

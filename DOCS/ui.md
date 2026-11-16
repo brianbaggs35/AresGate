@@ -652,8 +652,36 @@ What every chart does, and a new one must:
   column for them. The dashboard flags the incidents of its window (medium or worse, not
   dismissed, not judged unworthy of a look) on the traffic chart, so a spike can be read against
   what was going on.
-- **Not yet.** A texture for each series (diagonal hatching) for print and forced-colors, which
-  the legend and table stand in for until it lands.
+- **Textures.** Every series has a texture as well as a hue, in a fixed order that matches the
+  eight hues (`textureOf` in `charts/patterns.ts`): diagonal hatching, dots, cross-hatching, the
+  other diagonal, rules across, rules up, rings and a fine grid. A line has no area to hatch, so
+  its texture is a dash. They are drawn in forced-colors mode and in print, and when the owner
+  presses *Use patterns* above any chart (one choice for every chart, remembered in the browser,
+  `stores/patterns.ts`), so no chart depends on color alone. The legend's key and the table's
+  headings show the same texture. A mark takes the class of its series' texture (`chart-pat-n` for
+  a fill, `chart-dash-n` for a line), and the `<pattern>`s are defined once, by the app
+  (`ChartPatterns.vue`), so a new chart only adds the class. Past the eighth series is "other",
+  which has none. A heatmap is not a series: its steps are lightness, with a cell's number in its
+  tooltip and table.
+- **Click through.** A chart takes an optional callback that says where a mark leads, so one
+  without it behaves as it always did: `to(category)` on a `BarChart`, `to(time)` on a
+  `TimeSeriesChart`, `to(row, column)` on a `HeatmapChart`, each returning a route or `null` for a
+  mark that leads nowhere. A click, Enter on the mark the keys are on, or (on a touch screen) a
+  second tap opens it, and its tooltip says that it can be opened. The dashboard uses them: an
+  hour of the alerts opens the logs of the alerts in that hour, an address of the most blocked
+  opens the firewall's refusals from it, and a moment of the traffic opens the firewall logs of
+  that stretch of time. (The log search has no interface term yet, so the traffic of an interface
+  opens all of the firewall's logs for the time.) The area that answers a pointer is the whole
+  category's slot, far bigger than the bar; a ranking's rows are 44 px tall on a touch screen.
+- **Zoom.** A `TimeSeriesChart` with `zoomable` picks a span: drag across the plot (one finger on a
+  touch screen), or hold Shift and use the arrow keys, which draws the span and reads it out,
+  then Enter. It says it with `zoom(from, to)` and does not narrow anything itself: the page keeps
+  the span (`useZoom` in `charts/zoom.ts`), gives its charts the narrower numbers
+  (`trimToSpan`, `indexesWithin`) and tells the chart that it has (`zoomed`), which shows *Reset
+  zoom* beside the table button. The dashboard narrows the traffic, its flags and the alerts by
+  the hour to the span, and puts it back when the range is changed; the interface and device
+  pages do the same for their traffic. The span is of what the page has already loaded, so it
+  never asks for more than the range holds.
 
 ## The command palette
 

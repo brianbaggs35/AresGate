@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChartTexture from '@/charts/ChartTexture.vue'
 import type { LegendItem } from '@/charts/types'
 
 /**
@@ -35,7 +36,14 @@ function toggle(id: string) {
           :class="`chart-legend__key--${item.shape}`"
           :style="{ '--key': item.color }"
           aria-hidden="true"
-        />
+        >
+          <ChartTexture
+            v-if="item.texture"
+            :texture="item.texture"
+            :shape="item.shape"
+            :color="item.color"
+          />
+        </span>
         <v-icon v-if="item.icon" :icon="item.icon" size="16" aria-hidden="true" />
         <span data-test="chart-legend-label">{{ item.label }}</span>
       </button>
@@ -87,6 +95,7 @@ function toggle(id: string) {
 
 .chart-legend__key {
   flex: none;
+  position: relative;
   background: var(--key);
 }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChartTexture from '@/charts/ChartTexture.vue'
 import type { ChartTableData } from '@/charts/types'
 
 /** A chart's numbers in a table: the same data for anyone who reads it better that way, with a
@@ -26,6 +27,17 @@ defineProps<{
             scope="col"
             :class="{ 'chart-table__number': index > 0 }"
           >
+            <span
+              v-if="table.textures?.[index]"
+              class="chart-table__key chart-textured"
+              data-test="chart-table-texture"
+            >
+              <ChartTexture
+                :texture="table.textures[index] as number"
+                :shape="table.textureShape ?? 'square'"
+                color="currentColor"
+              />
+            </span>
             {{ column }}
           </th>
         </tr>
@@ -52,6 +64,14 @@ defineProps<{
 .chart-table:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 1px;
+}
+
+.chart-table__key {
+  position: relative;
+  width: 16px;
+  height: 10px;
+  margin-right: 0.375rem;
+  vertical-align: baseline;
 }
 
 table {
