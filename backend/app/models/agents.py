@@ -22,6 +22,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, UTCDateTime, utcnow
 
 # How a run came about: the owner asked for it, or the agent's schedule did.
+# What the foreign keys to agents and runs point at, and what becomes of a row that loses them.
+AGENT_ID = "agents.id"
+RUN_ID = "agent_runs.id"
+SET_NULL = "SET NULL"
+
 TRIGGERS = ("manual", "schedule", "handoff")
 # Where a run is: waiting for the worker, going, or over (and how it ended).
 STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
@@ -87,7 +92,7 @@ class AgentSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1, autoincrement=False)
     ai_source: Mapped[str] = mapped_column(String(6), default="shared")
     provider: Mapped[str | None] = mapped_column(
-        String(32), ForeignKey("ai_providers.provider", ondelete="SET NULL"), default=None
+        String(32), ForeignKey("ai_providers.provider", ondelete=SET_NULL), default=None
     )
     model: Mapped[str | None] = mapped_column(String(128), default=None)
     daily_limit_micros: Mapped[int | None] = mapped_column(BigInteger, default=None)
@@ -113,7 +118,7 @@ class AgentRun(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agents.id", ondelete="CASCADE"))
+    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(AGENT_ID, ondelete="CASCADE"))
     trigger: Mapped[str] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(9), default="queued")
     requested_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
@@ -152,7 +157,7 @@ class AgentStep(Base):
     __table_args__ = (Index("ix_agent_steps_run_id_seq", "run_id", "seq"),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agent_runs.id", ondelete="CASCADE"))
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(RUN_ID, ondelete="CASCADE"))
     seq: Mapped[int] = mapped_column(Integer)
     at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     # The step of the graph it belongs to: plan, act, think or report.
@@ -177,9 +182,9 @@ class AgentProposal(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agents.id", ondelete="CASCADE"))
+    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(AGENT_ID, ondelete="CASCADE"))
     run_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("agent_runs.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey(RUN_ID, ondelete=SET_NULL), default=None
     )
     kind: Mapped[str] = mapped_column(String(12))
     key: Mapped[str] = mapped_column(String(40))
@@ -216,16 +221,14 @@ class AgentHandoff(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agent_runs.id", ondelete="CASCADE"))
-    from_agent_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("agents.id", ondelete="CASCADE")
-    )
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(RUN_ID, ondelete="CASCADE"))
+    from_agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(AGENT_ID, ondelete="CASCADE"))
     to_kind: Mapped[str] = mapped_column(String(32))
     to_agent_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("agents.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey(AGENT_ID, ondelete=SET_NULL), default=None
     )
     to_run_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("agent_runs.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey(RUN_ID, ondelete=SET_NULL), default=None
     )
     subject: Mapped[str] = mapped_column(String(200))
     incident_id: Mapped[int | None] = mapped_column(BigInteger, default=None)
@@ -252,9 +255,9 @@ class AgentPlanStep(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agents.id", ondelete="CASCADE"))
+    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(AGENT_ID, ondelete="CASCADE"))
     run_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("agent_runs.id", ondelete="SET NULL"), default=None
+        BigInteger, ForeignKey(RUN_ID, ondelete=SET_NULL), default=None
     )
     key: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(200))

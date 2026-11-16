@@ -749,7 +749,8 @@ TEMPLATES: Final[tuple[Template, ...]] = (
 
 # The kinds an agent may hand work to: not the ones that test the network, which only the owner
 # starts.
-HANDOFF_KINDS: Final = tuple(item.key for item in TEMPLATES if not item.active)
+def handoff_kinds() -> tuple[str, ...]:
+    return tuple(item.key for item in TEMPLATES if not item.active)
 
 
 def template(key: str) -> Template | None:

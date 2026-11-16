@@ -88,7 +88,7 @@ def _refusal(
 ) -> str | None:
     """Why this hand-off may not be made, or None if it may."""
     kind = catalog.template(asked.kind)
-    if kind is None or asked.kind not in catalog.HANDOFF_KINDS:
+    if kind is None or asked.kind not in catalog.handoff_kinds():
         return (
             "That kind of agent cannot be asked: only the owner starts one that tests the network."
         )
@@ -119,6 +119,20 @@ def _target(db: Session, kind: str) -> Agent | None:
     ).first()
 
 
+def _start(db: Session, record: AgentHandoff, target: Agent, now: datetime) -> None:
+    """Queues the run a hand-off asked for, or says why it could not be."""
+    try:
+        started = service.queue(db, target, "handoff", now)
+    except service.Busy:
+        record.status = "refused"
+        record.refusal = f"{target.name} already has a run waiting or going."
+    except service.NotAllowed as stopped:  # pragma: no cover - only kinds that test the net
+        record.status = "refused"
+        record.refusal = str(stopped)
+    else:
+        record.to_run_id = started.id
+
+
 def hand_off(
     db: Session, run: AgentRun, requests: Sequence[Asked], now: datetime
 ) -> list[AgentHandoff]:
@@ -142,16 +156,7 @@ def hand_off(
             created_at=now,
         )
         if refusal is None and target is not None:
-            try:
-                started = service.queue(db, target, "handoff", now)
-            except service.Busy:
-                record.status = "refused"
-                record.refusal = f"{target.name} already has a run waiting or going."
-            except service.NotAllowed as stopped:  # pragma: no cover - only kinds that test the net
-                record.status = "refused"
-                record.refusal = str(stopped)
-            else:
-                record.to_run_id = started.id
+            _start(db, record, target, now)
         db.add(record)
         db.flush()
         made.append(record)

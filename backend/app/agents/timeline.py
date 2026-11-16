@@ -43,6 +43,9 @@ LIMIT: Final = 200
 LOOKS: Final = 6
 SHORT: Final = 300
 
+# What an agent is called once it has been deleted.
+GONE: Final = "An agent that is gone"
+
 
 @dataclass(frozen=True)
 class Moment:
@@ -69,7 +72,7 @@ def _of_step(step: AgentStep, run: AgentRun, names: dict[int, str]) -> Moment:
     return Moment(
         step.at,
         run.agent_id,
-        names.get(run.agent_id, "An agent that is gone"),
+        names.get(run.agent_id, GONE),
         run.id,
         NODE_KINDS.get(step.node, "reported"),
         step.title,
@@ -83,7 +86,7 @@ def _handoff(handoff: AgentHandoff, names: dict[int, str]) -> Moment:
     return Moment(
         handoff.created_at,
         handoff.from_agent_id,
-        names.get(handoff.from_agent_id, "An agent that is gone"),
+        names.get(handoff.from_agent_id, GONE),
         handoff.run_id,
         "handoff",
         f"Asked {to} to look into {handoff.subject}",
@@ -92,7 +95,7 @@ def _handoff(handoff: AgentHandoff, names: dict[int, str]) -> Moment:
 
 
 def _asked_by(handoff: AgentHandoff, names: dict[int, str]) -> Moment:
-    by = names.get(handoff.from_agent_id, "An agent that is gone")
+    by = names.get(handoff.from_agent_id, GONE)
     return Moment(
         handoff.created_at,
         handoff.to_agent_id,
@@ -125,7 +128,7 @@ def _conclusion(run: AgentRun, names: dict[int, str], only: str | None = None) -
     return Moment(
         run.finished_at or run.requested_at,
         run.agent_id,
-        names.get(run.agent_id, "An agent that is gone"),
+        names.get(run.agent_id, GONE),
         run.id,
         "concluded",
         _said(title),
@@ -134,7 +137,7 @@ def _conclusion(run: AgentRun, names: dict[int, str], only: str | None = None) -
 
 
 def _plan(step: AgentPlanStep, names: dict[int, str]) -> list[Moment]:
-    who = names.get(step.agent_id, "An agent that is gone")
+    who = names.get(step.agent_id, GONE)
     moments = [
         Moment(
             step.created_at,
@@ -216,7 +219,7 @@ def for_incident(db: Session, incident_id: int) -> list[Moment]:
             Moment(
                 tidy.created_at,
                 tidy.agent_id,
-                names.get(tidy.agent_id, "An agent that is gone"),
+                names.get(tidy.agent_id, GONE),
                 tidy.run_id,
                 "tidy",
                 f"Suggested tidying: {tidy.title}",
