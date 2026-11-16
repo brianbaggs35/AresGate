@@ -7,14 +7,17 @@ import {
   cancelRun,
   fetchAgent,
   fetchRun,
+  fetchRunTimeline,
   startRun,
   type AgentDetail,
+  type Moment,
   type RunDetail,
 } from '@/api/agents'
 import { errorMessage } from '@/api/client'
 import {
   AGENT_STATE,
   RUN_STATUS,
+  TRIGGER_WORDS,
   elapsedMs,
   isLive,
   outcome,
@@ -26,6 +29,7 @@ import AgentChanges from '@/components/AgentChanges.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentFindings from '@/components/AgentFindings.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
+import AgentInvestigation from '@/components/AgentInvestigation.vue'
 import AgentTimeline from '@/components/AgentTimeline.vue'
 import AgentTrend from '@/components/AgentTrend.vue'
 import AgentProposals from '@/components/AgentProposals.vue'
@@ -56,6 +60,8 @@ const REFRESH_MS = 2000
 
 const agent = ref<AgentDetail | null>(null)
 const run = ref<RunDetail | null>(null)
+/** How the run on screen fits in with the other agents: who asked it, whom it asked. */
+const moments = ref<Moment[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const problem = ref<string | null>(null)
@@ -101,6 +107,21 @@ async function loadRun(quiet: boolean) {
     if (chosen.value === shown) run.value = next
   } catch (runError) {
     if (!quiet) problem.value = errorMessage(runError)
+  }
+  await loadMoments()
+}
+
+/** How the run on screen fits with the other agents, which is only worth reading once it is over.
+ * The run is as good without it, so a failure to read it leaves what is on screen. */
+async function loadMoments() {
+  const shown = run.value
+  try {
+    moments.value =
+      shown === null || isLive(shown)
+        ? []
+        : await session.call(() => fetchRunTimeline(id.value, shown.id))
+  } catch {
+    // What the run did is still shown, step by step.
   }
 }
 
@@ -284,7 +305,7 @@ onMounted(() => load())
           <div>
             <h2 class="text-title-large run__title">Run {{ run.id }}</h2>
             <p class="text-body-medium text-medium-emphasis run__meta" data-test="run-meta">
-              {{ run.trigger === 'schedule' ? 'By its schedule' : 'Started by you' }} ·
+              {{ TRIGGER_WORDS[run.trigger] }} ·
               {{ formatAgo(run.started_at ?? run.requested_at) }}
               <template v-if="run.started_at"> · {{ took }}</template>
             </p>
@@ -354,6 +375,16 @@ onMounted(() => load())
         <AgentTimeline :steps="run.steps" :live="isLive(run)" />
       </section>
 
+      <section
+        v-if="run && moments.length > 1"
+        class="section"
+        aria-labelledby="fits-title"
+        data-test="agent-investigation"
+      >
+        <h2 id="fits-title" class="text-title-large">How it fits with the other agents</h2>
+        <AgentInvestigation :moments="moments" />
+      </section>
+
       <EmptyState
         v-if="!run"
         title="It has not run yet"
@@ -391,7 +422,7 @@ onMounted(() => load())
               <span class="past__text">
                 <span class="text-body-large">Run {{ each.id }} · {{ outcome(each) }}</span>
                 <span class="text-body-small text-medium-emphasis">
-                  {{ each.trigger === 'schedule' ? 'By its schedule' : 'Started by you' }} ·
+                  {{ TRIGGER_WORDS[each.trigger] }} ·
                   {{ formatAgo(each.finished_at ?? each.requested_at) }}
                 </span>
               </span>

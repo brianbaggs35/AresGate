@@ -8,7 +8,12 @@ import type {
   AgentSettings,
   Edge,
   Finding,
+  Handoff,
+  HandoffList,
+  Moment,
   Overview,
+  PlanStep,
+  PlanStepList,
   Performance,
   Proposal,
   ProposalList,
@@ -288,5 +293,67 @@ export const runDetail = (overrides: Partial<RunDetail> = {}): RunDetail => ({
     step({ seq: 4, node: 'report', title: 'Wrote the report', detail: { findings: 0 } }),
   ],
   call_ids: [],
+  ...overrides,
+})
+
+/** A hand-off from an agent to another kind of agent, one that was made. */
+export const handoff = (overrides: Partial<Handoff> = {}): Handoff => ({
+  id: 1,
+  run_id: 7,
+  from_agent_id: 3,
+  from_agent: 'Orchestrator',
+  to_kind: 'incident_investigator',
+  to_agent_id: 4,
+  to_agent: 'Investigator',
+  to_run_id: 8,
+  subject: 'Incident 12',
+  incident_id: 12,
+  reason: 'It scanned three devices.',
+  status: 'queued',
+  refusal: null,
+  depth: 1,
+  created_at: new Date().toISOString(),
+  ...overrides,
+})
+
+export const handoffs = (overrides: Partial<HandoffList> = {}): HandoffList => ({
+  handoffs: [],
+  max_depth: 2,
+  per_day: 10,
+  made_today: 0,
+  ...overrides,
+})
+
+/** A step the response planner proposes. */
+export const planStep = (overrides: Partial<PlanStep> = {}): PlanStep => ({
+  id: 1,
+  agent_id: 5,
+  agent_name: 'Planner',
+  run_id: 9,
+  title: 'Move the camera to the guest network',
+  detail: 'Put it on the guest VLAN in the router.',
+  risk: 'The camera is offline for a minute.',
+  incident_id: 12,
+  status: 'pending',
+  created_at: new Date().toISOString(),
+  decided_at: null,
+  ...overrides,
+})
+
+export const planSteps = (overrides: Partial<PlanStepList> = {}): PlanStepList => ({
+  pending: [],
+  recent: [],
+  ...overrides,
+})
+
+/** One moment of an investigation. */
+export const moment = (overrides: Partial<Moment> = {}): Moment => ({
+  at: '2026-11-16T12:00:00Z',
+  agent_id: 3,
+  agent: 'Orchestrator',
+  run_id: 7,
+  kind: 'looked',
+  title: 'Looked at open incidents',
+  detail: '',
   ...overrides,
 })

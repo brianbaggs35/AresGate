@@ -2,17 +2,29 @@
 import { Plus } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
-import { fetchAgents, startRun, type Agent, type Overview } from '@/api/agents'
+import {
+  fetchAgents,
+  fetchHandoffs,
+  fetchPlanSteps,
+  startRun,
+  type Agent,
+  type HandoffList,
+  type Overview,
+  type PlanStepList,
+} from '@/api/agents'
 import { errorMessage } from '@/api/client'
 import { agentIcon } from '@/agents'
 import AgentActivity from '@/components/AgentActivity.vue'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
+import AgentHandoffs from '@/components/AgentHandoffs.vue'
 import AgentMission from '@/components/AgentMission.vue'
 import AgentSpend from '@/components/AgentSpend.vue'
+import AgentSteps from '@/components/AgentSteps.vue'
 import AppPage from '@/components/AppPage.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import SectionCard from '@/components/SectionCard.vue'
 import UndoNotice from '@/components/UndoNotice.vue'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
@@ -27,6 +39,8 @@ const session = useSessionStore()
 const REFRESH_MS = 4000
 
 const overview = ref<Overview | null>(null)
+const steps = ref<PlanStepList>({ pending: [], recent: [] })
+const handoffs = ref<HandoffList | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const problem = ref<string | null>(null)
@@ -43,7 +57,14 @@ const templates = computed(() => (overview.value as Overview).templates)
 async function load(quiet = false) {
   if (!quiet) loading.value = true
   try {
-    overview.value = await session.call(fetchAgents)
+    const [found, planned, handed] = await Promise.all([
+      session.call(fetchAgents),
+      session.call(() => fetchPlanSteps()),
+      session.call(fetchHandoffs),
+    ])
+    overview.value = found
+    steps.value = planned
+    handoffs.value = handed
     error.value = null
   } catch (loadError) {
     // A refresh that fails leaves what is on screen; only a first look has nothing to leave.
@@ -154,6 +175,24 @@ onMounted(() => load())
       <AgentActivity :activity="overview.activity" :performance="overview.performance" />
 
       <AgentSpend :usage="overview.usage" :limits="overview.limits" />
+
+      <SectionCard
+        v-if="steps.pending.length || steps.recent.length"
+        title="Steps waiting for you"
+        description="What the Response planner advises. Nothing is done until you do it: approving records your decision and puts the step on its incident."
+        data-test="agents-steps"
+      >
+        <AgentSteps :steps="steps" @changed="saved" />
+      </SectionCard>
+
+      <SectionCard
+        v-if="handoffs && (handoffs.handoffs.length || handoffs.made_today)"
+        title="Agents asking each other"
+        description="When one kind of agent asks another to look further, it is recorded here, with the reason."
+        data-test="agents-handoffs"
+      >
+        <AgentHandoffs :list="handoffs" />
+      </SectionCard>
 
       <ul v-if="agents.length" class="cards" data-test="agents-list">
         <li v-for="agent in agents" :key="agent.id">

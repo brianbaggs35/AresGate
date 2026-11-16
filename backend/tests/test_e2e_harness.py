@@ -161,6 +161,8 @@ def test_the_row_counts_say_what_each_table_holds(e2e: TestClient, session: Sess
     e2e.post("/api/__test__/database/clean")
     expected = {
         "address_names": 0,
+        "agent_handoffs": 0,
+        "agent_plan_steps": 0,
         "agent_proposals": 0,
         "agent_runs": 0,
         "agent_settings": 0,
@@ -255,6 +257,8 @@ def test_cleaning_replaces_everything_with_the_baseline(e2e: TestClient, session
             "incidents",
             "agent_steps",
             "agent_proposals",
+            "agent_plan_steps",
+            "agent_handoffs",
             "user_sessions",
             "traffic_baselines",
             "totp_credentials",
@@ -1815,6 +1819,56 @@ class TestTheAssistantInTheChatThatWalksThrough:
         said = json.loads(stand_in_module._answer_of_the_assistant(asked) or "")  # pyright: ignore[reportPrivateUsage]
 
         assert said["lookups"][0]["tool"] == "unclassified_incidents"
+
+
+class TestTheModelOfAnAgent:
+    """What the stand-in for an agent's model reports, by what its request asks for."""
+
+    @staticmethod
+    def asked(*properties: str, prompt: str = "[incident 4] needs a look") -> dict[str, object]:
+        return {
+            "output_config": {
+                "format": {
+                    "schema": {"properties": {name: {} for name in ("findings", *properties)}}
+                }
+            },
+            "messages": [{"content": prompt}],
+        }
+
+    def test_a_request_that_is_not_for_a_report_is_left_to_the_rest(self) -> None:
+        assert stand_in_module._answer_of_an_agent({}) is None  # pyright: ignore[reportPrivateUsage]
+
+    def test_it_reports_the_incident_it_was_shown_and_hands_off_or_plans_only_when_asked(
+        self,
+    ) -> None:
+        plain = json.loads(
+            stand_in_module._answer_of_an_agent(self.asked()) or ""  # pyright: ignore[reportPrivateUsage]
+        )
+        both = json.loads(
+            stand_in_module._answer_of_an_agent(self.asked("handoffs", "plan")) or ""  # pyright: ignore[reportPrivateUsage]
+        )
+
+        assert plain["findings"][0]["cites"] == ["incident 4"]
+        assert "handoffs" not in plain
+        assert "plan" not in plain
+        assert both["handoffs"] == [
+            {
+                "kind": "incident_investigator",
+                "subject": "incident 4",
+                "reason": "It reached a device that answered, which needs a closer look.",
+            }
+        ]
+        assert both["plan"][0]["cites"] == ["incident 4"]
+
+    def test_with_no_incident_shown_it_has_nothing_to_report_or_to_ask(self) -> None:
+        said = json.loads(
+            stand_in_module._answer_of_an_agent(  # pyright: ignore[reportPrivateUsage]
+                self.asked("handoffs", "plan", prompt="Nothing is open.")
+            )
+            or ""
+        )
+
+        assert (said["findings"], said["handoffs"], said["plan"]) == ([], [], [])
 
 
 class TestTheAssistantInTheChatThatChangesIncidents:

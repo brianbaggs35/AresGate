@@ -71,7 +71,7 @@ export interface Performance {
 /** One time an agent ran. */
 export interface Run {
   id: number
-  trigger: 'manual' | 'schedule'
+  trigger: 'manual' | 'schedule' | 'handoff'
   status: RunStatus
   requested_at: string
   started_at: string | null
@@ -362,3 +362,96 @@ export const dismissProposal = (id: number, csrfToken: string) =>
 
 export const undoProposal = (id: number, csrfToken: string) =>
   apiPost<Proposal>(`${BASE}/proposals/${id}/undo`, undefined, csrfToken)
+
+/** One request from an agent to another kind of agent, and whether it was made. */
+export interface Handoff {
+  id: number
+  run_id: number
+  from_agent_id: number
+  from_agent: string
+  to_kind: string
+  to_agent_id: number | null
+  to_agent: string
+  to_run_id: number | null
+  /** What it is about: something the asking run really looked at. */
+  subject: string
+  incident_id: number | null
+  reason: string
+  status: 'queued' | 'refused'
+  /** Why it was refused, for one that was. */
+  refusal: string | null
+  /** How many hand-offs deep the run it started is. */
+  depth: number
+  created_at: string
+}
+
+/** The last week's hand-offs, newest first, and the limits on them. */
+export interface HandoffList {
+  handoffs: Handoff[]
+  max_depth: number
+  per_day: number
+  made_today: number
+}
+
+export type PlanStatus = 'pending' | 'approved' | 'dismissed'
+
+/** One step the response planner proposes, which waits for the owner. */
+export interface PlanStep {
+  id: number
+  agent_id: number
+  agent_name: string
+  run_id: number | null
+  title: string
+  detail: string
+  /** What the step could break or cost, in the planner's words. */
+  risk: string
+  incident_id: number | null
+  status: PlanStatus
+  created_at: string
+  decided_at: string | null
+}
+
+export interface PlanStepList {
+  pending: PlanStep[]
+  recent: PlanStep[]
+}
+
+export type MomentKind =
+  | 'asked_by'
+  | 'began'
+  | 'looked'
+  | 'thought'
+  | 'reported'
+  | 'concluded'
+  | 'handoff'
+  | 'planned'
+  | 'decided'
+  | 'tidy'
+
+/** One thing that happened in an investigation: which agent (or you), in which run, and what. */
+export interface Moment {
+  at: string
+  agent_id: number | null
+  agent: string
+  run_id: number | null
+  kind: MomentKind
+  title: string
+  detail: string
+}
+
+export const fetchHandoffs = () => apiGet<HandoffList>(`${BASE}/handoffs`)
+
+export const fetchPlanSteps = (incident: number | null = null) =>
+  apiGet<PlanStepList>(`${BASE}/plan-steps${incident === null ? '' : `?incident_id=${incident}`}`)
+
+export const approveStep = (id: number, csrfToken: string) =>
+  apiPost<PlanStep>(`${BASE}/plan-steps/${id}/approve`, undefined, csrfToken)
+
+export const dismissStep = (id: number, csrfToken: string) =>
+  apiPost<PlanStep>(`${BASE}/plan-steps/${id}/dismiss`, undefined, csrfToken)
+
+export const fetchRunTimeline = (id: number, run: number) =>
+  apiGet<Moment[]>(`${BASE}/${id}/runs/${run}/timeline`)
+
+export const fetchIncidentTimeline = (incident: number) =>
+  apiGet<Moment[]>(`${BASE}/timeline?incident_id=${incident}`)

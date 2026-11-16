@@ -106,6 +106,9 @@ describe('ActivityList', () => {
       'agent.proposal_applied',
       'agent.proposal_dismissed',
       'agent.proposal_undone',
+      'agent.handoff',
+      'agent.plan_approved',
+      'agent.plan_dismissed',
       'asset.classified',
       'asset.classification_cleared',
     ]
@@ -174,6 +177,9 @@ describe('ActivityList', () => {
       'A suggestion of the noise cleaner was applied',
       'A suggestion of the noise cleaner was turned down',
       'A suggestion of the noise cleaner was taken back',
+      'An agent asked another for help',
+      'A step the response planner proposed was approved',
+      'A step the response planner proposed was dismissed',
       'A device was classified',
       'What a device is was taken back',
     ])

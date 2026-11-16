@@ -9,8 +9,12 @@ import {
   attention,
   briefing,
   check,
+  handoff,
+  handoffs,
   limits,
   overview,
+  planStep,
+  planSteps,
   template,
   usage,
 } from '@/test/agents'
@@ -19,10 +23,15 @@ import AgentsView from '@/views/AgentsView.vue'
 
 const TOKEN = 'a-security-token'
 
-async function open(result: Overview | Error = overview()) {
+async function open(
+  result: Overview | Error = overview(),
+  also: { steps?: agentsApi.PlanStepList; handed?: agentsApi.HandoffList } = {},
+) {
   const list = vi.spyOn(agentsApi, 'fetchAgents')
   if (result instanceof Error) list.mockRejectedValue(result)
   else list.mockResolvedValue(result)
+  const steps = vi.spyOn(agentsApi, 'fetchPlanSteps').mockResolvedValue(also.steps ?? planSteps())
+  const handed = vi.spyOn(agentsApi, 'fetchHandoffs').mockResolvedValue(also.handed ?? handoffs())
   const start = vi.spyOn(agentsApi, 'startRun').mockResolvedValue({} as agentsApi.Run)
   const mounted = await mountWithPlugins(AgentsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
@@ -32,12 +41,14 @@ async function open(result: Overview | Error = overview()) {
     await flushPromises()
     await flushPromises()
   }
-  return { ...mounted, list, start, find, click }
+  return { ...mounted, list, steps, handed, start, find, click }
 }
 
 describe('AgentsView', () => {
   it('shows placeholders while it loads', async () => {
     vi.spyOn(agentsApi, 'fetchAgents').mockReturnValue(new Promise(() => {}))
+    vi.spyOn(agentsApi, 'fetchPlanSteps').mockResolvedValue(planSteps())
+    vi.spyOn(agentsApi, 'fetchHandoffs').mockResolvedValue(handoffs())
     const { wrapper } = await mountWithPlugins(AgentsView, { signedIn: 'admin', withApp: true })
 
     expect(wrapper.find('[data-test="agents-loading"]').exists()).toBe(true)
@@ -257,5 +268,35 @@ describe('AgentsView', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+  it('shows the steps the planner proposes, and asks again when one is decided', async () => {
+    const { find, click, steps } = await open(overview({ agents: [agent()] }), {
+      steps: planSteps({ pending: [planStep()] }),
+    })
+
+    expect(find('agents-steps').text()).toContain('Move the camera to the guest network')
+    steps.mockResolvedValue(planSteps())
+    vi.spyOn(agentsApi, 'approveStep').mockResolvedValue(planStep({ status: 'approved' }))
+
+    await click('step-approve')
+
+    expect(steps).toHaveBeenCalledTimes(2)
+    expect(find('agents-steps').exists()).toBe(false)
+  })
+
+  it('shows what the agents asked each other for, with the limits', async () => {
+    const { find } = await open(overview({ agents: [agent()] }), {
+      handed: handoffs({ handoffs: [handoff()], made_today: 1 }),
+    })
+
+    expect(find('agents-handoffs').text()).toContain('Investigator')
+    expect(find('handoffs-limits').text()).toContain('1 so far today')
+  })
+
+  it('says nothing of steps or hand-offs when there are none', async () => {
+    const { find } = await open(overview({ agents: [agent()] }))
+
+    expect(find('agents-steps').exists()).toBe(false)
+    expect(find('agents-handoffs').exists()).toBe(false)
   })
 })

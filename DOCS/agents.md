@@ -266,6 +266,39 @@ Under Settings > Agents, *Tidying up* lets the noise cleaner do the surest of it
 more. What it did is on the Activity page and on the agent's page, and can be taken back like any
 other suggestion. The default is to only suggest.
 
+## Agents working together
+
+Three things connect the agents to each other and to you. None of them lets an agent change
+anything: an agent only reads, and what it hands on is a request to read.
+
+**Hand-offs.** The Security orchestrator and Security triage may ask another kind of agent to look
+into something they saw: an incident, a device or an address they really looked at (a subject they
+never looked at is refused). A hand-off is kept as it was asked (who, which kind, about what, why)
+and starts a run of your agent of that kind, if you have one that is on. The agent that is asked is
+shown the reason as a quotation to check against what it sees, never as an instruction, and looks
+at the incident first. Hand-offs have limits, so that agents cannot run away with them:
+
+- two levels deep at most (an agent asks another, which may ask a third);
+- never to an agent that is already part of the chain, so no circles;
+- three in one run, and ten in a day;
+- never to a kind that tests the network, which only you start;
+- the agents' own spending limits (Settings > Agents) still hold.
+
+A refused hand-off is kept too, with the reason. *Agents asking each other* on the Agents page lists
+the last week's, and the page of a run started by one says so.
+
+**Steps to approve.** The Response planner writes steps (what to do, what it risks, the incident
+it is about) and they wait on the Agents page, under *Steps waiting for you*, until you decide.
+**I will do this** records your decision and keeps the step on its incident as a task for you to
+carry out; **Dismiss** turns it down. A step you decided on is not proposed again, and one nobody
+decided on is forgotten after a month. Nothing is executed by an agent, and every decision is in
+the Activity log.
+
+**The investigation timeline.** The page of a run that is over has *How it fits with the other
+agents*, and an incident has *What the agents made of it*: which agent looked at what, whom it
+asked, what it concluded and what you decided, oldest first. It is made only of what the agents
+and you already left, so reading it changes nothing.
+
 ## For developers
 
 - The graph and its nodes are in `backend/app/agents/graph.py`. Every call to LangGraph is in
@@ -285,6 +318,11 @@ other suggestion. The default is to only suggest.
 - Which provider the agents ask is `backend/app/agents/settings.py`; the gateway
   (`backend/app/ai/gateway.py`) follows it for requests whose purpose is `agent`, and a run adds up
   what its requests used when it ends (`run._spent`).
+- Hand-offs are `backend/app/agents/handoffs.py` (the limits are constants there, `agent_handoffs`,
+  migration `0069`); the steps of the Response planner are `backend/app/agents/plans.py`
+  (`agent_plan_steps`); the timelines are `backend/app/agents/timeline.py`. A template says it may
+  hand off with `hands_off` and plans steps with `plans`, and the graph asks for the matching lists
+  in its answer. The API for them is `backend/app/api/agent_work.py`.
 - The worker (`backend/app/agents/run.py`) starts the runs that are due, runs what waits and keeps
   every step in `agent_steps`. The API is in `backend/app/api/agents.py`.
 - The tests' harness can run the agents when a test says, with the devices that "answer" chosen by

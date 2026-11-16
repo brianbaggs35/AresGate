@@ -1,3 +1,4 @@
+import * as agentsApi from '@/api/agents'
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as trustApi from '@/api/trust'
@@ -40,6 +41,8 @@ async function open({ found = detail(), verdicts = [] }: Options = {}) {
   const fetchVerdicts = vi.spyOn(verdictsApi, 'fetchVerdicts')
   if (verdicts instanceof Error) fetchVerdicts.mockRejectedValue(verdicts)
   else fetchVerdicts.mockResolvedValue(verdicts)
+  vi.spyOn(agentsApi, 'fetchIncidentTimeline').mockResolvedValue([])
+  vi.spyOn(agentsApi, 'fetchPlanSteps').mockResolvedValue({ pending: [], recent: [] })
   const setStatus = vi.spyOn(incidentsApi, 'setIncidentStatus')
   const ask = vi.spyOn(incidentsApi, 'askAi').mockResolvedValue(triage())
   const mounted = await mountWithPlugins(IncidentView, {
