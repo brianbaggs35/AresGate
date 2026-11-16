@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Export and views on every list.** The Incidents, Alerts (the delivery log), Devices and Assets
+  pages can each save **everything their filters show, in order**, as a CSV or JSON file (up to
+  10,000 rows, columns in words, times in your time zone, anything a spreadsheet could run
+  quoted), and keep the filters and order under a name as a **view**: up to 20 for each page for
+  your account, renamed, forgotten, or made the one the page opens on. Views are also commands in
+  the command palette (*Incidents: Needs a look*), and a view that names a program that is no
+  longer connected still opens and says so. The Alerts filters are now in the page's address like
+  the other lists'. Downloads are one `list.exported` entry in the activity log each. See
+  [Operations](DOCS/operations.md#exporting-a-list-and-keeping-views).
 - **Charts you can act on.** A bar, a moment of the traffic or a heatmap cell can lead somewhere:
   on the dashboard an hour of the alerts opens the logs of that hour, an address among the most
   blocked opens the firewall's refusals from it, and a moment of the traffic opens the firewall

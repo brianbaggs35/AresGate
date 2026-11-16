@@ -1,9 +1,11 @@
 import { defineComponent, h, ref } from 'vue'
 import { VDialog } from 'vuetify/components'
 
+import * as viewsApi from '@/api/views'
 import CommandPalette from '@/components/CommandPalette.vue'
 import { useThemeStore } from '@/stores/theme'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
+import { kept } from '@/test/views'
 
 /** The palette in a page with a button that opens it, as the app does through its store. */
 async function mountPalette() {
@@ -46,6 +48,33 @@ async function mountPalette() {
 }
 
 describe('CommandPalette', () => {
+  it('lists the views the owner kept, as the page and the name, and opens one', async () => {
+    const fetch = vi
+      .spyOn(viewsApi, 'fetchViews')
+      .mockResolvedValue([kept({ id: 7, name: 'Needs a look', query: { view: 'all' } })])
+    const { openIt, titles, rows, router } = await mountPalette()
+    const push = vi.spyOn(router, 'push')
+
+    await openIt()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(
+      Array.from(document.querySelectorAll('.palette__heading')).map(
+        (heading) => heading.textContent,
+      ),
+    ).toContain('Views')
+    expect(titles()).toContain('Incidents: Needs a look')
+
+    rows()
+      .find((row) => row.textContent.includes('Needs a look'))
+      ?.click()
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'incidents', query: { view: 'all' } }),
+    )
+  })
+
   it('is closed until it is opened', async () => {
     const { inPalette } = await mountPalette()
     expect(inPalette('[data-test="palette"]')).toBeNull()

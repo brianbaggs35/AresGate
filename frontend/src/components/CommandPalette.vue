@@ -2,10 +2,11 @@
 import { Search } from '@lucide/vue'
 import { computed, ref, useId, watch } from 'vue'
 
-import { commandsFor, GROUPS } from '@/commands'
+import { commandsFor, GROUPS, viewCommands } from '@/commands'
 import { useKeyboardReturn } from '@/dialog'
 import { formatCount } from '@/format'
 import { useThemeStore, type ThemePreference } from '@/stores/theme'
+import { useViewsStore } from '@/stores/views'
 
 /**
  * Search for a page or an action from the keyboard (Ctrl or ⌘ and K), or from the search button
@@ -16,6 +17,7 @@ import { useThemeStore, type ThemePreference } from '@/stores/theme'
 const open = defineModel<boolean>({ required: true })
 
 const theme = useThemeStore()
+const views = useViewsStore()
 const titleId = useId()
 const giveBackTheKeyboard = useKeyboardReturn(open)
 
@@ -23,7 +25,7 @@ const search = ref('')
 const field = ref<{ focus: () => void } | null>(null)
 const list = ref<HTMLElement | null>(null)
 
-const found = computed(() => commandsFor(search.value))
+const found = computed(() => commandsFor(search.value, viewCommands(views.items)))
 const groups = computed(() =>
   GROUPS.map((group, index) => ({
     group,
@@ -38,7 +40,10 @@ const count = computed(() => {
 
 // Each time it opens, it opens empty.
 watch(open, (opening) => {
-  if (opening) search.value = ''
+  if (!opening) return
+  search.value = ''
+  // The views the owner kept are commands too, once they are known.
+  void views.load()
 })
 
 const rows = () =>

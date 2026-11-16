@@ -1323,14 +1323,14 @@ def _in_lanes(
     return found
 
 
-class _Scope(NamedTuple):
+class Narrowed(NamedTuple):
     """Which lanes and which kind of incident a list was asked to be narrowed to."""
 
     lanes: list[LaneName] | None
     family: int | None
 
 
-def _scope(
+def narrowed(
     lane: Annotated[
         list[LaneName] | None,
         Query(
@@ -1339,14 +1339,14 @@ def _scope(
         ),
     ] = None,
     family: Annotated[int | None, Query(ge=1, le=2**63 - 1, description="Only this kind.")] = None,
-) -> _Scope:
-    return _Scope(lane, family)
+) -> Narrowed:
+    return Narrowed(lane, family)
 
 
 @router.get("")
 def list_incidents(
     db: Db,
-    scope: Annotated[_Scope, Depends(_scope)],
+    scope: Annotated[Narrowed, Depends(narrowed)],
     state: Annotated[
         list[Status] | None,
         Query(alias="status", description="Only these, e.g. open. Repeat it for several."),

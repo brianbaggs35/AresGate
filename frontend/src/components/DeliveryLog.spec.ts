@@ -169,6 +169,75 @@ describe('DeliveryLog', () => {
     })
   })
 
+  describe('the address of the page', () => {
+    async function openAt(route: string) {
+      const fetch = vi.spyOn(alertsApi, 'fetchDeliveries').mockResolvedValue(deliveries())
+      const mounted = await mountWithPlugins(DeliveryLog, {
+        signedIn: 'admin',
+        route,
+        props: { destinations: TWO },
+      })
+      await flushPromises()
+      return { ...mounted, fetch }
+    }
+
+    it('narrows the log to what it says', async () => {
+      const { fetch } = await openAt('/alerts?destination=2&state=failed')
+
+      expect(fetch).toHaveBeenLastCalledWith({ destination_id: 2, state: 'failed' })
+    })
+
+    it('ignores a destination or a state that is not one of the choices', async () => {
+      const { fetch } = await openAt('/alerts?destination=phone&state=constructor')
+
+      expect(fetch).toHaveBeenLastCalledWith({})
+    })
+
+    it('writes the filters to the address, and keeps what else is in it', async () => {
+      const { wrapper, router } = await openAt('/alerts?other=1')
+
+      wrapper
+        .findAllComponents(VSelect)
+        .find((select) => select.attributes('data-test') === 'delivery-filter-state')
+        ?.vm.$emit('update:modelValue', 'failed')
+      await flushPromises()
+
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.query).toEqual({ other: '1', state: 'failed' })
+      })
+
+      wrapper
+        .findAllComponents(VSelect)
+        .find((select) => select.attributes('data-test') === 'delivery-filter-state')
+        ?.vm.$emit('update:modelValue', 'all')
+      await flushPromises()
+
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.query).toEqual({ other: '1' })
+      })
+    })
+
+    it('follows the address when it changes, as when a view is chosen', async () => {
+      const { router, fetch } = await openAt('/alerts')
+
+      await router.replace({ query: { destination: '1', state: 'sent' } })
+      await flushPromises()
+
+      expect(fetch).toHaveBeenLastCalledWith({ destination_id: 1, state: 'sent' })
+
+      await router.replace({ query: { destination: '1', state: 'sent', other: 'x' } })
+      await flushPromises()
+
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('offers the file and the views of what it shows', async () => {
+      const { wrapper } = await openAt('/alerts?state=failed')
+
+      expect(wrapper.find('[data-test="list-toolbar"]').exists()).toBe(true)
+    })
+  })
+
   describe('older messages', () => {
     it('offers them only when there are more, and adds them to the end', async () => {
       const { fetch, rows, find, click } = await open(

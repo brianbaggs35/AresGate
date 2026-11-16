@@ -183,6 +183,12 @@ export interface AssetQuery {
 
 /** The assets that match, the ones listed most recently first unless asked for another order. */
 export function fetchAssets(query: AssetQuery = {}): Promise<AssetPage> {
+  const search = assetParams(query).toString()
+  return apiGet<AssetPage>(search ? `/assets?${search}` : '/assets')
+}
+
+/** What a list of assets is asked for, as the parameters of the request. */
+export function assetParams(query: AssetQuery): URLSearchParams {
   const params = new URLSearchParams()
   if (query.q) params.set('q', query.q)
   if (query.status) params.set('status', query.status)
@@ -194,8 +200,7 @@ export function fetchAssets(query: AssetQuery = {}): Promise<AssetPage> {
   if (query.sort) params.set('sort', query.sort)
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
-  const search = params.toString()
-  return apiGet<AssetPage>(search ? `/assets?${search}` : '/assets')
+  return params
 }
 
 /** An address the asset has had, and whether it has it now. */

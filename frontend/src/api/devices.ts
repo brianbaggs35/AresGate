@@ -81,6 +81,12 @@ export interface DeviceQuery {
 
 /** The devices that match, the ones seen most recently first unless asked for another order. */
 export function fetchDevices(query: DeviceQuery = {}): Promise<DevicePage> {
+  const search = deviceParams(query).toString()
+  return apiGet<DevicePage>(search ? `/devices?${search}` : '/devices')
+}
+
+/** What a list of devices is asked for, as the parameters of the request. */
+export function deviceParams(query: DeviceQuery): URLSearchParams {
   const params = new URLSearchParams()
   if (query.q) params.set('q', query.q)
   if (query.scope) params.set('scope', query.scope)
@@ -89,8 +95,7 @@ export function fetchDevices(query: DeviceQuery = {}): Promise<DevicePage> {
   if (query.sort) params.set('sort', query.sort)
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
-  const search = params.toString()
-  return apiGet<DevicePage>(search ? `/devices?${search}` : '/devices')
+  return params
 }
 
 /** What one device did with one peer over one port. `outgoing` is the device connecting to the

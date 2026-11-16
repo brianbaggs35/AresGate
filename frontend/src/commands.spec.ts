@@ -1,4 +1,5 @@
-import { COMMANDS, GROUPS, commandsFor, shortcutLabel } from '@/commands'
+import { COMMANDS, GROUPS, commandsFor, shortcutLabel, viewCommands } from '@/commands'
+import { kept } from '@/test/views'
 import { navItems } from '@/navigation'
 import { settingsSections } from '@/settings'
 
@@ -115,5 +116,32 @@ describe('shortcutLabel', () => {
   it('is Ctrl K on the rest', () => {
     expect(shortcutLabel('Mozilla/5.0 (X11; Linux x86_64)')).toBe('Ctrl K')
     expect(shortcutLabel('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('Ctrl K')
+  })
+})
+
+describe('viewCommands', () => {
+  it('has one for each view, named by its page and the name it was kept under', () => {
+    const found = viewCommands([
+      kept({ id: 4, name: 'Needs a look', query: { view: 'all' } }),
+      kept({ id: 5, page: 'assets', name: 'New things', query: { new: 'true' } }),
+    ])
+
+    expect(found.map(({ id, title, group }) => [id, title, group])).toEqual([
+      ['view-4', 'Incidents: Needs a look', 'Views'],
+      ['view-5', 'Assets: New things', 'Views'],
+    ])
+    expect(found[0]?.action).toEqual({
+      kind: 'go',
+      to: { name: 'incidents', query: { view: 'all' } },
+    })
+    expect(found[1]?.action).toEqual({ kind: 'go', to: { name: 'assets', query: { new: 'true' } } })
+  })
+
+  it('are found with the rest, after the pages, and by their words', () => {
+    const extra = viewCommands([kept({ id: 4, name: 'Needs a look' })])
+
+    expect(commandsFor('needs look', extra).map(({ id }) => id)).toEqual(['view-4'])
+    expect(commandsFor('', extra).at(-4)?.id).toBe('view-4')
+    expect(commandsFor('saved view', extra).map(({ id }) => id)).toEqual(['view-4'])
   })
 })

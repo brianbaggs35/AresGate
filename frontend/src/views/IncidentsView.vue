@@ -15,6 +15,7 @@ import {
   type IncidentPage,
   type IncidentStatus,
   type Lane,
+  incidentParams,
 } from '@/api/incidents'
 import type { VerdictKind } from '@/api/verdicts'
 import AppPage from '@/components/AppPage.vue'
@@ -27,6 +28,7 @@ import IncidentCard from '@/components/IncidentCard.vue'
 import IncidentLayoutToggle from '@/components/IncidentLayoutToggle.vue'
 import IncidentTable from '@/components/IncidentTable.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ScopeFilters from '@/components/ScopeFilters.vue'
@@ -98,6 +100,8 @@ function filtersOf(query: LocationQuery): Filters {
 }
 
 const filters = computed(() => filtersOf(route.query))
+/** The filters as the API takes them, which is also what a file of the list is made of. */
+const listed = computed(() => incidentParams(queryOf(filters.value, PAGE_SIZE)))
 
 function show(next: Partial<Filters>) {
   const merged = { ...filters.value, ...next }
@@ -436,6 +440,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       description="Alerts and bans from every integration that belong together, so you see one story instead of many rows."
     >
       <template #actions>
+        <ListToolbar list="incidents" :asked="listed" />
         <IncidentLayoutToggle v-if="!phone" />
         <DensityToggle />
         <v-btn

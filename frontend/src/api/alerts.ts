@@ -334,11 +334,16 @@ export interface DeliveryQuery {
 
 /** The log of messages sent to destinations, what is waiting and what was held back or left out. */
 export function fetchDeliveries(query: DeliveryQuery = {}): Promise<Deliveries> {
+  const asked = deliveryParams(query).toString()
+  return apiGet<Deliveries>(asked ? `/alerts/deliveries?${asked}` : '/alerts/deliveries')
+}
+
+/** What the log of messages is asked for, as the parameters of the request. */
+export function deliveryParams(query: DeliveryQuery): URLSearchParams {
   const params = new URLSearchParams()
   if (query.destination_id !== undefined)
     params.set('destination_id', query.destination_id.toString())
   if (query.state !== undefined) params.set('state', query.state)
   if (query.before !== undefined) params.set('before', query.before.toString())
-  const asked = params.toString()
-  return apiGet<Deliveries>(asked ? `/alerts/deliveries?${asked}` : '/alerts/deliveries')
+  return params
 }

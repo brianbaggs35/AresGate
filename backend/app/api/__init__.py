@@ -25,6 +25,7 @@ from app.api import (
     dashboard_layout,
     devices,
     events,
+    exports,
     flow,
     health,
     incident_response,
@@ -48,6 +49,7 @@ from app.api import (
     trust,
     two_factor,
     verdicts,
+    views,
 )
 from app.api.deps import require_same_origin
 
@@ -62,6 +64,7 @@ api_router.include_router(credentials.router)
 api_router.include_router(integrations.router)
 api_router.include_router(interfaces.router)
 api_router.include_router(captures.router)
+api_router.include_router(exports.router)
 api_router.include_router(assets.router)
 api_router.include_router(baselines.router)
 api_router.include_router(devices.router)
@@ -83,6 +86,7 @@ api_router.include_router(incident_response.router)
 api_router.include_router(incidents.router)
 api_router.include_router(logs.router)
 api_router.include_router(searches.router)
+api_router.include_router(views.router)
 api_router.include_router(trust.router)
 api_router.include_router(verdicts.router)
 api_router.include_router(noise.router)
