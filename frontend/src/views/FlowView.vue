@@ -178,6 +178,7 @@ const caption = computed(() => {
             v-for="choice in FLOW_HOURS"
             :key="choice"
             :value="choice"
+            :aria-pressed="hours === choice"
             :data-test="`window-${choice}`"
           >
             {{ WINDOW_LABELS[choice] }}
@@ -199,6 +200,7 @@ const caption = computed(() => {
             :key="choice"
             :value="choice"
             :title="DIRECTION_MEANINGS[choice]"
+            :aria-pressed="direction === choice"
             :data-test="`direction-${choice}`"
           >
             {{ DIRECTION_LABELS[choice] }}
