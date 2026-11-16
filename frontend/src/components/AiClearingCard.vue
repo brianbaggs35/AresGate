@@ -397,14 +397,13 @@ onBeforeUnmount(() => {
       >
         {{ saveFailure }}
       </v-alert>
-      <p
+      <output
         v-if="saved && !changed"
-        class="text-body-medium text-success"
-        role="status"
+        class="d-block text-body-medium text-success"
         data-test="clearing-saved"
       >
         The settings are saved.
-      </p>
+      </output>
 
       <div class="clearing__actions">
         <v-btn

@@ -55,7 +55,9 @@ export function draftOf(kept: Clearing): ClearingDraft {
 /** Whether two drafts are the same settings, whatever order the lists are in. */
 export function sameDraft(a: ClearingDraft, b: ClearingDraft): boolean {
   const same = (x: readonly string[], y: readonly string[]) =>
-    x.length === y.length && [...x].sort().join() === [...y].sort().join()
+    x.length === y.length &&
+    [...x].sort((p, q) => p.localeCompare(q)).join() ===
+      [...y].sort((p, q) => p.localeCompare(q)).join()
   return (
     a.mode === b.mode &&
     a.minimum === b.minimum &&
