@@ -38,6 +38,9 @@ import type {
   Performance,
   Finding,
   Edge,
+  HandoffList,
+  MomentKind,
+  PlanStatus,
   ProposalStatus,
   Run,
   RunStatus,
@@ -373,3 +376,35 @@ export function performanceLine(performance: Performance): string {
   }
   return parts.join(' · ')
 }
+
+/** Where a step the planner proposes is, in words and a color: never a color alone. */
+export const PLAN_STATUS: Readonly<Record<PlanStatus, { label: string; color: string }>> = {
+  pending: { label: 'Waiting for you', color: 'info' },
+  approved: { label: 'Approved', color: 'success' },
+  dismissed: { label: 'Dismissed', color: 'default' },
+}
+
+/** What each moment of an investigation is, as a label for the line that tells it. */
+export const MOMENT_LABEL: Readonly<Record<MomentKind, string>> = {
+  asked_by: 'Was asked',
+  began: 'Began',
+  looked: 'Looked',
+  thought: 'Asked the AI',
+  reported: 'Reported',
+  concluded: 'Concluded',
+  handoff: 'Asked another agent',
+  planned: 'Proposed a step',
+  decided: 'You decided',
+  tidy: 'Suggested tidying',
+}
+
+/** How a run came about, as the page says it. */
+export const TRIGGER_WORDS: Readonly<Record<Run['trigger'], string>> = {
+  manual: 'Started by you',
+  schedule: 'By its schedule',
+  handoff: 'Asked by another agent',
+}
+
+/** The limits on hand-offs, in a sentence for the page that lists them. */
+export const handoffLimits = (list: Pick<HandoffList, 'max_depth' | 'per_day' | 'made_today'>) =>
+  `Agents may ask each other ${list.max_depth} levels deep, never in a circle, and ${list.per_day} times a day: ${list.made_today} so far today.`

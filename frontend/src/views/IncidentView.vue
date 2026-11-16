@@ -31,6 +31,7 @@ import ClearingTrail from '@/components/ClearingTrail.vue'
 import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
+import IncidentAgents from '@/components/IncidentAgents.vue'
 import IncidentConversations from '@/components/IncidentConversations.vue'
 import IncidentPath from '@/components/IncidentPath.vue'
 import IncidentThrough from '@/components/IncidentThrough.vue'
@@ -574,6 +575,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           :capped="shown.ports_capped"
         />
       </SectionCard>
+
+      <IncidentAgents :incident-id="shown.id" />
 
       <SectionCard
         title="Timeline"

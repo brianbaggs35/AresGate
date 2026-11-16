@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Agents work together.** The Security orchestrator and Security triage can ask another kind of
+  agent to look into an incident, a device or an address they really looked at. The request is
+  kept (who, which kind, about what, why), starts a run of your agent of that kind, and is refused,
+  with the reason, past two levels deep, in a circle, more than three in a run or ten in a day, or
+  past the agents' spending limits. The Response planner's steps now wait on the Agents page for
+  you to approve or dismiss, each with what it risks; an approved step stays on its incident as a
+  task. A run and an incident show a timeline of which agent did what, whom it asked and what you
+  decided. Nothing is executed by an agent. See [agents](DOCS/agents.md#agents-working-together).
+
 - **Go through incidents with the assistant.** Ask the assistant to walk you through the incidents
   nobody has judged yet and it takes them a few at a time (five unless you say), says what it makes
   of each, and proposes a verdict or status for the ones it is sure of, up to six at a time. You

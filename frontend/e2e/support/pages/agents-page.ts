@@ -55,6 +55,16 @@ export class AgentsPage {
   readonly dismiss: Locator
   readonly undo: Locator
   readonly recentStatus: Locator
+  /** The steps the response planner proposes, which wait for the owner, and the buttons of each. */
+  readonly stepsSection: Locator
+  readonly planSteps: Locator
+  readonly approveStep: Locator
+  readonly dismissStep: Locator
+  /** What the agents asked each other for, and how it fits in on the page of a run. */
+  readonly handoffsSection: Locator
+  readonly handoffs: Locator
+  readonly investigation: Locator
+  readonly moments: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -100,6 +110,14 @@ export class AgentsPage {
     this.dismiss = page.getByTestId('proposal-dismiss')
     this.undo = page.getByTestId('proposal-undo')
     this.recentStatus = page.getByTestId('recent-status')
+    this.stepsSection = page.getByTestId('agents-steps')
+    this.planSteps = page.getByTestId('step')
+    this.approveStep = page.getByTestId('step-approve')
+    this.dismissStep = page.getByTestId('step-dismiss')
+    this.handoffsSection = page.getByTestId('agents-handoffs')
+    this.handoffs = page.getByTestId('handoff')
+    this.investigation = page.getByTestId('agent-investigation')
+    this.moments = page.getByTestId('moment')
   }
 
   async goto(): Promise<void> {

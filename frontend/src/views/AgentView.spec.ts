@@ -1,5 +1,5 @@
 import * as agentsApi from '@/api/agents'
-import type { AgentDetail, RunDetail } from '@/api/agents'
+import type { AgentDetail, Moment, RunDetail } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentGraph from '@/components/AgentGraph.vue'
@@ -10,6 +10,7 @@ import {
   check,
   detail,
   finding,
+  moment,
   run,
   runDetail,
   proposal,
@@ -26,9 +27,14 @@ const TOKEN = 'a-security-token'
 interface Setup {
   agent?: AgentDetail | Error
   runs?: Record<number, RunDetail>
+  moments?: Moment[]
 }
 
-async function open({ agent: shown = detail(), runs = { 7: runDetail() } }: Setup = {}) {
+async function open({
+  agent: shown = detail(),
+  runs = { 7: runDetail() },
+  moments = [],
+}: Setup = {}) {
   const get = vi.spyOn(agentsApi, 'fetchAgent')
   if (shown instanceof Error) get.mockRejectedValue(shown)
   else get.mockResolvedValue(shown)
@@ -36,6 +42,7 @@ async function open({ agent: shown = detail(), runs = { 7: runDetail() } }: Setu
     const found = runs[number]
     return found ? Promise.resolve(found) : Promise.reject(new ApiError(404, 'No such run.', 'x'))
   })
+  const told = vi.spyOn(agentsApi, 'fetchRunTimeline').mockResolvedValue(moments)
   const start = vi.spyOn(agentsApi, 'startRun').mockResolvedValue(run())
   const stop = vi.spyOn(agentsApi, 'cancelRun').mockResolvedValue(run())
   const mounted = await mountWithPlugins(AgentView, {
@@ -50,7 +57,7 @@ async function open({ agent: shown = detail(), runs = { 7: runDetail() } }: Setu
     await flushPromises()
     await flushPromises()
   }
-  return { ...mounted, get, read, start, stop, find, click }
+  return { ...mounted, get, read, told, start, stop, find, click }
 }
 
 const GOING = runDetail({
@@ -374,6 +381,57 @@ describe('AgentView', () => {
     expect(find('run-meta').text()).toContain('By its schedule')
     expect(wrapper.text()).toContain('Run 7 ·')
     expect(wrapper.text()).toContain('By its schedule')
+  })
+
+  it('says a run was started by another agent', async () => {
+    const { find } = await open({
+      agent: detail({ runs: [run({ id: 7, trigger: 'handoff' })] }),
+      runs: { 7: runDetail({ id: 7, trigger: 'handoff' }) },
+    })
+
+    expect(find('run-meta').text()).toContain('Asked by another agent')
+  })
+
+  describe('how a run fits with the other agents', () => {
+    const TOLD = [
+      moment({ kind: 'asked_by', agent: 'Investigator', title: 'Was asked by Orchestrator' }),
+      moment({ kind: 'concluded', agent: 'Investigator', title: 'One scan.' }),
+    ]
+
+    it('lists who asked it and what it concluded once the run is over', async () => {
+      const { find, told } = await open({ moments: TOLD })
+
+      expect(told).toHaveBeenCalledWith(3, 7)
+      expect(find('agent-investigation').text()).toContain('Was asked by Orchestrator')
+    })
+
+    it('says nothing when there is only the run itself to tell', async () => {
+      const { find } = await open({ moments: [moment()] })
+
+      expect(find('agent-investigation').exists()).toBe(false)
+    })
+
+    it('leaves the run as it is when how it fits could not be read', async () => {
+      const { find, told, wrapper } = await open({ moments: TOLD })
+      told.mockRejectedValue(new ApiError(0, "Can't reach AresGate.", 'offline'))
+
+      await find('agent-start').trigger('click')
+      await flushPromises()
+
+      expect(find('agent-problem').exists()).toBe(false)
+      expect(wrapper.find('[data-test="agent-run"]').exists()).toBe(true)
+    })
+
+    it('is not asked for while the run is going', async () => {
+      const { told, find } = await open({
+        agent: GOING_AGENT,
+        runs: { 8: GOING },
+        moments: TOLD,
+      })
+
+      expect(told).not.toHaveBeenCalled()
+      expect(find('agent-investigation').exists()).toBe(false)
+    })
   })
 
   describe('asking for a run', () => {

@@ -1,14 +1,20 @@
 import {
   applyProposal,
+  approveStep,
   cancelRun,
   changeAgent,
   createAgent,
   dismissProposal,
+  dismissStep,
   fetchAgent,
   fetchAgentSettings,
   fetchAgents,
+  fetchHandoffs,
+  fetchIncidentTimeline,
+  fetchPlanSteps,
   fetchProposals,
   fetchRun,
+  fetchRunTimeline,
   removeAgent,
   saveAgentSettings,
   startRun,
@@ -121,5 +127,26 @@ describe('agents', () => {
     expect(post).toHaveBeenCalledWith('/agents/proposals/5/apply', undefined, 'token')
     expect(post).toHaveBeenCalledWith('/agents/proposals/5/dismiss', undefined, 'token')
     expect(post).toHaveBeenCalledWith('/agents/proposals/5/undo', undefined, 'token')
+  })
+
+  it('asks for hand-offs, the planner steps and the timelines, and decides on a step', async () => {
+    const get = vi.spyOn(client, 'apiGet').mockResolvedValue({})
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({})
+
+    await fetchHandoffs()
+    await fetchPlanSteps()
+    await fetchPlanSteps(12)
+    await fetchRunTimeline(3, 7)
+    await fetchIncidentTimeline(12)
+    await approveStep(5, 'token')
+    await dismissStep(6, 'token')
+
+    expect(get).toHaveBeenCalledWith('/agents/handoffs')
+    expect(get).toHaveBeenCalledWith('/agents/plan-steps')
+    expect(get).toHaveBeenCalledWith('/agents/plan-steps?incident_id=12')
+    expect(get).toHaveBeenCalledWith('/agents/3/runs/7/timeline')
+    expect(get).toHaveBeenCalledWith('/agents/timeline?incident_id=12')
+    expect(post).toHaveBeenCalledWith('/agents/plan-steps/5/approve', undefined, 'token')
+    expect(post).toHaveBeenCalledWith('/agents/plan-steps/6/dismiss', undefined, 'token')
   })
 })

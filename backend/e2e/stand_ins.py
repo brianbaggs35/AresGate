@@ -1714,34 +1714,59 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
 
 def _answer_of_an_agent(asked: Mapping[str, Any]) -> str | None:
     """What an agent's model would answer (a request for a JSON schema with ``findings``): a report
-    that names the first incident it was shown, or one that says there was nothing to report."""
-    if "findings" not in _schema_properties(asked):
+    that names the first incident it was shown, or one that says there was nothing to report. An
+    agent that may hand work on asks the incident investigator to look at it, and one that plans
+    steps plans one for it."""
+    properties = _schema_properties(asked)
+    if "findings" not in properties:
         return None
     found = re.search(r"\[incident (\w+)\]", _prompt_of(asked))
     if found is None:
         return json.dumps(
-            {"summary": "Nothing needs your attention.", "findings": [], "lookups": []}
+            {
+                "summary": "Nothing needs your attention.",
+                "findings": [],
+                "lookups": [],
+                **({"handoffs": []} if "handoffs" in properties else {}),
+                **({"plan": []} if "plan" in properties else {}),
+            }
         )
     cite = f"incident {found.group(1)}"
-    return json.dumps(
-        {
-            "summary": f"Start with {cite}: it is the one that needs you most.",
-            "findings": [
-                {
-                    "severity": "high",
-                    "title": f"{cite.capitalize()} needs a look",
-                    "detail": "Two programs saw it, and it reached a device that answered.",
-                    "cites": [cite],
-                    "action": "Check the device it reached and change its password.",
-                    "confidence": "high",
-                    "evidence": ["Two programs reported it.", "The device answered the scan."],
-                    "verify": "Open the device's page and look at what it was doing then.",
-                    "benign": "You were scanning your own network.",
-                }
-            ],
-            "lookups": [],
-        }
-    )
+    report: dict[str, Any] = {
+        "summary": f"Start with {cite}: it is the one that needs you most.",
+        "findings": [
+            {
+                "severity": "high",
+                "title": f"{cite.capitalize()} needs a look",
+                "detail": "Two programs saw it, and it reached a device that answered.",
+                "cites": [cite],
+                "action": "Check the device it reached and change its password.",
+                "confidence": "high",
+                "evidence": ["Two programs reported it.", "The device answered the scan."],
+                "verify": "Open the device's page and look at what it was doing then.",
+                "benign": "You were scanning your own network.",
+            }
+        ],
+        "lookups": [],
+    }
+    if "handoffs" in properties:
+        report["handoffs"] = [
+            {
+                "kind": "incident_investigator",
+                "subject": cite,
+                "reason": "It reached a device that answered, which needs a closer look.",
+            }
+        ]
+    if "plan" in properties:
+        report["plan"] = [
+            {
+                "title": "Change the password of the device it reached",
+                "detail": "Open the device's settings and set a new password.",
+                "risk": "Anything signed in with the old password is signed out.",
+                "cites": [cite],
+            }
+        ]
+    return json.dumps(report)
 
 
 def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:

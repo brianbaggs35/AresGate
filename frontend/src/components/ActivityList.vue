@@ -73,6 +73,9 @@ const TITLES: Readonly<Record<string, string>> = {
   'agent.proposal_applied': 'A suggestion of the noise cleaner was applied',
   'agent.proposal_dismissed': 'A suggestion of the noise cleaner was turned down',
   'agent.proposal_undone': 'A suggestion of the noise cleaner was taken back',
+  'agent.handoff': 'An agent asked another for help',
+  'agent.plan_approved': 'A step the response planner proposed was approved',
+  'agent.plan_dismissed': 'A step the response planner proposed was dismissed',
   'asset.classified': 'A device was classified',
   'asset.classification_cleared': 'What a device is was taken back',
 }
