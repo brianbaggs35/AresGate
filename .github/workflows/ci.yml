@@ -266,6 +266,7 @@ jobs:
           skip-setup-trivy: true
           scan-type: image
           image-ref: aresgate:ci
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           limit-severities-for-sarif: true
@@ -283,6 +284,7 @@ jobs:
           skip-setup-trivy: true
           scan-type: image
           image-ref: aresgate:ci
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           format: table
