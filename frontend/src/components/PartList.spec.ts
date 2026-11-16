@@ -76,4 +76,33 @@ describe('PartList', () => {
     expect(links[0]?.attributes('href')).toBe('/integrations/wazuh')
     expect(links[0]?.attributes('aria-label')).toBe('Open Wazuh')
   })
+
+  describe('how the last hours went', () => {
+    const history = { wazuh: ['ok', 'problem'] as const }
+
+    it('draws a strip for an integration it has hours for', async () => {
+      const { wrapper } = await mountWithPlugins(PartList, {
+        props: { parts: [part()], history },
+      })
+
+      expect(wrapper.findAll('[data-test="health-cell"]')).toHaveLength(2)
+    })
+
+    it('draws none for a part that is not an integration, or one with no hours', async () => {
+      const { wrapper } = await mountWithPlugins(PartList, {
+        props: {
+          parts: [
+            part({ group: 'collector' }),
+            part({ key: 'other', integration: 'other' }),
+            part({ integration: null }),
+          ],
+          history,
+        },
+      })
+      const bare = await mountWithPlugins(PartList, { props: { parts: [part()] } })
+
+      expect(wrapper.find('[data-test="health-strip"]').exists()).toBe(false)
+      expect(bare.wrapper.find('[data-test="health-strip"]').exists()).toBe(false)
+    })
+  })
 })

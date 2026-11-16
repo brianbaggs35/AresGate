@@ -1,3 +1,5 @@
+import { integrationTrends } from '@/test/trends'
+import * as trendsApi from '@/api/trends'
 import { ApiError } from '@/api/client'
 import * as statusApi from '@/api/status'
 import { useSessionStore } from '@/stores/session'
@@ -480,6 +482,30 @@ describe('StatusView', () => {
       await find('status-copy').trigger('click')
       await flushPromises()
       expect(find('status-copy-failed').exists()).toBe(true)
+    })
+  })
+
+  describe('how the last day went', () => {
+    it('draws a strip for each integration it has hours for, once the report is in', async () => {
+      const trends = vi
+        .spyOn(trendsApi, 'fetchIntegrationTrends')
+        .mockResolvedValue(integrationTrends({ opnsense: ['ok', 'ok', 'problem'] }))
+
+      const { wrapper } = await open()
+
+      expect(trends).toHaveBeenCalledOnce()
+      const strips = wrapper.findAll('[data-test="status-parts"] [data-test="health-strip"]')
+      expect(strips).toHaveLength(1)
+      expect(strips[0]?.text()).toBe('In the last 3 hours: 2 hours working, 1 with a problem.')
+    })
+
+    it('shows the report without it when it cannot be had', async () => {
+      vi.spyOn(trendsApi, 'fetchIntegrationTrends').mockRejectedValue(new Error('down'))
+
+      const { find, wrapper } = await open()
+
+      expect(find('status-parts').exists()).toBe(true)
+      expect(wrapper.find('[data-test="health-strip"]').exists()).toBe(false)
     })
   })
 })

@@ -17,11 +17,13 @@ import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import LaneChip from '@/components/LaneChip.vue'
 import ResponseChip from '@/components/ResponseChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
+import TrendSpark from '@/components/TrendSpark.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import { ACTIVITY, isAboutRule, otherAddresses, portsTouched, spanOf } from '@/incidents'
 import { SEVERITY } from '@/severity'
 import { useSessionStore } from '@/stores/session'
+import { sparkLabel } from '@/trends'
 import { VERDICT, scopesOf, type Judged, type Scope } from '@/verdicts'
 
 /**
@@ -36,6 +38,8 @@ const props = defineProps<{
   /** Whether it can be picked, with others, for a change to be made to all of them. */
   selectable?: boolean
   selected?: boolean
+  /** The events its address was in each day of the last week, oldest first, once they are known. */
+  trend?: readonly number[]
 }>()
 const emit = defineEmits<{
   judged: [Judged]
@@ -227,6 +231,11 @@ async function give(kind: VerdictKind) {
           </li>
         </ul>
       </div>
+      <TrendSpark
+        v-if="trend"
+        :values="trend"
+        :label="sparkLabel('events', trend, 'the last 7 days')"
+      />
     </RouterLink>
 
     <fieldset class="incident-card__say px-4 px-sm-5 pb-3 pb-sm-4" data-test="quick-verdicts">

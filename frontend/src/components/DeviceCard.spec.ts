@@ -104,4 +104,17 @@ describe('DeviceCard', () => {
     expect(maker.text('device-identified')).toBe('Apple, Inc.')
     expect(unknown.find('device-identified').exists()).toBe(false)
   })
+
+  it('draws how the week went when it is known, and nothing when it is not', async () => {
+    const known = await mountWithPlugins(DeviceCard, {
+      props: { device: device(), trend: [0, 3, 4] },
+      withApp: true,
+    })
+    const unknown = await open()
+
+    expect(known.wrapper.find('[data-test="trend-spark-label"]').text()).toBe(
+      '7 events in the last 7 days, 4 in the latest.',
+    )
+    expect(unknown.find('trend-spark').exists()).toBe(false)
+  })
 })

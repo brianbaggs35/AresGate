@@ -64,4 +64,16 @@ describe('FamilyCard', () => {
 
     expect(wrapper.find('[data-test="family-waiting"]').text()).toBe('Not judged yet')
   })
+
+  it('draws how many incidents began each day when it is known', async () => {
+    const known = await mountWithPlugins(FamilyCard, {
+      props: { family: family(), trend: [0, 2, 5] },
+    })
+    const unknown = await open()
+
+    expect(known.wrapper.find('[data-test="trend-spark-label"]').text()).toBe(
+      '7 incidents began in the last 7 days, 5 in the latest.',
+    )
+    expect(unknown.wrapper.find('[data-test="trend-spark"]').exists()).toBe(false)
+  })
 })

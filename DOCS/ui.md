@@ -706,6 +706,29 @@ What every chart does, and a new one must:
   pages do the same for their traffic. The span is of what the page has already loaded, so it
   never asks for more than the range holds.
 
+## Trends beside the lists
+
+The Devices, Alerts, Threats and Status pages are lists and facts; each also draws how things have
+been going, from what is already stored, with the chart kit and nothing new to read. A trend comes
+from one cheap query (`app/trends.py`, `GET /api/trends/...`), is asked for **after** the page has
+loaded (`useTrend` in `src/trends.ts`), and quietly shows nothing if it cannot be had, so a slow or
+failed trend never holds up or breaks the page. Every number is zero-filled and the last bucket is
+the one under way. Each has its words for a reader of a screen: charts have the legend, the table
+and the keyboard of every chart, sparklines say what they show and how much there was.
+
+- **Alerts** (`DeliveryTrend`, `deliveries`): messages in each of the last 48 hours, stacked by
+  severity, above the delivery log, for the destination and the state the log is filtered to.
+  Severities with no message are left out of the legend.
+- **Threats** (`FamilyCard`, `IncidentCard`, `TrendSpark`): incidents that began each day of the last
+  week beside each kind, and the events of the last week of each listed address (not rules or
+  names) beside it, as a small line with a sentence. Both are asked for once for everything on
+  screen.
+- **Devices** (`DeviceCard`, `DeviceTraffic`): a small line of each device's events by day in the
+  list, and on its page *Connections over the week*, two lines (in and out) by the hour.
+- **Status** (`HealthStrip`): for each integration the last 24 hours, a cell for each hour from its
+  API calls: working (solid), a problem (tall and striped) or no calls (an outline), so state is
+  never colour alone, with the count in words under it.
+
 ## Lists
 
 The Incidents, Alerts (the delivery log), Devices and Assets pages are lists that narrow with

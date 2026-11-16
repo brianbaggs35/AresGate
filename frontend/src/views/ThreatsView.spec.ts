@@ -1,3 +1,5 @@
+import { addressTrends, kindTrends } from '@/test/trends'
+import * as trendsApi from '@/api/trends'
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as threatsApi from '@/api/threats'
@@ -396,6 +398,66 @@ describe('ThreatsView', () => {
       await flushPromises()
 
       expect(find('count-threat').text()).toBe('9')
+    })
+  })
+
+  describe('how the week went', () => {
+    it('asks for the incidents of each kind by the day and draws them on the kind', async () => {
+      const kinds = vi
+        .spyOn(trendsApi, 'fetchKindTrends')
+        .mockResolvedValue(kindTrends({ '7': [0, 2, 5] }))
+      vi.spyOn(trendsApi, 'fetchAddressTrends').mockResolvedValue(addressTrends({}))
+
+      const { wrapper } = await open({ route: '/threats?lane=background' })
+
+      expect(kinds).toHaveBeenCalledWith([7])
+      expect(wrapper.find('[data-test="trend-spark-label"]').text()).toBe(
+        '7 incidents began in the last 7 days, 5 in the latest.',
+      )
+    })
+
+    it('does not ask about kinds when there are none', async () => {
+      const kinds = vi.spyOn(trendsApi, 'fetchKindTrends').mockResolvedValue(kindTrends({}))
+
+      await open({ found: overview({ families: [] }), route: '/threats?lane=background' })
+
+      expect(kinds).not.toHaveBeenCalled()
+    })
+
+    it('asks for the events of the addresses listed, and leaves out rules and what is not one', async () => {
+      vi.spyOn(trendsApi, 'fetchKindTrends').mockResolvedValue(kindTrends({}))
+      const addresses = vi
+        .spyOn(trendsApi, 'fetchAddressTrends')
+        .mockResolvedValue(
+          addressTrends({ '93.184.216.34': { incoming: [1, 2, 3], outgoing: [0, 0, 0] } }),
+        )
+
+      const { wrapper } = await open({
+        route: '/threats?lane=suspect',
+        incidents: page([
+          incident({ id: 1, subject: '93.184.216.34' }),
+          incident({ id: 2, subject: '93.184.216.34' }),
+          incident({ id: 3, subject: 'rule:5710' }),
+          incident({ id: 4, subject: 'CN=cloud.example.net' }),
+        ]),
+      })
+
+      expect(addresses).toHaveBeenCalledWith(['93.184.216.34'])
+      expect(wrapper.findAll('[data-test="trend-spark"]')).toHaveLength(2)
+    })
+
+    it('does not ask when no incident has an address', async () => {
+      vi.spyOn(trendsApi, 'fetchKindTrends').mockResolvedValue(kindTrends({}))
+      const addresses = vi
+        .spyOn(trendsApi, 'fetchAddressTrends')
+        .mockResolvedValue(addressTrends({}))
+
+      await open({
+        route: '/threats?lane=suspect',
+        incidents: page([incident({ id: 3, subject: 'rule:5710' })]),
+      })
+
+      expect(addresses).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,3 +1,5 @@
+import { addressTrends } from '@/test/trends'
+import * as trendsApi from '@/api/trends'
 import { ApiError } from '@/api/client'
 import * as devicesApi from '@/api/devices'
 import AssetEvents from '@/components/AssetEvents.vue'
@@ -351,5 +353,14 @@ describe('DeviceView', () => {
       expect(wrapper.find('[data-test="device-error"]').exists()).toBe(false)
       expect(wrapper.find('h1').text()).toBe('9.9.9.9')
     })
+  })
+
+  it('charts the connections of the week under the facts', async () => {
+    const trends = vi.spyOn(trendsApi, 'fetchAddressTrends').mockResolvedValue(addressTrends())
+
+    const { find } = await open()
+
+    expect(trends).toHaveBeenCalledWith(['52.1.2.3'], 'hour', 168)
+    expect(find('device-traffic').exists()).toBe(true)
   })
 })

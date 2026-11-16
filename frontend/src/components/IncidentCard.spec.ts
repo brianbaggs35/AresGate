@@ -445,4 +445,18 @@ describe('IncidentCard', () => {
       expect(picks()).toEqual([[false], [true]])
     })
   })
+
+  it('draws how the week went for its address when that is known', async () => {
+    const known = await mountWithPlugins(IncidentCard, {
+      props: { incident: incident(), trend: [1, 1, 2] },
+      withApp: true,
+      signedIn: 'admin',
+    })
+    const unknown = await show()
+
+    expect(known.wrapper.find('[data-test="trend-spark-label"]').text()).toBe(
+      '4 events in the last 7 days, 2 in the latest.',
+    )
+    expect(unknown.wrapper.find('[data-test="trend-spark"]').exists()).toBe(false)
+  })
 })

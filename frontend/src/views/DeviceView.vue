@@ -9,6 +9,7 @@ import AppPage from '@/components/AppPage.vue'
 import AssetEvents from '@/components/AssetEvents.vue'
 import AssetIdentity from '@/components/AssetIdentity.vue'
 import DeviceConnections from '@/components/DeviceConnections.vue'
+import DeviceTraffic from '@/components/DeviceTraffic.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -161,6 +162,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
           data-test="device-tile-events"
         />
       </div>
+
+      <DeviceTraffic :address="address" />
 
       <section class="section" aria-labelledby="connections-title" data-test="device-connections">
         <h2 id="connections-title" class="text-title-large">Connections</h2>

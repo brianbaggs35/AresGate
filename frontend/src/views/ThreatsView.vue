@@ -7,6 +7,7 @@ import { errorMessage } from '@/api/client'
 import { WINDOWS, type DashboardWindow } from '@/api/dashboard'
 import { fetchIncidents, LANES, type Incident, type Lane } from '@/api/incidents'
 import { fetchOverview, type Overview } from '@/api/threats'
+import { fetchAddressTrends, fetchKindTrends } from '@/api/trends'
 import AppPage from '@/components/AppPage.vue'
 import ChainsSection from '@/components/ChainsSection.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -20,9 +21,11 @@ import PageHeader from '@/components/PageHeader.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import ThreatFunnel from '@/components/ThreatFunnel.vue'
 import { formatCount } from '@/format'
+import { isAboutRule } from '@/incidents'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
 import { coverageSentence, firstLane, LANE } from '@/threats'
+import { activityOf, looksLikeAddress, useTrend } from '@/trends'
 import type { Judged } from '@/verdicts'
 
 /**
@@ -48,6 +51,25 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const moreError = ref<string | null>(null)
 let latest = 0
+
+// How each kind and each attacker on screen has gone over the week, asked once after the lists.
+const { trend: kinds } = useTrend(
+  () =>
+    overview.value?.families.length ? overview.value.families.map(({ id }) => id).join(',') : null,
+  () => fetchKindTrends((overview.value as Overview).families.map(({ id }) => id)),
+)
+const attackers = computed(() =>
+  [...new Set(items.value.map(({ subject }) => subject))].filter(
+    (subject) => !isAboutRule(subject) && looksLikeAddress(subject),
+  ),
+)
+const { trend: addresses } = useTrend(
+  () => (attackers.value.length ? attackers.value.join(',') : null),
+  () => fetchAddressTrends(attackers.value),
+)
+const kindWeek = (id: number) => kinds.value?.items[id.toString()]
+const attackerWeek = (subject: string) =>
+  (addresses.value ? activityOf(addresses.value, subject) : null) ?? undefined
 
 /** The lane on screen: the one in the address of the page, else the first with something in it. */
 const lane = computed<Lane>(() => {
@@ -283,7 +305,11 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       <template v-if="listed">
         <ul v-if="items.length" class="threats__list" data-test="lane-list">
           <li v-for="incident in items" :key="incident.id">
-            <IncidentCard :incident="incident" @judged="judged" />
+            <IncidentCard
+              :incident="incident"
+              :trend="attackerWeek(incident.subject)"
+              @judged="judged"
+            />
           </li>
         </ul>
         <EmptyState
@@ -308,7 +334,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       <template v-else>
         <ul v-if="overview.families.length" class="threats__list" data-test="kind-list">
           <li v-for="family in overview.families" :key="family.id">
-            <FamilyCard :family="family" />
+            <FamilyCard :family="family" :trend="kindWeek(family.id)" />
           </li>
         </ul>
         <EmptyState
