@@ -39,6 +39,7 @@ from app.models.auth import (
     UserSession,
 )
 from app.models.base import Base, UTCDateTime, utcnow
+from app.models.baselines import KnownDestination, TrafficBaseline
 from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
 from app.models.dashboard import DashboardLayout
@@ -133,6 +134,7 @@ __all__ = [
     "IntelSubject",
     "Interface",
     "InterfaceFeed",
+    "KnownDestination",
     "LoginThrottle",
     "MetricRetention",
     "MetricSample",
@@ -152,6 +154,7 @@ __all__ = [
     "SystemInfo",
     "ThreatSettings",
     "TotpCredential",
+    "TrafficBaseline",
     "UTCDateTime",
     "User",
     "UserSession",

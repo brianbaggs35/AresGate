@@ -33,6 +33,16 @@ Every release's notes are here, newest first. The format follows
   for a screen on a wall: it asks again every 10 seconds, raises an alarm banner while an incident
   needs you now, and has a full-screen button.
 
+- **AresGate learns what is normal on your network.** From the numbers and events it has
+  already stored, it learns how much traffic each interface usually carries at each hour, where
+  each device usually talks to, and which devices are usually there, and files what is not
+  normal as low-severity alerts from *Learned baselines* that the incident engine correlates with
+  everything else: traffic far above what is usual for the hour, a device reaching somewhere it
+  never has (more seriously, many places at once), and a new device on a network that has been
+  quiet for a week. It uses plain statistics that run without any AI provider and cost no
+  tokens, keeps what it learned across restarts, and your verdicts apply to its alerts as to any
+  other. `ARESGATE_BASELINES_ENABLED=false` turns it off.
+
 ### Changed
 
 - **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now
