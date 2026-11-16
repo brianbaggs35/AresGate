@@ -83,7 +83,7 @@ test.describe('the assistant panel', () => {
     await expect(incident.status).toHaveText('Investigating')
   })
 
-  test('changes nothing when a proposal is denied', async ({
+  test('changes nothing when a proposal is denied, and does not propose it again until it is forgotten', async ({
     harness,
     aiSettings,
     assistantPanel,
@@ -98,10 +98,27 @@ test.describe('the assistant panel', () => {
 
     await assistantPanel.deny.click()
 
-    await expect(assistantPanel.denied).toHaveText('Denied. Nothing was changed.')
+    await expect(assistantPanel.denied).toContainText('Denied. Nothing was changed')
     await expect(assistantPanel.approve).toHaveCount(0)
     await page.reload()
     await expect(incident.status).toHaveText('Open')
+
+    // Asked again, the assistant does not suggest what was denied.
+    await assistantPanel.opener.click()
+    await assistantPanel.ask('What needs my attention right now?')
+    await expect(assistantPanel.answers).toHaveCount(1)
+    await expect(assistantPanel.proposals).toHaveCount(0)
+
+    // Settings lists it, and forgetting it lets the assistant suggest it again.
+    await page.goto('/settings/ai')
+    const denials = page.getByTestId('denials-card')
+    await expect(denials.getByTestId('denial-what')).toHaveText('Start investigating')
+    await denials.getByTestId('denial-forget').click()
+    await expect(denials.getByTestId('denials-empty')).toBeVisible()
+    await page.goto('/incidents?view=all')
+    await assistantPanel.opener.click()
+    await assistantPanel.ask('What needs my attention right now?')
+    await expect(assistantPanel.proposals).toHaveCount(1)
   })
 
   test('proposes dismissing several incidents together, and dismisses them all when approved', async ({

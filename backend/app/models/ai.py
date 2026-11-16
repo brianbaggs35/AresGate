@@ -269,3 +269,26 @@ class AiMessage(Base):
     # The requests to the provider that made it, in ``ai_calls`` (which may have been deleted).
     call_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AiDeniedProposal(Base):
+    """A change the assistant proposed and the owner denied, for one incident (app/ai/denials.py):
+    what kind of change (``status`` or ``verdict``) and to what. It stops that proposal being made
+    again for as long as it stands: for a month, and while the incident still has the status and
+    verdict it had when it was denied (``state``)."""
+
+    __tablename__ = "ai_denied_proposals"
+    __table_args__ = (
+        CheckConstraint("kind IN ('status', 'verdict')", name="kind"),
+        UniqueConstraint("kind", "value", "incident_id", name="change"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(7))
+    value: Mapped[str] = mapped_column(String(16))
+    incident_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("incidents.id", ondelete="CASCADE")
+    )
+    # The incident's status and verdict when it was denied, as ``open/`` or ``open/threat``.
+    state: Mapped[str] = mapped_column(String(32))
+    denied_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

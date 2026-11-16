@@ -4,6 +4,16 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **The assistant remembers what you denied.** When you press *Deny* on a change the assistant
+  proposed, it is not proposed again for 30 days, or sooner if the incident's status or verdict
+  changes, and the assistant is told what you refused so that it stops suggesting it. Settings > AI
+  has a new *Denied suggestions* card that lists them, with *Forget* for each and *Forget all*. See
+  [the assistant panel](DOCS/ui.md).
+
 ## 0.1.8
 
 ### Added

@@ -228,6 +228,7 @@ def test_a_question_asked_from_a_page_is_answered_about_what_is_on_it_and_may_su
             "label": f"Mark Incident {found.id} as resolved",
             "also": [],
             "address": ATTACKER,
+            "denied": False,
         }
     ]
     assert asked_again.status_code == 200

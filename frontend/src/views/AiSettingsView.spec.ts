@@ -1,5 +1,6 @@
 import * as aiApi from '@/api/ai'
 import * as clearingApi from '@/api/aiClearing'
+import * as denialsApi from '@/api/aiDenials'
 import { ApiError } from '@/api/client'
 import AiProviderForm from '@/components/AiProviderForm.vue'
 import AiProviderPicker from '@/components/AiProviderPicker.vue'
@@ -24,6 +25,7 @@ async function open(answer: aiApi.Ai | Error = ai()) {
   else fetchIt.mockResolvedValue(answer)
   const use = vi.spyOn(aiApi, 'useAi')
   vi.spyOn(clearingApi, 'fetchClearing').mockResolvedValue(clearing())
+  vi.spyOn(denialsApi, 'fetchDenials').mockResolvedValue({ items: [], days: 30 })
   const mounted = await mountWithPlugins(AiSettingsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -183,13 +185,14 @@ describe('AiSettingsView', () => {
     expect(find('privacy-balanced').find('input').element).toHaveProperty('checked', true)
   })
 
-  it('has a card on what the AI may clear, below the others', async () => {
+  it('has a card on what the AI may clear, and one on what was denied, below the others', async () => {
     const { wrapper } = await open()
 
     expect(wrapper.findAll('[data-test="section-title"]').map((title) => title.text())).toEqual([
       'AI provider',
       'What the provider sees',
       'Clearing',
+      'Denied suggestions',
     ])
   })
 
