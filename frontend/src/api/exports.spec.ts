@@ -1,4 +1,5 @@
 import { exportAddress } from '@/api/exports'
+import * as search from '@/search'
 
 describe('exportAddress', () => {
   it('points at the list’s own file with the filters it was asked with', () => {
@@ -44,5 +45,13 @@ describe('exportAddress', () => {
       '/api/devices/export',
       '/api/assets/export',
     ])
+  })
+
+  it('leaves the time zone out when the browser does not say', () => {
+    vi.spyOn(search, 'zone').mockReturnValue('')
+
+    const address = exportAddress('devices', 'json', new URLSearchParams())
+
+    expect(address).toBe('/api/devices/export?format=json')
   })
 })

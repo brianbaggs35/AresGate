@@ -1,4 +1,5 @@
 import {
+  blockedQuery,
   deviceQuery,
   portLabel,
   portQuery,
@@ -55,6 +56,10 @@ describe('sidesSummary', () => {
 })
 
 describe('the searches', () => {
+  it('find every block in the window, as the dashboard counts them', () => {
+    expect(blockedQuery('7d')).toBe('kind:firewall severity>=low since:7d')
+  })
+
   it('find the blocks of a device or a port in the window', () => {
     expect(deviceQuery('192.168.1.20', '24h')).toBe(
       'kind:firewall severity>=low from:192.168.1.20 since:24h',

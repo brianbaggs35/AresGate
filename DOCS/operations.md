@@ -824,6 +824,7 @@ and each incident has a page of its own.
   | `hunted:yes` | the threat hunter flagged it in its last run (`hunted:no` for the rest) |
   | `since:6h`, `since:today`, `since:2026-10-01` | still going on after this time (`30m`, `6h`, `2d`, `1w`, `today`, `yesterday`, a date or a date and time) |
   | `before:2d` | began before this time |
+  | `began:2d` | began after this time (what is new since then, not what was already going on) |
   | `-source:wazuh` | a minus turns any term around |
 
   Dates and `today` are in the time zone of your browser. A search is at most 500 characters and

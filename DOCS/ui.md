@@ -36,6 +36,29 @@ header; a chart's own filter (the interface for the traffic) sits in one row abo
 asks again every 30 seconds with `usePolling`, which waits while the tab is in the background,
 and a quiet refresh does not dim the charts, only one that somebody asked for.
 
+### Every number opens what it counts
+
+A number on a page is a link to the list it counts, so the person who sees "5 alerts" can read the
+five. A `StatTile` takes `to` (the route, with the search that finds exactly what the number
+counts, in the same window) and `toLabel`, a sentence for a screen reader such as "5 alerts in the
+last 24 hours, show them", since a link named only by its figure says nothing. A linked tile shows a
+chevron, has a visible focus ring and is reached with Tab and opened with Enter. The count and the
+list it opens must agree: build the search with the same helper the count uses (`alertsQuery`,
+`blockedQuery`), never a second copy of it. The dashboard's Alerts and Blocked tiles are linked,
+as is Collection, which leads to Status. Tiles that count something no list shows are not.
+
+### Since you last looked
+
+`SinceBanner` sits above the status and says, in a line each, what is new since this account last
+looked at the dashboard: the incidents that began (by severity, worst first, and not the ones the
+AI cleared), what the AI cleared, and the devices that appeared, each a link to the list it
+counted (the incidents opened with `began:"<time>"`, so the list is what was counted). The server
+remembers when each account last looked (`GET /api/dashboard/since`, and `POST /api/dashboard/seen`
+when it is dismissed or left), so a phone and a computer agree and what is read on one is not told
+again on the other. The first visit says nothing and starts the count, so does a visit when nothing
+changed, and it never counts what the owner did themselves. If the server cannot say, the banner is
+simply not there.
+
 ### Making it your own
 
 The widgets under the hero (the filtered note, the review reminder, the lane of what needs you,

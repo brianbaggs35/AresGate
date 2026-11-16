@@ -1,6 +1,7 @@
 import type { Collector, CollectorsReport } from '@/api/collectors'
 import type { AlertCounts } from '@/api/dashboard'
 import {
+  alertsQuery,
   bucketRange,
   bucketLabel,
   changeOf,
@@ -54,6 +55,12 @@ function report(
     collectors: states.map(collector),
   }
 }
+
+describe('alertsQuery', () => {
+  it('finds every alert in the window, as the dashboard counts them', () => {
+    expect(alertsQuery('24h')).toBe('kind:alert since:24h')
+  })
+})
 
 describe('changeOf', () => {
   it('says nothing changed, and that there were none when there were none', () => {
