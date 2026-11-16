@@ -41,6 +41,7 @@ from app.models.auth import (
 from app.models.base import Base, UTCDateTime, utcnow
 from app.models.collectors import CollectorHealth, WorkerBeat
 from app.models.credentials import StoredCredential
+from app.models.dashboard import DashboardLayout
 from app.models.devices import (
     AssetProfile,
     Device,
@@ -110,6 +111,7 @@ __all__ = [
     "AuditEvent",
     "Base",
     "CollectorHealth",
+    "DashboardLayout",
     "Device",
     "DeviceAddress",
     "DeviceIdentity",

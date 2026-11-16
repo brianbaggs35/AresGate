@@ -36,6 +36,37 @@ header; a chart's own filter (the interface for the traffic) sits in one row abo
 asks again every 30 seconds with `usePolling`, which waits while the tab is in the background,
 and a quiet refresh does not dim the charts, only one that somebody asked for.
 
+### Making it your own
+
+The widgets under the hero (the filtered note, the review reminder, the lane of what needs you,
+the traffic and alerts charts, what was blocked, the noise card, the most blocked addresses and the
+latest alerts) are laid out by the account, not by the page: *Customize* opens `DashboardCustomize`,
+a sheet from the side (above the bottom bar on a phone) that lists them. Each can be switched off,
+made half or the whole width (a phone always shows it whole), and moved by its handle or by the
+arrows beside it, which are the way to do it with a keyboard or a finger and say where the widget
+went; or start from a preset (Overview, Threat watch, Compact) and *Back to the default*. A change
+is shown at once and saved (`PUT /api/dashboard/layout`, one layout for the install's account in
+`dashboard_layouts`); if saving fails the page goes back to what it was and says why. The banner
+and its numbers are not widgets: they stay where they are. A widget whose integration is not
+connected shows `WidgetNeeds`, which says what to connect and links to Integrations, instead of a
+chart that is only empty. The widgets are named in `app/dashboard_layout.py` and drawn by the
+page, so a layout saved by another version still works: a widget that is gone is dropped and a new
+one is added last.
+
+An open dashboard hears from the server instead of waiting for its next turn: `GET
+/api/dashboard/stream` is server-sent events, which tell the page that something changed, and the
+page asks again at once (`useServerEvents`). The same page's own polling goes on, so a browser
+without them, or a broken stream, only makes it a little slower. The stream is one request that
+holds no database connection while it waits, and nginx passes it on unbuffered.
+
+### On a wall
+
+*Wall display* (`/?wall`) shows only the dashboard, larger, with no menu or bars, for a screen that
+is looked at and never touched. It asks again every 10 seconds, shows an alarm banner (a
+`role="alert"`, pulsing unless the system asks for less motion) while an incident needs the owner
+now, and has a *Full screen* button, since a browser only allows that on a click, and
+*Exit wall display*. Because it is in the address, a screen can be pointed at it and come back to it.
+
 The lane under the hero is the three open incidents that most need a decision, the most serious
 and surest first (`GET /api/incidents?order=priority`), as the same `IncidentCard`s the Incidents
 page has, so a verdict can be given where the question is asked. It is left out when nothing needs

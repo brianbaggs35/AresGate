@@ -24,6 +24,15 @@ Every release's notes are here, newest first. The format follows
   screen reader still hears each heading). The places are the same, and a phone's bottom bar holds the
   same four places and More.
 
+- **Make the dashboard your own, and put it on a wall.** *Customize* on the dashboard lets you
+  hide the widgets you don't use, make each half or the whole width, drag them (or use the arrows)
+  into the order you want, or start from a preset: Overview, Threat watch or Compact. It is saved
+  to your account and comes back on every device. A widget whose integration isn't connected says
+  what to connect instead of showing an empty chart. An open dashboard now hears from AresGate when
+  something changes and shows it at once. *Wall display* (`/?wall`) is the dashboard alone, larger,
+  for a screen on a wall: it asks again every 10 seconds, raises an alarm banner while an incident
+  needs you now, and has a full-screen button.
+
 ### Changed
 
 - **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now
