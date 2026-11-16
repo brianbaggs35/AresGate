@@ -63,6 +63,7 @@ export function action(over: Partial<ChatAction> = {}): ChatAction {
     label: 'Open incident 3',
     also: [],
     address: null,
+    denied: false,
     ...over,
   }
 }

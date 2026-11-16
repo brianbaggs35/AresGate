@@ -31,6 +31,8 @@ export interface ChatAction {
   /** For one about a single incident: the address it is about, if it is about one. A status can
    * be given to every earlier incident about it. */
   address: string | null
+  /** You have denied this change already, here or in another conversation. */
+  denied: boolean
 }
 
 /** Where you are when you ask, so that "this incident" means the one on screen. */

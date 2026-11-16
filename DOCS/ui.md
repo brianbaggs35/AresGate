@@ -308,8 +308,11 @@ incidents about* that address: ticking it asks the same endpoint what it would c
 says how many incidents that is and how many would change, and then changes them all, whatever their
 status. A verdict needs no such box, since it is remembered for everything about the address (or the
 alert) and judges every incident about it that is not over, now and later; the proposal says so.
-Denying changes nothing and is not remembered: the proposal is there again after a reload. On a
-phone, opening a page puts the sheet away.
+Denying changes nothing, and is remembered (`POST /api/ai/denials`): the same change for the same
+incident is not proposed again for 30 days, or until the incident's status or verdict changes, and
+a proposal already in a conversation shows as denied after a reload. Settings > AI > *Denied
+suggestions* (`DeniedProposalsCard`) lists what stands denied, each with *Forget*, and *Forget all*
+asks first. On a phone, opening a page puts the sheet away.
 
 ## Threats
 

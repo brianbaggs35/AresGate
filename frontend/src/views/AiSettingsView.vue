@@ -6,6 +6,7 @@ import { fetchAi, useAi, type Ai, type AiProvider, type Redaction } from '@/api/
 import { errorMessage } from '@/api/client'
 import { useNote } from '@/ai'
 import AiClearingCard from '@/components/AiClearingCard.vue'
+import DeniedProposalsCard from '@/components/DeniedProposalsCard.vue'
 import AiPrivacy from '@/components/AiPrivacy.vue'
 import AiProviderForm from '@/components/AiProviderForm.vue'
 import AiProviderPicker from '@/components/AiProviderPicker.vue'
@@ -165,6 +166,7 @@ onMounted(load)
       />
     </SectionCard>
     <AiClearingCard />
+    <DeniedProposalsCard />
   </template>
   <v-skeleton-loader v-else type="card, card" />
 </template>

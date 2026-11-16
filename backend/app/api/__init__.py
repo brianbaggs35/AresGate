@@ -9,6 +9,7 @@ from app.api import (
     ai_chat,
     ai_cleared,
     ai_clearing,
+    ai_denials,
     ai_usage,
     alerts,
     assets,
@@ -65,6 +66,7 @@ api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)
 api_router.include_router(ai_cleared.router)
 api_router.include_router(ai_clearing.router)
+api_router.include_router(ai_denials.router)
 api_router.include_router(ai_usage.router)
 api_router.include_router(alerts.router)
 api_router.include_router(collectors.router)

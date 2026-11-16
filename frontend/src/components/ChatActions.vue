@@ -14,6 +14,7 @@ import {
   type BulkUndo,
   type IncidentStatus,
 } from '@/api/incidents'
+import { denyProposal } from '@/api/aiDenials'
 import type { VerdictKind } from '@/api/verdicts'
 import { formatCount } from '@/format'
 import { useSessionStore } from '@/stores/session'
@@ -25,6 +26,7 @@ import { useSessionStore } from '@/stores/session'
  * is what makes the request, the same one the page for it makes, so it is in the audit log as
  * yours and can be taken back with *Undo* at once. A status can also be given to the earlier
  * incidents about the same address, and the proposal says how many that is before it is approved.
+ * A denial is remembered, so the same change is not proposed again for a while.
  */
 defineProps<{ actions: readonly ChatAction[] }>()
 const emit = defineEmits<{ opened: [] }>()
@@ -110,8 +112,28 @@ async function approve(action: ChatAction, at: number) {
   }
 }
 
-function deny(at: number) {
-  states[at] = { phase: 'denied' }
+async function deny(action: ChatAction, at: number) {
+  states[at] = { phase: 'working' }
+  try {
+    await session.change((token) =>
+      denyProposal(
+        {
+          kind: action.kind as 'status' | 'verdict',
+          value: action.value as string,
+          incident_ids: [action.target_key, ...action.also].map(Number),
+        },
+        token,
+      ),
+    )
+    states[at] = { phase: 'denied' }
+  } catch (error) {
+    states[at] = { phase: 'failed', reason: errorMessage(error) }
+  }
+}
+
+/** Where a proposal stands: what has been done with it here, or that it was denied before. */
+function phaseOf(action: ChatAction, at: number): State['phase'] | undefined {
+  return states[at]?.phase ?? (action.denied ? 'denied' : undefined)
 }
 
 /** Ticking the box asks what it would come to, so that it is known before anything is approved. */
@@ -153,8 +175,8 @@ const canUndo = (at: number) => {
 }
 const saidAt = (at: number) => (states[at] as { phase: 'done'; said: string }).said
 /** Waiting for an answer: not decided yet, or it failed and may be tried again. */
-const waiting = (at: number) => {
-  const phase = states[at]?.phase
+const waiting = (action: ChatAction, at: number) => {
+  const phase = phaseOf(action, at)
   return phase === undefined || phase === 'failed'
 }
 
@@ -212,12 +234,12 @@ function effectOf(action: ChatAction, at: number): string {
           {{ effectOf(action, at) }}
         </p>
 
-        <template v-if="waiting(at) || states[at]?.phase === 'working'">
+        <template v-if="waiting(action, at) || phaseOf(action, at) === 'working'">
           <v-checkbox
             v-if="action.kind === 'status' && action.address"
             :model-value="earlier[at] ?? false"
             :label="`Also the earlier incidents about ${action.address}`"
-            :disabled="states[at]?.phase === 'working'"
+            :disabled="phaseOf(action, at) === 'working'"
             density="compact"
             hide-details
             data-test="proposal-earlier"
@@ -235,8 +257,8 @@ function effectOf(action: ChatAction, at: number): string {
               color="primary"
               variant="flat"
               :prepend-icon="Check"
-              :loading="states[at]?.phase === 'working'"
-              :disabled="states[at]?.phase === 'working'"
+              :loading="phaseOf(action, at) === 'working'"
+              :disabled="phaseOf(action, at) === 'working'"
               data-test="proposal-approve"
               @click="approve(action, at)"
             >
@@ -245,9 +267,9 @@ function effectOf(action: ChatAction, at: number): string {
             <v-btn
               variant="text"
               :prepend-icon="X"
-              :disabled="states[at]?.phase === 'working'"
+              :disabled="phaseOf(action, at) === 'working'"
               data-test="proposal-deny"
-              @click="deny(at)"
+              @click="deny(action, at)"
             >
               Deny
             </v-btn>
@@ -255,7 +277,7 @@ function effectOf(action: ChatAction, at: number): string {
         </template>
 
         <output
-          v-if="states[at]?.phase === 'done'"
+          v-if="phaseOf(action, at) === 'done'"
           class="actions__note text-body-medium"
           data-test="action-done"
         >
@@ -273,21 +295,21 @@ function effectOf(action: ChatAction, at: number): string {
           </v-btn>
         </output>
         <output
-          v-else-if="states[at]?.phase === 'undone'"
+          v-else-if="phaseOf(action, at) === 'undone'"
           class="actions__note text-body-medium"
           data-test="action-undone"
         >
           Taken back.
         </output>
         <output
-          v-else-if="states[at]?.phase === 'denied'"
+          v-else-if="phaseOf(action, at) === 'denied'"
           class="actions__note text-body-medium"
           data-test="action-denied"
         >
-          Denied. Nothing was changed.
+          Denied. Nothing was changed, and it won't be suggested again unless the incident changes.
         </output>
         <span
-          v-else-if="states[at]?.phase === 'failed'"
+          v-else-if="phaseOf(action, at) === 'failed'"
           class="actions__note text-body-medium text-error"
           role="alert"
           data-test="action-failed"

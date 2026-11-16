@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select
 
-from app.ai import chat, chat_stream
+from app.ai import chat, chat_stream, denials
 from app.api.ai import AiContext
 from app.api.deps import Db, signed_in
 from app.models import AiConversation, AiMessage, utcnow
@@ -90,6 +90,8 @@ class ActionOut(BaseModel):
     # For a suggestion about one incident: the address it is about, when it is about one, which
     # the owner may apply a status to every earlier incident of.
     address: str | None = None
+    # Whether the owner has denied this change already, in this conversation or another.
+    denied: bool = False
 
 
 class MessageOut(BaseModel):
@@ -121,7 +123,11 @@ class SummaryOut(BaseModel):
     messages: int
 
 
-def _message(message: AiMessage) -> MessageOut:
+def _action(item: dict[str, str | None], denied: denials.Standing) -> ActionOut:
+    return ActionOut.model_validate({**item, "denied": denials.is_denied(item, denied)})
+
+
+def _message(message: AiMessage, denied: denials.Standing) -> MessageOut:
     return MessageOut(
         id=message.id,
         role=message.role,
@@ -130,18 +136,19 @@ def _message(message: AiMessage) -> MessageOut:
         created_at=message.created_at,
         lookups=[LookupOut(**item) for item in message.lookups],
         cites=[CiteOut(**item) for item in message.cites],
-        actions=[ActionOut.model_validate(item) for item in message.actions],
+        actions=[_action(item, denied) for item in message.actions],
         call_ids=message.call_ids,
     )
 
 
 def _out(db: Db, conversation: AiConversation) -> ConversationOut:
+    denied = denials.standing(db, utcnow())
     return ConversationOut(
         id=conversation.id,
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        messages=[_message(message) for message in chat.messages(db, conversation)],
+        messages=[_message(message, denied) for message in chat.messages(db, conversation)],
     )
 
 

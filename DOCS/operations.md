@@ -1181,6 +1181,12 @@ AresGate works without it. A test sends only the words "Say OK."
   assistant was really shown, and it is only ever a suggestion: the assistant never writes. The
   owner presses the button, and the page makes the same audited request it would for a change the
   owner made themselves, with *Undo*.
+- **What was denied.** *Deny* on a proposal is kept per incident (`ai_denied_proposals`): the kind
+  of change and to what. For 30 days, and while the incident has the status and verdict it had,
+  that proposal is dropped before it is stored, and the question tells the assistant what was
+  denied so that it stops suggesting it. The owner sees and forgets them in Settings > AI, and
+  each denial and each forgetting is in the audit log (`ai.proposal_denied`,
+  `ai.denials_forgotten`).
 
 ## Signing in
 

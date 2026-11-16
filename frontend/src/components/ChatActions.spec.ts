@@ -1,4 +1,5 @@
 import type { VueWrapper } from '@vue/test-utils'
+import * as denialsApi from '@/api/aiDenials'
 import * as incidentsApi from '@/api/incidents'
 import { ApiError } from '@/api/client'
 import type { ChatAction } from '@/api/aiChat'
@@ -14,6 +15,7 @@ const act = (over: Partial<ChatAction> = {}): ChatAction => ({
   label: 'Open incident 3',
   also: [],
   address: null,
+  denied: false,
   ...over,
 })
 
@@ -123,17 +125,58 @@ describe('ChatActions', () => {
       expect(wrapper.find('[data-test="action-undo"]').exists()).toBe(false)
     })
 
-    it('changes nothing when denied, and says so', async () => {
+    it('changes nothing when denied, and remembers it', async () => {
       const change = vi.spyOn(incidentsApi, 'changeIncidents')
-      const { wrapper } = await show([status()])
+      const remember = vi.spyOn(denialsApi, 'denyProposal').mockResolvedValue({ recorded: 2 })
+      const { wrapper } = await show([status({ also: ['4'] })])
 
       await click(wrapper, 'proposal-deny')
 
       expect(change).not.toHaveBeenCalled()
+      expect(remember).toHaveBeenCalledWith(
+        { kind: 'status', value: 'resolved', incident_ids: [3, 4] },
+        expect.any(String),
+      )
       expect(wrapper.find('[data-test="action-denied"]').text()).toBe(
-        'Denied. Nothing was changed.',
+        "Denied. Nothing was changed, and it won't be suggested again unless the incident changes.",
       )
       expect(wrapper.find('[data-test="proposal-approve"]').exists()).toBe(false)
+    })
+
+    it('remembers the denial of a verdict by its kind', async () => {
+      const remember = vi.spyOn(denialsApi, 'denyProposal').mockResolvedValue({ recorded: 1 })
+      const { wrapper } = await show([status({ kind: 'verdict', value: 'threat' })])
+
+      await click(wrapper, 'proposal-deny')
+
+      expect(remember).toHaveBeenCalledWith(
+        { kind: 'verdict', value: 'threat', incident_ids: [3] },
+        expect.any(String),
+      )
+    })
+
+    it('says so when the denial could not be remembered, and can be tried again', async () => {
+      vi.spyOn(denialsApi, 'denyProposal')
+        .mockRejectedValueOnce(new ApiError(500, 'Broke.', 'server_error'))
+        .mockResolvedValue({ recorded: 1 })
+      const { wrapper } = await show([status()])
+
+      await click(wrapper, 'proposal-deny')
+
+      expect(wrapper.find('[data-test="action-failed"]').text()).toBe('Broke.')
+      expect(wrapper.find('[data-test="proposal-deny"]').exists()).toBe(true)
+
+      await click(wrapper, 'proposal-deny')
+
+      expect(wrapper.find('[data-test="action-denied"]').exists()).toBe(true)
+    })
+
+    it('shows a proposal that was denied before as denied, without the buttons', async () => {
+      const { wrapper } = await show([status({ denied: true })])
+
+      expect(wrapper.find('[data-test="action-denied"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="proposal-approve"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="proposal-deny"]').exists()).toBe(false)
     })
 
     it('gives a verdict with its note, and says what was remembered', async () => {

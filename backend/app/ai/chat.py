@@ -25,7 +25,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.ai import gateway, tools
+from app.ai import denials, gateway, tools
 from app.ai.gateway import Context, Question, Unavailable
 from app.ai.redaction import Redactor
 from app.ai.tools import Args, Found, Ref
@@ -413,6 +413,8 @@ def build_question(
     def build(redactor: Redactor) -> str:
         ran[:] = _run(db, redactor, lookups, now)
         parts = [_overview(db, now)]
+        if (denied := denials.told(db, now)) is not None:
+            parts.append(denied)
         if (looking := _looking_at(redactor, page)) is not None:
             parts.append(looking)
         if earlier:
@@ -678,7 +680,7 @@ def store(db: Session, conversation: AiConversation, answer: Reply, now: datetim
         ok=answer.ok,
         lookups=answer.lookups,
         cites=answer.cites,
-        actions=answer.actions,
+        actions=denials.without_denied(db, answer.actions, now),
         call_ids=answer.call_ids,
         created_at=now,
     )
