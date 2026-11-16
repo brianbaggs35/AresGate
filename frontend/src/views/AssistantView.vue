@@ -3,6 +3,7 @@ import {
   ArrowUp,
   BellRing,
   Eye,
+  ListChecks,
   MessagesSquare,
   PlugZap,
   Radar,
@@ -74,7 +75,7 @@ const box = ref<{ focus: () => void } | null>(null)
 let latest = 0
 
 /** An icon for each of the questions to start with, in the order they are listed. */
-const STARTER_ICONS = [BellRing, Radar, PlugZap, ShieldBan]
+const STARTER_ICONS = [BellRing, Radar, PlugZap, ShieldBan, ListChecks]
 /** Past this share of the longest question, the box says how many characters are left. */
 const COUNT_FROM = 0.8
 
@@ -233,6 +234,16 @@ function pick(question: string) {
   box.value?.focus()
 }
 
+/** Asks at once, unless something is being written: that is not to be written over. */
+function ask(question: string) {
+  if (draft.value.trim() !== '') {
+    box.value?.focus()
+    return
+  }
+  draft.value = question
+  send()
+}
+
 /** Enter sends; Shift+Enter starts a new line, and Enter that confirms an input method is left
  * alone. */
 function onEnter(event: KeyboardEvent) {
@@ -374,8 +385,11 @@ function showCall(call: number) {
             :key="message.id"
             :message="message"
             :can-retry="message.id === retryable"
+            :last="message.id === messages[messages.length - 1]?.id"
             @retry="retry"
             @show-call="showCall"
+            @suggest="pick"
+            @ask="ask"
           />
           <article v-if="pending !== null" class="assistant__pending" data-test="chat-pending">
             <p class="text-body-large">{{ pending }}</p>

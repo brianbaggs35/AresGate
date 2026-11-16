@@ -1186,6 +1186,13 @@ AresGate works without it. A test sends only the words "Say OK."
   assistant was really shown, and it is only ever a suggestion: the assistant never writes. The
   owner presses the button, and the page makes the same audited request it would for a change the
   owner made themselves, with *Undo*.
+- **Going through incidents.** When the owner asks to be walked through the incidents nobody has
+  judged, the assistant looks up `unclassified_incidents`: the open or investigating incidents with
+  no verdict, oldest first (by number), without those whose proposed change the owner denied while
+  it stands. `limit` is the batch size (1 to 10, five by default) and `id` the last incident of the
+  batch before, so that the next batch starts after it; the answer says how many are left. Nothing
+  changes until the owner presses *Approve* on a proposal (at most six an answer). It does nothing
+  of the kind unless asked.
 - **What was denied.** *Deny* on a proposal is kept per incident (`ai_denied_proposals`): the kind
   of change and to what. For 30 days, and while the incident has the status and verdict it had,
   that proposal is dropped before it is stored, and the question tells the assistant what was

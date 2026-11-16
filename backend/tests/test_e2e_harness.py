@@ -1749,6 +1749,74 @@ def test_how_much_of_what_the_ai_decides_waits_can_be_set(e2e: TestClient) -> No
     assert e2e.get("/api/review/settings").json()["mode"] == "auto"
 
 
+class TestTheAssistantInTheChatThatWalksThrough:
+    """What the stand-in for the AI says to a request to go through the incidents."""
+
+    SHOWN = '<data label="unclassified incidents">[incident 4] [incident 7] [incident 4]</data>'
+
+    def test_a_request_that_is_not_one_is_left_to_the_rest(self) -> None:
+        assert stand_in_module.answer_to_a_walkthrough_in_the_chat("", "what needs me?") is None
+
+    def test_it_looks_up_a_batch_of_two_first(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_walkthrough_in_the_chat("", "walk me through them") or ""
+        )
+
+        assert (said["lookups"][0]["tool"], said["lookups"][0]["limit"]) == (
+            "unclassified_incidents",
+            2,
+        )
+
+    def test_it_says_when_nothing_is_waiting(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_walkthrough_in_the_chat(
+                '<data label="unclassified incidents">none</data>', "show me the next five"
+            )
+            or ""
+        )
+
+        assert said["answer"] == "Nothing is waiting."
+        assert said["actions"] == []
+
+    def test_the_first_gets_a_verdict_and_the_second_is_dismissed(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_walkthrough_in_the_chat(self.SHOWN, "walk me through") or ""
+        )
+
+        verdict, status = said["actions"]
+        assert (verdict["kind"], verdict["target"], verdict["value"]) == (
+            "verdict",
+            "incident 4",
+            "not_suspicious",
+        )
+        assert (status["kind"], status["target"], status["value"]) == (
+            "status",
+            "incident 7",
+            "dismissed",
+        )
+        assert said["cites"] == ["incident 4", "incident 7"]
+
+    def test_with_one_waiting_only_the_verdict_is_suggested(self) -> None:
+        said = json.loads(
+            stand_in_module.answer_to_a_walkthrough_in_the_chat(
+                '<data label="unclassified incidents">[incident 9]</data>', "walk me through"
+            )
+            or ""
+        )
+
+        assert [action["kind"] for action in said["actions"]] == ["verdict"]
+
+    def test_the_chat_answers_a_request_to_walk_through_with_it(self) -> None:
+        asked = {
+            "output_config": {"format": {"schema": {"properties": {"lookups": {}}}}},
+            "messages": [{"content": "The owner asks: Walk me through the new incidents"}],
+        }
+
+        said = json.loads(stand_in_module._answer_of_the_assistant(asked) or "")  # pyright: ignore[reportPrivateUsage]
+
+        assert said["lookups"][0]["tool"] == "unclassified_incidents"
+
+
 class TestTheAssistantInTheChatThatChangesIncidents:
     """What the stand-in for the AI says to a request to change incidents."""
 

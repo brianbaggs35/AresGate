@@ -72,6 +72,16 @@ function showCall(call: number) {
 }
 
 /** A phone's sheet is in the way of the page it was asked to open. */
+/** Asks at once, unless something is being written: that is not to be written over. */
+function ask(question: string) {
+  if (assistant.draft.trim() !== '') {
+    box.value?.focus()
+    return
+  }
+  assistant.draft = question
+  send()
+}
+
 function opened() {
   if (phone.value) assistant.hide()
 }
@@ -158,9 +168,12 @@ defineExpose({ send })
           :key="message.id"
           :message="message"
           :can-retry="message.id === assistant.retryable"
+          :last="message.id === messages[messages.length - 1]?.id"
           @retry="assistant.retry()"
           @show-call="showCall"
           @opened="opened"
+          @suggest="pick"
+          @ask="ask"
         />
         <article v-if="assistant.pending !== null" class="panel__pending" data-test="panel-pending">
           <p class="text-body-large">{{ assistant.pending }}</p>

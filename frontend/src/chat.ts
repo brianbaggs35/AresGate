@@ -2,12 +2,23 @@ import type { RouteLocationRaw } from 'vue-router'
 
 import type { ChatCite } from '@/api/aiChat'
 
+/** What asks the assistant to go through the incidents nobody has judged, a few at a time. It only
+ * does that when it is asked to, and each change it proposes still waits for you. */
+export const WALKTHROUGH = 'Walk me through the incidents nobody has judged yet, five at a time.'
+
+/** What asks for the batch after the one that was just settled. */
+export const NEXT_BATCH = 'Show me the next five.'
+
+/** The lookup that is the sign an answer is a batch of a walk-through. */
+export const BATCH_TOOL = 'unclassified_incidents'
+
 /** What to try asking, for a page with nothing said on it yet. */
 export const STARTERS: readonly string[] = [
   'What needs my attention right now?',
   'Is anything on my network behaving oddly?',
   'Are all my integrations working?',
   'Which addresses did the firewall block the most today?',
+  WALKTHROUGH,
 ]
 
 /** The longest a question may be, as the API holds it. */

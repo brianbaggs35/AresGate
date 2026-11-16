@@ -5,7 +5,8 @@ import * as aiApi from '@/api/ai'
 import * as chatApi from '@/api/aiChat'
 import { ApiError } from '@/api/client'
 import AiCallDialog from '@/components/AiCallDialog.vue'
-import { STARTERS } from '@/chat'
+import ChatMessage from '@/components/ChatMessage.vue'
+import { NEXT_BATCH, STARTERS, WALKTHROUGH } from '@/chat'
 import { ai as aiSettings } from '@/test/ai'
 import { answer, conversation, question, summary } from '@/test/aiChat'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -599,6 +600,67 @@ describe('AssistantView', () => {
       expect(
         document.body.querySelector('.v-overlay--active [data-test="conversations-sheet"]'),
       ).toBeNull()
+    })
+  })
+  describe('going through the incidents nobody has judged', () => {
+    const batch = () =>
+      conversation({
+        messages: [
+          question(),
+          answer({
+            lookups: [{ tool: 'unclassified_incidents', summary: '2 incidents to classify' }],
+          }),
+        ],
+      })
+
+    it('is one of the things to try, and only fills the box', async () => {
+      const { wrapper } = await open({ route: '/assistant', conversations: [] })
+      const starters = wrapper.findAll('[data-test="chat-starter"]')
+
+      await starters[starters.length - 1]?.trigger('click')
+
+      const box = wrapper.find('[data-test="chat-input"] textarea').element as HTMLTextAreaElement
+      expect(box.value).toBe(WALKTHROUGH)
+    })
+
+    it('asks for the next batch at once from the last answer', async () => {
+      const ask = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(batch())
+      const { wrapper, find } = await open({ opened: batch() })
+
+      await find('next-batch').trigger('click')
+      await flushPromises()
+
+      expect(ask).toHaveBeenCalledWith(
+        expect.any(Number),
+        NEXT_BATCH,
+        'a-security-token',
+        null,
+        expect.any(Function),
+      )
+      expect(wrapper.findAllComponents(ChatMessage).length).toBeGreaterThan(0)
+    })
+
+    it('leaves what is being written alone when the next batch is asked for', async () => {
+      const ask = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(batch())
+      const { wrapper, find } = await open({ opened: batch() })
+      await type(wrapper, 'Something else first')
+
+      await find('next-batch').trigger('click')
+      await flushPromises()
+
+      expect(ask).not.toHaveBeenCalled()
+      const box = wrapper.find('[data-test="chat-input"] textarea').element as HTMLTextAreaElement
+      expect(box.value).toBe('Something else first')
+    })
+
+    it('puts a proposal in the box when something else is suggested for it', async () => {
+      const { wrapper } = await open()
+
+      wrapper.findComponent(ChatMessage).vm.$emit('suggest', 'Instead of "x", ')
+      await flushPromises()
+
+      const box = wrapper.find('[data-test="chat-input"] textarea').element as HTMLTextAreaElement
+      expect(box.value).toBe('Instead of "x", ')
     })
   })
 })

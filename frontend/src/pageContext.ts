@@ -1,7 +1,7 @@
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 
 import type { PageContext } from '@/api/aiChat'
-import { MAX_QUESTION, STARTERS } from '@/chat'
+import { MAX_QUESTION, STARTERS, WALKTHROUGH } from '@/chat'
 
 type Where = Pick<RouteLocationNormalizedLoaded, 'name' | 'params' | 'query' | 'meta'>
 
@@ -74,7 +74,7 @@ export function startersFor(page: PageContext | null): string[] {
       'Has this device been part of any incident?',
     ],
     logs: ['What do these log entries tell me?', 'Is anything in here worth my attention?'],
-    incidents: ['Which of these should I look at first, and why?'],
+    incidents: ['Which of these should I look at first, and why?', WALKTHROUGH],
     other: [],
   }
   const own = page ? here[page.kind] : []

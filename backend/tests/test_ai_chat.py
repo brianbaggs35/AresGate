@@ -511,9 +511,45 @@ class TestSuggestingWhatToDo:
                 "also": [],
                 "address": ATTACKER,
             },
+            {
+                "kind": "open",
+                "target_kind": "logs",
+                "target_key": "",
+                "value": "ET SCAN",
+                "note": None,
+                "label": 'Search the logs for "ET SCAN"',
+                "also": [],
+                "address": None,
+            },
         ]
 
-    def test_at_most_three_and_each_once(
+    def test_a_batch_to_classify_is_looked_up_and_each_incident_in_it_may_be_suggested(
+        self, session: Session, settings: Settings, serve: Serve
+    ) -> None:
+        first = incident(session, subject="198.51.100.1", title="Scan one")
+        second = incident(session, subject="198.51.100.2", title="Scan two")
+        session.commit()
+        provider = Scripted(
+            reply(lookups=[look("unclassified_incidents", limit=2)], answer=""),
+            reply(
+                answer="Both look like scans. Two are left.",
+                actions=[
+                    suggest("verdict", f"incident {first.id}", "not_suspicious", "A scanner."),
+                    suggest("status", f"incident {second.id}", "dismissed"),
+                ],
+            ),
+        )
+
+        _, history = talk(session, settings, serve, provider)
+
+        assert [(item["kind"], item["target_key"]) for item in history[1].actions] == [
+            ("verdict", str(first.id)),
+            ("status", str(second.id)),
+        ]
+        assert [item["tool"] for item in history[1].lookups] == ["unclassified_incidents"]
+        assert f"[incident {first.id}]" in provider.prompts[1]
+
+    def test_at_most_six_and_each_once(
         self, session: Session, settings: Settings, serve: Serve
     ) -> None:
         found = incident(session, severity=3)
@@ -528,6 +564,9 @@ class TestSuggestingWhatToDo:
                     suggest("status", name, "investigating"),
                     suggest("status", name, "open"),
                     suggest("status", name, "dismissed"),
+                    suggest("verdict", name, "not_suspicious"),
+                    suggest("verdict", name, "low_priority"),
+                    suggest("verdict", name, "threat"),
                 ]
             ),
         )
@@ -538,6 +577,9 @@ class TestSuggestingWhatToDo:
             "resolved",
             "investigating",
             "open",
+            "dismissed",
+            "not_suspicious",
+            "low_priority",
         ]
 
     @pytest.mark.parametrize(

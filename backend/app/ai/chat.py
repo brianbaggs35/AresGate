@@ -58,7 +58,7 @@ MAX_TOKENS: Final = 1500
 MAX_NAMES: Final = 500
 # What the assistant may suggest the owner do with one answer, how many incidents one suggestion
 # may be about, and how long a search it suggests may be.
-MAX_ACTIONS: Final = 3
+MAX_ACTIONS: Final = 6
 MAX_INCIDENTS: Final = 20
 MAX_SEARCH: Final = 200
 # The statuses an incident can be put in, and the pages an action can open.
@@ -91,7 +91,7 @@ incident as [incident 3] and a device as [device 12]. In "cites" list what you b
 on, as "incident 3", "device 12" or "integration opnsense", only things that appeared in what you \
 were given.
 
-"actions" is empty unless a suggestion helps, and holds at most three. Each has a "kind" and a \
+"actions" is empty unless a suggestion helps, and holds at most six. Each has a "kind" and a \
 "target": "open" takes the owner to a page (target "incident 3", "device 12", "integration \
 opnsense", or "logs" with the search to run in "value"); "status" sets the status of an incident \
 (target "incident 3", "value" one of {", ".join(STATUSES)}); "verdict" says what the owner thinks \
@@ -103,6 +103,16 @@ apply a status to the earlier incidents about the same address, so do not list t
 A verdict is remembered for everything about the address (or alert) of the incident, now and \
 later. Only suggest it about incidents and devices that appeared in what you were given, and \
 suggest "dismissed" or a verdict that quiets an incident only when you are sure it is nothing.
+
+Going through incidents with the owner is something you do only when they ask for it ("walk me \
+through", "help me classify", "go through the ones nobody judged"), never on your own. Then look \
+up "unclassified_incidents" with "limit" the batch size they asked for (five if they did not say) \
+and "id" the last incident of the batch before, or null for the first. For each incident in the \
+batch say in one line what it is and what you make of it, and for each you are sure of suggest \
+the verdict or status that fits, with why in "note", grouping incidents that are the same thing \
+into one suggestion. Leave out the ones you are not sure of and say why, so the owner can tell \
+you what to do with them. Say how many are left, and stop: the owner asks for the next batch. \
+When the owner answers a suggestion with another idea, suggest that instead.
 
 Answer only with the JSON you are asked for.\
 """

@@ -28,7 +28,7 @@ test.describe('the assistant', () => {
     await expect(page).toHaveURL('/assistant')
     await expect(assistant.heading).toHaveText('Assistant')
     await expect(assistant.empty).toContainText('Ask about your network')
-    await expect(assistant.starters).toHaveCount(4)
+    await expect(assistant.starters).toHaveCount(5)
     await expect(page.getByTestId('chat-readonly')).toHaveText('Read only')
     await assistant.starters.first().click()
     await expect(assistant.input).toHaveValue(ATTENTION)
@@ -236,5 +236,55 @@ test.describe('the assistant', () => {
     await assistant.goto('/4040')
 
     await expect(assistant.error).toContainText('There is no such conversation.')
+  })
+
+  test('goes through the incidents nobody has judged, a batch at a time, only when asked', async ({
+    harness,
+    aiSettings,
+    assistant,
+    page,
+  }) => {
+    await harness.createIncidents([
+      SCAN,
+      { ...SCAN, address: '151.101.1.69' },
+      { ...SCAN, address: '151.101.1.70' },
+    ])
+    await turnOnAi(harness, aiSettings)
+    await assistant.goto()
+
+    await assistant.starters.last().click()
+    await expect(assistant.input).toHaveValue(/Walk me through the incidents nobody has judged/)
+    await assistant.send.click()
+
+    const proposals = page.getByTestId('proposal')
+    await expect(proposals).toHaveCount(2)
+    await expect(assistant.lookups.first()).toContainText('2 incidents to classify')
+    await expect(page.getByTestId('next-batch')).toHaveCount(0)
+
+    await proposals.first().getByTestId('proposal-approve').click()
+    await expect(proposals.first().getByTestId('action-done')).toContainText('Approved.')
+    await proposals.last().getByTestId('proposal-deny').click()
+    await expect(proposals.last().getByTestId('action-denied')).toBeVisible()
+
+    await page.getByTestId('next-batch').click()
+    await expect(assistant.ownerMessages.last()).toHaveText('Show me the next five.')
+    await expect(assistant.lookups).toHaveCount(2)
+  })
+
+  test('puts a proposal in the box to say what to do instead', async ({
+    harness,
+    aiSettings,
+    assistant,
+    page,
+  }) => {
+    await harness.createIncidents([SCAN, { ...SCAN, address: '151.101.1.69' }])
+    await turnOnAi(harness, aiSettings)
+    await assistant.goto()
+    await assistant.ask('Walk me through them.')
+
+    await page.getByTestId('proposal-suggest').first().click()
+
+    await expect(assistant.input).toHaveValue(/^Instead of ".+", $/)
+    await expect(assistant.input).toBeFocused()
   })
 })

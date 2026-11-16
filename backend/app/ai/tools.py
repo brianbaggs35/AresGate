@@ -19,11 +19,11 @@ from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy import ColumnElement, and_, false, func, or_, select, true
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
-from app.ai import triage
+from app.ai import denials, triage
 from app.ai.redaction import Redactor, read_address, read_mac
 from app.assets import profile
 from app.baselines import destinations as known_places
@@ -180,6 +180,53 @@ def open_incidents(db: Session, redactor: Redactor, args: Args, now: datetime) -
             for incident, _ in rows
         ],
         _plural(len(rows), "open incident"),
+    )
+
+
+def unclassified_incidents(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """A batch of the open incidents nobody has judged yet, for going through them with the owner:
+    the oldest first, in the order of their numbers, so that the next batch starts after the last
+    of this one. The ones the owner was proposed a change for and denied are left out."""
+    limit = _between(args.limit, 5, 1, MAX_ITEMS)
+    after = max(args.id or 0, 0)
+    denied = {incident_id for _, _, incident_id in denials.standing(db, now)}
+    waiting = (
+        Incident.status.in_(ACTIVE),
+        Incident.verdict.is_(None),
+        Incident.id > after,
+        Incident.id.not_in(denied) if denied else true(),
+    )
+    rows = db.execute(
+        select(Incident, AiTriage)
+        .outerjoin(AiTriage, AiTriage.incident_id == Incident.id)
+        .where(*waiting)
+        .order_by(Incident.id)
+        .limit(limit)
+    ).all()
+    if not rows:
+        return Found(
+            ["No open incident is waiting to be judged."]
+            if after == 0
+            else [f"No open incident after incident {after} is waiting to be judged."],
+            [],
+            "nothing to classify",
+        )
+    more = (db.scalar(select(func.count()).select_from(Incident).where(*waiting)) or 0) - len(rows)
+    last = rows[-1][0].id
+    lines = [_incident_line(incident, reading, redactor) for incident, reading in rows]
+    lines.append(
+        f"{_plural(more, 'more incident')} wait after incident {last}: ask again with id {last} "
+        "for the next batch."
+        if more
+        else "These are the last ones waiting."
+    )
+    return Found(
+        lines,
+        [
+            Ref("incident", str(incident.id), f"Incident {incident.id}", incident.subject)
+            for incident, _ in rows
+        ],
+        f"{_plural(len(rows), 'incident')} to classify, {more} more after",
     )
 
 
@@ -1161,6 +1208,14 @@ TOOLS: Final[Sequence[Tool]] = (
         "The incidents that still need someone, the most serious first. Uses: limit (1-10, "
         "default 5).",
         open_incidents,
+    ),
+    Tool(
+        "unclassified_incidents",
+        "A batch of open incidents nobody has judged yet, oldest first, for going through them "
+        "with the owner, with how many are left. Only when the owner asks to go through them. "
+        "Uses: limit (1-10, the batch size, default 5), id (only the incidents after this "
+        "number: the last of the batch before, or null for the first).",
+        unclassified_incidents,
     ),
     Tool(
         "incident",

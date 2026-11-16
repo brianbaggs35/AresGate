@@ -1,3 +1,4 @@
+import { WALKTHROUGH } from '@/chat'
 import { looking, pageOf, startersFor } from '@/pageContext'
 
 const at = (
@@ -91,5 +92,9 @@ describe('startersFor', () => {
     expect(startersFor(null).length).toBeGreaterThan(0)
     expect(startersFor({ kind: 'other', title: 'X' })).toEqual(startersFor(null))
     expect(startersFor({ kind: 'incidents' }).length).toBeGreaterThan(1)
+  })
+
+  it('offers the walk-through on the list of incidents', () => {
+    expect(startersFor({ kind: 'incidents' })).toContain(WALKTHROUGH)
   })
 })

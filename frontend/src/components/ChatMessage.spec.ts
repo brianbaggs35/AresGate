@@ -3,8 +3,8 @@ import ChatMessage from '@/components/ChatMessage.vue'
 import { action, answer, question } from '@/test/aiChat'
 import { mountWithPlugins } from '@/test/mount'
 
-async function show(message = answer(), canRetry = false) {
-  const mounted = await mountWithPlugins(ChatMessage, { props: { message, canRetry } })
+async function show(message = answer(), canRetry = false, last = false) {
+  const mounted = await mountWithPlugins(ChatMessage, { props: { message, canRetry, last } })
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   return { ...mounted, find }
 }
@@ -133,5 +133,37 @@ describe('ChatMessage', () => {
     expect((await show()).find('message-actions').exists()).toBe(false)
     const failed = await show(answer({ ok: false, actions: [action()] }))
     expect(failed.find('message-actions').exists()).toBe(false)
+  })
+  describe('a batch of a walk-through', () => {
+    const batch = () =>
+      answer({ lookups: [{ tool: 'unclassified_incidents', summary: '2 incidents to classify' }] })
+
+    it('has a way to ask for the next batch when it is the last thing said, even with nothing proposed', async () => {
+      const { find, wrapper } = await show(batch(), false, true)
+
+      await find('next-batch').trigger('click')
+
+      expect(wrapper.emitted('ask')).toEqual([['Show me the next five.']])
+    })
+
+    it('has none when it is not the last', async () => {
+      const { find } = await show(batch(), false, false)
+
+      expect(find('message-actions').exists()).toBe(false)
+    })
+
+    it('has none when it looked at something else', async () => {
+      const { find } = await show(answer(), false, true)
+
+      expect(find('next-batch').exists()).toBe(false)
+    })
+
+    it('passes on a wish to suggest something else', async () => {
+      const { wrapper } = await show(answer({ actions: [action()] }))
+
+      wrapper.findComponent(ChatActions).vm.$emit('suggest', 'Instead of "x", ')
+
+      expect(wrapper.emitted('suggest')).toEqual([['Instead of "x", ']])
+    })
   })
 })
