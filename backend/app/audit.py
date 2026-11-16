@@ -51,6 +51,7 @@ class Action(StrEnum):
     INTEGRATION_CONNECTED = "integration.connected"
     INTEGRATION_DISCONNECTED = "integration.disconnected"
     INTEGRATION_TESTED = "integration.tested"
+    INTEGRATION_LOG_CLEARED = "integration.log_cleared"
     AI_PROVIDER_SAVED = "ai.provider_saved"
     AI_PROVIDER_REMOVED = "ai.provider_removed"
     AI_PROVIDER_TESTED = "ai.provider_tested"

@@ -492,6 +492,11 @@ narrow the list together, and *No integration matches* offers to clear them. The
 ("2 of 7 set up") is always of every integration. Both live in the page, since there are few
 enough integrations that they filter at once (`narrowIntegrations` in `src/integrations.ts`).
 
+An integration's own page ends with its API log (`ApiLog`). *Clear the log* deletes every request
+kept of that integration, filtered out or not, after a confirmation that says so
+(`DELETE /api/integrations/{key}/calls`, audited as `integration.log_cleared` with how many went);
+requests made afterwards are logged as usual, and the other integrations' logs are left alone.
+
 ## States
 
 A page or panel is always in one of four states, and each has one component:

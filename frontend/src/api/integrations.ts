@@ -391,6 +391,11 @@ export function fetchCall(key: string, id: number): Promise<CallFull> {
   return apiGet<CallFull>(path(key, `/calls/${id}`))
 }
 
+/** Deletes every request kept of an integration, and says how many there were. */
+export function clearCalls(key: string, csrfToken: string): Promise<{ cleared: number }> {
+  return apiDelete<{ cleared: number }>(path(key, '/calls'), csrfToken)
+}
+
 /** The newest calls first. */
 export function fetchCalls(key: string, query: CallQuery = {}): Promise<CallPage> {
   const parameters = new URLSearchParams()

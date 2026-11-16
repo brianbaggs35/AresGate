@@ -596,6 +596,37 @@ test.describe('integrations', () => {
       await expect(integration.logCalls).toHaveCount(25)
     })
 
+    test('clears the API log after asking, and keeps logging what it asks next', async ({
+      harness,
+      integration,
+      page,
+    }) => {
+      const ntopng = await harness.standIn({ kind: 'ntopng', token: TOKEN })
+      await integration.goto('ntopng')
+      await integration.address('api').fill(ntopng.url)
+      await integration.field('api', 'token').fill(TOKEN)
+      await integration.save.click()
+      await expect(integration.status).toHaveText('Connected')
+      await expect(integration.logCalls).toHaveCount(6)
+
+      // Asked first: leaving the question changes nothing.
+      await integration.logClearAll.click()
+      await expect(integration.confirmation).toContainText('Clear the API log?')
+      await page.getByTestId('confirm-cancel').click()
+      await expect(integration.logCalls).toHaveCount(6)
+
+      await integration.logClearAll.click()
+      await page.getByTestId('confirm-accept').click()
+
+      await expect(integration.logCleared).toContainText('Cleared 6 requests.')
+      await expect(integration.logEmpty).toBeVisible()
+      await expect(integration.logCalls).toHaveCount(0)
+
+      // Testing again is logged afresh.
+      await integration.save.click()
+      await expect(integration.logCalls.first()).toBeVisible()
+    })
+
     test('keeps its alerts, its hosts and the devices among them, and measures its interface', async ({
       harness,
       integration,

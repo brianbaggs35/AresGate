@@ -130,6 +130,16 @@ def get_call(db: Session, integration: str, call_id: int) -> ApiCall | None:
     )
 
 
+def clear(db: Session, integration: str) -> int:
+    """Deletes every call kept of an integration, whatever its connection or age, and returns how
+    many there were. The caller commits."""
+    return len(
+        db.scalars(
+            delete(ApiCall).where(ApiCall.integration == integration).returning(ApiCall.id)
+        ).all()
+    )
+
+
 def purge_expired(db: Session, settings: Settings, now: datetime) -> int:
     """Deletes the calls older than the retention period, and returns how many there were.
     Commits."""

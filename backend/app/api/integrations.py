@@ -662,6 +662,32 @@ def get_call(key: Key, call_id: int, db: Db) -> CallFullOut:
     return CallFullOut.model_validate(call)
 
 
+class LogClearedOut(BaseModel):
+    """How many requests were deleted from an integration's API log."""
+
+    cleared: int
+
+
+@router.delete("/{key}/calls")
+def clear_calls(
+    key: Key, auth: Annotated[SignedIn, Depends(signed_in)], request: Request, db: Db
+) -> LogClearedOut:
+    """Deletes every request kept of an integration, for the owner who wants the log to begin
+    again. What is asked from now on is logged as usual."""
+    _definition(key)
+    cleared = apilog.clear(db, key)
+    record_audit(
+        db,
+        request,
+        Action.INTEGRATION_LOG_CLEARED,
+        Outcome.SUCCESS,
+        user=auth.user,
+        detail={"integration": key, "requests": cleared},
+    )
+    db.commit()
+    return LogClearedOut(cleared=cleared)
+
+
 @router.get("/{key}/calls")
 def list_calls(
     key: Key,

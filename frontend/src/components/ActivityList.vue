@@ -28,6 +28,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'integration.connected': 'An integration was connected',
   'integration.disconnected': 'An integration was disconnected',
   'integration.tested': 'An integration was tested',
+  'integration.log_cleared': "An integration's API log was cleared",
   'ai.provider_saved': 'An AI provider was set up',
   'ai.provider_removed': 'An AI provider was removed',
   'ai.provider_tested': 'An AI provider was tested',
