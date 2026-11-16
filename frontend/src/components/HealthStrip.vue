@@ -16,7 +16,7 @@ const summary = computed(() => stripSummary(props.states))
 
 <template>
   <div class="strip" data-test="health-strip">
-    <div class="strip__cells" role="img" :aria-label="`${name}. ${summary}`">
+    <div class="strip__cells" aria-hidden="true">
       <span
         v-for="(state, index) in states"
         :key="index"
@@ -28,7 +28,7 @@ const summary = computed(() => stripSummary(props.states))
       />
     </div>
     <p class="text-body-small text-medium-emphasis strip__words" data-test="health-summary">
-      {{ summary }}
+      <span class="sr-only">{{ name }}. </span>{{ summary }}
     </p>
   </div>
 </template>
@@ -75,6 +75,15 @@ const summary = computed(() => stripSummary(props.states))
 
 .strip__words {
   margin: 0.25rem 0 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @media (forced-colors: active) {

@@ -28,6 +28,11 @@ def family(session: Session, number: int) -> IncidentFamily:
 
 
 class TestTheBuckets:
+    @pytest.mark.parametrize("count", [-1, 0, 1, 169])
+    def test_there_are_from_two_to_a_week_of_them(self, count: int) -> None:
+        with pytest.raises(ValueError, match="from 2 to 168 buckets"):
+            trends.starts(MOMENT, "hour", count)
+
     def test_hours_end_with_the_one_under_way(self) -> None:
         found = trends.starts(MOMENT, "hour", 3)
 

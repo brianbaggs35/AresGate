@@ -15,7 +15,7 @@ from app.trends import HourState, Step
 
 router = APIRouter(prefix="/trends", tags=["trends"], dependencies=[Depends(signed_in)])
 
-MOST_HOURS = 24 * 7
+MOST_HOURS = trends.MOST_BUCKETS
 MOST_ADDRESSES = 50
 KindId = Annotated[int, Field(ge=1, le=2**63 - 1)]
 Count = Annotated[int, Query(ge=2, le=MOST_HOURS)]
@@ -62,7 +62,7 @@ class IntegrationTrends(BaseModel):
 def delivery_trend(
     db: Db,
     destination_id: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None,
-    state: str | None = Query(default=None, max_length=12),
+    state: Annotated[str | None, Query(max_length=12)] = None,
     hours: Count = 48,
 ) -> DeliveryTrend:
     """Messages made per hour, by severity, for what the Alerts page is looking at."""
@@ -71,7 +71,9 @@ def delivery_trend(
     return DeliveryTrend(
         times=starting,
         step="hour",
-        severities={name: found.get(level, [0] * hours) for level, name in SEVERITY_NAMES.items()},
+        severities={
+            name: found.get(level, [0] * len(starting)) for level, name in SEVERITY_NAMES.items()
+        },
     )
 
 

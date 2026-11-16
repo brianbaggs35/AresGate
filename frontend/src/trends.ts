@@ -71,17 +71,20 @@ export function activityOf(trend: AddressTrends, address: string): number[] | nu
   return item ? item.incoming.map((count, index) => count + (item.outgoing[index] as number)) : null
 }
 
+const IPV4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
+const IPV6 = /^[0-9a-f:.]+$/i
+
 /** Whether text could be an IP address, so that a request for many is not refused for one that
  * is a name. The server has the last word. */
 export function looksLikeAddress(text: string): boolean {
-  return /^(\d{1,3}(\.\d{1,3}){3}|[0-9a-f:]*:[0-9a-f:.]*)$/i.test(text)
+  return IPV4.test(text) || (text.includes(':') && IPV6.test(text))
 }
 
 /** What a small line says in words, since the line alone says neither what it is nor how much. */
 export function sparkLabel(noun: string, values: readonly number[], span: string): string {
   const total = values.reduce((sum, count) => sum + count, 0)
   if (total === 0) return `No ${noun} in ${span}.`
-  const latest = values[values.length - 1] as number
+  const latest = values.at(-1) as number
   return `${formatCount(total)} ${noun} in ${span}, ${formatCount(latest)} in the latest.`
 }
 
