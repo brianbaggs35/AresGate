@@ -81,4 +81,23 @@ describe('VerdictRow', () => {
     expect(wrapper.emitted('change')).toHaveLength(1)
     expect(wrapper.emitted('remove')).toHaveLength(1)
   })
+
+  it('has a box to pick it where the list can change many, and says so when it is picked', async () => {
+    const { wrapper } = await mountWithPlugins(VerdictRow, {
+      props: { rule: verdict(), selectable: true, selected: true },
+    })
+
+    const box = wrapper.find('[data-test="row-select"]')
+    expect((box.element as HTMLInputElement).checked).toBe(true)
+    expect(box.attributes('aria-label')).toContain('Select: ')
+    expect(wrapper.find('[data-test="verdict-row"]').classes()).toContain('verdict-row--selected')
+    await box.trigger('click', { shiftKey: true })
+    expect(wrapper.findComponent(VerdictRow).emitted('select')).toEqual([[true]])
+  })
+
+  it('has no box where it cannot be picked', async () => {
+    const { wrapper } = await mountWithPlugins(VerdictRow, { props: { rule: verdict() } })
+
+    expect(wrapper.find('[data-test="row-select"]').exists()).toBe(false)
+  })
 })

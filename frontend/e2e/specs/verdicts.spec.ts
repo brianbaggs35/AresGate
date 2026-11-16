@@ -340,3 +340,45 @@ test.describe('verdicts from the list of incidents', () => {
     await expect(page).toHaveURL(/\/incidents\/\d+$/)
   })
 })
+
+test.describe('taking many verdicts back', () => {
+  test('picks some, asks, and takes them back together', async ({ harness, verdicts }) => {
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: ATTACKER },
+      { verdict: 'low_priority', address: CAMERA },
+      { verdict: 'threat', address: CLOUD },
+    ])
+    await verdicts.goto()
+    await expect(verdicts.rows).toHaveCount(3)
+    await expect(verdicts.hint).toContainText('Select verdicts')
+
+    await verdicts.rows.first().getByTestId('row-select').check()
+    await verdicts.rows.nth(1).getByTestId('row-select').check()
+
+    await expect(verdicts.count).toHaveText('2 verdicts selected')
+    await verdicts.takeBackMany.click()
+    await expect(verdicts.confirmTitle).toHaveText('Take back 2 verdicts?')
+    await verdicts.confirm.click()
+
+    await expect(verdicts.notice).toHaveText('Taken back: 2 verdicts.')
+    await expect(verdicts.rows).toHaveCount(1)
+    await expect(verdicts.count).toBeHidden()
+  })
+
+  test('picks all of them with the box above, and lets them go again', async ({
+    harness,
+    verdicts,
+  }) => {
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: ATTACKER },
+      { verdict: 'low_priority', address: CAMERA },
+    ])
+    await verdicts.goto()
+
+    await verdicts.selectAll.check()
+    await expect(verdicts.count).toHaveText('2 verdicts selected')
+    await verdicts.clearSelection.click()
+
+    await expect(verdicts.hint).toBeVisible()
+  })
+})

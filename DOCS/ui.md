@@ -153,6 +153,15 @@ a switch that shows how many; `quieted` is in the route's query like the other c
 Settings page (`VerdictsView`) is where verdicts are reviewed, changed (`VerdictDialog`) and
 taken back (`ConfirmDialog`, which says how many signals are judged again).
 
+The lists that are not incidents change many at once with the smaller pair `RowCheck` (the native
+checkbox in a 44 px `<label>`, which says whether Shift was held) and `SelectBar` (the box that picks
+every row, a hint or the count, the changes in its slot and *Clear*; it sticks under the top bar the
+way `BulkBar` does). The Trust page uses them for its decisions (*Take back*) and the AI's
+suggestions (*Trust as the AI read them*, *Trust as low priority*), and Settings > Verdicts for
+*Take back*. They share `useSelection`, which drops a row that leaves the list. A list of one row has
+no boxes, unless something is picked (a search can narrow the list to one). More than 200 ids go to
+the API in batches (`inBatches`).
+
 Settings > Noise filters (`NoiseFiltersView`) keeps a draft beside what is kept, so the page never
 shows a half-saved state: six cards edit it (`NoiseFloorCard`, a slider that says its number and
 its word, `NoiseSourcesCard`, a select for each program with what it reported this week beside

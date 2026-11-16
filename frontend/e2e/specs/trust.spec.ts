@@ -151,4 +151,63 @@ test.describe('trust', () => {
     await expect(page.getByTestId('decision-error')).toContainText('It may have been taken back.')
     await expectAccessible(page)
   })
+
+  test('takes many decisions back together, after asking', async ({ harness, page }) => {
+    await harness.createVerdicts([
+      { verdict: 'not_suspicious', address: ADDRESS },
+      { verdict: 'low_priority', address: '52.1.2.3' },
+      { verdict: 'not_suspicious', address: '151.101.1.69' },
+    ])
+    await page.goto('/trust')
+    const card = page.getByTestId('trust-card')
+    await expect(page.getByTestId('trust-row')).toHaveCount(3)
+    await expect(card.getByTestId('select-hint')).toContainText('Select decisions')
+
+    await card.getByTestId('trust-row').first().getByTestId('row-select').check()
+    await expect(card.getByTestId('select-count')).toHaveText('1 decision selected')
+    await card.getByTestId('select-all').check()
+    await expect(card.getByTestId('select-count')).toHaveText('3 decisions selected')
+    await expectFitsTheScreen(page)
+    await expectAccessible(page)
+
+    await card.getByTestId('trust-take-back-many').click()
+    await expect(page.getByTestId('confirm-title')).toHaveText('Take back 3 decisions?')
+    await page.getByTestId('confirm-cancel').click()
+    await expect(page.getByTestId('trust-row')).toHaveCount(3)
+
+    await card.getByTestId('trust-take-back-many').click()
+    await page.getByTestId('confirm-accept').click()
+
+    await expect(page.getByTestId('trust-notice')).toHaveText('Taken back: 3 decisions.')
+    await expect(page.getByTestId('no-trust')).toBeVisible()
+  })
+
+  test('trusts many of what the AI suggests together', async ({ harness, page }) => {
+    await harness.createIncidents([
+      { address: ADDRESS, severity: 'medium' },
+      { address: '151.101.1.69', severity: 'medium' },
+    ])
+    await harness.createDecisions([
+      { address: ADDRESS, ai_class: 'noise', verdict: 'not_suspicious', headline: 'A scanner' },
+      {
+        address: '151.101.1.69',
+        ai_class: 'noise',
+        verdict: 'not_suspicious',
+        headline: 'A monitor',
+      },
+    ])
+    await page.goto('/trust')
+    const card = page.getByTestId('suggestions-card')
+    await expect(card.getByTestId('suggestion')).toHaveCount(2)
+
+    await card.getByTestId('select-all').check()
+    await expect(card.getByTestId('select-count')).toHaveText('2 suggestions selected')
+    await expectFitsTheScreen(page)
+    await expectAccessible(page)
+    await card.getByTestId('suggestions-trust-many').click()
+
+    await expect(page.getByTestId('trust-notice')).toHaveText('Trusted: 2 decisions.')
+    await expect(page.getByTestId('trust-row')).toHaveCount(2)
+    await expect(card).toBeHidden()
+  })
 })

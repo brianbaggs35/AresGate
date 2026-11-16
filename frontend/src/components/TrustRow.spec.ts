@@ -56,4 +56,24 @@ describe('TrustRow', () => {
 
     expect(wrapper.emitted('revoke')).toHaveLength(1)
   })
+
+  it('has a box to pick it where the list can change many, and says so when it is picked', async () => {
+    const { wrapper } = await mountWithPlugins(TrustRow, {
+      props: { rule: trustRule(), selectable: true, selected: true },
+      signedIn: 'admin',
+    })
+
+    const box = wrapper.find('[data-test="row-select"]')
+    expect((box.element as HTMLInputElement).checked).toBe(true)
+    expect(box.attributes('aria-label')).toBe('Select: Everything about 52.1.2.3')
+    expect(wrapper.find('[data-test="trust-row"]').classes()).toContain('trust-row--selected')
+    await box.trigger('click')
+    expect(wrapper.findComponent(TrustRow).emitted('select')).toEqual([[false]])
+  })
+
+  it('has no box where it cannot be picked', async () => {
+    const { wrapper } = await row()
+
+    expect(wrapper.find('[data-test="row-select"]').exists()).toBe(false)
+  })
 })

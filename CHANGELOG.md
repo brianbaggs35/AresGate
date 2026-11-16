@@ -8,6 +8,12 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Change many trust decisions and verdicts at once.** On the Trust page and under
+  Settings > Verdicts, tick some rows (hold Shift to tick all between two) or all of them and take
+  them back together, after one question. Where the AI suggests several things to trust, tick the
+  ones you agree with and trust them all, as the AI read them or as low priority. See
+  [Changing many at once](DOCS/trust.md#changing-many-at-once).
+
 - **See, confirm and take back what the AI cleared.** The new *Cleared by the AI* page lists the
   incidents the AI suggests clearing (*Waiting for you*) and the ones it cleared by itself that you
   have not confirmed, each with why, how sure it was and what it looked at. Confirm makes a clearing

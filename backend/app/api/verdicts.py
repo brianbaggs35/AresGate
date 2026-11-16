@@ -11,6 +11,7 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    Field,
     IPvAnyAddress,
     StringConstraints,
     field_validator,
@@ -32,6 +33,8 @@ Verdict = Literal["not_suspicious", "low_priority", "threat"]
 RuleId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 Signature = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+# The most verdicts that are taken back in one request.
+MAX_BULK = 200
 
 
 class GivenByAi(BaseModel):
@@ -74,6 +77,21 @@ class VerdictGiven(VerdictOut):
 
 class VerdictList(BaseModel):
     items: list[VerdictOut]
+
+
+class TakeBack(BaseModel):
+    """The verdicts to take back, by their ids."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[Annotated[int, Field(ge=1, le=2**63 - 1)]] = Field(min_length=1, max_length=MAX_BULK)
+
+
+class TakenBack(BaseModel):
+    """How many were taken back, and how many were not there (or were not of that kind)."""
+
+    done: int
+    skipped: int
 
 
 class VerdictIn(BaseModel):
@@ -323,3 +341,32 @@ def remove_verdict(
     take_back(db, request, auth.user, _found(db, rule_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def take_back_many(
+    db: Db, request: Request, user: User, ids: list[int], *, only_trust: bool = False
+) -> TakenBack:
+    """Takes back every verdict of ``ids`` that is there (and, with ``only_trust``, that is a
+    decision to trust), as one, and says how many were not. Each is audited and its signals are
+    judged again, as when one is taken back by itself."""
+    wanted = list(dict.fromkeys(ids))
+    query = select(VerdictRule).where(VerdictRule.id.in_(wanted))
+    if only_trust:
+        query = query.where(VerdictRule.verdict.in_(verdicts.MUTING))
+    found = db.scalars(query.order_by(VerdictRule.id)).all()
+    engine.hold(db)
+    for rule in found:
+        take_back(db, request, user, rule)
+    db.commit()
+    return TakenBack(done=len(found), skipped=len(wanted) - len(found))
+
+
+@router.post("/take-back")
+def take_back_verdicts(
+    body: TakeBack,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> TakenBack:
+    """Takes back many verdicts at once, as if each had been taken back by itself."""
+    return take_back_many(db, request, auth.user, body.ids)

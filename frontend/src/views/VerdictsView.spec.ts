@@ -25,6 +25,9 @@ async function open(answer: verdictsApi.Verdict[] | Error = SOME) {
   else fetchIt.mockResolvedValue(answer)
   const change = vi.spyOn(verdictsApi, 'changeVerdict')
   const remove = vi.spyOn(verdictsApi, 'removeVerdict').mockResolvedValue(undefined)
+  const removeMany = vi
+    .spyOn(verdictsApi, 'takeBackVerdicts')
+    .mockResolvedValue({ done: 2, skipped: 0 })
   const mounted = await mountWithPlugins(VerdictsView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -43,6 +46,7 @@ async function open(answer: verdictsApi.Verdict[] | Error = SOME) {
     fetchIt,
     change,
     remove,
+    removeMany,
     find,
     text,
     rows,
@@ -273,6 +277,89 @@ describe('VerdictsView', () => {
       await choose(0, 'change')
 
       expect(find('verdicts-failure').exists()).toBe(false)
+    })
+  })
+
+  describe('taking many back', () => {
+    const pick = async (...at: number[]) => {
+      const mounted = await open()
+      for (const index of at) {
+        await mounted.rows()[index]?.find('[data-test="row-select"]').trigger('click')
+      }
+      return mounted
+    }
+
+    it('offers no picking for a single verdict', async () => {
+      const { find, rows } = await open([verdict()])
+
+      expect(find('select-bar').exists()).toBe(false)
+      expect(rows()[0]?.find('[data-test="row-select"]').exists()).toBe(false)
+    })
+
+    it('says what picking is for, and has the action once something is picked', async () => {
+      const { find, text } = await open()
+      expect(text('select-hint')).toBe('Select verdicts to change them together')
+      expect(find('verdicts-take-back-many').exists()).toBe(false)
+
+      await find('select-all').trigger('change')
+
+      expect(text('select-count')).toBe('2 verdicts selected')
+      expect(find('verdicts-take-back-many').exists()).toBe(true)
+      await find('select-clear').trigger('click')
+      expect(text('select-hint')).toContain('Select verdicts')
+    })
+
+    it('asks first, then takes back what is picked, and says how many', async () => {
+      const { find, removeMany, fetchIt, inDialog, text } = await pick(0, 1)
+      expect(text('select-count')).toBe('2 verdicts selected')
+
+      await find('verdicts-take-back-many').trigger('click')
+      expect(inDialog('confirm-title')!.textContent).toBe('Take back 2 verdicts?')
+      fetchIt.mockResolvedValue([])
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(removeMany).toHaveBeenCalledWith([2, 1], 'a-security-token')
+      expect(text('verdicts-notice')).toBe('Taken back: 2 verdicts.')
+      expect(find('no-verdicts').exists()).toBe(true)
+    })
+
+    it('says one verdict in the singular, and what had gone already', async () => {
+      const { find, removeMany, inDialog, text } = await pick(0)
+      removeMany.mockResolvedValue({ done: 1, skipped: 1 })
+
+      await find('verdicts-take-back-many').trigger('click')
+      expect(inDialog('confirm-title')!.textContent).toBe('Take back 1 verdict?')
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(text('verdicts-notice')).toBe('Taken back: 1 verdict. 1 verdict had already gone.')
+    })
+
+    it('does nothing when the question is cancelled', async () => {
+      const { find, removeMany, inDialog, text } = await pick(0, 1)
+
+      await find('verdicts-take-back-many').trigger('click')
+      inDialog('confirm-cancel')!.click()
+      await flushPromises()
+
+      expect(removeMany).not.toHaveBeenCalled()
+      expect(text('select-count')).toBe('2 verdicts selected')
+    })
+
+    it('says why it could not, and keeps what was picked', async () => {
+      const { find, removeMany, inDialog, text } = await pick(0, 1)
+      removeMany.mockRejectedValue(offline())
+
+      await find('verdicts-take-back-many').trigger('click')
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(text('verdicts-failure')).toContain("Can't reach AresGate.")
+      expect(text('select-count')).toBe('2 verdicts selected')
     })
   })
 })

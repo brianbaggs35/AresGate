@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type { IncidentStatus } from '@/api/incidents'
+import { inBatches, type TakenBack } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
 /** How much to trust something: `not_suspicious` is safe, `low_priority` is only worth a glance. */
@@ -98,4 +99,26 @@ export function changeTrust(id: number, request: TrustRequest, csrfToken: string
 /** Takes a decision back: what it covered is judged as if it had never been said. */
 export function revokeTrust(id: number, csrfToken: string): Promise<undefined> {
   return apiDelete(`/trust/${id.toString()}`, csrfToken)
+}
+
+/** Takes many decisions back at once. One that does not trust (a threat) is left alone. */
+export function revokeManyTrust(ids: readonly number[], csrfToken: string): Promise<TakenBack> {
+  return inBatches(ids, (batch) =>
+    apiPost<TakenBack>('/trust/take-back', { ids: batch }, csrfToken),
+  )
+}
+
+/** Trusts many of what the AI suggests at once, as it read each, or as one level for them all. */
+export function trustSuggestions(
+  incidentIds: readonly number[],
+  csrfToken: string,
+  verdict?: TrustLevel,
+): Promise<TakenBack> {
+  return inBatches(incidentIds, (batch) =>
+    apiPost<TakenBack>(
+      '/trust/accept',
+      { incident_ids: batch, ...(verdict ? { verdict } : {}) },
+      csrfToken,
+    ),
+  )
 }

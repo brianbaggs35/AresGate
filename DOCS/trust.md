@@ -61,11 +61,24 @@ that is not on the screen, with the whole form.
 Taking a decision back means what it covered is judged as if you had never said it, so it can raise
 alarms again.
 
+### Changing many at once
+
+Where there is more than one decision, each row has a box and a bar above the list says *Select
+decisions to change them together*. Tick some (hold Shift to tick all between two), or the box in the
+bar to tick them all, and the bar says how many and offers **Take back**, which asks once for them
+all. Each is taken back as if by itself, and recorded in the audit log. The same is true of the
+verdicts under Settings > Verdicts, which also include the threats you called out. What the search
+leaves out of the list is not ticked.
+
 ## What the AI suggests
 
 Where the AI has read an incident and is sure (60 out of 100 or more) it is nothing to worry about,
 and nothing trusts its address yet, it is offered at the top of the page with its reason. **Trust**
-is your call and one press; **Look first** opens the incident. The AI never trusts anything itself.
+is your call and one press; **Look first** opens the incident. Where there are several, tick the ones
+you agree with and **Trust as the AI read them** trusts them all (each as it read it, with its reason
+as the note) or **Trust as low priority** trusts them all as only worth a glance. One that has been
+trusted since, or that the AI no longer suggests, is left alone and counted. The AI never trusts
+anything itself.
 
 The assistant and the agents can ask what you trust with the `trusted` lookup, and the noise cleaner
 and the incident investigator use it, so that they do not suggest again what you already said.
@@ -76,4 +89,7 @@ They only read: trusting and taking back are always yours.
 Everything above is available under `/api/trust` for someone signed in: `GET /trust` lists the
 decisions, `GET /trust/suggestions` has what the AI would trust, `GET /trust/{id}` reads one with the
 incidents it was applied to, `POST /trust` trusts, `PUT /trust/{id}` changes all of one and
-`DELETE /trust/{id}` takes one back. Each change is recorded in the audit log.
+`DELETE /trust/{id}` takes one back. `POST /trust/take-back` takes back many (up to 200 ids, and a
+verdict that does not trust is left alone) and `POST /trust/accept` trusts many of the suggestions by
+their incident, as the AI read them or as the one level given. Each change is recorded in the audit
+log. `POST /verdicts/take-back` takes back any verdicts the same way.

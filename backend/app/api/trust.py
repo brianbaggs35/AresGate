@@ -10,7 +10,7 @@ from ipaddress import ip_address, ip_network
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, select
 
 from app.api import verdicts as verdicts_api
@@ -184,6 +184,70 @@ def _is_address(text: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+class TrustSuggestions(BaseModel):
+    """The suggestions to trust, by the incident each is about, and how much to trust them when
+    the owner says another way than the AI did."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    incident_ids: list[Annotated[int, Field(ge=1, le=2**63 - 1)]] = Field(
+        min_length=1, max_length=verdicts_api.MAX_BULK
+    )
+    verdict: Level | None = None
+
+
+class Trusted(BaseModel):
+    """How many were trusted, and how many were no longer suggested."""
+
+    done: int
+    skipped: int
+
+
+@router.post("/accept")
+def accept_suggestions(
+    body: TrustSuggestions,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> Trusted:
+    """Trusts many of what the AI suggests at once: what each is about, as the AI read it or as the
+    owner says. One that is no longer suggested (it was trusted since, or the AI changed its mind)
+    is left alone. Each is audited and applied like one trusted by itself."""
+    wanted = list(dict.fromkeys(body.incident_ids))
+    suggested = {item.incident_id: item for item in suggest_trust(db).items}
+    done = 0
+    for incident_id in wanted:
+        item = suggested.get(incident_id)
+        if item is None:
+            continue
+        verdicts_api.give_verdict(
+            verdicts_api.VerdictIn.model_validate(
+                {
+                    "address": item.subject,
+                    "verdict": body.verdict or item.verdict,
+                    "note": item.reason or item.headline,
+                }
+            ),
+            auth,
+            request,
+            Response(),
+            db,
+        )
+        done += 1
+    return Trusted(done=done, skipped=len(wanted) - done)
+
+
+@router.post("/take-back")
+def revoke_many(
+    body: verdicts_api.TakeBack,
+    auth: Annotated[SignedIn, Depends(signed_in)],
+    request: Request,
+    db: Db,
+) -> verdicts_api.TakenBack:
+    """Takes back many trust decisions at once. A verdict that does not trust is not one of them."""
+    return verdicts_api.take_back_many(db, request, auth.user, body.ids, only_trust=True)
 
 
 @router.get("/{rule_id}")

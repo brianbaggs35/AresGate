@@ -1,5 +1,13 @@
 import * as client from '@/api/client'
-import { changeVerdict, fetchVerdicts, giveVerdict, removeVerdict } from '@/api/verdicts'
+import {
+  MAX_BULK,
+  changeVerdict,
+  fetchVerdicts,
+  giveVerdict,
+  inBatches,
+  removeVerdict,
+  takeBackVerdicts,
+} from '@/api/verdicts'
 
 describe('verdicts', () => {
   it('lists them, the one given last first', async () => {
@@ -38,5 +46,32 @@ describe('verdicts', () => {
     await removeVerdict(4, 'a-token')
 
     expect(remove).toHaveBeenCalledWith('/verdicts/4', 'a-token')
+  })
+
+  it('takes many back in one request, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ done: 2, skipped: 1 })
+
+    await expect(takeBackVerdicts([4, 5, 6], 'a-token')).resolves.toEqual({ done: 2, skipped: 1 })
+    expect(post).toHaveBeenCalledWith('/verdicts/take-back', { ids: [4, 5, 6] }, 'a-token')
+  })
+
+  it('changes more than a request takes in batches, and adds up how it went', async () => {
+    const ids = Array.from({ length: MAX_BULK * 2 + 5 }, (_, index) => index + 1)
+    const change = vi.fn().mockResolvedValue({ done: 3, skipped: 1 })
+
+    await expect(inBatches(ids, change)).resolves.toEqual({ done: 9, skipped: 3 })
+
+    expect(change.mock.calls.map(([batch]) => (batch as number[]).length)).toEqual([
+      MAX_BULK,
+      MAX_BULK,
+      5,
+    ])
+  })
+
+  it('changes nothing for no ids', async () => {
+    const change = vi.fn()
+
+    await expect(inBatches([], change)).resolves.toEqual({ done: 0, skipped: 0 })
+    expect(change).not.toHaveBeenCalled()
   })
 })
