@@ -4,8 +4,10 @@ import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
 import * as reviewApi from '@/api/review'
 import App from '@/App.vue'
+import ShortcutsDialog from '@/components/ShortcutsDialog.vue'
 import { guardRoutes } from '@/router/guard'
 import { useAssistantStore } from '@/stores/assistant'
+import { useDensityStore } from '@/stores/density'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -61,6 +63,48 @@ describe('App', () => {
     })
     await flushPromises()
     expect(wrapper.find('.app-drawer').exists()).toBe(true)
+  })
+
+  it('lists the keys when the ? key is pressed, once someone is signed in', async () => {
+    await mountWithPlugins(App, { ...signedIn, width: 1280 })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }))
+    await flushPromises()
+
+    expect(document.querySelector('[data-test="shortcuts"]')).not.toBeNull()
+  })
+
+  it('stops listing the keys when the list is closed', async () => {
+    const { wrapper } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+    await flushPromises()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }))
+    await flushPromises()
+
+    wrapper.findComponent(ShortcutsDialog).vm.$emit('update:modelValue', false)
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShortcutsDialog).props('modelValue')).toBe(false)
+  })
+
+  it('has no keys to list on the sign-in page', async () => {
+    await mountWithPlugins(App, { route: '/sign-in', width: 1280 })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }))
+    await flushPromises()
+
+    expect(document.querySelector('[data-test="shortcuts"]')).toBeNull()
+  })
+
+  it('says on the page how close together the lists are', async () => {
+    const { pinia } = await mountWithPlugins(App, { ...signedIn, width: 1280 })
+    expect(document.documentElement.getAttribute('data-density')).toBe('comfortable')
+
+    useDensityStore(pinia).setPreference('compact')
+    await flushPromises()
+
+    expect(document.documentElement.getAttribute('data-density')).toBe('compact')
   })
 
   it('shows the sign-in page on its own, with no menu', async () => {

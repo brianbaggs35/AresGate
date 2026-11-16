@@ -595,7 +595,7 @@ describe('IncidentsView', () => {
         expect(slash(window, { ctrlKey: true }).defaultPrevented).toBe(false)
         expect(slash(window, { metaKey: true }).defaultPrevented).toBe(false)
         expect(slash(window, { altKey: true }).defaultPrevented).toBe(false)
-        expect(slash(window, { key: 'k' }).defaultPrevented).toBe(false)
+        expect(slash(window, { key: 'q' }).defaultPrevented).toBe(false)
 
         expect(focus).not.toHaveBeenCalled()
       })
@@ -1299,5 +1299,80 @@ describe('IncidentsView', () => {
 
       expect(text('bulk-count')).toBe('1 selected')
     })
+  })
+})
+
+describe('IncidentsView, by keyboard and in a closer list', () => {
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init })
+    window.dispatchEvent(event)
+    return event
+  }
+  const links = () => [...document.querySelectorAll<HTMLElement>('[data-test="incident"]')]
+  const three = () =>
+    page(
+      [3, 2, 1].map((id) => incident({ id, title: `Incident ${id.toString()}` })),
+      { total: 3 },
+    )
+
+  it('moves from one incident to the next with J, and back with K, and stops at the ends', async () => {
+    await open({ answer: three() })
+
+    press('j')
+    expect(document.activeElement).toBe(links()[0])
+    press('j')
+    press('j')
+    press('j')
+    expect(document.activeElement).toBe(links()[2])
+    press('k')
+    expect(document.activeElement).toBe(links()[1])
+    press('k')
+    press('k')
+    expect(document.activeElement).toBe(links()[0])
+  })
+
+  it('goes to the last incident with K when it is on none', async () => {
+    await open({ answer: three() })
+
+    press('k')
+
+    expect(document.activeElement).toBe(links()[2])
+  })
+
+  it('does nothing when there are no incidents', async () => {
+    await open({ answer: page([], { total: 0 }) })
+
+    press('j')
+
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('picks the incident it is on with X, and takes it off again', async () => {
+    const { wrapper, find, text } = await open({ answer: three() })
+    links()[1]!.focus()
+
+    press('x')
+    await flushPromises()
+    expect(wrapper.findAll('.incident-card--selected')).toHaveLength(1)
+    expect(text('bulk-count')).toBe('1 selected')
+
+    press('x')
+    await flushPromises()
+    expect(find('bulk-count').exists()).toBe(false)
+  })
+
+  it('has nothing to pick when it is on no incident', async () => {
+    const { wrapper } = await open({ answer: three() })
+
+    press('x')
+    await flushPromises()
+
+    expect(wrapper.findAll('.incident-card--selected')).toHaveLength(0)
+  })
+
+  it('has the choice of a closer list', async () => {
+    const { find } = await open({ answer: three() })
+
+    expect(find('density').exists()).toBe(true)
   })
 })

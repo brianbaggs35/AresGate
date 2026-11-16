@@ -75,6 +75,11 @@ says after a verdict is `JudgedNotice`, which the Incidents page uses too.
 
 ## Incidents
 
+Both lists can be closer together (`DensityToggle` in the page header, remembered in this browser)
+and are read from the keyboard: `J` and `K` move the keyboard from one incident to the next,
+`Enter` opens it, `X` picks it for a change to many, and `?` anywhere lists every key
+(`ShortcutsDialog`). The principles are in [the look](design.md#reading-for-a-long-time).
+
 The Incidents pages are built from the same parts. The list is `IncidentCard`s in one column
 (each a single link to its incident, with an accent bar in the color of its severity, and a
 confidence meter that says *High confidence*, not only 100%); what it is narrowed to lives in the

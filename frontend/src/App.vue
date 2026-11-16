@@ -8,9 +8,12 @@ import AppDrawer from '@/components/AppDrawer.vue'
 import AssistantHost from '@/components/AssistantHost.vue'
 import BottomNavigation from '@/components/BottomNavigation.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import ShortcutsDialog from '@/components/ShortcutsDialog.vue'
 import StartupError from '@/components/StartupError.vue'
 import { usePolling } from '@/polling'
+import { useShortcuts } from '@/shortcuts'
 import { useAssistantStore } from '@/stores/assistant'
+import { useDensityStore } from '@/stores/density'
 import { usePaletteStore } from '@/stores/palette'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -68,6 +71,25 @@ function paletteShortcut(event: KeyboardEvent) {
   }
 }
 
+// The ? key says which keys there are.
+const shortcutsOpen = ref(false)
+useShortcuts({
+  '?': () => {
+    if (chrome.value) shortcutsOpen.value = true
+  },
+})
+
+// How close together the lists are is the owner's choice, kept for this browser. It is an
+// attribute of the page so that the lists that care can say what changes, without being told.
+const density = useDensityStore()
+watch(
+  () => density.preference,
+  (preference) => {
+    document.documentElement.setAttribute('data-density', preference)
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   window.addEventListener('keydown', paletteShortcut)
 })
@@ -111,6 +133,7 @@ function skipToContent() {
       <AppDrawer v-if="!phone" />
       <AppBar />
       <CommandPalette v-model="palette.open" />
+      <ShortcutsDialog v-model="shortcutsOpen" />
       <AssistantHost />
     </template>
     <v-main id="main-content" tabindex="-1">

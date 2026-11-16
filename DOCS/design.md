@@ -42,6 +42,28 @@ systems all day rely on, and each shows something worth keeping.
 | Vercel (Geist) | Neutral surfaces that let a status color carry meaning, tabular numerals, restrained use of gradient. |
 | Security operations dashboards in general | Hierarchy by decision (what needs me, what is happening, what is background); severity never by color alone; freshness shown per module; suppressed and muted things stay visible so nobody wonders what is hidden; a confidence shown with what it is made of. |
 
+## Reading for a long time
+
+The incidents and the logs are where people stay. Wazuh's and Elastic Security's alert tables,
+Splunk's search and Linear's and GitHub's lists agree on a few things, and these are the
+principles taken from them (ideas, not looks):
+
+- **The order of attention is fixed.** What is happening now comes first, then what needs a
+  decision, then what is background. A list never buries the first under the others, and a
+  quieted item stays one click away.
+- **Density is the reader's choice.** A person who looks at forty incidents wants forty close
+  together, and one who looks at three wants room. *Comfortable* and *compact* (`DensityToggle`, kept in this browser, applied as
+  `data-density` on the page) change only the air around things: nothing is left out in compact, so the
+  two never disagree about what is there.
+- **Every list works from the keyboard.** `J` and `K` move from item to item, `Enter` opens,
+  `X` picks, `/` searches, `Ctrl K` goes anywhere, and `?` lists them (`ShortcutsDialog`). A key
+  is only an answer when it is not going into a field and nothing is over the page
+  (`useShortcuts`); with Ctrl, ⌘ or Alt it is the browser's.
+- **Selection is quiet until it is used.** Boxes are there, and a bar appears only once something
+  is picked; a shift-click picks a range.
+- **An empty list helps.** It says why it is empty, and offers the next step.
+- **Motion explains and can be switched off.** See the rules below.
+
 ## Rules for motion
 
 Motion is there to say what changed or what is alive, never to fill time.
