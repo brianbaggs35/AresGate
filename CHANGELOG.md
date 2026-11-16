@@ -43,6 +43,12 @@ Every release's notes are here, newest first. The format follows
   tokens, keeps what it learned across restarts, and your verdicts apply to its alerts as to any
   other. `ARESGATE_BASELINES_ENABLED=false` turns it off.
 
+- **Incidents and logs are closer together if you want, and work from the keyboard.** A
+  *Comfortable* or *Compact* choice on both pages (remembered in your browser) trades air for how
+  much fits on the screen, without leaving anything out. On the incidents, **J** and **K** move
+  from one to the next, **Enter** opens it and **X** picks it for a change to many at once, and
+  **?** anywhere in AresGate lists the keys that work.
+
 ### Changed
 
 - **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now

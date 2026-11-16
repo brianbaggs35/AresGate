@@ -20,6 +20,7 @@ import AppPage from '@/components/AppPage.vue'
 import BulkBar from '@/components/BulkBar.vue'
 import BulkDialog from '@/components/BulkDialog.vue'
 import BulkNotice from '@/components/BulkNotice.vue'
+import DensityToggle from '@/components/DensityToggle.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import IncidentCard from '@/components/IncidentCard.vue'
 import JudgedNotice from '@/components/JudgedNotice.vue'
@@ -52,6 +53,7 @@ import {
   toggled,
 } from '@/search'
 import { useSelection } from '@/selection'
+import { useShortcuts } from '@/shortcuts'
 import { SEVERITIES, type Severity } from '@/severity'
 import { useSessionStore } from '@/stores/session'
 import type { Judged } from '@/verdicts'
@@ -378,6 +380,35 @@ function onKey(event: KeyboardEvent) {
   searchBox.value?.focus()
 }
 
+/** The incidents on the list, as the links to them that can have the keyboard. */
+const links = () => [...document.querySelectorAll<HTMLElement>('[data-test="incident"]')]
+
+/** J and K move the keyboard from one incident to the next or the one before. */
+function step(by: number) {
+  const all = links()
+  const at = all.indexOf(document.activeElement as HTMLElement)
+  const to = at < 0 ? (by > 0 ? 0 : all.length - 1) : Math.min(all.length - 1, Math.max(0, at + by))
+  all[to]?.focus()
+}
+
+/** X picks the incident the keyboard is on, or takes it off. */
+function pickFocused() {
+  document.activeElement
+    ?.closest('[data-test="incident-card"]')
+    ?.querySelector<HTMLInputElement>('[data-test="incident-select"]')
+    ?.click()
+}
+
+useShortcuts({
+  j: () => {
+    step(1)
+  },
+  k: () => {
+    step(-1)
+  },
+  x: pickFocused,
+})
+
 onMounted(() => {
   void load()
   window.addEventListener('keydown', onKey)
@@ -395,6 +426,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       description="Alerts and bans from every integration that belong together, so you see one story instead of many rows."
     >
       <template #actions>
+        <DensityToggle />
         <v-btn
           variant="text"
           :prepend-icon="RefreshCw"

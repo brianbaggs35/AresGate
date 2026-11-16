@@ -229,6 +229,10 @@ onBeforeUnmount(() => {
   vertical-align: middle;
 }
 
+:global(:root[data-density='compact']) .log-table td {
+  padding-block: 0.1875rem;
+}
+
 .log-table tbody tr:last-child td {
   border-bottom: 0;
 }

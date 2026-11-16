@@ -8,6 +8,7 @@ import { ApiError, errorMessage } from '@/api/client'
 import type { SearchTerm } from '@/api/incidents'
 import { exportAddress, fetchLogs, type LogEvent, type LogPage, type LogSummary } from '@/api/logs'
 import AppPage from '@/components/AppPage.vue'
+import DensityToggle from '@/components/DensityToggle.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import LogCards from '@/components/LogCards.vue'
@@ -376,6 +377,7 @@ usePolling(() => {
       description="Every event your integrations reported, as they sent it. Search, follow along live, or open one to read its raw record."
     >
       <template #actions>
+        <DensityToggle />
         <v-menu location="bottom end">
           <template #activator="{ props: activator }">
             <v-btn v-bind="activator" variant="text" :prepend-icon="Download" data-test="export">

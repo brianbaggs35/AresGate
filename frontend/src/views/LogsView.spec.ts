@@ -964,3 +964,11 @@ describe('LogsView', () => {
     })
   })
 })
+
+describe('LogsView, in a closer list', () => {
+  it('has the choice of one', async () => {
+    const { find } = await open()
+
+    expect(find('density').exists()).toBe(true)
+  })
+})

@@ -429,6 +429,27 @@ async function give(kind: VerdictKind) {
   text-align: center;
 }
 
+/* Compact: the list is read for a long time, so a card gives up some of its air. Nothing is left
+ * out: the verdicts are still there, only smaller. */
+:global(:root[data-density='compact']) .incident-card__title {
+  margin-block: 0.375rem;
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+}
+
+:global(:root[data-density='compact']) .incident-card__details {
+  gap: 0.25rem 1.5rem;
+}
+
+:global(:root[data-density='compact']) .incident-card__say {
+  padding-block-end: 0.5rem;
+}
+
+:global(:root[data-density='compact']) .incident-card__verdict {
+  min-height: 2rem;
+  padding-block: 0.125rem;
+}
+
 @media (min-width: 720px) {
   .incident-card__details {
     grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
