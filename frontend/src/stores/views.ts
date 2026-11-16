@@ -16,9 +16,7 @@ import { useSessionStore } from '@/stores/session'
 /** By page, then by name whatever the case, as the API lists them. */
 function byPageAndName(a: SavedView, b: SavedView): number {
   return (
-    a.page.localeCompare(b.page) ||
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
-    a.id - b.id
+    a.page.localeCompare(b.page) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   )
 }
 
