@@ -96,6 +96,18 @@ describe('FlowView', () => {
       expect(router.currentRoute.value.query).toEqual({})
     })
 
+    it('say which window and which direction are chosen, for a screen reader', async () => {
+      const { find, choose } = await open({ route: '/flow?hours=6&direction=incoming' })
+
+      expect(find('window-6').attributes('aria-pressed')).toBe('true')
+      expect(find('window-24').attributes('aria-pressed')).toBe('false')
+      expect(find('direction-incoming').attributes('aria-pressed')).toBe('true')
+
+      await choose(() => find('direction-inside').trigger('click'))
+      expect(find('direction-inside').attributes('aria-pressed')).toBe('true')
+      expect(find('direction-incoming').attributes('aria-pressed')).toBe('false')
+    })
+
     it('say what a direction means', async () => {
       const { find } = await open()
 
