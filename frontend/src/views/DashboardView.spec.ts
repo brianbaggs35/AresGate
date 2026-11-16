@@ -194,6 +194,16 @@ describe('DashboardView', () => {
     expect(find('review-nudge-open').attributes('href')).toBe('/review')
   })
 
+  it('says what the AI cleared that you have not looked at, and not otherwise', async () => {
+    const none = await open()
+    expect(none.find('cleared-nudge').exists()).toBe(false)
+
+    const { find } = await open({ dashboard: dashboard({ ai_review: { waiting: 1, cleared: 2 } }) })
+
+    expect(find('cleared-nudge-text').text()).toContain('2 incidents cleared by the AI')
+    expect(find('cleared-nudge-open').attributes('href')).toBe('/cleared?state=cleared')
+  })
+
   it('shows a skeleton until the first answer arrives', async () => {
     mocks()
     vi.spyOn(dashboardApi, 'fetchDashboard').mockReturnValue(new Promise(() => {}))

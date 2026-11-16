@@ -56,7 +56,7 @@ class Match:
     signature: str | None
 
 
-def _match(db: Session, incident: Incident) -> Match | None:
+def match_of(db: Session, incident: Incident) -> Match | None:
     """What clearing the incident would be about: its address (where it has one) with the program
     and signature of its strongest alert. None where no signal has a signature, since a rule that
     names only an address would clear everything about it."""
@@ -75,25 +75,39 @@ def _match(db: Session, incident: Incident) -> Match | None:
     return Match(address, strongest.source, strongest.signature)
 
 
-def _taken(db: Session, match: Match) -> bool:
-    """Whether the owner has taken this match back from the AI, or has a verdict of their own that
-    says something of it (the same match, or the program and signature with any address)."""
-    vetoed = db.scalars(
-        select(AiClearVeto.id).where(
-            AiClearVeto.address.is_not_distinct_from(match.address),
-            AiClearVeto.source.is_not_distinct_from(match.source),
-            AiClearVeto.signature.is_not_distinct_from(match.signature),
-        )
-    ).first()
-    said = db.scalars(
-        select(VerdictRule.id).where(
-            VerdictRule.destination.is_(None),
-            VerdictRule.address.is_not_distinct_from(match.address),
-            VerdictRule.source.is_not_distinct_from(match.source),
-            VerdictRule.signature.is_not_distinct_from(match.signature),
-        )
-    ).first()
-    return vetoed is not None or said is not None
+def vetoed(db: Session, match: Match) -> bool:
+    """Whether the owner has taken this match back from the AI, or turned down its suggestion."""
+    return (
+        db.scalars(
+            select(AiClearVeto.id).where(
+                AiClearVeto.address.is_not_distinct_from(match.address),
+                AiClearVeto.source.is_not_distinct_from(match.source),
+                AiClearVeto.signature.is_not_distinct_from(match.signature),
+            )
+        ).first()
+        is not None
+    )
+
+
+def said(db: Session, match: Match) -> bool:
+    """Whether the owner has a verdict of their own that says something of this match (the same
+    match, or the program and signature with any address)."""
+    return (
+        db.scalars(
+            select(VerdictRule.id).where(
+                VerdictRule.destination.is_(None),
+                VerdictRule.address.is_not_distinct_from(match.address),
+                VerdictRule.source.is_not_distinct_from(match.source),
+                VerdictRule.signature.is_not_distinct_from(match.signature),
+            )
+        ).first()
+        is not None
+    )
+
+
+def taken(db: Session, match: Match) -> bool:
+    """Whether the AI may not clear this match: taken back from it, or already said by the owner."""
+    return vetoed(db, match) or said(db, match)
 
 
 def clears(incident: Incident, reading: AiTriage, tuning: Tuning, policy: Policy) -> bool:
@@ -122,8 +136,8 @@ def clear(
     policy = policy or clearing_settings.load(db)
     if not clears(incident, reading, tuning, policy) or clearing_settings.held(db, policy, now):
         return None
-    match = _match(db, incident)
-    if match is None or _taken(db, match):
+    match = match_of(db, incident)
+    if match is None or taken(db, match):
         return None
     engine.hold(db)
     reason = (reading.verdict_reason or reading.headline).strip()
@@ -207,18 +221,19 @@ def claim(rule: VerdictRule) -> bool:
     return True
 
 
+def veto(db: Session, match: Match) -> None:
+    """Tells the AI not to clear this match again (one it was taken back from, or that the owner
+    turned down as a suggestion). The caller commits."""
+    if not vetoed(db, match):
+        db.add(AiClearVeto(address=match.address, source=match.source, signature=match.signature))
+
+
 def take_back(db: Session, rule: VerdictRule) -> None:
     """Records that the owner took a verdict back from the AI: the AI does not give it again. The
     caller removes the rule and commits."""
-    exists = db.scalars(
-        select(AiClearVeto.id).where(
-            AiClearVeto.address.is_not_distinct_from(rule.address),
-            AiClearVeto.source.is_not_distinct_from(rule.source),
-            AiClearVeto.signature.is_not_distinct_from(rule.signature),
-        )
-    ).first()
-    if exists is None:
-        db.add(AiClearVeto(address=rule.address, source=rule.source, signature=rule.signature))
+    veto(
+        db, Match(None if rule.address is None else str(rule.address), rule.source, rule.signature)
+    )
 
 
 @dataclass(frozen=True)

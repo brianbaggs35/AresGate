@@ -357,6 +357,22 @@ and `Settings > Review` (`ReviewSettingsView`) is how much of it waits.
 - **Elsewhere** `ReviewStrip` (on an incident's AI card and on a kind's judgement) says where the
   review stands and has the same two buttons, so an answer can be given where the call is read.
 
+## Cleared by the AI
+
+The page for what the AI cleared or suggests clearing (`ClearedView`, at `/cleared`; see
+[Looking at what the AI cleared](threats.md#looking-at-what-the-ai-cleared)).
+
+- **Two lists**, *Waiting for you* and *Cleared by the AI* (`ChoiceToggle`, each with its count;
+  `?state=cleared` opens the second), asked for every minute and again after each action, keeping
+  as many as were shown. A banner says when the AI is off or held back.
+- **A card** (`ClearedCard`) is accented by its list, says the verdict and how sure the AI was, and
+  has what it looked at in a `<details>`. Its box picks it; with some picked the page offers
+  **Confirm** and **Take back** for all of them (the second asks first).
+- **The dashboard** has `ClearedNudge` in the place of `ReviewNudge`: whatever the AI cleared that
+  is not confirmed is always said there.
+- **An incident** shows `ClearingTrail` when the AI had a say in it.
+- **On a phone** the page is behind **More** in the bar.
+
 ## Assets
 
 The Assets page lists every device the connected programs can see (`GET /api/assets`), built from

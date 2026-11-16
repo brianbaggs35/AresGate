@@ -24,7 +24,7 @@ from app.audit import Action, Outcome
 from app.incidents import engine, rules, verdicts
 from app.incidents.trust import destination_text
 from app.integrations import registry
-from app.models import VerdictRule
+from app.models import User, VerdictRule
 
 router = APIRouter(prefix="/verdicts", tags=["verdicts"], dependencies=[Depends(signed_in)])
 
@@ -284,6 +284,31 @@ def change_verdict(
     return _shown(db, rule)
 
 
+def take_back(db: Db, request: Request, user: User, rule: VerdictRule) -> None:
+    """Takes a verdict back: the signals it was applied to are judged as if it had never been
+    said, in the incidents that are not over. Taking back one the AI gave also tells it not to give
+    that verdict again. The caller commits."""
+    engine.hold(db)
+    if rule.given_by == clearing.GIVER_AI:
+        clearing.take_back(db, rule)
+        record_audit(
+            db,
+            request,
+            Action.VERDICT_TAKEN_BACK_FROM_AI,
+            Outcome.SUCCESS,
+            user=user,
+            detail=clearing.facts(rule),
+        )
+    else:
+        record_audit(
+            db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=user, detail=facts(rule)
+        )
+    reached = engine.reach(db, rule)
+    db.delete(rule)
+    db.flush()
+    engine.reapply(db, reached)
+
+
 @router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_verdict(
     rule_id: RuleId,
@@ -295,24 +320,6 @@ def remove_verdict(
     said, in the incidents that are not over. Taking back one the AI gave also tells it not to give
     that verdict again."""
     engine.hold(db)
-    rule = _found(db, rule_id)
-    if rule.given_by == clearing.GIVER_AI:
-        clearing.take_back(db, rule)
-        record_audit(
-            db,
-            request,
-            Action.VERDICT_TAKEN_BACK_FROM_AI,
-            Outcome.SUCCESS,
-            user=auth.user,
-            detail=facts(rule),
-        )
-    else:
-        record_audit(
-            db, request, Action.VERDICT_REMOVED, Outcome.SUCCESS, user=auth.user, detail=facts(rule)
-        )
-    reached = engine.reach(db, rule)
-    db.delete(rule)
-    db.flush()
-    engine.reapply(db, reached)
+    take_back(db, request, auth.user, _found(db, rule_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

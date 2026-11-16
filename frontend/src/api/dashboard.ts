@@ -170,6 +170,8 @@ export interface Dashboard {
   window: WindowInfo
   alerts: AlertCounts
   attention: Attention
+  /** What the AI cleared that the owner has not looked at. */
+  ai_review: { waiting: number; cleared: number }
   noise: Noise
   recent_alerts: DashboardAlert[]
   blocked: BlockedCounts

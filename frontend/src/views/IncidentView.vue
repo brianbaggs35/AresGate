@@ -27,6 +27,7 @@ import BarChart from '@/charts/BarChart.vue'
 import AiChip from '@/components/AiChip.vue'
 import AiReading from '@/components/AiReading.vue'
 import CallChip from '@/components/CallChip.vue'
+import ClearingTrail from '@/components/ClearingTrail.vue'
 import AppPage from '@/components/AppPage.vue'
 import HeroSurface from '@/components/HeroSurface.vue'
 import IncidentAddresses from '@/components/IncidentAddresses.vue'
@@ -531,6 +532,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
       </div>
 
       <VerdictPanel :incident="shown" :verdicts="verdicts" @changed="refresh" />
+
+      <ClearingTrail :steps="shown.clearing_trail" />
 
       <v-card v-if="shown.signals.length > 1" class="pa-5 pa-sm-6" data-test="spread-card">
         <BarChart

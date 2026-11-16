@@ -8,6 +8,14 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **See, confirm and take back what the AI cleared.** The new *Cleared by the AI* page lists the
+  incidents the AI suggests clearing (*Waiting for you*) and the ones it cleared by itself that you
+  have not confirmed, each with why, how sure it was and what it looked at. Confirm makes a clearing
+  your own, say the other verdict, or take it back, one at a time or many at once. The dashboard
+  always says when the AI cleared something you have not looked at, and an incident tells what
+  happened to its clearing and who did it. See
+  [Looking at what the AI cleared](DOCS/threats.md#looking-at-what-the-ai-cleared).
+
 - **Say how much the AI may clear, and see what it would do first.** Settings > AI has a
   *Clearing* card: the AI can be off, *suggest, then confirm* (the default) or *automatic*; how sure
   it must be is *careful*, *balanced* or *thorough*, or a number of your own from 50 to 99; it may

@@ -31,7 +31,7 @@ describe('navigation', () => {
     const { bar, more } = bottomBar(navItems, 5)
 
     expect(bar.map((item) => item.route)).toEqual(['home', 'threats', 'incidents', 'review'])
-    expect(more.map((item) => item.route).slice(0, 2)).toEqual(['incident-response', 'alerts'])
+    expect(more.map((item) => item.route).slice(0, 2)).toEqual(['incident-response', 'cleared'])
     expect(bar.some((item) => item.behindMore)).toBe(false)
   })
 
@@ -53,6 +53,7 @@ describe('navigation', () => {
       'incidents',
       'incident-response',
       'review',
+      'cleared',
       'alerts',
       'trust',
       'threat-intelligence',
@@ -102,6 +103,7 @@ describe('navigation', () => {
       'incidents',
       'incident-response',
       'review',
+      'cleared',
       'alerts',
       'trust',
       'threat-intelligence',

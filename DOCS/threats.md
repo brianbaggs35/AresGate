@@ -377,6 +377,35 @@ The rules are in `app/ai/clearing_settings.py` and the verdict is given by `app/
 called when a reading is kept (`app/ai/triage.py`). An install that had the old switch on keeps
 *automatic*, as sure as it was, and able to clear up to high.
 
+### Looking at what the AI cleared
+
+**Cleared by the AI** (`/cleared`, in the Security menu) is the page for everything the AI cleared or
+suggests clearing. Nothing the AI clears is hidden: while you have not confirmed it, it shows here
+and in a banner on the dashboard.
+
+- **Waiting for you** is what the AI read as nothing and would clear under your settings, that has no
+  verdict yet: what it suggests when it is to *suggest, then confirm*, and what it would have
+  cleared where it is held back (the cap for the day or the spending limit, which the page says).
+  It is worked out from the AI's readings and is not stored, so it follows the settings. **Clear it**
+  gives the verdict as your own, **Clear as ...** gives the other verdict, and **Not nothing** turns the
+  suggestion down and tells the AI not to suggest that match again.
+- **Cleared by the AI** is every verdict the AI gave that is still the AI's. **Confirm** makes it
+  yours (the AI's confidence is forgotten), **Change to ...** says the other verdict (which also
+  makes it yours) and **Take back** removes it, judges the incident again and tells the AI not to
+  clear that match again.
+- A card says what it was, the verdict, how sure the AI was, why, and what it looked at (its story,
+  what it saw and what it checked). Several cards can be picked to confirm or take back at once, at
+  most a hundred, and a bulk take back asks first.
+- **The incident** shows what happened to its clearing, oldest first: the AI clearing it or
+  suggesting it, and who confirmed, took back or turned it down (`clearing_trail`, read from the
+  audit log: `ai.clear_confirmed`, `ai.suggestion_confirmed`, `ai.suggestion_dismissed` and
+  `verdict.taken_back_from_ai`, each with the incident it was about).
+
+The API is `GET /api/ai/cleared?state=waiting|cleared`, `GET /api/ai/cleared/summary`,
+`POST /api/ai/cleared/confirm` and `POST /api/ai/cleared/take-back` (items of `{kind, id}`, and
+`verdict` to confirm as another). The rules are in `app/ai/review_queue.py`. This is a different page
+from **Review**, which is where you agree with what the AI decided about kinds of incident.
+
 ### Which devices matter
 
 An attack on the NAS that holds your backups is not the same as one on a smart plug. On the **Assets**

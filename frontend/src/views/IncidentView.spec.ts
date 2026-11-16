@@ -113,6 +113,33 @@ describe('IncidentView', () => {
     })
   })
 
+  describe('the AI clearing it', () => {
+    it('tells what happened to it, when the AI had a say', async () => {
+      const { text, wrapper } = await open({
+        found: detail({
+          clearing_trail: [
+            {
+              action: 'cleared',
+              at: '2026-06-01T12:00:00Z',
+              by: 'the AI',
+              verdict: 'not_suspicious',
+              confidence: 91,
+            },
+          ],
+        }),
+      })
+
+      expect(wrapper.find('[data-test="clearing-trail"]').exists()).toBe(true)
+      expect(text('clearing-steps')).toContain('The AI cleared this as not suspicious (91% sure).')
+    })
+
+    it('has nothing to say when it had not', async () => {
+      const { wrapper } = await open()
+
+      expect(wrapper.find('[data-test="clearing-trail"]').exists()).toBe(false)
+    })
+  })
+
   describe('your verdicts', () => {
     it('has a panel to give them in, told which apply to it', async () => {
       const rules = [verdict({ id: 4, address: '93.184.216.34' })]

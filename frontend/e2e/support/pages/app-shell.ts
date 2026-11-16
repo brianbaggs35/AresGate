@@ -11,6 +11,7 @@ export type Place =
   | 'incidents'
   | 'incident-response'
   | 'review'
+  | 'cleared'
   | 'assistant'
   | 'agents'
   | 'logs'
@@ -27,6 +28,7 @@ export type Place =
 /** The places that do not fit in a phone's bottom bar, which has a More button for them. */
 const BEHIND_MORE: readonly Place[] = [
   'incident-response',
+  'cleared',
   'assistant',
   'agents',
   'logs',

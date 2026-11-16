@@ -466,6 +466,7 @@ export function detail(changes: Partial<IncidentDetail> = {}): IncidentDetail {
     through: [],
     wire: null,
     vulnerabilities: [],
+    clearing_trail: [],
     ...changes,
   }
 }

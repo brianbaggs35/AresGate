@@ -273,6 +273,8 @@ export interface VerdictRequest {
   note?: string
   /** Given by the AI, 91% sure, and not by the owner. */
   by_ai?: boolean
+  /** For one the AI gave: the address of the incident it was reading. */
+  incident?: string
 }
 
 /** How many verdicts `createVerdicts()` gave. */
@@ -292,6 +294,8 @@ export interface DecisionRequest {
   headline?: string
   /** For a kind: its incidents are different now from when it was judged. */
   changed?: boolean
+  /** For an incident: the AI says it is nothing, as it would to be cleared. */
+  verdict?: 'not_suspicious' | 'low_priority'
 }
 
 /** How many decisions `createDecisions()` made. */

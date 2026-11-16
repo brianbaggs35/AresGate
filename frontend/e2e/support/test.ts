@@ -18,6 +18,7 @@ import { DevicePage, DevicesPage } from './pages/devices-page'
 import { IncidentPage } from './pages/incident-page'
 import { IncidentResponsePage } from './pages/incident-response-page'
 import { RetentionSettingsPage } from './pages/retention-settings-page'
+import { ClearedPage } from './pages/cleared-page'
 import { ReviewPage, ReviewSettingsPage } from './pages/review-page'
 import { IncidentsPage } from './pages/incidents-page'
 import { IntegrationPage } from './pages/integration-page'
@@ -83,6 +84,7 @@ export interface AresGateFixtures {
   device: DevicePage
   status: StatusPage
   /** What the AI decided, for the owner to agree or disagree with, and how much of it waits. */
+  cleared: ClearedPage
   review: ReviewPage
   reviewSettings: ReviewSettingsPage
   /** The settings page for how long data is kept and how big the database may get. */
@@ -252,6 +254,10 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   status: async ({ page }, use) => {
     await use(new StatusPage(page))
+  },
+
+  cleared: async ({ page }, use) => {
+    await use(new ClearedPage(page))
   },
 
   review: async ({ page }, use) => {
