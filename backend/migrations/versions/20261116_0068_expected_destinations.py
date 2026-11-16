@@ -22,8 +22,9 @@ def upgrade() -> None:
     op.add_column(
         "known_destinations",
         sa.Column("expected", sa.Boolean(), server_default=sa.false(), nullable=False),
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
-    op.drop_column("known_destinations", "expected")
+    op.drop_column("known_destinations", "expected", if_exists=True)
