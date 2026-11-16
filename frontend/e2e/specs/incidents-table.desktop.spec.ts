@@ -7,8 +7,10 @@ test.describe('reading the incidents as a table', () => {
     harness,
     incidents,
   }) => {
+    // The same address twice, with more than the gap between signals (six hours) between them: a
+    // nearer one would be a second look at the first incident, not another.
     await harness.createIncidents([
-      { address: '20.20.1.20', minutes_ago: 3, signals: 2 },
+      { address: '20.20.1.20', minutes_ago: 600, signals: 2 },
       { address: '20.20.2.20', minutes_ago: 2, signals: 5 },
       { address: '20.20.1.20', minutes_ago: 1, signals: 3 },
     ])
