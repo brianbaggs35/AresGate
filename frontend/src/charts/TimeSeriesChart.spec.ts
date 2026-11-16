@@ -150,6 +150,22 @@ describe('TimeSeriesChart', () => {
       })
       expect(wrapper.find('[data-test="chart-empty"]').exists()).toBe(true)
     })
+
+    it('can still be put back when zoomed into a stretch with nothing in it', async () => {
+      const { wrapper } = await mountLines({
+        times,
+        series: [{ id: 'down', label: 'Download', values: times.map(() => null) }],
+        zoomed: true,
+        emptyTitle: 'No traffic recorded yet',
+      })
+
+      expect(wrapper.find('[data-test="empty-title"]').text()).toBe('Nothing in this stretch')
+      expect(wrapper.find('[data-test="empty-text"]').text()).toBe(
+        'Reset the zoom to see all of it.',
+      )
+      await wrapper.find('[data-test="chart-zoom-reset"]').trigger('click')
+      expect(wrapper.emitted('reset')).toEqual([[]])
+    })
   })
 
   describe('reading it', () => {

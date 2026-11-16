@@ -51,10 +51,12 @@ const showTable = computed(() => asTable.value && !props.empty)
           {{ caption }}
         </p>
       </div>
-      <div v-if="!empty" class="chart-frame__actions">
+      <div class="chart-frame__actions">
+        <!-- Even with nothing to show, so a chart zoomed into a stretch with nothing in it can be
+             put back. -->
         <slot name="actions" />
         <v-btn
-          v-if="textured && !showTable"
+          v-if="!empty && textured && !showTable"
           variant="text"
           size="small"
           :prepend-icon="Layers"
@@ -66,6 +68,7 @@ const showTable = computed(() => asTable.value && !props.empty)
           Use patterns
         </v-btn>
         <v-btn
+          v-if="!empty"
           variant="text"
           size="small"
           :prepend-icon="showTable ? ChartColumn : Table2"

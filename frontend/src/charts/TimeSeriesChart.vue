@@ -423,8 +423,8 @@ function leave(event: PointerEvent) {
     :legend="legend"
     :table="table"
     :empty="empty"
-    :empty-title="emptyTitle"
-    :empty-description="emptyDescription"
+    :empty-title="zoomed ? 'Nothing in this stretch' : emptyTitle"
+    :empty-description="zoomed ? 'Reset the zoom to see all of it.' : emptyDescription"
     :loading="loading"
   >
     <template #actions>
