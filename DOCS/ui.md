@@ -490,6 +490,28 @@ the words and defaults are in `src/devices.ts`), as on the Assets page.
 - An address nothing is known of (in no event of the week, no incident, and not an asset) has no
   page: the API answers 404 and the page says so.
 
+## Baselines
+
+What AresGate has learned is normal (`GET /api/baselines/interfaces`, `/devices` and
+`/devices/{address}`, put together in `app/baselines/report.py`; how it is learned is in
+[Learned baselines](operations.md#learned-baselines)). The first card draws, for each interface and
+direction a counter is collected for, the median bytes in each hour of the day (UTC) as bars
+(`BaselineInterface`), the busiest and quietest hour in words, and the hours of the last month
+that carried far more than usual, as they were filed. Where nothing is drawn the page says why:
+no counter is collected (connect the firewall), or it is still learning (it says how many weeks
+and how many readings of an hour it needs).
+
+The second card lists the devices places are known for, with how many places and how many are
+expected, when it was last seen talking, and whether it is *Judged* (watched long enough, and
+talking to enough places, for a new place of its to be reported) or still *Learning*. Pressing a
+device opens `BaselinePlaces` under it, and puts the device in the address of the page
+(`?device=`): its places as network and port (the expected first, then the most visited), each with
+*Expect* (or *Not expected*) and *Forget*, and a form to expect a place it has never been to. A
+place that does not exist yet is made as expected, with no visits, so the first visit is not news.
+*Forget* asks first, and deletes the place, so the next visit is a new place again. Both are
+audited (`baseline.place_expected` and `baseline.place_forgotten`). Only the 200 devices with the
+most places are listed, and the page says so when there are more.
+
 ## Network Flow
 
 Where the traffic goes, as the firewall wrote it down (`GET /api/flow?hours=&direction=`, the paths

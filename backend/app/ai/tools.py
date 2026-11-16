@@ -26,6 +26,9 @@ from sqlalchemy.orm import Session
 from app.ai import triage
 from app.ai.redaction import Redactor, read_address, read_mac
 from app.assets import profile
+from app.baselines import destinations as known_places
+from app.baselines import report as learned
+from app.baselines import traffic as traffic_baselines
 from app.dashboard import IS_BLOCK, Window, noisy_signatures, recent_alerts, top_blocked_sources
 from app.events.event import Severity
 from app.incidents import cleanup, queries, verdicts
@@ -325,6 +328,125 @@ def device(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
             f"first seen {_when(found.first_seen_at)}, last seen {_when(found.last_seen_at)}"
         )
     return Found(lines, [_device_ref(found) for found in devices], _plural(len(devices), "device"))
+
+
+# -- what is normal here
+
+
+def _hour(at: int) -> str:
+    return f"{at:02d}:00 UTC"
+
+
+def baseline_for_interface(db: Session, redactor: Redactor, args: Args, now: datetime) -> Found:
+    """The usual traffic of an interface by hour of the day, with the hours that were far above
+    it, for judging whether a burst of traffic is unusual."""
+    wanted = redactor.reveal(args.name).strip().casefold() if args.name else ""
+    found = learned.interfaces(db, now)
+    chosen = [
+        item
+        for item in found.series
+        if not wanted or wanted in {(item.interface or "").casefold(), (item.name or "").casefold()}
+    ]
+    if not found.counted:
+        return Found(
+            ["No interface counters are collected yet, so nothing is learned about the traffic."],
+            [],
+            "no counters",
+        )
+    if not chosen:
+        return Found(
+            [
+                "Nothing is learned about that interface yet. Traffic needs "
+                f"{traffic_baselines.WINDOW.days // 7} weeks of counters to learn from."
+            ],
+            [],
+            "nothing learned",
+        )
+    lines: list[str] = []
+    for item in chosen[: _between(args.limit, MAX_ITEMS, 1, MAX_ITEMS * 2)]:
+        steady = max(item.hours, key=lambda hour: hour.median)
+        quiet = min(item.hours, key=lambda hour: hour.median)
+        now_hour = next((hour for hour in item.hours if hour.hour == now.hour), None)
+        title = redactor.text(item.interface or "an interface", 40)
+        mine = f" ({redactor.text(item.name, 40)})" if item.name else ""
+        at_now = (
+            f"; for this hour ({_hour(now.hour)}) it is {traffic_baselines.size(now_hour.median)}"
+            f" give or take {traffic_baselines.size(now_hour.spread)}"
+            if now_hour
+            else ""
+        )
+        recent = "; ".join(
+            f"{_when(deviation.at)}: {traffic_baselines.size(deviation.observed)} against "
+            f"{traffic_baselines.size(deviation.usual)} usual"
+            for deviation in item.deviations
+        )
+        lines.append(
+            f"[interface {title}]{mine} {item.direction}: busiest hour {_hour(steady.hour)} at "
+            f"{traffic_baselines.size(steady.median)}, quietest {_hour(quiet.hour)} at "
+            f"{traffic_baselines.size(quiet.median)}{at_now}; learned from up to {item.samples} "
+            f"hours"
+            + (f"; unusual hours lately: {recent}" if recent else "; nothing unusual lately")
+        )
+    return Found(lines, [], _plural(len(lines), "interface baseline"))
+
+
+def usual_destinations_for_device(
+    db: Session, redactor: Redactor, args: Args, now: datetime
+) -> Found:
+    """Where a device usually talks to on the internet (as networks and ports), how long it has
+    been learned for and whether enough is known to call a new place unusual."""
+    if not args.name or not args.name.strip():
+        return Found(["Name the device, or give its address."], [], "no device named")
+    wanted = redactor.reveal(args.name).strip()
+    address = read_address(wanted)
+    if address is not None:
+        clients: Sequence[IPv4Address | IPv6Address] = [address]
+    else:
+        clients = db.scalars(
+            select(DeviceAddress.address)
+            .join(Device, Device.id == DeviceAddress.device_id)
+            .where(_device_filter(redactor, args.name))
+            .order_by(Device.last_seen_at.desc(), DeviceAddress.address)
+            .limit(MAX_DEVICES)
+        ).all()
+    shown = _between(args.limit, MAX_ITEMS // 2, 1, MAX_ITEMS)
+    lines: list[str] = []
+    for client in clients:
+        places = learned.places(db, client, limit=500)
+        if not places:
+            continue
+        who = redactor.address(str(client))
+        name = learned.name_of(db, client)
+        label = f" ({redactor.name(name)})" if name else ""
+        began = min(place.first_seen_at for place in places)
+        judged = began <= now - known_places.WATCHED_FOR and len(places) >= known_places.MIN_PLACES
+        enough = (
+            "enough is known to call a new place unusual"
+            if judged
+            else f"too little is known to judge (it needs {known_places.WATCHED_FOR.days} days "
+            f"and {known_places.MIN_PLACES} places), so a new place is only learned"
+        )
+        top = "; ".join(
+            f"{_network(redactor, place.network)}"
+            f"{f' port {place.port}' if place.port else ''}, "
+            f"{_plural(place.hits, 'time')}, last {_when(place.last_seen_at)}"
+            f"{', expected' if place.expected else ''}"
+            for place in places[:shown]
+        )
+        lines.append(
+            f"[device {who}]{label} talks to {_plural(len(places), 'place')} "
+            f"({sum(place.expected for place in places)} expected), learned since "
+            f"{_when(began)}; {enough}. Most visited: {top}"
+        )
+    if not lines:
+        return Found(["Nothing is known of where that device talks to."], [], "nothing learned")
+    return Found(lines, [], _plural(len(lines), "device baseline"))
+
+
+def _network(redactor: Redactor, network: str) -> str:
+    """A network as ``address/prefix`` with its address through the redactor."""
+    base, _, prefix = network.partition("/")
+    return f"{redactor.address(base)}/{prefix}"
 
 
 # -- what the agents report about their machines
@@ -1054,6 +1176,20 @@ TOOLS: Final[Sequence[Tool]] = (
         "Devices on the home network that a name, an address, a hardware address or a maker "
         "matches. Uses: name.",
         device,
+    ),
+    Tool(
+        "baseline_for_interface",
+        "What is usual for an interface's traffic, by hour of the day, and the hours that were "
+        "far above it. Uses: name, for an interface's name, or nothing for all; limit (1-20, "
+        "default 10).",
+        baseline_for_interface,
+    ),
+    Tool(
+        "usual_destinations_for_device",
+        "Where a device usually talks to on the internet (networks and ports), and whether enough "
+        "is known to call a new place unusual. Uses: name, for an address or a device's name; "
+        "limit (1-10, default 5, how many places are listed).",
+        usual_destinations_for_device,
     ),
     Tool(
         "open_ports",

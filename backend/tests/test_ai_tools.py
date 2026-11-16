@@ -3,16 +3,17 @@ finds through the redactor, so a provider that must not see an address sees a st
 
 from dataclasses import replace
 from datetime import timedelta
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.ai import tools
 from app.ai.redaction import Level, Redactor
 from app.ai.tools import Args, Ref
 from app.assets import profile
+from app.baselines import traffic as traffic_baselines
 from app.config import Settings
 from app.events.event import NewEvent, Severity
 from app.events.store import record as record_events
@@ -28,12 +29,16 @@ from app.models import (
     DeviceAddress,
     IncidentChain,
     IntegrationConnection,
+    KnownDestination,
+    TrafficBaseline,
     VerdictRule,
 )
 from app.models.base import utcnow
 from tests.helpers import new_event
 from tests.test_ai_service import NOW
 from tests.test_ai_triage import ATTACKER, DEVICE, incident, kept, signals
+from tests.test_baselines_report import deviate
+from tests.test_baselines_traffic import feed
 
 HOUR = timedelta(hours=1)
 PUBLIC = ip_address("93.184.216.34")
@@ -137,6 +142,8 @@ class TestTheList:
             "alerts",
             "blocked_sources",
             "device",
+            "baseline_for_interface",
+            "usual_destinations_for_device",
             "open_ports",
             "installed_software",
             "host_vulnerabilities",
@@ -1205,3 +1212,162 @@ class TestTrusted:
         found = run(session, "trusted", Args(limit=3))
 
         assert found.summary == "nothing is trusted"
+
+
+class TestBaselines:
+    def learned(self, session: Session, settings: Settings) -> None:
+        feed(session, settings, days=15, until=NOW)
+        traffic_baselines.learn(session, NOW)
+
+    def test_with_no_counters_it_says_nothing_is_learned(self, session: Session) -> None:
+        found = run(session, "baseline_for_interface")
+
+        assert found.summary == "no counters"
+
+    def test_with_counters_but_nothing_learned_it_says_how_long_it_takes(
+        self, session: Session, settings: Settings
+    ) -> None:
+        feed(session, settings, days=2, until=NOW)
+
+        found = run(session, "baseline_for_interface")
+
+        assert found.summary == "nothing learned"
+        assert "weeks" in found.lines[0]
+
+    def test_an_interface_is_described_by_its_busiest_and_quietest_hours(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.learned(session, settings)
+
+        found = run(session, "baseline_for_interface", Args(name="IGC0"))
+
+        assert found.summary == "1 interface baseline"
+        assert found.refs == []
+        [line] = found.lines
+        assert line.startswith("[interface igc0] received: busiest hour ")
+        assert "200.0 MB" in line
+        assert "nothing unusual lately" in line
+        assert f"for this hour ({NOW.hour:02d}:00 UTC)" in line
+
+    def test_an_interface_that_is_not_named_is_not_described(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.learned(session, settings)
+
+        found = run(session, "baseline_for_interface", Args(name="em7"))
+
+        assert found.summary == "nothing learned"
+
+    def test_every_interface_is_described_when_none_is_named_and_unusual_hours_are_said(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.learned(session, settings)
+        deviate(session, settings)
+
+        found = run(session, "baseline_for_interface", Args(limit=1))
+
+        assert found.summary == "1 interface baseline"
+        assert "unusual hours lately:" in found.lines[0]
+        assert "900.0 MB against 200.0 MB usual" in found.lines[0]
+
+    def test_it_leaves_out_the_hour_that_is_not_learned(
+        self, session: Session, settings: Settings
+    ) -> None:
+        self.learned(session, settings)
+        session.execute(
+            delete(TrafficBaseline).where(
+                TrafficBaseline.bucket == traffic_baselines.ANY_DAY + NOW.hour
+            )
+        )
+        session.commit()
+
+        found = run(session, "baseline_for_interface", Args(name="igc0"))
+
+        assert "for this hour" not in found.lines[0]
+
+    def known(self, session: Session, client: str = DEVICE, places: int = 25) -> None:
+        began = NOW - timedelta(days=10)
+        session.add_all(
+            KnownDestination(
+                client=ip_address(client),
+                network=ip_network(f"198.51.{index}.0/24"),
+                port=443 if index else 0,
+                first_seen_at=began,
+                last_seen_at=NOW - HOUR,
+                hits=places - index,
+                expected=index == 1,
+            )
+            for index in range(places)
+        )
+        session.commit()
+
+    def test_a_device_needs_a_name(self, session: Session) -> None:
+        found = run(session, "usual_destinations_for_device", Args(name="  "))
+
+        assert found.summary == "no device named"
+
+    def test_nothing_is_said_of_a_device_that_nothing_is_known_of(self, session: Session) -> None:
+        assert run(session, "usual_destinations_for_device", Args(name=DEVICE)).summary == (
+            "nothing learned"
+        )
+        assert run(session, "usual_destinations_for_device", Args(name="fridge")).summary == (
+            "nothing learned"
+        )
+
+    def test_a_device_is_found_by_address_with_its_most_visited_places(
+        self, session: Session
+    ) -> None:
+        self.known(session)
+
+        found = run(session, "usual_destinations_for_device", Args(name=DEVICE, limit=2))
+
+        assert found.summary == "1 device baseline"
+        [line] = found.lines
+        assert line.startswith(f"[device {DEVICE}] talks to 25 places (1 expected)")
+        assert "enough is known to call a new place unusual" in line
+        assert "198.51.1.0/24 port 443, 24 times" in line
+        assert "expected" in line
+        assert "198.51.3.0/24" not in line
+
+    def test_a_device_is_found_by_its_name_and_a_new_one_is_not_yet_judged(
+        self, session: Session
+    ) -> None:
+        nas = Device(
+            mac="aa:bb:cc:00:00:01",
+            hostname="nas",
+            first_seen_at=NOW - 30 * HOUR,
+            last_seen_at=NOW - HOUR,
+        )
+        session.add(nas)
+        session.flush()
+        session.add(
+            DeviceAddress(
+                device_id=nas.id,
+                address=ip_address(DEVICE),
+                first_seen_at=NOW - HOUR,
+                last_seen_at=NOW - HOUR,
+            )
+        )
+        self.known(session, places=2)
+
+        found = run(session, "usual_destinations_for_device", Args(name="nas"))
+
+        assert "(nas)" in found.lines[0]
+        assert "too little is known to judge" in found.lines[0]
+
+    def test_the_strictest_provider_sees_stand_ins_for_the_device_and_its_places(
+        self, session: Session
+    ) -> None:
+        self.known(session)
+        shown = redactor(session, Level.STRICT)
+
+        found = run(
+            session,
+            "usual_destinations_for_device",
+            Args(name=shown.address(DEVICE)),
+            shown=shown,
+        )
+
+        assert DEVICE not in found.lines[0]
+        assert "198.51.1.0/24" not in found.lines[0]
+        assert shown.address(DEVICE) in found.lines[0]

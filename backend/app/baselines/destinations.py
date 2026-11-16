@@ -49,7 +49,7 @@ RECENT: Final = timedelta(hours=1)
 MANY: Final = 10
 # How many places a sentence lists.
 LISTED: Final = 3
-# What is no longer kept: places a device has not been to in this long.
+# What is no longer kept: places a device has not been to in this long, unless they are expected.
 FORGET_AFTER: Final = timedelta(days=90)
 
 CURSOR_KEY: Final = "baselines.destinations_cursor"
@@ -222,7 +222,13 @@ def run(db: Session, now: datetime) -> list[NewEvent]:
             db.add(SystemInfo(key=CURSOR_KEY, value=str(events[-1].id)))
         else:
             cursor.value = str(events[-1].id)
-    db.execute(delete(KnownDestination).where(KnownDestination.last_seen_at < now - FORGET_AFTER))
+    # Places the owner said are expected stay, however long ago a device was last there.
+    db.execute(
+        delete(KnownDestination).where(
+            KnownDestination.last_seen_at < now - FORGET_AFTER,
+            KnownDestination.expected.is_(False),
+        )
+    )
     return deviations
 
 

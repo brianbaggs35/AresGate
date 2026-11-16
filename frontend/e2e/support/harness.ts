@@ -239,6 +239,40 @@ export interface TrafficRecord {
   readings: number
 }
 
+/** What is learned of one interface's traffic: the same amount in each hour of the day. */
+export interface BaselineInterfaceRequest {
+  interface: string
+  direction?: 'received' | 'sent'
+  /** What is usual in an hour, in megabytes. */
+  megabytes?: number
+  /** How far an hour may stray, as a share of that. */
+  spread?: number
+  /** Hours since an hour that carried far more than that, if there was one. */
+  unusual_hours_ago?: number
+}
+
+/** A place a device is known to talk to. */
+export interface BaselinePlaceRequest {
+  client: string
+  /** A /24, or a /64 for IPv6. */
+  network: string
+  port?: number
+  hits?: number
+  /** How many days ago it was learned. */
+  days?: number
+  expected?: boolean
+}
+
+export interface BaselinesRequest {
+  interfaces?: BaselineInterfaceRequest[]
+  places?: BaselinePlaceRequest[]
+}
+
+/** How many rows `createBaselines()` kept. */
+export interface BaselinesRecord {
+  kept: number
+}
+
 /** What a program reports about one of its ports, as discovery finds it and as the Interfaces
  * page leaves it. Left out, it is OPNsense's, with no name: a whole connection. */
 export interface FeedRequest {
@@ -535,6 +569,14 @@ export class Harness {
     return this.api
       .post('/api/__test__/factories/traffic', { data: { hosts } })
       .then((response) => readJson<TrafficRecord>(response, 'Making traffic'))
+  }
+
+  /** Stores what is learned of interfaces' traffic and of where devices talk to, for the Baselines
+   * page to show, without the weeks it takes to learn. */
+  createBaselines(request: BaselinesRequest): Promise<BaselinesRecord> {
+    return this.api
+      .post('/api/__test__/factories/baselines', { data: request })
+      .then((response) => readJson<BaselinesRecord>(response, 'Making baselines'))
   }
 
   /** Makes feeds, and the interfaces they are placed on, as the Interfaces page leaves them. */

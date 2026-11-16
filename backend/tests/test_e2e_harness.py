@@ -1434,6 +1434,38 @@ def test_traffic_needs_the_host_it_is_of(e2e: TestClient) -> None:
     assert made.status_code == 422
 
 
+def test_baselines_can_be_made_for_interfaces_and_places(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    request: dict[str, Any] = {
+        "interfaces": [
+            {"interface": "igc0", "megabytes": 100, "unusual_hours_ago": 3},
+            {"interface": "igc1", "direction": "sent"},
+        ],
+        "places": [
+            {"client": "192.168.1.20", "network": "198.51.100.0/24", "expected": True},
+            {"client": "192.168.1.20", "network": "203.0.113.0/24", "port": 22, "hits": 1},
+        ],
+    }
+
+    made = e2e.post("/api/__test__/factories/baselines", json=request)
+    again = e2e.post("/api/__test__/factories/baselines", json=request)
+    seen = e2e.get("/api/__test__/database/counts").json()
+
+    assert made.status_code == 201
+    assert made.json() == {"kept": 24 + 1 + 24 + 2}
+    assert again.status_code == 201
+    assert seen["known_destinations"] == 2
+    assert seen["traffic_baselines"] == 48
+
+
+def test_baselines_need_a_place_that_is_one(e2e: TestClient) -> None:
+    made = e2e.post(
+        "/api/__test__/factories/baselines", json={"places": [{"client": "", "network": "x"}]}
+    )
+
+    assert made.status_code == 422
+
+
 def test_an_empty_list_of_incidents_stores_nothing(e2e: TestClient) -> None:
     made = e2e.post("/api/__test__/factories/incidents", json={"incidents": []})
 

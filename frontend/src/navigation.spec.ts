@@ -64,6 +64,7 @@ describe('navigation', () => {
       'devices',
       'interfaces',
       'flow',
+      'baselines',
       'logs',
       'integrations',
       'status',

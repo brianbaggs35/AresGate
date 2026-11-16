@@ -113,6 +113,7 @@ describe('BottomNavigation', () => {
         'Devices',
         'Interfaces',
         'Network Flow',
+        'Baselines',
         'Logs',
         'Integrations',
         'Status',

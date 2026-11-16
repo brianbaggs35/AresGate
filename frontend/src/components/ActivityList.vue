@@ -39,6 +39,8 @@ const TITLES: Readonly<Record<string, string>> = {
   'ai.clearing_changed': 'What the AI may clear as a false positive was changed',
   'ai.proposal_denied': 'A change the assistant proposed was denied',
   'ai.denials_forgotten': 'Denied suggestions were forgotten',
+  'baseline.place_expected': 'A place a device talks to was called expected, or no longer',
+  'baseline.place_forgotten': 'A place a device talks to was forgotten',
   'events.retention_changed': 'How long events are kept was changed',
   'metrics.retention_changed': 'How long metrics are kept was changed',
   'incident.status_changed': "An incident's status was changed",
