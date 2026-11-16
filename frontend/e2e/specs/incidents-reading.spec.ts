@@ -20,14 +20,14 @@ test.describe('reading the incidents for a long time', () => {
     await incidents.goto()
     const html = page.locator('html')
     await expect(html).toHaveAttribute('data-density', 'comfortable')
-    const roomy = (await incidents.cards.first().boundingBox())!.height
+    const title = incidents.cards.first().getByTestId('incident-title')
+    const size = () => title.evaluate((item) => Number.parseFloat(getComputedStyle(item).fontSize))
+    const roomy = await size()
 
     await page.getByTestId('density-compact').click()
 
     await expect(html).toHaveAttribute('data-density', 'compact')
-    await expect
-      .poll(async () => (await incidents.cards.first().boundingBox())!.height)
-      .toBeLessThan(roomy)
+    await expect.poll(size).toBeLessThan(roomy)
     await page.reload()
     await expect(html).toHaveAttribute('data-density', 'compact')
     await expect(page.getByTestId('density-compact')).toHaveAttribute('aria-pressed', 'true')
@@ -91,9 +91,9 @@ test.describe('reading the incidents for a long time', () => {
     await harness.createIncidents(many(2))
     await incidents.goto()
 
-    await incidents.searchField.fill('jjxx?')
+    await incidents.searchField.locator('input').fill('jjxx?')
 
-    await expect(incidents.searchField).toHaveValue('jjxx?')
+    await expect(incidents.searchField.locator('input')).toHaveValue('jjxx?')
     await expect(page.getByTestId('shortcuts')).toBeHidden()
   })
 })

@@ -387,7 +387,9 @@ const links = () => [...document.querySelectorAll<HTMLElement>('[data-test="inci
 function step(by: number) {
   const all = links()
   const at = all.indexOf(document.activeElement as HTMLElement)
-  const to = at < 0 ? (by > 0 ? 0 : all.length - 1) : Math.min(all.length - 1, Math.max(0, at + by))
+  const last = all.length - 1
+  const first = by > 0 ? 0 : last
+  const to = at < 0 ? first : Math.min(last, Math.max(0, at + by))
   all[to]?.focus()
 }
 

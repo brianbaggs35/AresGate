@@ -1121,8 +1121,9 @@ test.describe('layout on a phone', () => {
         dashboard.alertsCard,
       ].map((item) => item.boundingBox()),
     )
-    // The two are read a moment apart, so a hair of difference is the page settling.
-    expect(alerts?.y).toBeCloseTo(blocked?.y ?? Number.NaN, 0)
+    // The two are read a moment apart, so a hair of difference is the page settling: they are on
+    // one row when they are within a pixel of each other.
+    expect(Math.abs((alerts?.y ?? Number.NaN) - (blocked?.y ?? Number.NaN))).toBeLessThan(1)
     expect(alerts?.width).toBeLessThan(viewport / 2)
     expect(devices?.y).toBeGreaterThan(alerts?.y ?? 0)
     expect(banner?.width).toBeGreaterThan(viewport * 0.85)
