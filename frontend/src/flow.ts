@@ -50,10 +50,16 @@ export function nodeLabel(node: FlowNode): string {
   return node.label
 }
 
+const KIND_WORDS: Record<FlowColumn, string> = {
+  source: 'From',
+  service: 'Service',
+  destination: 'To',
+}
+
 /** A node in a sentence for a screen reader: what it is, how much went through it, how much of
  * that was refused. */
 export function nodeSummary(node: FlowNode): string {
-  const kind = node.column === 'service' ? 'Service' : node.column === 'source' ? 'From' : 'To'
+  const kind = KIND_WORDS[node.column]
   const refused = node.blocked > 0 ? `, ${formatCount(node.blocked)} refused` : ''
   const count = node.events === 1 ? '1 connection' : `${formatCount(node.events)} connections`
   return `${kind} ${nodeLabel(node)}: ${count}${refused}`
@@ -137,8 +143,13 @@ export function layoutFlow(
   const columns = COLUMNS.map((column) => nodes.filter((node) => node.column === column))
   const scale = scaleFor(columns, height)
   const placed = new Map<string, Placed>()
+  const across: Record<FlowColumn, number> = {
+    source: 0,
+    service: (width - blockWidth) / 2,
+    destination: width - blockWidth,
+  }
   columns.forEach((members, index) => {
-    const x = index === 0 ? 0 : index === 1 ? (width - blockWidth) / 2 : width - blockWidth
+    const x = across[COLUMNS[index] as FlowColumn]
     let y = 0
     for (const node of members) {
       const tall = Math.max(MIN_HEIGHT, node.events * scale)
@@ -198,9 +209,15 @@ export function logSearch(node: FlowNode, hours: FlowHours): string | null {
   const base = `kind:firewall ${within}`
   if (node.column === 'service') {
     const port = node.port ? ` port:${node.port.toString()}` : ''
-    return `${base}${node.protocol ? ` protocol:${node.protocol}` : ''}${port}`
+    const protocol = node.protocol ? ` protocol:${node.protocol}` : ''
+    return `${base}${protocol}${port}`
   }
   return `${base} ${node.column === 'source' ? 'from' : 'to'}:${node.label}`
+}
+
+function otherEnd(link: FlowLink, id: string): string | null {
+  if (link.source === id) return link.target
+  return link.target === id ? link.source : null
 }
 
 /** The blocks a block's bands lead to, the biggest first, with how much each carried. */
@@ -211,7 +228,7 @@ export function neighbours(
   const byId = new Map(flow.nodes.map((node) => [node.id, node]))
   const found: { node: FlowNode; events: number; blocked: number }[] = []
   for (const link of flow.links) {
-    const other = link.source === id ? link.target : link.target === id ? link.source : null
+    const other = otherEnd(link, id)
     const node = other ? byId.get(other) : undefined
     if (node) found.push({ node, events: link.events, blocked: link.blocked })
   }

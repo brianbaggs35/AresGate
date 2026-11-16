@@ -229,36 +229,33 @@ def _ends(path: _Path) -> tuple[tuple[Column, str, Node], ...]:
     )
 
 
-def build(db: Session, now: datetime, hours: int = 24, direction: Direction = "all") -> Flow:
-    """The connections of the last ``hours`` hours, of one direction or of all."""
-    since = now - timedelta(hours=hours)
-    stride = STRIDE[hours]
-    read, capped = _paths(db, since, now)
-    paths = [path for path in read if direction == "all" or _direction(path) == direction]
+_Carried = dict[Column, dict[str, list[int]]]
 
-    # What each node of each column carried (connections, and of them refused), to find the
-    # busiest of each.
-    carried: dict[Column, dict[str, list[int]]] = {
-        column: defaultdict(lambda: [0, 0]) for column in COLUMNS
-    }
+
+def _carried(paths: list[_Path]) -> tuple[_Carried, dict[Column, dict[str, Node]]]:
+    """What each node of each column carried (connections, and of them refused), and the node."""
+    carried: _Carried = {column: defaultdict(lambda: [0, 0]) for column in COLUMNS}
     made: dict[Column, dict[str, Node]] = {column: {} for column in COLUMNS}
     for path in paths:
         for column, key, node in _ends(path):
             made[column].setdefault(key, node)
             carried[column][key][0] += path.events
             carried[column][key][1] += path.blocked
+    return carried, made
 
-    shown: dict[Column, list[str]] = {}
-    for column in COLUMNS:
-        tally = carried[column]
-        ranked = sorted(tally, key=lambda key: (-tally[key][0], key))
-        shown[column] = ranked[: SHOWN[column]]
+
+def _busiest(tally: dict[str, list[int]], count: int) -> list[str]:
+    """The keys that carried the most connections, the first ``count`` of them."""
+    return sorted(tally, key=lambda key: (-tally[key][0], key))[:count]
+
+
+def _reach(paths: list[_Path], shown: dict[Column, list[str]]) -> dict[tuple[str, str], list[int]]:
+    """The paths added up between each pair of neighbouring columns, with the nodes that were not
+    shown folded into one."""
 
     def place(column: Column, key: str) -> str:
         return f"{column}:{key}" if key in shown[column] else f"{column}:{OTHERS}"
 
-    # Links are the paths added up between each pair of neighbouring columns, with the nodes that
-    # were not shown folded into one.
     reach: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
     for path in paths:
         (_, source, _), (_, service, _), (_, destination, _) = _ends(path)
@@ -270,7 +267,13 @@ def build(db: Session, now: datetime, hours: int = 24, direction: Direction = "a
         for pair in ((ids[0], ids[1]), (ids[1], ids[2])):
             reach[pair][0] += path.events
             reach[pair][1] += path.blocked
+    return reach
 
+
+def _nodes(
+    carried: _Carried, made: dict[Column, dict[str, Node]], shown: dict[Column, list[str]]
+) -> list[Node]:
+    """The shown nodes of each column, and one that stands for all the others."""
     nodes: list[Node] = []
     for column in COLUMNS:
         for key in shown[column]:
@@ -292,7 +295,22 @@ def build(db: Session, now: datetime, hours: int = 24, direction: Direction = "a
                     folded=len(folded),
                 )
             )
+    return nodes
 
+
+def build(db: Session, now: datetime, hours: int = 24, direction: Direction = "all") -> Flow:
+    """The connections of the last ``hours`` hours, of one direction or of all."""
+    since = now - timedelta(hours=hours)
+    stride = STRIDE[hours]
+    read, capped = _paths(db, since, now)
+    paths = [path for path in read if direction == "all" or _direction(path) == direction]
+
+    carried, made = _carried(paths)
+    shown: dict[Column, list[str]] = {
+        column: _busiest(carried[column], SHOWN[column]) for column in COLUMNS
+    }
+    reach = _reach(paths, shown)
+    nodes = _nodes(carried, made, shown)
     names = _names(db, [node.label for node in nodes if node.scope == "outside"])
     nodes = [
         replace(node, name=names.get(node.label)) if node.label in names else node for node in nodes
