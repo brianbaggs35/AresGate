@@ -8,6 +8,17 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Baselines.** A new page in the menu, under Network, shows what AresGate has learned is normal:
+  for each interface and direction the usual traffic in each hour of the day as bars, with the
+  hours lately that carried far more, and for each device the places it talks to, whether it has
+  been watched long enough to be judged, and a list of its places. You can call a place expected,
+  so the device going there is never news (also one it has not been to yet), take that off, or
+  forget a place so its next visit is new again. Expected places are kept past the 90 days a
+  place is otherwise forgotten, and every change is in the activity log. The assistant can look
+  the same things up (`baseline_for_interface` and `usual_destinations_for_device`, read only,
+  with addresses behind stand-ins at the privacy levels that use them). See
+  [Baselines](DOCS/ui.md#baselines).
+
 - **Network Flow.** A new page in the menu, under Network, draws where the traffic on your network
   goes: who connected, which service they used and what they reached, as bands as thick as the
   connections they carry, with the refused part of each in its own color. Point at or pick a block

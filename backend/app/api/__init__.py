@@ -15,6 +15,7 @@ from app.api import (
     assets,
     audit,
     auth,
+    baselines,
     captures,
     chains,
     collectors,
@@ -61,6 +62,7 @@ api_router.include_router(integrations.router)
 api_router.include_router(interfaces.router)
 api_router.include_router(captures.router)
 api_router.include_router(assets.router)
+api_router.include_router(baselines.router)
 api_router.include_router(devices.router)
 api_router.include_router(flow.router)
 api_router.include_router(agents.router)

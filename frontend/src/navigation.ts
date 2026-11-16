@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Siren,
   Waypoints,
+  Gauge,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
@@ -130,6 +131,14 @@ export const navItems: readonly NavItem[] = [
     icon: Waypoints,
     keywords:
       'traffic chart sankey connections firewall blocked allowed ports services destinations',
+    category: 'network',
+  },
+  {
+    route: 'baselines',
+    title: 'Baselines',
+    icon: Gauge,
+    keywords:
+      'normal usual learned traffic hour day destinations places expected unusual deviation',
     category: 'network',
   },
   { route: 'logs', title: 'Logs', icon: ScrollText, category: 'network' },

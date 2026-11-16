@@ -3,7 +3,17 @@
 from datetime import datetime
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network
 
-from sqlalchemy import BigInteger, CheckConstraint, Double, ForeignKey, Index, Integer, SmallInteger
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Double,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    false,
+)
 from sqlalchemy.dialects.postgresql import CIDR, INET
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,3 +58,6 @@ class KnownDestination(Base):
     first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
     hits: Mapped[int] = mapped_column(BigInteger)
+    # Whether the owner said it is expected: it is kept however long ago the device was there, and
+    # a device that goes there is never a deviation, even before it has been seen to.
+    expected: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

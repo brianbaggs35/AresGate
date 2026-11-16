@@ -475,7 +475,10 @@ in its record, so on its own it never needs you; it matters when something else 
   watched for a week and is known to talk to at least 20 places, reaching a place it never has is
   a deviation, and reaching 10 at once is a more serious one. What happened more than an hour ago
   only teaches, so turning this on does not alarm for the past. Places not visited for 90 days are
-  forgotten.
+  forgotten, unless you called them expected.
+- **Correcting it.** The Baselines page shows what is learned (see [Baselines](ui.md#baselines)).
+  A place can be called *expected* (even one a device has not been to), so it never counts as new,
+  or *forgotten*, so that its next visit does. Both are in the activity log.
 - **New devices.** The devices there are when this first runs are normal. A device that appears
   after that is a deviation once the network has had at least 3 devices for a week; on a new
   install every device is new, and saying so would be no use.
@@ -1133,7 +1136,9 @@ AresGate works without it. A test sends only the words "Say OK."
   (which of them has a package, and which version), `host_vulnerabilities` (the flaws Wazuh found
   in their software, by CVE, machine or address), `host_details` (what ntopng knows of a host:
   its system, network, country and fingerprints) and `integrations` (how each connection and its
-  collectors are doing). It may look things up twice and has to answer the third time, so one question is at
+  collectors are doing), `baseline_for_interface` (the usual traffic of an interface by hour of the
+  day, and the hours far above it) and `usual_destinations_for_device` (where a device usually
+  talks to, and whether it is watched long enough to judge). It may look things up twice and has to answer the third time, so one question is at
   most three requests. Every lookup only reads, goes through the privacy level of Settings > AI
   (a provider that must not see an address is given a stand-in, and a stand-in it asks about is
   turned back to the device it stood for), and there is no tool that writes. An answer keeps what

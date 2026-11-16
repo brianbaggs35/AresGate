@@ -15,6 +15,7 @@ import { AssistantPanelPage } from './pages/assistant-panel-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { DevicePage, DevicesPage } from './pages/devices-page'
+import { BaselinesPage } from './pages/baselines-page'
 import { FlowPage } from './pages/flow-page'
 import { IncidentPage } from './pages/incident-page'
 import { IncidentResponsePage } from './pages/incident-response-page'
@@ -83,6 +84,8 @@ export interface AresGateFixtures {
   devices: DevicesPage
   /** Network Flow: where the traffic goes, as paths and a timeline. */
   flow: FlowPage
+  /** Baselines: what is learned is normal, and the places a device talks to. */
+  baselines: BaselinesPage
   /** The page of one of them: the connections to it and from it, and what is known of it. */
   device: DevicePage
   status: StatusPage
@@ -252,6 +255,9 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
   },
   flow: async ({ page }, use) => {
     await use(new FlowPage(page))
+  },
+  baselines: async ({ page }, use) => {
+    await use(new BaselinesPage(page))
   },
 
   device: async ({ page }, use) => {

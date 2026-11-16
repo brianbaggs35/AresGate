@@ -586,6 +586,51 @@ def make_traffic(body: TrafficRequest, db: Db, settings: SettingsDep) -> Traffic
     return TrafficRecord(readings=stored)
 
 
+class BaselineInterfaceRequest(BaseModel):
+    interface: str = Field(min_length=1, max_length=32)
+    direction: Literal["received", "sent"] = "received"
+    megabytes: float = Field(default=200, gt=0, le=100_000)
+    spread: float = Field(default=0.1, gt=0, le=1)
+    unusual_hours_ago: int | None = Field(default=None, ge=1, le=24 * 7)
+
+
+class BaselinePlaceRequest(BaseModel):
+    client: str = Field(min_length=1, max_length=64)
+    network: str = Field(min_length=1, max_length=64)
+    port: int = Field(default=443, ge=0, le=65_535)
+    hits: int = Field(default=5, ge=0)
+    days: int = Field(default=10, ge=0, le=365)
+    expected: bool = False
+
+
+class BaselinesRequest(BaseModel):
+    interfaces: list[BaselineInterfaceRequest] = Field(
+        default_factory=list[BaselineInterfaceRequest], max_length=20
+    )
+    places: list[BaselinePlaceRequest] = Field(
+        default_factory=list[BaselinePlaceRequest], max_length=200
+    )
+
+
+class BaselinesRecord(BaseModel):
+    kept: int
+
+
+@router.post("/factories/baselines", status_code=status.HTTP_201_CREATED)
+def make_baselines(body: BaselinesRequest, db: Db, settings: SettingsDep) -> BaselinesRecord:
+    """Stores what was learned of interfaces' traffic and of where devices talk to, for the
+    Baselines page to show, without the weeks it takes to learn."""
+    kept = factories.baselines(
+        db,
+        settings,
+        utcnow(),
+        [factories.BaselineSpec(**item.model_dump()) for item in body.interfaces],
+        [factories.PlaceSpec(**item.model_dump()) for item in body.places],
+    )
+    db.commit()
+    return BaselinesRecord(kept=kept)
+
+
 @router.post("/factories/account", status_code=status.HTTP_201_CREATED)
 def make_account(body: AccountRequest, db: Db) -> AccountLogin:
     """Adds an account; whatever the request leaves out is made up. Returns what to sign in with."""

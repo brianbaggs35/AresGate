@@ -80,8 +80,7 @@ class TestTheBuckets:
 
     def test_sizes_are_said_in_words(self) -> None:
         sizes = [
-            traffic._size(value)  # pyright: ignore[reportPrivateUsage]
-            for value in (12, 2048, 5 * MEGABYTE, 3 * GIGABYTE, 2048 * GIGABYTE)
+            traffic.size(value) for value in (12, 2048, 5 * MEGABYTE, 3 * GIGABYTE, 2048 * GIGABYTE)
         ]
 
         assert sizes == ["12 bytes", "2.0 KB", "5.0 MB", "3.0 GB", "2.0 TB"]

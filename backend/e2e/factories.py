@@ -14,6 +14,8 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import baselines as baselines_module
+from app.baselines import traffic as traffic_baselines
 from app.collectors import registry
 from app.collectors.base import Collector
 from app.config import Settings
@@ -33,9 +35,12 @@ from app.models import (
     IncidentFamily,
     Interface,
     InterfaceFeed,
+    KnownDestination,
+    MetricSeries,
     ReviewFeedback,
     ReviewSettings,
     SystemInfo,
+    TrafficBaseline,
     User,
     VerdictRule,
 )
@@ -1055,6 +1060,105 @@ def assets(
             )
     session.flush()
     return AssetsRecorded(len(devices), len(hosts))
+
+
+class BaselineSpec(NamedTuple):
+    """What is learned of an interface's traffic: the same bytes (`megabytes`) in each hour of the
+    day, in one direction, and how far each hour may stray (`spread` is a share of it)."""
+
+    interface: str
+    direction: Literal["received", "sent"] = "received"
+    megabytes: float = 200
+    spread: float = 0.1
+    # Hours since an hour that was far above it, if there was one.
+    unusual_hours_ago: int | None = None
+
+
+class PlaceSpec(NamedTuple):
+    """A place a device is known to talk to, learned `days` ago."""
+
+    client: str
+    network: str
+    port: int = 443
+    hits: int = 5
+    days: int = 10
+    expected: bool = False
+
+
+def baselines(
+    session: Session,
+    settings: Settings,
+    now: datetime,
+    interfaces: Sequence[BaselineSpec],
+    places: Sequence[PlaceSpec],
+) -> int:
+    """Stores what was learned of the traffic of interfaces and of where devices talk to, as the
+    learning leaves it, without the weeks it takes. Returns how many rows it kept."""
+    kept = 0
+    for spec in interfaces:
+        name = "interface.bytes_in" if spec.direction == "received" else "interface.bytes_out"
+        labels = {"interface": spec.interface}
+        found = NewSample(
+            source="opnsense", connection="api", name=name, value=1, sampled_at=now, labels=labels
+        )
+        record_samples(session, settings, [found], now)
+        series = session.scalars(
+            select(MetricSeries).where(MetricSeries.fingerprint == found.fingerprint)
+        ).one()
+        for hour in range(24):
+            session.merge(
+                TrafficBaseline(
+                    series_id=series.id,
+                    bucket=traffic_baselines.ANY_DAY + hour,
+                    samples=traffic_baselines.MIN_HOURS * 4,
+                    median=spec.megabytes * 1024**2,
+                    spread=spec.megabytes * 1024**2 * spec.spread,
+                    updated_at=now,
+                )
+            )
+            kept += 1
+        if spec.unusual_hours_ago is not None:
+            at = now - timedelta(hours=spec.unusual_hours_ago)
+            record_events(
+                session,
+                settings,
+                [
+                    NewEvent(
+                        source=baselines_module.SOURCE,
+                        connection=baselines_module.CONNECTION,
+                        kind=baselines_module.KIND,
+                        severity=Severity.LOW,
+                        occurred_at=at,
+                        identity=("traffic", spec.interface, spec.direction, at.isoformat()),
+                        summary=f"{spec.interface} {spec.direction} far more than is usual.",
+                        signature="Traffic far above what is usual",
+                        iface=spec.interface,
+                        raw={
+                            "baseline": "traffic",
+                            "direction": spec.direction,
+                            "observed_bytes": spec.megabytes * 1024**2 * 5,
+                            "usual_bytes": spec.megabytes * 1024**2,
+                        },
+                    )
+                ],
+                now,
+            )
+            kept += 1
+    for place in places:
+        session.merge(
+            KnownDestination(
+                client=ip_address(place.client),
+                network=ip_network(place.network),
+                port=place.port,
+                first_seen_at=now - timedelta(days=place.days),
+                last_seen_at=now - timedelta(hours=1),
+                hits=place.hits,
+                expected=place.expected,
+            )
+        )
+        kept += 1
+    session.flush()
+    return kept
 
 
 class TrafficSpec(NamedTuple):

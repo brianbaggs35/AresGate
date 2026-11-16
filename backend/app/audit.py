@@ -100,6 +100,8 @@ class Action(StrEnum):
     THREATS_SUGGESTION_DISMISSED = "threats.suggestion_dismissed"
     THREAT_INTEL_RULED = "threat_intel.ruled"
     THREAT_INTEL_RULING_CLEARED = "threat_intel.ruling_cleared"
+    BASELINE_PLACE_EXPECTED = "baseline.place_expected"
+    BASELINE_PLACE_FORGOTTEN = "baseline.place_forgotten"
     INTERFACE_CREATED = "interface.created"
     INTERFACE_CHANGED = "interface.changed"
     INTERFACE_REMOVED = "interface.removed"

@@ -156,7 +156,7 @@ def confidence_of(spreads_above: float) -> int:
     return min(95, 50 + int(5 * (spreads_above - SPREADS)))
 
 
-def _size(volume: float) -> str:
+def size(volume: float) -> str:
     units = ("bytes", "KB", "MB", "GB", "TB")
     amount = float(volume)
     for unit in units[:-1]:
@@ -210,8 +210,8 @@ def _event(
         occurred_at=ended,
         identity=("traffic", series.fingerprint, hour.isoformat()),
         summary=(
-            f"{where} {DIRECTIONS[series.name]} {_size(volume)} between {hour:%H:%M} and "
-            f"{ended:%H:%M} UTC on {hour:%A}, {times:.0f} times the {_size(usual.median)} that is "
+            f"{where} {DIRECTIONS[series.name]} {size(volume)} between {hour:%H:%M} and "
+            f"{ended:%H:%M} UTC on {hour:%A}, {times:.0f} times the {size(usual.median)} that is "
             f"usual for that hour."
         ),
         signature="Traffic far above what is usual",
