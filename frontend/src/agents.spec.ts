@@ -2,7 +2,11 @@ import {
   Activity,
   Bot,
   Flame,
+  Laptop,
+  LifeBuoy,
+  ListChecks,
   Microscope,
+  Network,
   Newspaper,
   Radar,
   ShieldAlert,
@@ -10,6 +14,7 @@ import {
   Swords,
   Telescope,
   Wifi,
+  Workflow,
 } from '@lucide/vue'
 
 import {
@@ -34,18 +39,20 @@ import {
   incidentsWords,
   dailyCost,
   elapsedMs,
+  finishedShare,
   isLive,
   linesOf,
   nodeInfo,
   nodeState,
   outcome,
+  performanceLine,
   scheduleText,
   severityOf,
   shape,
   tokensOf,
   usageLine,
 } from '@/agents'
-import { EDGES, agent, days, run, step, usage } from '@/test/agents'
+import { EDGES, agent, days, performance, run, step, usage } from '@/test/agents'
 
 describe('agent icons', () => {
   it('gives each kind its own, and a robot to one it does not know', () => {
@@ -58,6 +65,11 @@ describe('agent icons', () => {
     expect(agentIcon('microscope')).toBe(Microscope)
     expect(agentIcon('flame')).toBe(Flame)
     expect(agentIcon('swords')).toBe(Swords)
+    expect(agentIcon('list-checks')).toBe(ListChecks)
+    expect(agentIcon('network')).toBe(Network)
+    expect(agentIcon('laptop')).toBe(Laptop)
+    expect(agentIcon('life-buoy')).toBe(LifeBuoy)
+    expect(agentIcon('workflow')).toBe(Workflow)
     expect(agentIcon('something-new')).toBe(Bot)
   })
 })
@@ -336,5 +348,31 @@ describe('what a run found, over time and in detail', () => {
     expect(refsOf({ detail: {} })).toEqual([])
     expect(moreOf({ detail: { more: 4 } })).toBe(4)
     expect(moreOf({ detail: { more: 'many' } })).toBe(0)
+  })
+})
+
+describe('how the runs went', () => {
+  it('is the share of the runs that finished, leaving out the ones the owner stopped', () => {
+    expect(finishedShare(performance({ succeeded: 2, failed: 1 }))).toBe(67)
+    expect(finishedShare(performance({ succeeded: 4, failed: 0 }))).toBe(100)
+  })
+
+  it('is nothing before a run has finished or failed', () => {
+    expect(finishedShare(performance())).toBeNull()
+    expect(finishedShare(performance({ finished: 1, succeeded: 0, failed: 0 }))).toBeNull()
+  })
+
+  it('says how many runs, how many finished and how long they took, in a line', () => {
+    expect(
+      performanceLine(performance({ finished: 3, succeeded: 2, failed: 1, average_seconds: 75 })),
+    ).toBe('3 runs · 67% finished · 1 min 15 s on average')
+    expect(performanceLine(performance({ finished: 1, succeeded: 1, average_seconds: 4 }))).toBe(
+      '1 run · 100% finished · 4 s on average',
+    )
+  })
+
+  it('leaves out what it does not know, and says when no run has ended', () => {
+    expect(performanceLine(performance({ finished: 2, cancelled: 2 }))).toBe('2 runs')
+    expect(performanceLine(performance())).toBe('No runs have ended in the last 30 days')
   })
 })

@@ -15,6 +15,9 @@ export class AgentsPage {
   readonly mission: Locator
   readonly missionNeeds: Locator
   readonly problem: Locator
+  /** The feed of what the team has been doing, and its count of the runs of the last 30 days. */
+  readonly activityEntries: Locator
+  readonly activityRuns: Locator
   /** The sheet that makes or changes an agent. */
   readonly dialog: Locator
   readonly dialogKinds: Locator
@@ -63,6 +66,8 @@ export class AgentsPage {
     this.mission = page.getByTestId('mission-line')
     this.missionNeeds = page.getByTestId('mission-need')
     this.problem = page.getByTestId('agents-problem')
+    this.activityEntries = page.getByTestId('activity-entry')
+    this.activityRuns = page.getByTestId('activity-runs')
     this.dialog = page.getByTestId('agent-dialog')
     this.dialogKinds = page.getByTestId('dialog-kind')
     this.setupTitle = this.dialog.getByTestId('setup-title')

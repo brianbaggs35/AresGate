@@ -197,6 +197,107 @@ class TestTheOverview:
         assert names == ["First", "Second"]
 
 
+class TestThePerformance:
+    """How the agents' runs went in the last 30 days, and the feed of what they have been doing."""
+
+    @staticmethod
+    def finished(
+        session: Session, agent: Agent, status: str, seconds: int, findings: int = 0, days: int = 0
+    ) -> AgentRun:
+        end = utcnow() - timedelta(days=days)
+        return ran(
+            session,
+            agent,
+            status,
+            started_at=end - timedelta(seconds=seconds),
+            finished_at=end,
+            findings=[item("low") for _ in range(findings)],
+        )
+
+    def test_it_counts_how_the_runs_ended_and_how_long_they_took(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        agent = stored(session)
+        self.finished(session, agent, "succeeded", 10, findings=2)
+        self.finished(session, agent, "succeeded", 20, findings=1)
+        self.finished(session, agent, "failed", 30, findings=5)
+        self.finished(session, agent, "cancelled", 0)
+        self.finished(session, agent, "succeeded", 600, findings=9, days=45)
+
+        body = client.get(BASE).json()
+
+        expected = {
+            "finished": 4,
+            "succeeded": 2,
+            "failed": 1,
+            "cancelled": 1,
+            "average_seconds": 15,
+            "findings": 3,
+        }
+        assert body["agents"][0]["performance"] == expected
+        assert body["performance"] == expected
+
+    def test_an_agent_that_never_ended_a_run_has_nothing_to_average(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        agent = stored(session)
+        ran(session, agent, "queued")
+
+        body = client.get(BASE).json()
+
+        assert body["performance"] == {
+            "finished": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "cancelled": 0,
+            "average_seconds": None,
+            "findings": 0,
+        }
+        assert body["agents"][0]["performance"] == body["performance"]
+
+    def test_one_agent_is_counted_apart_from_the_others(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        first = stored(session, name="First")
+        second = stored(session, name="Second")
+        self.finished(session, first, "succeeded", 5)
+        self.finished(session, second, "failed", 5)
+
+        body = client.get(BASE).json()
+
+        assert [agent["performance"]["finished"] for agent in body["agents"]] == [1, 1]
+        assert [agent["performance"]["failed"] for agent in body["agents"]] == [0, 1]
+        assert body["performance"]["finished"] == 2
+
+    def test_the_feed_has_the_latest_runs_of_every_agent_newest_first(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        hunter = stored(session, name="Hunter")
+        gone = stored(session, name="Gone", template="retired")
+        ran(session, hunter, "succeeded", summary="Old.")
+        ran(session, gone, "running")
+        ran(session, hunter, "queued")
+
+        feed = client.get(BASE).json()["activity"]
+
+        assert [(entry["agent_name"], entry["run"]["status"]) for entry in feed] == [
+            ("Hunter", "queued"),
+            ("Gone", "running"),
+            ("Hunter", "succeeded"),
+        ]
+        assert [entry["icon"] for entry in feed] == ["radar", "bot", "radar"]
+        assert feed[2]["run"]["summary"] == "Old."
+
+    def test_the_feed_is_cut_at_a_dozen_runs(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        agent = stored(session)
+        for _ in range(15):
+            ran(session, agent)
+
+        assert len(client.get(BASE).json()["activity"]) == 12
+
+
 class TestMakingOne:
     def test_it_is_made_from_a_template_and_audited(
         self, client: TestClient, csrf_token: str, session: Session

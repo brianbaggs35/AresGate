@@ -3,7 +3,15 @@ import { CircleAlert, Play } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { Agent, RunStatus } from '@/api/agents'
-import { AGENT_STATE, RUN_STATUS, agentIcon, costWords, outcome, scheduleText } from '@/agents'
+import {
+  AGENT_STATE,
+  RUN_STATUS,
+  agentIcon,
+  costWords,
+  outcome,
+  performanceLine,
+  scheduleText,
+} from '@/agents'
 import { formatAgo, formatDue } from '@/format'
 
 /**
@@ -104,6 +112,14 @@ const when = computed(() => {
       <span v-if="when" class="text-medium-emphasis"> · {{ when }}</span>
     </p>
 
+    <p
+      v-if="agent.performance.finished"
+      class="text-body-small text-medium-emphasis agent__performance"
+      data-test="agent-performance"
+    >
+      {{ performanceLine(agent.performance) }}
+    </p>
+
     <p v-if="!ready" class="text-body-small agent__setup" data-test="agent-needs-setup">
       <v-icon :icon="CircleAlert" size="16" color="warning" aria-hidden="true" />
       It needs a little setup first.
@@ -180,7 +196,8 @@ const when = computed(() => {
 
 .agent__name,
 .agent__kind,
-.agent__outcome {
+.agent__outcome,
+.agent__performance {
   margin: 0;
 }
 

@@ -28,8 +28,24 @@ test.describe('agents', () => {
     await expect(page).toHaveTitle('Agents · AresGate')
     await expect(agents.heading).toHaveText('Agents')
     await expect(agents.empty).toBeVisible()
-    await expect(agents.kinds).toHaveCount(12)
+    await expect(agents.kinds).toHaveCount(17)
     await expect(agents.cards).toHaveCount(0)
+  })
+
+  test('offers the specialist kinds that triage, analyse the network and devices, plan and coordinate', async ({
+    agents,
+  }) => {
+    await agents.goto()
+
+    for (const name of [
+      'Security triage',
+      'Network threat analyst',
+      'Endpoint security analyst',
+      'Response planner',
+      'Security orchestrator',
+    ]) {
+      await expect(agents.kinds.filter({ hasText: name })).toHaveCount(1)
+    }
   })
 
   test('says AI is off, and what an agent needs it for', async ({ agents }) => {
@@ -62,7 +78,7 @@ test.describe('agents', () => {
 
     await agents.make.click()
     await expect(agents.dialog).toBeVisible()
-    await expect(agents.dialogKinds).toHaveCount(12)
+    await expect(agents.dialogKinds).toHaveCount(17)
     await agents.chooseKind('Threat hunter')
     await agents.dialogName.fill('Night watch')
     await agents.dialogGoal.fill('Only wake me for real compromises.')
@@ -101,6 +117,16 @@ test.describe('agents', () => {
     await expect(agents.card('Night watch').getByTestId('agent-outcome')).toContainText(
       '1 finding',
       SEEN,
+    )
+    // The team's feed lists the run, and says how the runs of the last 30 days went.
+    await expect(agents.activityEntries).toHaveCount(1, SEEN)
+    await expect(agents.activityEntries.first()).toContainText('Night watch')
+    await expect(agents.activityEntries.first().getByTestId('activity-status')).toHaveText(
+      'Finished',
+    )
+    await expect(agents.activityRuns).toContainText('1')
+    await expect(agents.card('Night watch').getByTestId('agent-performance')).toContainText(
+      '1 run · 100% finished',
     )
     // Mission control says what needs the owner, and leads to the agent that said so.
     await expect(agents.mission).toHaveText('1 thing needs you', SEEN)
