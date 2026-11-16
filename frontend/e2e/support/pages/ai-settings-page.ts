@@ -156,4 +156,72 @@ export class AiSettingsPage {
   async goto(): Promise<void> {
     await this.page.goto('/settings/ai')
   }
+
+  // The Clearing card: what the AI may clear as a false positive, and on what terms.
+
+  get clearing(): Locator {
+    return this.page.getByTestId('clearing-card')
+  }
+
+  /** The radio button of one mode: off, suggest or automatic. */
+  mode(key: 'off' | 'suggest' | 'automatic'): Locator {
+    return this.page.getByTestId(`clearing-mode-${key}`).getByRole('radio')
+  }
+
+  /** One way of being careful: careful, balanced or thorough. */
+  preset(key: 'careful' | 'balanced' | 'thorough'): Locator {
+    return this.page.getByTestId(`clearing-preset-${key}`)
+  }
+
+  /** What the chosen way of being careful comes to, in words. */
+  get presetWords(): Locator {
+    return this.page.getByTestId('clearing-preset-words')
+  }
+
+  /** "80% sure". */
+  get minimum(): Locator {
+    return this.page.getByTestId('clearing-minimum')
+  }
+
+  get minimumSlider(): Locator {
+    return this.page.getByRole('slider', {
+      name: 'How sure the AI has to be to clear an incident',
+    })
+  }
+
+  /** The checkbox of one kind of reading: noise, probe or unclear. */
+  kind(key: 'noise' | 'probe' | 'unclear'): Locator {
+    return this.page.getByTestId(`clearing-kind-${key}`).getByRole('checkbox')
+  }
+
+  /** The choice of how serious an incident the AI may clear: low, medium or high. */
+  ceiling(key: 'low' | 'medium' | 'high'): Locator {
+    return this.page.getByTestId(`clearing-ceiling-${key}`)
+  }
+
+  get ceilingWords(): Locator {
+    return this.page.getByTestId('clearing-ceiling-words')
+  }
+
+  /** The most it clears a day, shown when it clears by itself. */
+  get cap(): Locator {
+    return this.page.getByTestId('clearing-cap').locator('input')
+  }
+
+  /** What the settings would have cleared of what the AI read in the last 7 days. */
+  get clearingPreview(): Locator {
+    return this.page.getByTestId('clearing-preview')
+  }
+
+  get clearingSave(): Locator {
+    return this.page.getByTestId('clearing-save')
+  }
+
+  get clearingSaved(): Locator {
+    return this.page.getByTestId('clearing-saved')
+  }
+
+  get clearingDiscard(): Locator {
+    return this.page.getByTestId('clearing-discard')
+  }
 }

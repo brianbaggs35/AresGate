@@ -35,6 +35,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'ai.settings_changed': 'AI was turned on or off, or another provider chosen',
   'ai.limits_changed': 'The limits on what AI may spend were changed',
   'ai.level_changed': 'How much AI is used without being asked was changed',
+  'ai.clearing_changed': 'What the AI may clear as a false positive was changed',
   'events.retention_changed': 'How long events are kept was changed',
   'metrics.retention_changed': 'How long metrics are kept was changed',
   'incident.status_changed': "An incident's status was changed",

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import clearing
+from app.ai.clearing_settings import Policy
 from app.audit import Action
 from app.config import Settings
 from app.events.event import Severity
@@ -24,7 +25,7 @@ from app.models import (
 from app.threats.settings import Tuning
 from tests.test_incidents_engine import ATTACKER, NOW, alert, run, store
 
-ON = Tuning(ai_gives_verdicts=True)
+ON = Policy(mode="automatic")
 SIGNATURE = "ET SCAN Potential SSH Scan"
 
 
@@ -59,10 +60,10 @@ def read(incident: Incident, **changes: object) -> AiTriage:
 
 
 def cleared(
-    session: Session, settings: Settings, tuning: Tuning = ON, **changes: object
+    session: Session, settings: Settings, policy: Policy = ON, **changes: object
 ) -> tuple[Incident, VerdictRule | None]:
     found = scan(session, settings)
-    rule = clearing.clear(session, found, read(found, **changes), tuning, NOW)
+    rule = clearing.clear(session, found, read(found, **changes), Tuning(), NOW, policy)
     session.commit()
     session.refresh(found)
     return found, rule
@@ -133,7 +134,7 @@ class TestGivingAVerdict:
     ) -> None:
         found = scan(session, settings, subject="rule:wazuh:" + SIGNATURE)
 
-        rule = clearing.clear(session, found, read(found), ON, NOW)
+        rule = clearing.clear(session, found, read(found), Tuning(), NOW, ON)
 
         assert rule is not None
         assert rule.address is None
@@ -142,14 +143,14 @@ class TestGivingAVerdict:
 
 class TestWhenItMayNot:
     @pytest.mark.parametrize(
-        "tuning",
-        [Tuning(), replace(ON, ai_gives_verdicts=False)],
-        ids=["by default", "switched off"],
+        "policy",
+        [Policy(), replace(ON, mode="suggest"), replace(ON, mode="off")],
+        ids=["by default", "only suggesting", "switched off"],
     )
-    def test_not_unless_the_owner_allows_it(
-        self, session: Session, settings: Settings, tuning: Tuning
+    def test_not_unless_the_owner_has_it_clear_by_itself(
+        self, session: Session, settings: Settings, policy: Policy
     ) -> None:
-        found, rule = cleared(session, settings, tuning)
+        found, rule = cleared(session, settings, policy)
 
         assert rule is None
         assert found.verdict is None
@@ -170,7 +171,7 @@ class TestWhenItMayNot:
     ) -> None:
         found = scan(session, settings)
 
-        assert clearing.clear(session, found, read(found, **changes), ON, NOW) is None
+        assert clearing.clear(session, found, read(found, **changes), Tuning(), NOW, ON) is None
 
     @pytest.mark.parametrize(
         "changes",
@@ -208,7 +209,7 @@ class TestWhenItMayNot:
             setattr(found, name, value)
         session.flush()
 
-        assert clearing.clear(session, found, read(found), ON, NOW) is None
+        assert clearing.clear(session, found, read(found), Tuning(), NOW, ON) is None
         assert session.scalars(select(VerdictRule)).all() == []
 
     def test_not_for_alerts_with_no_signature(self, session: Session, settings: Settings) -> None:
@@ -216,7 +217,7 @@ class TestWhenItMayNot:
         for signal in session.scalars(select(IncidentSignal)):
             signal.signature = None
 
-        assert clearing.clear(session, found, read(found), ON, NOW) is None
+        assert clearing.clear(session, found, read(found), Tuning(), NOW, ON) is None
 
     def test_not_again_once_the_owner_took_it_back(
         self, session: Session, settings: Settings
@@ -227,7 +228,7 @@ class TestWhenItMayNot:
         session.delete(rule)
         session.commit()
 
-        assert clearing.clear(session, found, read(found), ON, NOW) is None
+        assert clearing.clear(session, found, read(found), Tuning(), NOW, ON) is None
         assert session.scalars(select(VerdictRule)).all() == []
 
     def test_not_over_a_verdict_the_owner_gave_about_the_same(
@@ -239,7 +240,7 @@ class TestWhenItMayNot:
         )
         session.flush()
 
-        assert clearing.clear(session, found, read(found), ON, NOW) is None
+        assert clearing.clear(session, found, read(found), Tuning(), NOW, ON) is None
 
 
 class TestTheOwnersWord:

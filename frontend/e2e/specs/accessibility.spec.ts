@@ -700,6 +700,7 @@ for (const theme of ['light', 'dark'] as const) {
       await shell.chooseTheme(theme)
       await shell.expectTheme(theme)
       await expect(aiSettings.choosePrompt).toBeVisible()
+      await expect(aiSettings.clearing).toBeVisible()
       await expectAccessible(page)
 
       await aiSettings.choose('anthropic')

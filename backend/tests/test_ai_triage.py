@@ -18,7 +18,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ai import catalog, gateway, run, service, triage
+from app.ai import catalog, clearing_settings, gateway, run, service, triage
+from app.ai.clearing_settings import Policy
 from app.ai.gateway import Answer, Unavailable
 from app.ai.redaction import Level, Redactor
 from app.assets import profile
@@ -40,8 +41,6 @@ from app.models import (
 )
 from app.review import service as review_service
 from app.review import settings as review_settings
-from app.threats import settings as threat_settings
-from app.threats.settings import Tuning
 from tests.stubs import Handler, Seen, Serve
 from tests.test_ai_clearing import scan
 from tests.test_ai_gateway import Log, anthropic_says, context, turned_on
@@ -804,7 +803,7 @@ class TestKeepingWhatItSaid:
         self, session: Session, settings: Settings
     ) -> None:
         found = scan(session, settings)
-        threat_settings.save(session, Tuning(ai_gives_verdicts=True))
+        clearing_settings.save(session, Policy(mode="automatic"), NOW)
 
         triage.keep(
             session, found, self.answered(session, classification="noise", confidence=92), NOW

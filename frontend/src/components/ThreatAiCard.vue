@@ -15,8 +15,6 @@ const props = defineProps<{
   mayClear: boolean
   clearFrom: number
   confirms: boolean
-  /** Whether the AI may give a verdict of its own on a false positive it is sure of. */
-  givesVerdicts: boolean
   defaultClearFrom: number
   minClearFrom: number
   /** Whether an AI is watching. */
@@ -26,7 +24,6 @@ const emit = defineEmits<{
   'update:mayClear': [boolean]
   'update:clearFrom': [number]
   'update:confirms': [boolean]
-  'update:givesVerdicts': [boolean]
 }>()
 
 const sentence = computed(() => clearSentence(props.clearFrom, props.minClearFrom))
@@ -106,22 +103,12 @@ const spoken = ({ value }: { value: number }) => `${value.toString()} percent su
       real. A critical one never waits for it. Without this, the rules alone decide.
     </p>
 
-    <v-switch
-      :model-value="givesVerdicts"
-      label="Let the AI clear false positives"
-      color="primary"
-      density="comfortable"
-      hide-details
-      class="mt-4"
-      data-test="threat-verdicts"
-      @update:model-value="emit('update:givesVerdicts', Boolean($event))"
-    />
-    <p class="ai__hint text-body-medium text-medium-emphasis">
-      When the AI is sure an incident is a false positive, it gives the verdict not suspicious or
-      low priority itself, so the same alert never bothers you again. It says it was the AI and why,
-      on the incident and on the Verdicts page, and you can take it back there: it then never gives
-      that one again. Anything critical, anything you called a threat and anything with more than
-      one stage of an attack is left to you.
+    <p class="ai__hint ai__hint--apart text-body-medium text-medium-emphasis">
+      Whether the AI may clear false positives with a verdict of its own, how sure it must be, and
+      how many it may clear a day is set in the Clearing card in Settings > AI.
+      <router-link :to="{ name: 'settings-ai' }" data-test="threat-clearing-link">
+        Clearing settings
+      </router-link>
     </p>
   </SectionCard>
 </template>
@@ -130,6 +117,11 @@ const spoken = ({ value }: { value: number }) => `${value.toString()} percent su
 .ai__hint {
   margin: 0.25rem 0 0;
   padding-inline-start: 3.5rem;
+}
+
+.ai__hint--apart {
+  margin-top: 1rem;
+  padding-inline-start: 0;
 }
 
 .ai__bar {

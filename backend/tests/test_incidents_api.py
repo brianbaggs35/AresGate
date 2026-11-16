@@ -10,6 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.ai import clearing
+from app.ai.clearing_settings import Policy
 from app.api import asking
 from app.api import incidents as incidents_api
 from app.assets import profile
@@ -2068,7 +2069,7 @@ class TestClearedByTheAi:
             provider="anthropic",
             model="claude-haiku-5-5",
         )
-        clearing.clear(session, found, reading, Tuning(ai_gives_verdicts=True), NOW)
+        clearing.clear(session, found, reading, Tuning(), NOW, Policy(mode="automatic"))
         session.commit()
         return found
 

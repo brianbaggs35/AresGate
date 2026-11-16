@@ -330,7 +330,7 @@ on now moved between lanes, so you see the effect first.
 | **Let the AI set harmless incidents aside** | On by default. Probes and noise the AI is sure about go to the background instead of your list. They are still kept. |
 | **How sure the AI has to be** | The AI's confidence needed to set one aside (50 to 100, 80 by default). Critical incidents are never set aside. |
 | **A threat needs the AI to agree** | While an AI is on and reading by itself, an incident that only the rules are sure of is a suspect until the AI agrees (unless it is critical). |
-| **Let the AI clear false positives** | Off by default. When the AI is sure an incident is a false positive (it says so, and is as sure as the setting above), it gives the verdict *not suspicious* or *low priority* itself, so the same alert never bothers you again. See [When the AI clears a false positive](#when-the-ai-clears-a-false-positive). |
+| **Clearing** | Not here: whether the AI may clear false positives with a verdict of its own, and on what terms, is the *Clearing* card in **Settings > AI**. See [When the AI clears a false positive](#when-the-ai-clears-a-false-positive). |
 | **Devices that matter** | Two sliders, each 0 to 30 points. How much lower the bar to be shown an incident is when it touched a device you called *important* or *critical* (10 by default), and how much higher it is when it touched only guests' and IoT devices (0 by default). A chain of attacks is shown whatever the bar is. |
 | **What is open to the internet** | Nothing, some services (with their ports, up to 20) or not sure. The same scan means little on a network with nothing open and a lot on one that runs a service. The AI is told. |
 | **Anything else about your network** | Up to 500 characters in your own words (a Plex server, a VPN to the office), which the AI is told too. |
@@ -339,17 +339,33 @@ The AI settings do nothing while no AI is on; the page says so.
 
 ### When the AI clears a false positive
 
-With **Let the AI clear false positives** on, a reading that suggests *not suspicious* or *low
-priority* with at least the confidence you set for setting incidents aside becomes a verdict of its
-own, about the address and the program and signature of the incident's strongest alert (or the
-program and signature where it names no address). Everything that respects your verdicts respects
-it: the incident is muted, out of what needs you, and that match never raises an alarm again.
+The **Clearing** card in **Settings > AI** says whether the AI may clear what it reads as a false
+positive, and on what terms. Nothing is kept until you press **Save**, and as you change it the card
+works out how many of the incidents the AI read in the last 7 days the settings would have cleared.
+
+| Setting | What it does |
+| --- | --- |
+| **What it does** | *Off*: it clears nothing and marks nothing. *Suggest, then confirm* (the default): it marks an incident that looks like a false positive and waits for your tap. *Automatic*: it gives the verdict itself, and you can take any of it back. |
+| **How sure it must be** | *Careful* (90%), *balanced* (80%, the default) or *thorough* (65%), each with what it comes to in words, or a number of your own from 50 to 99. It is the AI's own confidence in its reading. |
+| **What it may clear** | The kinds of reading: *noise*, *probes* and *unclear*. Never an attack or a compromise. With none chosen it clears nothing. |
+| **Whose incidents** | Any program, or only the ones you name (for example ntopng, never Wazuh). An incident that involves a program you didn't name is left to you. |
+| **How serious** | The most serious incident it may clear: *low*, *medium* (the default) or *high*. Critical is always left to you. |
+| **Most it clears a day** | For *automatic*: how many verdicts it gives in any 24 hours (25 by default). Past that, what it finds waits for you. |
+
+It stops, and the card says so, when the cap for the day is reached or the AI spending limit
+(Settings > AI > Usage) is used up.
+
+A reading that fits all of that becomes a verdict of its own, about the address and the program and
+signature of the incident's strongest alert (or the program and signature where it names no
+address). Everything that respects your verdicts respects it: the incident is muted, out of what
+needs you, and that match never raises an alarm again.
 
 It never replaces your word:
 
 - A verdict says who gave it. On the Verdicts page and on the incident it shows *Given by the AI,
   91% sure*, the reason it gave, and which provider and model said so. The audit log records it
-  (`verdict.given_by_ai`) with the same facts.
+  (`verdict.given_by_ai`) with the same facts, and changes to the settings are recorded too
+  (`ai.clearing_changed`).
 - **Take back** removes it, and tells the AI not to give that one again (`verdict.taken_back_from_ai`).
   Saying or changing the verdict yourself makes it yours, and the AI's confidence is forgotten.
 - It never clears an incident you already gave a verdict on, a critical one, a chain of attacks (of
@@ -357,7 +373,9 @@ It never replaces your word:
 - An alert with no signature is left to you, since a verdict about an address alone would clear
   everything it ever does.
 
-The code is `app/ai/clearing.py`, called when a reading is kept (`app/ai/triage.py`).
+The rules are in `app/ai/clearing_settings.py` and the verdict is given by `app/ai/clearing.py`,
+called when a reading is kept (`app/ai/triage.py`). An install that had the old switch on keeps
+*automatic*, as sure as it was, and able to clear up to high.
 
 ### Which devices matter
 
