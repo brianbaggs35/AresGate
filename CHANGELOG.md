@@ -19,6 +19,11 @@ Every release's notes are here, newest first. The format follows
   how many finished, how long they take, how many findings), with a feed of the latest runs of all
   the agents and where each is now, and each agent's card shows the same for itself.
 
+- **The menu is divided under headings.** The side menu groups its places as Overview, Security,
+  AI, Network and System, with a line between the groups when the menu is narrowed to icons (a
+  screen reader still hears each heading). The places are the same, and a phone's bottom bar holds the
+  same four places and More.
+
 ### Changed
 
 - **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now
