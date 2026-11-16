@@ -48,6 +48,7 @@ const TITLES: Readonly<Record<string, string>> = {
   'incidents.changed': 'Several incidents were changed together',
   'incidents.change_undone': 'A change to several incidents was taken back',
   'logs.exported': 'Logs were downloaded',
+  'list.exported': 'A list was downloaded',
   'verdict.given': 'A verdict was given',
   'verdict.changed': 'A verdict was changed',
   'verdict.removed': 'A verdict was taken back',

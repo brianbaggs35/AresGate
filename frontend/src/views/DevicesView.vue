@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   DEVICE_DIRECTIONS,
   DEVICE_SCOPES,
+  deviceParams,
   fetchDevices,
   type Device,
   type DevicePage,
@@ -15,6 +16,7 @@ import AppPage from '@/components/AppPage.vue'
 import AssetSearch from '@/components/AssetSearch.vue'
 import DeviceCard from '@/components/DeviceCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import {
@@ -48,6 +50,8 @@ const route = useRoute()
 const router = useRouter()
 
 const filters = computed(() => filtersOf(route.query))
+/** The filters as the API takes them, which is also what a file of the list is made of. */
+const listed = computed(() => deviceParams(queryOf(filters.value, PAGE_SIZE)))
 
 function show(next: Partial<Filters>) {
   void router.replace({ query: routeQuery({ ...filters.value, ...next }) })
@@ -191,6 +195,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   <AppPage class="devices">
     <PageHeader title="Devices" :description="description">
       <template #actions>
+        <ListToolbar list="devices" :asked="listed" />
         <v-btn
           variant="text"
           :prepend-icon="RefreshCw"

@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { RefreshCw } from '@lucide/vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 
-import { fetchDeliveries, type Deliveries, type Delivery, type DeliveryQuery } from '@/api/alerts'
+import {
+  deliveryParams,
+  fetchDeliveries,
+  type Deliveries,
+  type Delivery,
+  type DeliveryQuery,
+} from '@/api/alerts'
 import { errorMessage } from '@/api/client'
 import { DELIVERY_REASONS, DELIVERY_STATES, deliveryTitle, deliveryTotals } from '@/alerts'
 import EmptyState from '@/components/EmptyState.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import LoadError from '@/components/LoadError.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
@@ -29,8 +37,24 @@ const STATES = [
 ]
 
 const session = useSessionStore()
+const route = useRoute()
+const router = useRouter()
 
-const filters = reactive({ destination: 'all', state: 'all' })
+/** What the log is narrowed to is in the address of the page, so a view can set it and a link
+ * brings it back. A destination or a state that is not one of the choices is ignored. */
+function filtersOf(query: LocationQuery) {
+  const one = (name: string) => {
+    const value = query[name]
+    return typeof value === 'string' ? value : ''
+  }
+  const state = one('state')
+  return {
+    destination: /^[1-9]\d{0,15}$/.test(one('destination')) ? one('destination') : 'all',
+    state: Object.hasOwn(DELIVERY_STATES, state) ? state : 'all',
+  }
+}
+
+const filters = reactive(filtersOf(route.query))
 const answer = ref<Deliveries | null>(null)
 const items = ref<Delivery[]>([])
 const loading = ref(false)
@@ -45,6 +69,8 @@ const destinationItems = computed(() => [
   ...props.destinations.map(({ id, name }) => ({ title: name, value: id.toString() })),
 ])
 const more = computed(() => answer.value?.next_before ?? null)
+/** The log as the API is asked for it, which is also what a file of it is made of. */
+const listed = computed(() => deliveryParams(query()))
 
 function query(before?: number): DeliveryQuery {
   const asked: DeliveryQuery = {}
@@ -91,7 +117,25 @@ function when(delivery: Delivery): string {
   return `made ${formatAgo(delivery.created_at)}`
 }
 
-watch(filters, () => load())
+// A view the owner chose, or the back button, changes the address and so the filters.
+watch(
+  () => route.query,
+  (query) => {
+    const next = filtersOf(query)
+    if (next.destination !== filters.destination || next.state !== filters.state) {
+      Object.assign(filters, next)
+    }
+  },
+)
+watch(filters, () => {
+  const query = { ...route.query }
+  delete query.destination
+  delete query.state
+  if (filters.destination !== 'all') query.destination = filters.destination
+  if (filters.state !== 'all') query.state = filters.state
+  void router.replace({ query })
+  void load()
+})
 onMounted(() => load())
 </script>
 
@@ -102,6 +146,7 @@ onMounted(() => load())
     data-test="delivery-log"
   >
     <template #actions>
+      <ListToolbar list="alerts" :asked="listed" />
       <v-btn
         variant="text"
         :prepend-icon="RefreshCw"

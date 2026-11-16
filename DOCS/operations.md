@@ -742,6 +742,42 @@ The page asks again every 30 seconds while it is open and in view, and when you 
 tab after longer than that. If a refresh fails it keeps what it has and says so. The numbers
 come from `GET /api/dashboard?window=24h` (or `7d`), for someone signed in.
 
+## Exporting a list and keeping views
+
+The Incidents, Alerts (the delivery log), Devices and Assets pages share one toolbar, `ListToolbar`
+(a computer shows an **Export** and a **Views** button, a phone one **Options** menu that holds
+both).
+
+- **Export.** Saves **everything the filters show, in the order they show it**, not only the page
+  that is loaded, as a CSV file (for a spreadsheet) or a JSON file, up to 10,000 rows. The columns
+  are named in words (*First seen*, *Connections it made*), a time is written in the time zone of
+  the browser that asked (with its offset, so it reads the same anywhere), and any text a
+  spreadsheet would read as a formula (a cell starting with `=`, `+`, `-`, `@`, a tab or a
+  return) is quoted with a leading `'`, since what is in these lists was written by whoever the
+  programs heard from. A search the page's own list cannot read is refused before a file is begun
+  (422). Each download is one entry in the [activity log](security.md), `list.exported`, which
+  says which list, the format, the search and the limit and never the rows (the logs page's own
+  download is the same, with `list` set to `logs`). The files are
+  `GET /api/incidents/export`, `GET /api/alerts/deliveries/export`, `GET /api/devices/export` and
+  `GET /api/assets/export`; each takes `format=csv|json`, `tz`, and what its list takes to narrow
+  it, such as `status`, `q`, `scope` or `state`.
+- **Views.** *Save this view* keeps the filters and order of the page (its address's query) under
+  a name, for your account: up to 20 for each page, and saving under a name that is there says
+  **Replace** and changes that view. *Views* lists them, a tap sets the page's filters to the
+  view's, and the star makes the page open on it when it is opened with nothing set (a link with
+  filters in it is what it asked for, so it is left alone). A view can be renamed or forgotten.
+  Each one is a command in the command palette, such as *Incidents: Needs a look*. A view that
+  names a program that is no longer connected (`source=wazuh`, or `source:wazuh` in a search)
+  still opens, and says which are not connected.
+- **The API.** `GET /api/views` lists the account's views by page and then name (`?page=` narrows
+  it), `POST /api/views` with `page` (`incidents`, `alerts`, `devices` or `assets`), `name` (up to
+  60 characters), `query` (up to 20 filters, each a short string or a list of them) and optionally
+  `default` keeps one (201, or 200 when it changed one that was there), `PATCH /api/views/{id}`
+  renames it (409 if the name is taken) or sets `default`, and `DELETE /api/views/{id}` forgets it.
+  A 21st view for a page is refused (409). They are kept in the database (the `saved_views`
+  table), are only the account's own (another account's is a 404), and are not in the activity
+  log: they change nothing but what the toolbar offers.
+
 ## The incidents pages
 
 **Incidents** in the menu lists what [the engine](#incidents) filed, the one heard from last first,

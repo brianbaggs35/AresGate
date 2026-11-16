@@ -683,12 +683,32 @@ What every chart does, and a new one must:
   pages do the same for their traffic. The span is of what the page has already loaded, so it
   never asks for more than the range holds.
 
+## Lists
+
+The Incidents, Alerts (the delivery log), Devices and Assets pages are lists that narrow with
+filters kept in the address of the page, and every one of them puts `ListToolbar` in its header
+`actions`: **Export** (`ListExport`) and **Views** (`ListViews`). On a computer they are two
+buttons that each open a card; on a phone (`xs`) one **Options** menu holds both, so the header
+does not grow. A new list that can be narrowed is given the toolbar the same way, with the
+parameters its API call is made of (the `...Params` function next to its `fetch...`), which is also
+what the file is made of: `exportAddress()` takes those and leaves out the page.
+
+- Export links are plain downloads (the browser saves the file as it arrives, however long it
+  is). The server decides the columns, so a column is added in `backend/app/api/exports.py`.
+- A view is the page's route query, as `queryOfRoute()` reads it. Choosing one is
+  `router.replace({ query })`, so a list has to follow its address (the delivery log's filters
+  do, as the others already did). The one marked *Opens first* is applied when the page is opened
+  with nothing in its address.
+- The views are in one store, `useViewsStore`, that the toolbars and the palette share.
+- Everything is a real control with a name: the star is a toggle button (`aria-pressed`), the
+  open view has `aria-current`, and a result or a failure is read out as it appears.
+
 ## The command palette
 
 Ctrl or ⌘ and K, or the *Search* button in the app bar (an icon alone on a phone, which has no such
 keys), opens `CommandPalette` from any page: a field and a list of what it can do. It is for going
 somewhere without finding the link: every page in the menu, every page of Settings, each group of
-incidents, the theme, and, for a whole IP address typed in, *Find incidents about* it. The list
+incidents, each saved [view](#lists) (*Incidents: Needs a look*), the theme, and, for a whole IP address typed in, *Find incidents about* it. The list
 comes from `commands.ts`, which reads `navItems` and `settingsSections`, so **a page that adds
 itself to the menu or to Settings is in the palette without anyone touching it**; add a command
 there only for something that is not a page. A place in the menu can carry `keywords`, words that

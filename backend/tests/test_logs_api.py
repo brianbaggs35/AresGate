@@ -745,4 +745,9 @@ class TestExport:
         entry = session.scalars(
             select(AuditEvent).where(AuditEvent.action == Action.LOGS_EXPORTED)
         ).one()
-        assert entry.detail == {"format": "json", "search": "source:wazuh", "limit": 10}
+        assert entry.detail == {
+            "list": "logs",
+            "format": "json",
+            "search": "source:wazuh",
+            "limit": 10,
+        }

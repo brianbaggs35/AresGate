@@ -79,6 +79,7 @@ from app.models.review import ANSWERS, REVIEW_MODES, ReviewFeedback, ReviewSetti
 from app.models.searches import SavedSearch
 from app.models.system import SystemInfo
 from app.models.verdicts import VERDICTS, AiClearVeto, VerdictRule
+from app.models.views import SavedView
 
 __all__ = [
     "AGENT_STATUSES",
@@ -156,6 +157,7 @@ __all__ = [
     "ReviewFeedback",
     "ReviewSettings",
     "SavedSearch",
+    "SavedView",
     "SmtpSettings",
     "SourceRetention",
     "StoredCredential",

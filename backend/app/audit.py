@@ -70,6 +70,7 @@ class Action(StrEnum):
     INCIDENTS_CHANGED = "incidents.changed"
     INCIDENTS_CHANGE_UNDONE = "incidents.change_undone"
     LOGS_EXPORTED = "logs.exported"
+    LIST_EXPORTED = "list.exported"
     VERDICT_GIVEN = "verdict.given"
     VERDICT_CHANGED = "verdict.changed"
     VERDICT_REMOVED = "verdict.removed"

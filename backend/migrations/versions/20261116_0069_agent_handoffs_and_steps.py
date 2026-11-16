@@ -12,14 +12,14 @@ from alembic import op
 
 revision: str = "0069"
 down_revision: str | Sequence[str] | None = "0068"
-
-AGENT_ID = "agents.id"
-RUN_ID = "agent_runs.id"
-SET_NULL = "SET NULL"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 # Alembic reads these by name, so they're exported, which also tells CodeQL they're used.
 __all__ = ["branch_labels", "depends_on", "down_revision", "revision"]
+
+AGENT_ID = "agents.id"
+RUN_ID = "agent_runs.id"
+SET_NULL = "SET NULL"
 
 
 def upgrade() -> None:

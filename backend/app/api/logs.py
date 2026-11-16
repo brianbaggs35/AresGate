@@ -348,7 +348,7 @@ def export_logs(
         Action.LOGS_EXPORTED,
         Outcome.SUCCESS,
         user=auth.user,
-        detail={"format": format, "search": q[:200], "limit": limit},
+        detail={"list": "logs", "format": format, "search": q[:200], "limit": limit},
     )
     db.commit()
     # What follows is read as it is sent, so it has its own, longer, time.

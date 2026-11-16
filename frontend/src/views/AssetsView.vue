@@ -4,12 +4,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { errorMessage } from '@/api/client'
-import { ASSET_STATUSES, fetchAssets, type Asset, type AssetPage } from '@/api/assets'
+import { ASSET_STATUSES, assetParams, fetchAssets, type Asset, type AssetPage } from '@/api/assets'
 import AppPage from '@/components/AppPage.vue'
 import AssetCard from '@/components/AssetCard.vue'
 import AssetSearch from '@/components/AssetSearch.vue'
 import AssetSuppliers from '@/components/AssetSuppliers.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ListToolbar from '@/components/ListToolbar.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import {
@@ -42,6 +43,8 @@ const route = useRoute()
 const router = useRouter()
 
 const filters = computed(() => filtersOf(route.query))
+/** The filters as the API takes them, which is also what a file of the list is made of. */
+const listed = computed(() => assetParams(queryOf(filters.value, PAGE_SIZE)))
 
 function show(next: Partial<Filters>) {
   void router.replace({ query: routeQuery({ ...filters.value, ...next }) })
@@ -237,6 +240,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   <AppPage class="assets">
     <PageHeader title="Assets" :description="description">
       <template #actions>
+        <ListToolbar list="assets" :asked="listed" />
         <v-btn
           variant="text"
           :prepend-icon="RefreshCw"

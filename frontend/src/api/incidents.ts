@@ -796,6 +796,12 @@ export interface IncidentQuery {
 
 /** The incidents that match, the ones going most recently first unless asked for the most serious. */
 export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage> {
+  const search = incidentParams(query).toString()
+  return apiGet<IncidentPage>(search ? `/incidents?${search}` : '/incidents')
+}
+
+/** What a list of incidents is asked for, as the parameters of the request. */
+export function incidentParams(query: IncidentQuery): URLSearchParams {
   const params = new URLSearchParams()
   for (const status of query.statuses ?? []) params.append('status', status)
   for (const verdict of query.verdicts ?? []) params.append('verdict', verdict)
@@ -809,8 +815,7 @@ export function fetchIncidents(query: IncidentQuery = {}): Promise<IncidentPage>
   if (query.limit !== undefined) params.set('limit', query.limit.toString())
   if (query.offset) params.set('offset', query.offset.toString())
   if (query.order) params.set('order', query.order)
-  const search = params.toString()
-  return apiGet<IncidentPage>(search ? `/incidents?${search}` : '/incidents')
+  return params
 }
 
 /** One incident with the reasons for its confidence, its timeline and the devices in it. */

@@ -1,8 +1,10 @@
-import { Moon, Monitor, Search, ShieldAlert, Sun } from '@lucide/vue'
+import { Bookmark, Moon, Monitor, Search, ShieldAlert, Sun } from '@lucide/vue'
 import type { RouteLocationRaw } from 'vue-router'
 import type { IconProps } from 'vuetify'
 
+import type { SavedView } from '@/api/views'
 import { VIEWS } from '@/incidents'
+import { LIST_PAGES } from '@/lists'
 import { navItems } from '@/navigation'
 import { settingsSections } from '@/settings'
 import type { ThemePreference } from '@/stores/theme'
@@ -24,7 +26,7 @@ export interface Command {
 }
 
 /** The groups in the order the palette lists them. */
-export const GROUPS = ['Go to', 'Incidents', 'Appearance'] as const
+export const GROUPS = ['Go to', 'Incidents', 'Views', 'Appearance'] as const
 
 const THEMES: readonly { preference: ThemePreference; title: string; icon: Command['icon'] }[] = [
   { preference: 'light', title: 'Use the light theme', icon: Sun },
@@ -74,6 +76,19 @@ export const COMMANDS: readonly Command[] = [
   })),
 ]
 
+/** A command for each view the owner kept, such as "Incidents: Needs a look", which opens its
+ * page with those filters. */
+export function viewCommands(views: readonly SavedView[]): Command[] {
+  return views.map((view): Command => ({
+    id: `view-${view.id.toString()}`,
+    group: 'Views',
+    title: `${LIST_PAGES[view.page].title}: ${view.name}`,
+    icon: Bookmark,
+    keywords: 'saved view filter',
+    action: { kind: 'go', to: { name: LIST_PAGES[view.page].route, query: view.query } },
+  }))
+}
+
 /** How well a command answers a search: lower is better, and null is not at all. */
 function rank(command: Command, terms: readonly string[]): number | null {
   const title = command.title.toLowerCase()
@@ -108,17 +123,19 @@ function findAddress(address: string): Command {
  * be in the title or the hidden keywords. A whole IP address also offers to look for incidents
  * about it, since that is the one thing worth typing that no page name would match.
  */
-export function commandsFor(search: string): Command[] {
+export function commandsFor(search: string, extra: readonly Command[] = []): Command[] {
   const text = search.trim().toLowerCase()
   const terms = text.split(/\s+/).filter(Boolean)
+  const known = [...COMMANDS, ...extra]
   const found = terms.length
-    ? COMMANDS.flatMap((command) => {
-        const score = rank(command, terms)
-        return score === null ? [] : [{ command, score }]
-      })
+    ? known
+        .flatMap((command) => {
+          const score = rank(command, terms)
+          return score === null ? [] : [{ command, score }]
+        })
         .sort((a, b) => a.score - b.score)
         .map(({ command }) => command)
-    : [...COMMANDS]
+    : known
   const all = isAddress(text) ? [findAddress(search.trim()), ...found] : found
   return GROUPS.flatMap((group) => all.filter((command) => command.group === group))
 }
