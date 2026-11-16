@@ -91,7 +91,8 @@ test.describe('charts you can act on', () => {
     await chart.focus()
     await page.keyboard.press('Home')
     await page.keyboard.down('Shift')
-    for (let step = 0; step < 6; step++) await page.keyboard.press('ArrowRight')
+    // A short stretch, which is part of the chart however few moments a narrow one draws.
+    for (let step = 0; step < 2; step++) await page.keyboard.press('ArrowRight')
     await page.keyboard.up('Shift')
     await page.keyboard.press('Enter')
 
