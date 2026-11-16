@@ -6,6 +6,8 @@ import { expect, expectAccessible, test } from '../support'
  * one menu that holds it and the views. */
 async function openExport(page: Page): Promise<Locator> {
   const options = page.getByTestId('list-options')
+  // Which of the two there is, once the page has drawn its toolbar.
+  await options.or(page.getByTestId('list-export')).first().waitFor()
   if (await options.isVisible()) {
     await options.click()
     return page.getByTestId('list-panel')
@@ -17,6 +19,7 @@ async function openExport(page: Page): Promise<Locator> {
 /** The same for the views. */
 async function openViews(page: Page): Promise<Locator> {
   const options = page.getByTestId('list-options')
+  await options.or(page.getByTestId('list-views-button')).first().waitFor()
   if (await options.isVisible()) {
     await options.click()
     return page.getByTestId('list-panel')
