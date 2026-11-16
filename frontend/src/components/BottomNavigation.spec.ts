@@ -112,6 +112,7 @@ describe('BottomNavigation', () => {
         'Assets',
         'Devices',
         'Interfaces',
+        'Network Flow',
         'Logs',
         'Integrations',
         'Status',

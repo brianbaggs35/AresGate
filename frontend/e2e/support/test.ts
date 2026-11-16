@@ -15,6 +15,7 @@ import { AssistantPanelPage } from './pages/assistant-panel-page'
 import { AppShell } from './pages/app-shell'
 import { DataPage } from './pages/data-page'
 import { DevicePage, DevicesPage } from './pages/devices-page'
+import { FlowPage } from './pages/flow-page'
 import { IncidentPage } from './pages/incident-page'
 import { IncidentResponsePage } from './pages/incident-response-page'
 import { RetentionSettingsPage } from './pages/retention-settings-page'
@@ -80,6 +81,8 @@ export interface AresGateFixtures {
   asset: AssetPage
   /** Every address that took part in a connection the connected programs reported. */
   devices: DevicesPage
+  /** Network Flow: where the traffic goes, as paths and a timeline. */
+  flow: FlowPage
   /** The page of one of them: the connections to it and from it, and what is known of it. */
   device: DevicePage
   status: StatusPage
@@ -246,6 +249,9 @@ export const test = base.extend<AresGateFixtures, AresGateWorkerFixtures>({
 
   devices: async ({ page }, use) => {
     await use(new DevicesPage(page))
+  },
+  flow: async ({ page }, use) => {
+    await use(new FlowPage(page))
   },
 
   device: async ({ page }, use) => {

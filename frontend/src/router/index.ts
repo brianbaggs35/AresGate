@@ -129,6 +129,12 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/flow',
+    name: 'flow',
+    component: () => import('@/views/FlowView.vue'),
+    meta: { title: 'Network Flow' },
+  },
+  {
     path: '/logs',
     name: 'logs',
     component: () => import('@/views/LogsView.vue'),
