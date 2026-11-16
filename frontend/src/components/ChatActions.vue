@@ -162,11 +162,8 @@ const waiting = (at: number) => {
 function effectOf(action: ChatAction, at: number): string {
   const count = action.also.length + 1
   if (action.kind === 'verdict') {
-    const about = action.address
-      ? `everything about ${action.address}`
-      : count > 1
-        ? 'what each of them is about'
-        : 'every alert like it'
+    const several = count > 1 ? 'what each of them is about' : 'every alert like it'
+    const about = action.address ? `everything about ${action.address}` : several
     return `Remembered for ${about}: the incidents about it that are not over are judged by it now, and so is what comes next.`
   }
   if (earlier[at]) return `Changes every incident about ${action.address}, earlier ones too.`
