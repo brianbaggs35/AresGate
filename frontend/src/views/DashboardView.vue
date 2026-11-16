@@ -690,8 +690,28 @@ onBeforeUnmount(() => void leaveFullScreen())
 
 /* A wall display is read from across a room: everything larger, and the alarm cannot be missed.
    The menu and bars are not there (App.vue). */
+/* Read from across a room, so the type grows with the screen: a full HD one at 1.25, and
+ * larger ones in step, so what fills a wall is as big in proportion as it is on a desk. */
 .dashboard--wall {
   zoom: 1.25;
+}
+
+@media (min-width: 1920px) {
+  .dashboard--wall {
+    zoom: 1.5;
+  }
+}
+
+@media (min-width: 2560px) {
+  .dashboard--wall {
+    zoom: 2;
+  }
+}
+
+@media (min-width: 3840px) {
+  .dashboard--wall {
+    zoom: 3;
+  }
 }
 
 .dashboard__alarm {

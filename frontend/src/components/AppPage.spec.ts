@@ -8,12 +8,13 @@ describe('AppPage', () => {
   })
 
   it.each([
-    [undefined, '960px'],
-    ['narrow', '720px'],
-    ['regular', '960px'],
-    ['wide', '1320px'],
-  ])('is %s wide', async (width, pixels) => {
+    [undefined, 'regular', '960px'],
+    ['narrow', 'narrow', '720px'],
+    ['regular', 'regular', '960px'],
+    ['wide', 'wide', '1320px'],
+  ])('is %s wide, and says which so a big screen can give it more', async (width, kind, pixels) => {
     const { wrapper } = await mountWithPlugins(AppPage, { props: { width } })
-    expect(wrapper.find('.app-page').attributes('style')).toContain(`max-width: ${pixels}`)
+    expect(wrapper.find('.app-page').attributes('style')).toContain(`--page-width: ${pixels}`)
+    expect(wrapper.find('.app-page').classes()).toContain(`app-page--${kind}`)
   })
 })

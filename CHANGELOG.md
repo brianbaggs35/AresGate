@@ -17,6 +17,17 @@ Every release's notes are here, newest first. The format follows
   time for each account, the first visit and a quiet one say nothing, and dismissing it or leaving
   the page counts as looking. Incidents can be searched by when they began (`began:`). See
   [UI](DOCS/ui.md#since-you-last-looked).
+- **Layouts that hold on every screen.** A sweep test opens each main page at 360, 768, 1280 and
+  2560 px wide in both themes, checks that none scrolls sideways and attaches a screenshot of each
+  to the test report. Pages that show data now use a big screen: they grow past 1600 px, lists of
+  cards become two columns where there is room, and a *Wall display* is scaled to the screen (up to
+  three times at 4K). Wide tables share one frame (`DataTable`) that scrolls inside itself, can be
+  reached by keyboard, fades at an edge with more beyond it and can keep its first column in place
+  (the Incidents table uses it). In Windows high contrast chips, cards, rows and the current page in
+  the menu keep an edge of their own, since backgrounds and shadows are dropped; when the system asks
+  for less motion nothing animates for long or repeats; numbers in tables, times and chips line up
+  (`tabular-nums`) and text that is cut off has its whole value as a tooltip. See
+  [UI](DOCS/ui.md#rules-for-any-page).
 - **Trends where there were only lists.** The Alerts page charts the messages of the last two days
   by hour and severity above its log (for the destination and state it is filtered to); each kind of
   threat, each listed attacker and each device in the list has a small line of the last week; a

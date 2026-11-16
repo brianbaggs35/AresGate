@@ -742,9 +742,10 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
   margin-inline-start: auto;
 }
 
+/* One column, and more of them where the page has the room (see `AppPage`). */
 .incidents__list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 44rem), 1fr));
   gap: 0.75rem;
   margin: 0;
   padding: 0;
