@@ -16,7 +16,7 @@ test.describe('the numbers on the dashboard open what they count', () => {
 
   test('the alerts tile opens as many alerts as it says', async ({ page, dashboard, logs }) => {
     await expect(dashboard.alertsTile).toHaveAccessibleName(
-      /Alerts.*Shows the alerts of the last 24 hours$/,
+      /^Alerts\b.*Shows the alerts of the last 24 hours/,
     )
     await expect(dashboard.alertsTile.getByTestId('stat-go')).toBeVisible()
 
@@ -28,7 +28,7 @@ test.describe('the numbers on the dashboard open what they count', () => {
 
   test('the blocked tile opens as many blocks as it says', async ({ page, dashboard, logs }) => {
     await expect(dashboard.blockedTile).toHaveAccessibleName(
-      /Blocked connections.*Shows the blocked connections of the last 24 hours$/,
+      /^Blocked connections\b.*Shows the blocked connections of the last 24 hours/,
     )
 
     await dashboard.blockedTile.click()
