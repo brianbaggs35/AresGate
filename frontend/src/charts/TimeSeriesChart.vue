@@ -357,29 +357,38 @@ function cancel() {
   selection.value = null
 }
 
+/** Shift with an arrow key stretches a selection from where it began, a moment at a time. */
+function stretch(event: KeyboardEvent) {
+  event.preventDefault()
+  const step = event.key === 'ArrowRight' ? 1 : -1
+  const from = anchored.value ?? active.value ?? (step > 0 ? 0 : props.times.length - 1)
+  const next = Math.min(props.times.length - 1, Math.max(0, (active.value ?? from) + step))
+  anchored.value = from
+  active.value = next
+  selection.value = [Math.min(from, next), Math.max(from, next)]
+}
+
+/** Enter zooms to a selection, or opens what the moment it is on leads to. Whether it did. */
+function confirm(event: KeyboardEvent): boolean {
+  if (selection.value) {
+    event.preventDefault()
+    if (selection.value[0] !== selection.value[1]) zoomIn()
+    return true
+  }
+  if (active.value !== null && destination(active.value) !== null) {
+    event.preventDefault()
+    open(active.value)
+    return true
+  }
+  return false
+}
+
 function onKey(event: KeyboardEvent) {
   if (props.zoomable && event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
-    event.preventDefault()
-    const step = event.key === 'ArrowRight' ? 1 : -1
-    const from = anchored.value ?? active.value ?? (step > 0 ? 0 : props.times.length - 1)
-    const next = Math.min(props.times.length - 1, Math.max(0, (active.value ?? from) + step))
-    anchored.value = from
-    active.value = next
-    selection.value = [Math.min(from, next), Math.max(from, next)]
+    stretch(event)
     return
   }
-  if (event.key === 'Enter') {
-    if (selection.value) {
-      event.preventDefault()
-      if (selection.value[0] !== selection.value[1]) zoomIn()
-      return
-    }
-    if (active.value !== null && destination(active.value) !== null) {
-      event.preventDefault()
-      open(active.value)
-      return
-    }
-  }
+  if (event.key === 'Enter' && confirm(event)) return
   if (event.key === 'Escape' && selection.value) {
     event.preventDefault()
     selection.value = null
