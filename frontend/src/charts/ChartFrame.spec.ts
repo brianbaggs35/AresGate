@@ -77,6 +77,16 @@ describe('ChartFrame', () => {
     expect(wrapper.find('[data-test="empty-text"]').exists()).toBe(false)
   })
 
+  it('keeps what a chart adds beside its title even when there is nothing to show', async () => {
+    const { wrapper } = await mountWithPlugins(ChartFrame, {
+      props: { title: 'Throughput', legend: [], table, hidden: [], empty: true },
+      slots: { ...slots, actions: '<button data-test="added">Reset</button>' },
+    })
+
+    expect(wrapper.find('[data-test="added"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="chart-view"]').exists()).toBe(false)
+  })
+
   it('says why there is nothing, in the words it is given', async () => {
     const { wrapper } = await mountFrame({
       empty: true,

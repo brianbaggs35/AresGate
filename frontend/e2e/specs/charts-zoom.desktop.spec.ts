@@ -1,4 +1,6 @@
-import { expect, test } from '../support'
+import type { Locator, Page } from '@playwright/test'
+
+import { expect, test, waitForMotion } from '../support'
 
 const BUSY = {
   collectors: ['ok' as const],
@@ -15,14 +17,30 @@ test.describe('the traffic chart you can act on', () => {
     await dashboard.goto()
   })
 
+  // The firewall's counters are of the last three hours, the right end of a day's plot.
+  const DATA = 0.95
+  const EARLIER = [0.3, 0.6] as const
+
+  /** Where a part of the plot is, measured once the chart is in view and has stopped moving. */
+  async function plotAt(page: Page, chart: Locator) {
+    const svg = chart.getByRole('img')
+    await svg.scrollIntoViewIfNeeded()
+    await waitForMotion(page)
+    const box = await svg.boundingBox()
+    if (!box) throw new Error('The chart is not on the page.')
+    return {
+      x: (share: number) => box.x + box.width * share,
+      y: box.y + box.height / 2,
+    }
+  }
+
   test('opens the logs of a moment of the traffic when it is clicked', async ({
     page,
     dashboard,
   }) => {
-    const plot = await dashboard.trafficChart.getByRole('img').boundingBox()
-    await dashboard.trafficChart.getByRole('img').scrollIntoViewIfNeeded()
+    const plot = await plotAt(page, dashboard.trafficChart)
 
-    await page.mouse.click((plot?.x ?? 0) + (plot?.width ?? 0) * 0.5, (plot?.y ?? 0) + 80)
+    await page.mouse.click(plot.x(DATA), plot.y)
 
     await expect(page).toHaveURL(/\/logs\?q=/)
     expect(decodeURIComponent(new URL(page.url()).searchParams.get('q') ?? '')).toMatch(
@@ -37,17 +55,16 @@ test.describe('the traffic chart you can act on', () => {
     const hours = dashboard.alertsCard.getByTestId('bar-slot')
     const before = await hours.count()
     await expect(dashboard.trafficChart.getByTestId('chart-zoom-reset')).toBeHidden()
-    await dashboard.trafficChart.getByRole('img').scrollIntoViewIfNeeded()
-    const plot = await dashboard.trafficChart.getByRole('img').boundingBox()
-    const y = (plot?.y ?? 0) + 80
+    const plot = await plotAt(page, dashboard.trafficChart)
 
-    await page.mouse.move((plot?.x ?? 0) + (plot?.width ?? 0) * 0.3, y)
+    await page.mouse.move(plot.x(0.9), plot.y)
     await page.mouse.down()
-    await page.mouse.move((plot?.x ?? 0) + (plot?.width ?? 0) * 0.6, y, { steps: 8 })
+    await page.mouse.move(plot.x(0.98), plot.y, { steps: 8 })
     await expect(dashboard.trafficChart.getByTestId('chart-selection')).toBeVisible()
     await page.mouse.up()
 
     await expect(dashboard.trafficChart.getByTestId('chart-zoom-reset')).toBeVisible()
+    await expect(dashboard.trafficChart.getByTestId('line')).toHaveCount(2)
     await expect(hours).not.toHaveCount(before)
 
     await dashboard.trafficChart.getByTestId('chart-zoom-reset').click()
@@ -56,17 +73,38 @@ test.describe('the traffic chart you can act on', () => {
     await expect(hours).toHaveCount(before)
   })
 
+  test('can be put back after zooming into a stretch with no traffic in it', async ({
+    page,
+    dashboard,
+  }) => {
+    const plot = await plotAt(page, dashboard.trafficChart)
+
+    await page.mouse.move(plot.x(EARLIER[0]), plot.y)
+    await page.mouse.down()
+    await page.mouse.move(plot.x(EARLIER[1]), plot.y, { steps: 8 })
+    await page.mouse.up()
+
+    await expect(dashboard.trafficChart.getByTestId('chart-empty')).toContainText(
+      'Nothing in this stretch',
+    )
+    await dashboard.trafficChart.getByTestId('chart-zoom-reset').click()
+
+    await expect(dashboard.trafficChart.getByTestId('chart-empty')).toBeHidden()
+    await expect(dashboard.trafficChart.getByTestId('line')).toHaveCount(2)
+  })
+
   test('zooms with Shift and the arrow keys, then Enter', async ({ page, dashboard }) => {
     const chart = dashboard.trafficChart.getByRole('img')
 
     await chart.focus()
-    await page.keyboard.press('Home')
+    await page.keyboard.press('End')
     await page.keyboard.down('Shift')
-    // A short stretch, which is part of the chart however few moments a narrow one draws.
-    for (let step = 0; step < 2; step++) await page.keyboard.press('ArrowRight')
+    // A short stretch of the latest readings, which has some traffic in it.
+    for (let step = 0; step < 2; step++) await page.keyboard.press('ArrowLeft')
     await page.keyboard.up('Shift')
     await page.keyboard.press('Enter')
 
     await expect(dashboard.trafficChart.getByTestId('chart-zoom-reset')).toBeVisible()
+    await expect(dashboard.trafficChart.getByTestId('line')).toHaveCount(2)
   })
 })
