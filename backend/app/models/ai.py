@@ -280,7 +280,7 @@ class AiDeniedProposal(Base):
     __tablename__ = "ai_denied_proposals"
     __table_args__ = (
         CheckConstraint("kind IN ('status', 'verdict')", name="kind"),
-        UniqueConstraint("kind", "value", "incident_id", name="change"),
+        UniqueConstraint("kind", "value", "incident_id", name="uq_ai_denied_proposals_change"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
