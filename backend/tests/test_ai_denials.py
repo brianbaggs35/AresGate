@@ -140,8 +140,10 @@ class TestRecording:
     def test_it_needs_the_token_that_says_the_page_asked(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.post(BASE, json={}).status_code == 403
-        assert client.delete(BASE).status_code == 403
+        posted = client.post(BASE, json={})
+        deleted = client.delete(BASE)
+
+        assert (posted.status_code, deleted.status_code) == (403, 403)
 
 
 class TestWhatStands:
