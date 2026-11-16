@@ -4,8 +4,10 @@ import {
   fetchSuggestions,
   fetchTrust,
   fetchTrusted,
+  revokeManyTrust,
   revokeTrust,
   trust,
+  trustSuggestions,
 } from '@/api/trust'
 
 describe('trust api', () => {
@@ -50,5 +52,31 @@ describe('trust api', () => {
     await revokeTrust(5, 'a-token')
 
     expect(remove).toHaveBeenCalledWith('/trust/5', 'a-token')
+  })
+
+  it('takes many back at once, with the sign-in token', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ done: 2, skipped: 0 })
+
+    await expect(revokeManyTrust([5, 6], 'a-token')).resolves.toEqual({ done: 2, skipped: 0 })
+    expect(post).toHaveBeenCalledWith('/trust/take-back', { ids: [5, 6] }, 'a-token')
+  })
+
+  it('trusts many suggestions as the AI read them', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ done: 2, skipped: 1 })
+
+    await expect(trustSuggestions([7, 8, 9], 'a-token')).resolves.toEqual({ done: 2, skipped: 1 })
+    expect(post).toHaveBeenCalledWith('/trust/accept', { incident_ids: [7, 8, 9] }, 'a-token')
+  })
+
+  it('trusts many suggestions as one level, when the owner says so', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ done: 1, skipped: 0 })
+
+    await trustSuggestions([7], 'a-token', 'low_priority')
+
+    expect(post).toHaveBeenCalledWith(
+      '/trust/accept',
+      { incident_ids: [7], verdict: 'low_priority' },
+      'a-token',
+    )
   })
 })

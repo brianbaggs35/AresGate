@@ -676,3 +676,67 @@ class TestWhatTheAiGave:
         assert audited(session, Action.VERDICT_REMOVED) == []
         (veto,) = session.scalars(select(AiClearVeto))
         assert (veto.source, veto.signature) == (rule.source, rule.signature)
+
+
+class TestTakingManyBack:
+    TAKE_BACK = f"{BASE}/take-back"
+
+    def take_back(self, client: TestClient, token: str, *ids: int) -> Any:
+        return client.post(self.TAKE_BACK, json={"ids": list(ids)}, headers=headers(token))
+
+    def test_it_is_only_for_someone_signed_in(self, client: TestClient, account: User) -> None:
+        assert client.post(self.TAKE_BACK, json={"ids": [1]}).status_code == 401
+
+    def test_each_is_taken_back_and_audited_and_the_incidents_are_judged_again(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        incident = attack(session, settings)
+        first = int(give(client, csrf_token, address=ATTACKER).json()["id"])
+        second = int(give(client, csrf_token, signature=SIGNATURE).json()["id"])
+        other = int(give(client, csrf_token, address=OTHER_ATTACKER).json()["id"])
+        session.expire_all()
+        assert session.get_one(Incident, incident.id).confidence == 0
+
+        response = self.take_back(client, csrf_token, first, second)
+
+        assert response.json() == {"done": 2, "skipped": 0}
+        session.expire_all()
+        assert [rule.id for rule in session.scalars(select(VerdictRule))] == [other]
+        assert session.get_one(Incident, incident.id).confidence > 0
+        assert len(audited(session, Action.VERDICT_REMOVED)) == 2
+
+    def test_what_is_not_there_or_is_said_twice_is_counted_once_or_skipped(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        made = int(give(client, csrf_token, address=ATTACKER).json()["id"])
+
+        response = self.take_back(client, csrf_token, made, made, 999_999)
+
+        assert response.json() == {"done": 1, "skipped": 1}
+
+    def test_one_the_ai_gave_tells_it_not_to_give_it_again(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        rule = TestWhatTheAiGave().given_by_ai(session, settings)
+
+        self.take_back(client, csrf_token, rule.id)
+
+        session.expire_all()
+        assert session.scalars(select(VerdictRule)).all() == []
+        assert len(session.scalars(select(AiClearVeto)).all()) == 1
+        assert len(audited(session, Action.VERDICT_TAKEN_BACK_FROM_AI)) == 1
+
+    @pytest.mark.parametrize(
+        "ids", [[], [0], [-3], [2**63], ["one"], list(range(1, 202))], ids=lambda ids: str(ids)[:12]
+    )
+    def test_it_needs_some_verdicts_and_not_too_many(
+        self, client: TestClient, csrf_token: str, ids: list[Any]
+    ) -> None:
+        response = client.post(self.TAKE_BACK, json={"ids": ids}, headers=headers(csrf_token))
+
+        assert response.status_code == 422
+
+    def test_it_is_refused_without_the_security_token(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        assert client.post(self.TAKE_BACK, json={"ids": [1]}).status_code == 403

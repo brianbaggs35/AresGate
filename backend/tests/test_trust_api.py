@@ -334,3 +334,102 @@ class TestWhatTheAiWouldTrust:
 
         assert len(items) == 10
         assert [each["confidence"] for each in items] == list(range(71, 61, -1))
+
+
+class TestTakingManyBack:
+    TAKE_BACK = f"{BASE}/take-back"
+
+    def test_it_is_only_for_someone_signed_in(self, client: TestClient, account: User) -> None:
+        answers = [
+            client.post(self.TAKE_BACK, json={"ids": [1]}),
+            client.post(f"{BASE}/accept", json={"incident_ids": [1]}),
+        ]
+
+        assert [each.status_code for each in answers] == [401, 401]
+
+    def test_many_are_taken_back_and_a_verdict_that_does_not_trust_is_left(
+        self, client: TestClient, csrf_token: str, session: Session
+    ) -> None:
+        first = trust(client, csrf_token, address=ATTACKER).json()["id"]
+        second = trust(client, csrf_token, address=OTHER_ATTACKER, verdict="low_priority").json()[
+            "id"
+        ]
+        threat = give(client, csrf_token, address=DEVICE, verdict="threat").json()["id"]
+
+        response = client.post(
+            self.TAKE_BACK, json={"ids": [first, second, threat]}, headers=headers(csrf_token)
+        )
+
+        assert response.json() == {"done": 2, "skipped": 1}
+        assert [rule.id for rule in rules(session)] == [threat]
+        assert len(audited(session, Action.VERDICT_REMOVED)) == 2
+
+
+class TestTrustingManySuggestions:
+    ACCEPT = f"{BASE}/accept"
+
+    def suggested(self, session: Session, settings: Settings) -> list[Incident]:
+        reader = TestWhatTheAiWouldTrust()
+        return [
+            reader.read(
+                session,
+                settings,
+                address=address,
+                verdict="not_suspicious",
+                verdict_reason=f"{address} is a scanner of mine.",
+                confidence=90,
+            )
+            for address in (ATTACKER, OTHER_ATTACKER)
+        ]
+
+    def accept(self, client: TestClient, token: str, *ids: int, **more: Any) -> Any:
+        return client.post(
+            self.ACCEPT, json={"incident_ids": list(ids), **more}, headers=headers(token)
+        )
+
+    def test_each_is_trusted_as_the_ai_read_it_and_audited(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        first, second = self.suggested(session, settings)
+
+        response = self.accept(client, csrf_token, first.id, second.id)
+
+        assert response.json() == {"done": 2, "skipped": 0}
+        made = rules(session)
+        assert {(str(rule.address), rule.verdict, rule.note) for rule in made} == {
+            (ATTACKER, "not_suspicious", f"{ATTACKER} is a scanner of mine."),
+            (OTHER_ATTACKER, "not_suspicious", f"{OTHER_ATTACKER} is a scanner of mine."),
+        }
+        assert len(audited(session, Action.VERDICT_GIVEN)) == 2
+        assert client.get(f"{BASE}/suggestions").json() == {"items": []}
+
+    def test_the_owner_can_say_how_much_to_trust_them_all(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        first, second = self.suggested(session, settings)
+
+        self.accept(client, csrf_token, first.id, second.id, verdict="low_priority")
+
+        assert {rule.verdict for rule in rules(session)} == {"low_priority"}
+
+    def test_what_is_no_longer_suggested_or_is_said_twice_is_skipped(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        first, second = self.suggested(session, settings)
+        trust(client, csrf_token, address=OTHER_ATTACKER)
+
+        response = self.accept(client, csrf_token, first.id, first.id, second.id, 999_999)
+
+        assert response.json() == {"done": 1, "skipped": 2}
+        assert len(rules(session)) == 2
+
+    def test_it_needs_some_incidents_and_a_verdict_that_trusts(
+        self, client: TestClient, csrf_token: str
+    ) -> None:
+        answers = [
+            self.accept(client, csrf_token),
+            self.accept(client, csrf_token, 1, verdict="threat"),
+            self.accept(client, csrf_token, *range(1, 202)),
+        ]
+
+        assert [each.status_code for each in answers] == [422, 422, 422]

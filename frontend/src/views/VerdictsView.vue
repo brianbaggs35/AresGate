@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { CircleCheck, Gavel, RefreshCw } from '@lucide/vue'
-import { onMounted, ref } from 'vue'
+import { CircleCheck, Gavel, RefreshCw, Undo2 } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import {
   changeVerdict,
   fetchVerdicts,
   removeVerdict,
+  takeBackVerdicts,
   type Verdict,
   type VerdictChange,
 } from '@/api/verdicts'
@@ -14,9 +15,11 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import SectionCard from '@/components/SectionCard.vue'
+import SelectBar from '@/components/SelectBar.vue'
 import VerdictDialog from '@/components/VerdictDialog.vue'
 import VerdictRow from '@/components/VerdictRow.vue'
 import { formatCount } from '@/format'
+import { useSelection } from '@/selection'
 import { useSessionStore } from '@/stores/session'
 import { aboutVerdict } from '@/verdicts'
 
@@ -33,6 +36,11 @@ const busy = ref(false)
 const target = ref<Verdict | null>(null)
 const changing = ref(false)
 const confirming = ref(false)
+/** Which verdicts are picked, to be taken back together, and the dialog that asks first. */
+const shown = computed(() => verdicts.value ?? [])
+const picks = useSelection(shown)
+const confirmingMany = ref(false)
+const canPick = computed(() => shown.value.length > 1 || picks.any.value)
 
 async function load() {
   loading.value = true
@@ -88,6 +96,28 @@ async function takeBack() {
   }
 }
 
+const manyOf = (count: number) => `${formatCount(count)} ${count === 1 ? 'verdict' : 'verdicts'}`
+
+async function takeBackMany() {
+  const ids = [...picks.picked.value]
+  busy.value = true
+  failure.value = null
+  notice.value = null
+  try {
+    const result = await session.change((token) => takeBackVerdicts(ids, token))
+    notice.value =
+      `Taken back: ${manyOf(result.done)}.` +
+      (result.skipped ? ` ${manyOf(result.skipped)} had already gone.` : '')
+    picks.clear()
+    await load()
+  } catch (error) {
+    failure.value = errorMessage(error)
+  } finally {
+    busy.value = false
+    confirmingMany.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -125,11 +155,34 @@ onMounted(load)
       @retry="load"
     />
     <template v-else-if="verdicts">
+      <SelectBar
+        v-if="canPick"
+        :count="picks.picked.value.size"
+        :whole="picks.wholePage.value"
+        singular="verdict"
+        plural="verdicts"
+        @toggle-all="picks.togglePage()"
+        @clear="picks.clear()"
+      >
+        <v-btn
+          variant="tonal"
+          color="error"
+          density="comfortable"
+          :prepend-icon="Undo2"
+          data-test="verdicts-take-back-many"
+          @click="confirmingMany = true"
+        >
+          Take back
+        </v-btn>
+      </SelectBar>
       <ul v-if="verdicts.length" class="verdicts__list" data-test="verdict-list">
         <VerdictRow
           v-for="rule in verdicts"
           :key="rule.id"
           :rule="rule"
+          :selectable="canPick"
+          :selected="picks.has(rule.id)"
+          @select="(range) => picks.toggle(rule.id, range)"
           @change="choose(rule, 'change')"
           @remove="choose(rule, 'remove')"
         />
@@ -177,6 +230,19 @@ onMounted(load)
           }}
         </p>
       </template>
+    </ConfirmDialog>
+    <ConfirmDialog
+      v-model="confirmingMany"
+      :title="`Take back ${manyOf(picks.picked.value.size)}?`"
+      confirm-label="Take them back"
+      destructive
+      :busy="busy"
+      @confirm="takeBackMany"
+    >
+      <p>
+        Each is judged as if you had never said it, which means what it kept quiet can raise alarms
+        again. Any the AI gave also tell it not to give them again.
+      </p>
     </ConfirmDialog>
   </SectionCard>
 </template>

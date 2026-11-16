@@ -17,6 +17,12 @@ export class VerdictsPage {
   readonly cancel: Locator
   readonly confirmTitle: Locator
   readonly confirm: Locator
+  /** The bar above the list that changes many at once: its hint, count, box and buttons. */
+  readonly hint: Locator
+  readonly count: Locator
+  readonly selectAll: Locator
+  readonly clearSelection: Locator
+  readonly takeBackMany: Locator
 
   constructor(private readonly page: Page) {
     this.card = page.getByTestId('verdicts-card')
@@ -32,6 +38,11 @@ export class VerdictsPage {
     this.cancel = page.getByTestId('dialog-cancel')
     this.confirmTitle = page.getByTestId('confirm-title')
     this.confirm = page.getByTestId('confirm-accept')
+    this.hint = page.getByTestId('select-hint')
+    this.count = page.getByTestId('select-count')
+    this.selectAll = page.getByTestId('select-all')
+    this.clearSelection = page.getByTestId('select-clear')
+    this.takeBackMany = page.getByTestId('verdicts-take-back-many')
   }
 
   /** What one verdict says (its chip), for each row, in order. */

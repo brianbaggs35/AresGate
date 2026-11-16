@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { CircleCheck, Plus, RefreshCw, ShieldCheck, Sparkles } from '@lucide/vue'
-import { onMounted, ref } from 'vue'
+import { CircleCheck, Plus, RefreshCw, ShieldCheck, Sparkles, Undo2 } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { errorMessage } from '@/api/client'
 import {
   fetchSuggestions,
   fetchTrust,
+  revokeManyTrust,
   revokeTrust,
   trust,
+  trustSuggestions,
   type Suggestion,
   type Trust,
+  type TrustLevel,
   type TrustList,
 } from '@/api/trust'
 import AppPage from '@/components/AppPage.vue'
@@ -17,12 +20,15 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadError from '@/components/LoadError.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RowCheck from '@/components/RowCheck.vue'
 import SectionCard from '@/components/SectionCard.vue'
+import SelectBar from '@/components/SelectBar.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import StatTile from '@/components/StatTile.vue'
 import TrustDialog from '@/components/TrustDialog.vue'
 import TrustRow from '@/components/TrustRow.vue'
 import { formatCount } from '@/format'
+import { useSelection } from '@/selection'
 import { useSessionStore } from '@/stores/session'
 import { LEVEL } from '@/trust'
 
@@ -48,6 +54,17 @@ const busy = ref(false)
 const target = ref<Trust | null>(null)
 const confirming = ref(false)
 const adding = ref(false)
+
+/** The decisions that match the search, and which of them are picked, to be taken back together. */
+const visible = computed(() => matching(list.value?.items ?? []))
+const picks = useSelection(visible)
+/** Rows are picked from where there are several, or where one is, whatever the search left. */
+const canPick = computed(() => visible.value.length > 1 || picks.any.value)
+const confirmingMany = ref(false)
+/** The AI's suggestions, and which are picked, to be trusted together. */
+const suggested = computed(() => suggestions.value.map((item) => ({ id: item.incident_id })))
+const chosen = useSelection(suggested)
+const canChoose = computed(() => suggestions.value.length > 1 || chosen.any.value)
 
 async function load() {
   loading.value = true
@@ -114,6 +131,49 @@ async function accept(suggestion: Suggestion) {
     await load()
   } catch (error) {
     failure.value = errorMessage(error)
+  }
+}
+
+const decisions = (count: number) =>
+  `${formatCount(count)} ${count === 1 ? 'decision' : 'decisions'}`
+
+async function takeBackMany() {
+  const ids = [...picks.picked.value]
+  busy.value = true
+  failure.value = null
+  notice.value = null
+  try {
+    const result = await session.change((token) => revokeManyTrust(ids, token))
+    notice.value =
+      `Taken back: ${decisions(result.done)}.` +
+      (result.skipped ? ` ${decisions(result.skipped)} had already gone.` : '')
+    picks.clear()
+    await load()
+  } catch (error) {
+    failure.value = errorMessage(error)
+  } finally {
+    busy.value = false
+    confirmingMany.value = false
+  }
+}
+
+/** Trusts the suggestions that are picked: as the AI read each, or all as the level given. */
+async function trustMany(level?: TrustLevel) {
+  const ids = [...chosen.picked.value]
+  busy.value = true
+  failure.value = null
+  notice.value = null
+  try {
+    const result = await session.change((token) => trustSuggestions(ids, token, level))
+    notice.value =
+      `Trusted: ${decisions(result.done)}.` +
+      (result.skipped ? ` ${result.skipped.toString()} no longer suggested.` : '')
+    chosen.clear()
+    await load()
+  } catch (error) {
+    failure.value = errorMessage(error)
+  } finally {
+    busy.value = false
   }
 }
 
@@ -194,13 +254,53 @@ onMounted(load)
         description="Incidents the AI read and is sure are nothing to worry about, and that nothing trusts yet. Trusting one is your call, and you can take it back."
         data-test="suggestions-card"
       >
+        <SelectBar
+          v-if="canChoose"
+          :count="chosen.picked.value.size"
+          :whole="chosen.wholePage.value"
+          singular="suggestion"
+          plural="suggestions"
+          @toggle-all="chosen.togglePage()"
+          @clear="chosen.clear()"
+        >
+          <v-btn
+            variant="tonal"
+            color="success"
+            density="comfortable"
+            :prepend-icon="ShieldCheck"
+            :loading="busy"
+            data-test="suggestions-trust-many"
+            @click="trustMany()"
+          >
+            Trust as the AI read them
+          </v-btn>
+          <v-btn
+            variant="tonal"
+            density="comfortable"
+            :disabled="busy"
+            data-test="suggestions-trust-low"
+            @click="trustMany('low_priority')"
+          >
+            Trust as low priority
+          </v-btn>
+        </SelectBar>
         <ul class="trust__suggestions">
           <li
             v-for="suggestion in suggestions"
             :key="suggestion.incident_id"
             class="suggestion"
+            :class="{
+              'suggestion--selectable': canChoose,
+              'suggestion--selected': chosen.has(suggestion.incident_id),
+            }"
             data-test="suggestion"
           >
+            <RowCheck
+              v-if="canChoose"
+              :checked="chosen.has(suggestion.incident_id)"
+              :label="`Select: ${suggestion.subject}`"
+              @toggle="(range) => chosen.toggle(suggestion.incident_id, range)"
+            />
             <div class="suggestion__text">
               <p class="text-title-medium suggestion__headline">
                 <v-icon :icon="Sparkles" size="18" aria-hidden="true" />
@@ -265,11 +365,34 @@ onMounted(load)
           class="trust__search"
           data-test="trust-search"
         />
-        <ul v-if="matching(list.items).length" class="trust__list" data-test="trust-list">
+        <SelectBar
+          v-if="canPick"
+          :count="picks.picked.value.size"
+          :whole="picks.wholePage.value"
+          singular="decision"
+          plural="decisions"
+          @toggle-all="picks.togglePage()"
+          @clear="picks.clear()"
+        >
+          <v-btn
+            variant="tonal"
+            color="error"
+            density="comfortable"
+            :prepend-icon="Undo2"
+            data-test="trust-take-back-many"
+            @click="confirmingMany = true"
+          >
+            Take back
+          </v-btn>
+        </SelectBar>
+        <ul v-if="visible.length" class="trust__list" data-test="trust-list">
           <TrustRow
-            v-for="rule in matching(list.items)"
+            v-for="rule in visible"
             :key="rule.id"
             :rule="rule"
+            :selectable="canPick"
+            :selected="picks.has(rule.id)"
+            @select="(range) => picks.toggle(rule.id, range)"
             @revoke="ask(rule)"
           />
         </ul>
@@ -320,6 +443,19 @@ onMounted(load)
         </p>
       </template>
     </ConfirmDialog>
+    <ConfirmDialog
+      v-model="confirmingMany"
+      :title="`Take back ${decisions(picks.picked.value.size)}?`"
+      confirm-label="Take them back"
+      destructive
+      :busy="busy"
+      @confirm="takeBackMany"
+    >
+      <p>
+        Each is judged as if you had never said it, which means what it kept quiet can raise alarms
+        again, in the incidents that are not resolved.
+      </p>
+    </ConfirmDialog>
   </AppPage>
 </template>
 
@@ -364,6 +500,14 @@ onMounted(load)
   border-block-start: 0;
 }
 
+.suggestion--selectable {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.suggestion--selected {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
 .suggestion__headline {
   display: flex;
   align-items: center;
@@ -381,6 +525,10 @@ onMounted(load)
 @media (min-width: 960px) {
   .suggestion {
     grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .suggestion--selectable {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
 
   .suggestion__actions {

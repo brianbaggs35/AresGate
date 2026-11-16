@@ -85,3 +85,37 @@ export function changeVerdict(
 export function removeVerdict(id: number, csrfToken: string): Promise<undefined> {
   return apiDelete(`/verdicts/${id.toString()}`, csrfToken)
 }
+
+/** How many verdicts a request took back, and how many were not there to take back. */
+export interface TakenBack {
+  done: number
+  skipped: number
+}
+
+/** The most verdicts, or suggestions, that one request changes. */
+export const MAX_BULK = 200
+
+/**
+ * Makes a change to many by ids, a batch at a time (a request takes at most `MAX_BULK`), and adds
+ * up how it went. The batches go one after another, so what is changed first is changed first.
+ */
+export async function inBatches(
+  ids: readonly number[],
+  change: (batch: readonly number[]) => Promise<TakenBack>,
+): Promise<TakenBack> {
+  let done = 0
+  let skipped = 0
+  for (let from = 0; from < ids.length; from += MAX_BULK) {
+    const result = await change(ids.slice(from, from + MAX_BULK))
+    done += result.done
+    skipped += result.skipped
+  }
+  return { done, skipped }
+}
+
+/** Takes many verdicts back at once, each as if it had been taken back by itself. */
+export function takeBackVerdicts(ids: readonly number[], csrfToken: string): Promise<TakenBack> {
+  return inBatches(ids, (batch) =>
+    apiPost<TakenBack>('/verdicts/take-back', { ids: batch }, csrfToken),
+  )
+}

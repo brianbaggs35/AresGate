@@ -21,6 +21,12 @@ async function open(
   else ideas.mockResolvedValue(suggestions)
   const revoke = vi.spyOn(trustApi, 'revokeTrust').mockResolvedValue(undefined)
   const post = vi.spyOn(trustApi, 'trust').mockResolvedValue(trustRule({ id: 9 }))
+  const revokeMany = vi
+    .spyOn(trustApi, 'revokeManyTrust')
+    .mockResolvedValue({ done: 2, skipped: 0 })
+  const trustMany = vi
+    .spyOn(trustApi, 'trustSuggestions')
+    .mockResolvedValue({ done: 2, skipped: 0 })
   const mounted = await mountWithPlugins(TrustView, { signedIn: 'admin', withApp: true })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
@@ -36,6 +42,8 @@ async function open(
     ideas,
     revoke,
     post,
+    revokeMany,
+    trustMany,
     find,
     text,
     rows,
@@ -331,6 +339,178 @@ describe('TrustView', () => {
       await choose(wrapper, 1)
 
       expect(find('trust-failure').exists()).toBe(false)
+    })
+  })
+
+  describe('taking many back', () => {
+    const pick = async (wrapper: Awaited<ReturnType<typeof open>>['wrapper'], ...at: number[]) => {
+      const rows = wrapper.findAll('[data-test="trust-row"]')
+      for (const index of at) await rows[index]?.find('[data-test="row-select"]').trigger('click')
+    }
+
+    it('offers no picking for a single decision', async () => {
+      const { find, rows } = await open(trustList({ items: [trustRule()] }))
+
+      expect(find('select-bar').exists()).toBe(false)
+      expect(rows()[0]?.find('[data-test="row-select"]').exists()).toBe(false)
+    })
+
+    it('says what picking is for, and has the actions once something is picked', async () => {
+      const { wrapper, find, text } = await open()
+      expect(text('select-hint')).toBe('Select decisions to change them together')
+      expect(find('trust-take-back-many').exists()).toBe(false)
+
+      await pick(wrapper, 0)
+
+      expect(text('select-count')).toBe('1 decision selected')
+      expect(find('trust-take-back-many').exists()).toBe(true)
+    })
+
+    it('picks every decision with the box above them, and lets them all go', async () => {
+      const { wrapper, find, text } = await open()
+
+      await find('select-all').trigger('change')
+      expect(text('select-count')).toBe('2 decisions selected')
+      expect(
+        wrapper
+          .findAll('[data-test="trust-row"]')
+          .every((row) => row.classes('trust-row--selected')),
+      ).toBe(true)
+
+      await find('select-clear').trigger('click')
+      expect(text('select-hint')).toContain('Select decisions')
+    })
+
+    it('forgets a decision that the search leaves out', async () => {
+      const { wrapper, find, text } = await open()
+      await pick(wrapper, 0, 1)
+
+      await find('trust-search').find('input').setValue('camera')
+
+      expect(text('select-count')).toBe('1 decision selected')
+    })
+
+    it('asks first, then takes back what is picked, and says how many', async () => {
+      const { wrapper, find, revokeMany, fetchIt, inDialog, text } = await open()
+      await pick(wrapper, 0, 1)
+
+      await find('trust-take-back-many').trigger('click')
+      expect(inDialog('confirm-title')!.textContent).toBe('Take back 2 decisions?')
+      fetchIt.mockResolvedValue(trustList({ items: [] }))
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(revokeMany).toHaveBeenCalledWith([2, 1], 'a-security-token')
+      expect(text('trust-notice')).toBe('Taken back: 2 decisions.')
+      expect(find('no-trust').exists()).toBe(true)
+    })
+
+    it('says one decision in the singular, and what had gone already', async () => {
+      const { wrapper, find, revokeMany, inDialog, text } = await open()
+      revokeMany.mockResolvedValue({ done: 1, skipped: 1 })
+      await pick(wrapper, 0)
+
+      await find('trust-take-back-many').trigger('click')
+      expect(inDialog('confirm-title')!.textContent).toBe('Take back 1 decision?')
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(text('trust-notice')).toBe('Taken back: 1 decision. 1 decision had already gone.')
+    })
+
+    it('does nothing when the question is cancelled', async () => {
+      const { wrapper, find, revokeMany, inDialog, text } = await open()
+      await pick(wrapper, 0, 1)
+
+      await find('trust-take-back-many').trigger('click')
+      inDialog('confirm-cancel')!.click()
+      await flushPromises()
+
+      expect(revokeMany).not.toHaveBeenCalled()
+      expect(text('select-count')).toBe('2 decisions selected')
+    })
+
+    it('says why it could not, and keeps what was picked', async () => {
+      const { wrapper, find, revokeMany, inDialog, text } = await open()
+      revokeMany.mockRejectedValue(offline())
+      await pick(wrapper, 0, 1)
+
+      await find('trust-take-back-many').trigger('click')
+      inDialog('confirm-accept')!.click()
+      await flushPromises()
+      await flushPromises()
+
+      expect(text('trust-failure')).toContain("Can't reach AresGate.")
+      expect(text('select-count')).toBe('2 decisions selected')
+    })
+  })
+
+  describe('trusting many suggestions', () => {
+    const two = [
+      suggestion({ incident_id: 9 }),
+      suggestion({ incident_id: 11, subject: '52.1.2.9' }),
+    ]
+
+    const pickBoth = async (find: Awaited<ReturnType<typeof open>>['find']) => {
+      await find('suggestions-card').find('[data-test="select-all"]').trigger('change')
+    }
+
+    it('offers no picking for a single suggestion', async () => {
+      const { find } = await open(trustList(), [suggestion()])
+
+      expect(find('suggestions-card').find('[data-test="select-bar"]').exists()).toBe(false)
+      expect(find('suggestions-card').find('[data-test="row-select"]').exists()).toBe(false)
+    })
+
+    it('trusts what is picked as the AI read each', async () => {
+      const { find, trustMany, fetchIt, text } = await open(trustList(), two)
+      await pickBoth(find)
+
+      await find('suggestions-trust-many').trigger('click')
+      await flushPromises()
+      await flushPromises()
+
+      expect(trustMany).toHaveBeenCalledWith([9, 11], 'a-security-token', undefined)
+      expect(text('trust-notice')).toBe('Trusted: 2 decisions.')
+      expect(fetchIt).toHaveBeenCalledTimes(2)
+    })
+
+    it('trusts one picked suggestion as low priority, and says what was no longer suggested', async () => {
+      const { wrapper, find, trustMany, text } = await open(trustList(), two)
+      trustMany.mockResolvedValue({ done: 1, skipped: 1 })
+      await wrapper.find('[data-test="suggestion"] [data-test="row-select"]').trigger('click')
+
+      await find('suggestions-trust-low').trigger('click')
+      await flushPromises()
+      await flushPromises()
+
+      expect(trustMany).toHaveBeenCalledWith([9], 'a-security-token', 'low_priority')
+      expect(text('trust-notice')).toBe('Trusted: 1 decision. 1 no longer suggested.')
+    })
+
+    it('lets them all go', async () => {
+      const { find } = await open(trustList(), two)
+      await pickBoth(find)
+
+      await find('suggestions-card').find('[data-test="select-clear"]').trigger('click')
+
+      expect(find('suggestions-card').find('[data-test="select-hint"]').exists()).toBe(true)
+    })
+
+    it('says why it could not, and keeps what was picked', async () => {
+      const { find, trustMany, text } = await open(trustList(), two)
+      trustMany.mockRejectedValue(offline())
+      await pickBoth(find)
+
+      await find('suggestions-trust-many').trigger('click')
+      await flushPromises()
+
+      expect(text('trust-failure')).toContain("Can't reach AresGate.")
+      expect(find('suggestions-card').find('[data-test="select-count"]').text()).toBe(
+        '2 suggestions selected',
+      )
     })
   })
 })

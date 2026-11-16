@@ -4,16 +4,21 @@ import { computed } from 'vue'
 
 import type { Verdict } from '@/api/verdicts'
 import AiGaveChip from '@/components/AiGaveChip.vue'
+import RowCheck from '@/components/RowCheck.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
 import { formatAgo, formatCount, formatDateTime } from '@/format'
 import { aboutVerdict } from '@/verdicts'
 
 /**
  * One verdict in the list of them: what it says, what it is about, why, how often it has been
- * used and when it was given, with the means to change it or take it back.
+ * used and when it was given, with the means to change it or take it back, and (where the list
+ * can change many at once) the box that picks it.
  */
-const props = defineProps<{ rule: Verdict }>()
-const emit = defineEmits<{ change: []; remove: [] }>()
+const props = withDefaults(
+  defineProps<{ rule: Verdict; selectable?: boolean; selected?: boolean }>(),
+  { selectable: false, selected: false },
+)
+const emit = defineEmits<{ change: []; remove: []; select: [range: boolean] }>()
 
 const about = computed(() => aboutVerdict(props.rule))
 const used = computed(() => {
@@ -25,7 +30,13 @@ const used = computed(() => {
 </script>
 
 <template>
-  <li class="verdict-row" data-test="verdict-row">
+  <li class="verdict-row" :class="{ 'verdict-row--selected': selected }" data-test="verdict-row">
+    <RowCheck
+      v-if="selectable"
+      :checked="selected"
+      :label="`Select: ${about}`"
+      @toggle="(range) => emit('select', range)"
+    />
     <div class="verdict-row__body">
       <div class="verdict-row__what">
         <VerdictChip :verdict="rule.verdict" />
@@ -69,6 +80,10 @@ const used = computed(() => {
   justify-content: space-between;
   gap: 0.75rem 1.5rem;
   padding: 1rem 0;
+}
+
+.verdict-row--selected {
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .verdict-row + .verdict-row {

@@ -2,20 +2,31 @@
 import { ChevronRight, Trash2 } from '@lucide/vue'
 
 import type { Trust } from '@/api/trust'
+import RowCheck from '@/components/RowCheck.vue'
 import { formatAgo } from '@/format'
 import { LEVEL, appliedText } from '@/trust'
 
 /**
  * One trust decision in the list: what is trusted, how much and why, what it has kept quiet, and
  * when it was last changed. The row opens the decision, where all of it can be changed; the
- * button beside it takes the decision back. On a phone the facts stack under what is trusted.
+ * button beside it takes the decision back, and the box before it (where the list can change many
+ * at once) picks it. On a phone the facts stack under what is trusted.
  */
-defineProps<{ rule: Trust }>()
-const emit = defineEmits<{ revoke: [] }>()
+withDefaults(defineProps<{ rule: Trust; selectable?: boolean; selected?: boolean }>(), {
+  selectable: false,
+  selected: false,
+})
+const emit = defineEmits<{ revoke: []; select: [range: boolean] }>()
 </script>
 
 <template>
-  <li class="trust-row" data-test="trust-row">
+  <li class="trust-row" :class="{ 'trust-row--selected': selected }" data-test="trust-row">
+    <RowCheck
+      v-if="selectable"
+      :checked="selected"
+      :label="`Select: ${rule.about}`"
+      @toggle="(range) => emit('select', range)"
+    />
     <router-link
       :to="{ name: 'trust-decision', params: { id: rule.id } }"
       class="trust-row__link"
@@ -75,6 +86,10 @@ const emit = defineEmits<{ revoke: [] }>()
   align-items: center;
   gap: 0.25rem;
   border-block-start: thin solid rgb(var(--v-border-color), var(--v-border-opacity));
+}
+
+.trust-row--selected {
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .trust-row:first-child {
