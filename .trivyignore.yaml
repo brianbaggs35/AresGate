@@ -9,3 +9,13 @@ misconfigurations:
       unprivileged user: Postgres as postgres, the API as aresgate, nginx workers as nginx.
       docker-compose.yml drops every capability except the few needed to switch users,
       forbids privilege escalation and makes the filesystem read-only.
+secrets:
+  - id: gcp-service-account
+    paths:
+      - "opt/venv/lib/python*/site-packages/anthropic/resources/beta/agents/**"
+      - "/opt/venv/lib/python*/site-packages/anthropic/resources/beta/agents/**"
+    statement: >-
+      The Anthropic SDK's own documentation of an agent's settings contains the text
+      `{*************************}` (a placeholder for the empty object that stores the default),
+      which the scanner takes for a Google service account key. It is a docstring, in a package that
+      is installed from a wheel, and holds no key.

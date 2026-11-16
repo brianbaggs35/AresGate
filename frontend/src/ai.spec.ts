@@ -164,7 +164,7 @@ describe('prices', () => {
       'claude-old-1',
     ])
     expect(items[2]?.props.subtitle).toBe('The model you saved')
-    expect(modelItems(anthropic(), 'en-US', '').length).toBe(2)
+    expect(modelItems(anthropic(), 'en-US', '')).toHaveLength(2)
   })
 })
 
