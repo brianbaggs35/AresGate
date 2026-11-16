@@ -133,7 +133,7 @@ test.describe('every main page, at every size', () => {
     for (const { name, path } of PAGES) {
       await arrive(page, path)
       // The system chooses every color, so contrast is its to keep.
-      await expectAccessible(page, { disableRules: ['color-contrast'] })
+      await expectAccessible(page, { disableRules: ['color-contrast'], where: name })
       expect(await sideways(page), `${name} scrolls sideways`).toBeLessThanOrEqual(0)
     }
   })
