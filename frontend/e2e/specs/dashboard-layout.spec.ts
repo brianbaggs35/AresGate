@@ -54,6 +54,7 @@ test.describe('dashboard layout', () => {
   }) => {
     await harness.createActivity(BUSY)
     await dashboard.goto()
+    await expect(dashboard.alertsCard).toBeVisible()
     const before = await order(dashboard.widgets)
     await dashboard.customize.click()
 
@@ -61,6 +62,7 @@ test.describe('dashboard layout', () => {
 
     await expect(dashboard.sheetStatus).toHaveText('What was left out is now number 2 of 9.')
     await page.reload()
+    await expect(dashboard.alertsCard).toBeVisible()
     const after = await order(dashboard.widgets)
     expect(after.slice(0, 2)).toEqual([before[1], before[0]])
   })
