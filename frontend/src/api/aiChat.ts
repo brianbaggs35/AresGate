@@ -25,6 +25,12 @@ export interface ChatAction {
   value: string | null
   note: string | null
   label: string
+  /** For a status or a verdict: the ids of the other incidents it is about, as well as
+   * `target_key`. You approve or deny it as a whole. */
+  also: string[]
+  /** For one about a single incident: the address it is about, if it is about one. A status can
+   * be given to every earlier incident about it. */
+  address: string | null
 }
 
 /** Where you are when you ask, so that "this incident" means the one on screen. */

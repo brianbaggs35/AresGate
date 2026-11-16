@@ -1572,6 +1572,48 @@ def _lookup(tool: str, name: str | None = None) -> dict[str, Any]:
     return {"tool": tool, "id": None, "name": name, "hours": None, "limit": None}
 
 
+def answer_to_a_change_in_the_chat(prompt: str, question: str) -> str | None:
+    """The assistant's answer to a request to change incidents, after a look at the open ones: to
+    dismiss them says so for all it was shown, as one suggestion naming the others, and to say a
+    printer is fine gives a verdict on the first, with why."""
+    if "dismiss" not in question and "printer" not in question:
+        return None
+    if '<data label="open incidents' not in prompt:
+        return json.dumps(
+            {
+                "lookups": [_lookup("open_incidents")],
+                "answer": "",
+                "cites": [],
+                "actions": [],
+            }
+        )
+    numbers = list(dict.fromkeys(re.findall(r"\[incident (\w+)\]", prompt)))
+    if not numbers:
+        return json.dumps(
+            {"lookups": [], "answer": "There is nothing open.", "cites": [], "actions": []}
+        )
+    names = [f"incident {number}" for number in numbers]
+    if "dismiss" in question:
+        action: dict[str, Any] = {
+            "kind": "status",
+            "target": names[0],
+            "value": "dismissed",
+            "note": None,
+            "also": names[1:],
+        }
+        answer = "These look like background noise, so I would dismiss them."
+    else:
+        action = {
+            "kind": "verdict",
+            "target": names[0],
+            "value": "not_suspicious",
+            "note": "Your printer, which does this every day.",
+            "also": [],
+        }
+        answer = f"That fits {names[0]}, so I would call it not suspicious."
+    return json.dumps({"lookups": [], "answer": answer, "cites": names[:1], "actions": [action]})
+
+
 def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
     """What the assistant would answer in the chat (a request for a JSON schema with ``lookups``):
     a question about what needs attention is answered after a look at the open incidents, one
@@ -1581,6 +1623,9 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
         return None
     prompt = _prompt_of(asked)
     question = prompt.rsplit("The owner asks:", 1)[-1].lower()
+    changing = answer_to_a_change_in_the_chat(prompt, question)
+    if changing is not None:
+        return changing
     for words, tool, kind, name in (
         ("attention", "open_incidents", "incident", None),
         ("integration", "integrations", "integration", None),
@@ -1600,10 +1645,16 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
         )
         cites = [f"{kind} {found.group(1)}"] if found else []
         # What it suggests of an incident it found: to open it, and to start on it.
-        actions = (
+        actions: list[dict[str, Any]] = (
             [
-                {"kind": "open", "target": cites[0], "value": None, "note": None},
-                {"kind": "status", "target": cites[0], "value": "investigating", "note": None},
+                {"kind": "open", "target": cites[0], "value": None, "note": None, "also": []},
+                {
+                    "kind": "status",
+                    "target": cites[0],
+                    "value": "investigating",
+                    "note": None,
+                    "also": [],
+                },
             ]
             if kind == "incident" and found
             else []

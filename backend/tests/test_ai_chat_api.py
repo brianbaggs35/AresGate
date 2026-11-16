@@ -15,7 +15,7 @@ from app.models import AiConversation, AiMessage, User, utcnow
 from tests.stubs import Serve
 from tests.test_ai_chat import Scripted, look, reply
 from tests.test_ai_service import KEY
-from tests.test_ai_triage import incident, ready
+from tests.test_ai_triage import ATTACKER, incident, ready
 
 BASE = "/api/ai/conversations"
 
@@ -226,6 +226,8 @@ def test_a_question_asked_from_a_page_is_answered_about_what_is_on_it_and_may_su
             "value": "resolved",
             "note": None,
             "label": f"Mark Incident {found.id} as resolved",
+            "also": [],
+            "address": ATTACKER,
         }
     ]
     assert asked_again.status_code == 200

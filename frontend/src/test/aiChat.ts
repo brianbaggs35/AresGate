@@ -61,6 +61,8 @@ export function action(over: Partial<ChatAction> = {}): ChatAction {
     value: null,
     note: null,
     label: 'Open incident 3',
+    also: [],
+    address: null,
     ...over,
   }
 }

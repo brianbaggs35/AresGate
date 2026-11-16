@@ -902,8 +902,32 @@ class TestAiProviders:
         assert second["answer"] == "Start with incident 7: it is the one that needs you most."
         assert second["cites"] == ["incident 7"]
         assert second["actions"] == [
-            {"kind": "open", "target": "incident 7", "value": None, "note": None},
-            {"kind": "status", "target": "incident 7", "value": "investigating", "note": None},
+            {"kind": "open", "target": "incident 7", "value": None, "note": None, "also": []},
+            {
+                "kind": "status",
+                "target": "incident 7",
+                "value": "investigating",
+                "note": None,
+                "also": [],
+            },
+        ]
+
+    def test_anthropic_proposes_a_change_to_the_incidents_it_was_shown(self) -> None:
+        first = self.chat("Overview.\n\nThe owner asks: Please dismiss the noise.")
+        second = self.chat(
+            'Overview.\n\n<data label="open incidents">\n[incident 7] high\n[incident 9] low\n'
+            "</data>\n\nThe owner asks: Please dismiss the noise."
+        )
+
+        assert [lookup["tool"] for lookup in first["lookups"]] == ["open_incidents"]
+        assert second["actions"] == [
+            {
+                "kind": "status",
+                "target": "incident 7",
+                "value": "dismissed",
+                "note": None,
+                "also": ["incident 9"],
+            }
         ]
 
     def test_anthropic_says_nothing_needs_attention_when_nothing_was_found(self) -> None:
