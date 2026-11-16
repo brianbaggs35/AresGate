@@ -18,7 +18,7 @@ from pydantic import (
 from sqlalchemy import ColumnElement, func, or_, select
 
 from app.agents import flags
-from app.ai import catalog, clearing, triage
+from app.ai import catalog, clearing, review_queue, triage
 from app.api import asking
 from app.api import conversations as conversation_api
 from app.api import wire as wire_api
@@ -235,6 +235,22 @@ class IncidentOut(BaseModel):
     # Set where the AI, and not the owner, called it not suspicious or low priority: why, how sure
     # it was and which verdict it gave, which the owner can take back (``DELETE /verdicts/{id}``).
     cleared_by_ai: ClearedByAiOut | None = None
+
+
+TrailAction = Literal[
+    "cleared", "confirmed", "taken_back", "suggestion_confirmed", "suggestion_dismissed"
+]
+
+
+class ClearingStepOut(BaseModel):
+    """One thing that happened to the AI clearing an incident, and who did it: ``the AI``, or the
+    owner by name."""
+
+    action: TrailAction
+    at: AwareDatetime
+    by: str
+    verdict: Literal["not_suspicious", "low_priority"] | None
+    confidence: int | None
 
 
 class ClearedByAiOut(BaseModel):
@@ -576,6 +592,8 @@ class IncidentDetail(IncidentOut):
     reading: ReadingOut | None
     # Why it is in the lane it is in, a fact to a line.
     why: list[str]
+    # What the AI cleared or suggested of it and what the owner did about that, oldest first.
+    clearing_trail: list[ClearingStepOut]
     # The signals grouped by what they say, in the order each first happened.
     occurrences: list[OccurrenceOut]
     family: FamilyBrief | None
@@ -871,6 +889,28 @@ def _incident(
     )
 
 
+_TRAIL_WORDS: dict[str, str] = {
+    Action.VERDICT_GIVEN_BY_AI.value: "cleared",
+    Action.AI_CLEAR_CONFIRMED.value: "confirmed",
+    Action.VERDICT_TAKEN_BACK_FROM_AI.value: "taken_back",
+    Action.AI_SUGGESTION_CONFIRMED.value: "suggestion_confirmed",
+    Action.AI_SUGGESTION_DISMISSED.value: "suggestion_dismissed",
+}
+
+
+def _clearing_trail(db: Db, incident_id: int) -> list[ClearingStepOut]:
+    return [
+        ClearingStepOut(
+            action=cast(TrailAction, _TRAIL_WORDS[step.action]),
+            at=step.at,
+            by=step.by,
+            verdict=cast(Literal["not_suspicious", "low_priority"] | None, step.verdict),
+            confidence=step.confidence,
+        )
+        for step in review_queue.trail(db, incident_id)
+    ]
+
+
 def _cleared(rule: VerdictRule | None) -> ClearedByAiOut | None:
     if rule is None:
         return None
@@ -1124,6 +1164,7 @@ def _detail(db: Db, incident: Incident) -> IncidentDetail:
             *explain.why(incident, judging.floor, judging.tuning),
             *([weighing.sentence(touch)] if touch else []),
         ],
+        clearing_trail=_clearing_trail(db, incident.id),
         occurrences=occurrences_out(grouped),
         family=_family(db, incident),
         insights=_insights(insights.of(grouped)),

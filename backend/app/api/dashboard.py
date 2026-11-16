@@ -8,6 +8,7 @@ from pydantic import AwareDatetime, BaseModel
 
 from app import dashboard
 from app.agents import probe
+from app.ai import review_queue
 from app.answers import AnswerCache
 from app.api.conditional import Revalidation
 from app.api.deps import Db, signed_in
@@ -195,10 +196,19 @@ class AttentionOut(BaseModel):
     urgent: int
 
 
+class AiReviewOut(BaseModel):
+    """What the AI cleared that the owner has not looked at: suggestions waiting for a tap, and
+    verdicts it gave itself that are not confirmed."""
+
+    waiting: int
+    cleared: int
+
+
 class DashboardOut(BaseModel):
     window: WindowOut
     alerts: AlertsOut
     attention: AttentionOut
+    ai_review: AiReviewOut
     noise: NoiseOut
     recent_alerts: list[AlertOut]
     blocked: BlockedOut
@@ -291,6 +301,7 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
     floor = filters.load(db).confidence_floor
     tuning = threat_settings.load(db)
     needing = dashboard.attention(db, win, floor, tuning)
+    waiting, unconfirmed = review_queue.counts(db)
     return DashboardOut(
         window=WindowOut(
             key=win.key,
@@ -318,6 +329,10 @@ def build(db: Db, key: str, now: datetime) -> DashboardOut:
             cleared=needing.cleared,
             needs_you=needing.needs_you,
             urgent=needing.urgent,
+        ),
+        ai_review=AiReviewOut(
+            waiting=waiting,
+            cleared=unconfirmed,
         ),
         noise=_noise(db, win),
         recent_alerts=[_alert(event) for event in dashboard.recent_alerts(db, win)],

@@ -70,6 +70,12 @@ describe('router', () => {
     expect((await visit('/settings/threat-detection')).name).toBe('settings-threat-detection')
   })
 
+  it('shows what the AI cleared under its own title', async () => {
+    const page = await visit('/cleared')
+    expect(page.name).toBe('cleared')
+    expect(pageTitle(page)).toBe('Cleared by the AI')
+  })
+
   it('shows an address that is not a number as a page that is not there', async () => {
     expect((await visit('/incidents/twelve')).name).toBe('not-found')
   })

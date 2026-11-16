@@ -31,6 +31,7 @@ import NeedsYouLane from '@/components/NeedsYouLane.vue'
 import NoiseCard from '@/components/NoiseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import RecentAlerts from '@/components/RecentAlerts.vue'
+import ClearedNudge from '@/components/ClearedNudge.vue'
 import ReviewNudge from '@/components/ReviewNudge.vue'
 import SectionCard from '@/components/SectionCard.vue'
 import StatTile from '@/components/StatTile.vue'
@@ -476,7 +477,10 @@ onBeforeUnmount(() => void leaveFullScreen())
             />
           </template>
 
-          <ReviewNudge v-else-if="place.id === 'review'" />
+          <div v-else-if="place.id === 'review'" class="widget__nudges">
+            <ClearedNudge :counts="data.ai_review" />
+            <ReviewNudge />
+          </div>
 
           <template v-else-if="place.id === 'needs_you'">
             <NeedsYouLane
@@ -614,6 +618,17 @@ onBeforeUnmount(() => void leaveFullScreen())
 
 .widget > * {
   height: 100%;
+}
+
+.widget__nudges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: auto;
+}
+
+.widget__nudges > * {
+  height: auto;
 }
 
 @container (min-width: 900px) {

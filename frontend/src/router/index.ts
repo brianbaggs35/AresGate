@@ -50,6 +50,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Incident response' },
   },
   {
+    path: '/cleared',
+    name: 'cleared',
+    component: () => import('@/views/ClearedView.vue'),
+    meta: { title: 'Cleared by the AI' },
+  },
+  {
     path: '/review',
     name: 'review',
     component: () => import('@/views/ReviewView.vue'),

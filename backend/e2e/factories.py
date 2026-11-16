@@ -707,12 +707,19 @@ class VerdictSpec(NamedTuple):
     destination: str | None = None
     # Given by the AI, 91 sure, rather than by the owner.
     by_ai: bool = False
+    # For one the AI gave: the address of the incident it was reading.
+    incident: str | None = None
 
 
 def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
     """Gives the verdicts the way the Settings page does, and judges the incidents that are
     there by them, so that the order a test makes incidents and verdicts in doesn't matter."""
     for spec in specs:
+        read = (
+            session.scalars(select(Incident.id).where(Incident.subject == spec.incident)).first()
+            if spec.incident
+            else None
+        )
         session.add(
             VerdictRule(
                 verdict=spec.verdict,
@@ -725,6 +732,7 @@ def verdicts(session: Session, specs: Sequence[VerdictSpec]) -> int:
                 ai_confidence=91 if spec.by_ai else None,
                 ai_provider="anthropic" if spec.by_ai else None,
                 ai_model="claude-haiku-5-5" if spec.by_ai else None,
+                ai_incident_id=read if spec.by_ai else None,
             )
         )
     session.flush()
@@ -746,6 +754,9 @@ class DecisionSpec(NamedTuple):
     headline: str = "Routine scanning from the internet."
     # Whether its incidents are different now from when it was judged (a kind only).
     changed: bool = False
+    # What the AI says the owner should do about an incident it read: it is nothing. (An incident
+    # only.)
+    verdict: Literal["not_suspicious", "low_priority"] | None = None
 
 
 def decisions(session: Session, now: datetime, specs: Sequence[DecisionSpec]) -> int:
@@ -790,6 +801,8 @@ def decisions(session: Session, now: datetime, specs: Sequence[DecisionSpec]) ->
                     story=f"{spec.headline} Nothing else stands out in what was sent.",
                     checks=[],
                     observations=[],
+                    verdict=spec.verdict,
+                    verdict_reason=spec.headline if spec.verdict else None,
                     provider="anthropic",
                     model="claude-haiku-5-5",
                     review=spec.review,

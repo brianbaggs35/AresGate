@@ -76,6 +76,13 @@ export const navItems: readonly NavItem[] = [
     keywords: 'ai decisions agree disagree approve reason trust auto decide waiting',
     category: 'security',
   },
+  {
+    route: 'cleared',
+    title: 'Cleared by the AI',
+    icon: Bot,
+    keywords: 'ai false positive cleared suggestions confirm take back waiting clearing',
+    category: 'security',
+  },
   { route: 'alerts', title: 'Alerts', icon: BellRing, category: 'security' },
   {
     route: 'trust',

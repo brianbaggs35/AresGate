@@ -353,6 +353,7 @@ class VerdictRequest(BaseModel):
     signature: str | None = None
     note: str | None = None
     by_ai: bool = False
+    incident: str | None = Field(default=None, max_length=64)
 
 
 class VerdictsRequest(BaseModel):
@@ -383,6 +384,7 @@ class DecisionRequest(BaseModel):
     review: Literal["pending", "auto", "agreed", "disagreed"] = "pending"
     headline: str = Field(default="Routine scanning from the internet.", max_length=160)
     changed: bool = False
+    verdict: Literal["not_suspicious", "low_priority"] | None = None
 
 
 class DecisionsRequest(BaseModel):

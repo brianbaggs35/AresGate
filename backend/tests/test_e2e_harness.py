@@ -1600,6 +1600,66 @@ def test_decisions_of_the_ai_can_be_made_and_count_as_their_review_says(e2e: Tes
     assert by_address["8.8.8.8"] is None
 
 
+def test_the_ai_can_be_made_to_say_an_incident_it_read_is_nothing_and_to_have_cleared_one(
+    e2e: TestClient,
+) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post(
+        "/api/__test__/factories/incidents",
+        json={"incidents": [{"address": "8.8.8.8", "severity": "medium", "signals": 2}]},
+    )
+    e2e.post(
+        "/api/__test__/factories/decisions",
+        json={
+            "decisions": [
+                {
+                    "address": "8.8.8.8",
+                    "subject": "incident",
+                    "ai_class": "noise",
+                    "confidence": 92,
+                    "verdict": "low_priority",
+                    "headline": "Background noise.",
+                }
+            ]
+        },
+    )
+
+    sign_in(e2e)
+    [item] = e2e.get("/api/ai/cleared").json()["items"]
+
+    assert (item["kind"], item["verdict"], item["reason"], item["confidence"]) == (
+        "waiting",
+        "low_priority",
+        "Background noise.",
+        92,
+    )
+
+
+def test_a_verdict_the_ai_gave_can_be_made_to_say_which_incident_it_read(e2e: TestClient) -> None:
+    e2e.post("/api/__test__/database/clean")
+    e2e.post("/api/__test__/factories/incidents", json={"incidents": [{"address": "8.8.8.8"}]})
+    e2e.post(
+        "/api/__test__/factories/verdicts",
+        json={
+            "verdicts": [
+                {
+                    "verdict": "not_suspicious",
+                    "address": "8.8.8.8",
+                    "by_ai": True,
+                    "incident": "8.8.8.8",
+                },
+                {"verdict": "low_priority", "address": "9.9.9.9", "by_ai": True},
+                {"verdict": "threat", "address": "7.7.7.7", "incident": "8.8.8.8"},
+            ]
+        },
+    )
+
+    sign_in(e2e)
+    items = e2e.get("/api/ai/cleared", params={"state": "cleared"}).json()["items"]
+
+    assert sorted((item["incident"] is not None) for item in items) == [False, True]
+
+
 def test_a_decision_of_a_kind_that_was_disagreed_with_is_on_record_as_an_answer(
     e2e: TestClient,
 ) -> None:

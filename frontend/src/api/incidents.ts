@@ -182,6 +182,16 @@ export interface Incident {
   cleared_by_ai: ClearedByAi | null
 }
 
+/** One thing that happened to the AI clearing an incident, and who did it. */
+export interface ClearingStep {
+  action: 'cleared' | 'confirmed' | 'taken_back' | 'suggestion_confirmed' | 'suggestion_dismissed'
+  at: string
+  /** `the AI`, or the owner by name. */
+  by: string
+  verdict: 'not_suspicious' | 'low_priority' | null
+  confidence: number | null
+}
+
 /** A false positive the AI cleared, with what it said at the time. */
 export interface ClearedByAi {
   verdict_id: number
@@ -597,6 +607,8 @@ export interface IncidentDetail extends Incident {
   /** What was said on the wire (certificates, requests, lookups, the packet), or null where no
    * program read any of it. */
   wire: Wire | null
+  /** What happened to the AI clearing it, oldest first. */
+  clearing_trail: ClearingStep[]
   /** The CVEs its signals name, and what the National Vulnerability Database says of each. */
   vulnerabilities: Vulnerability[]
 }

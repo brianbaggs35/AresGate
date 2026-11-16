@@ -52,6 +52,7 @@ export function dashboard(
       },
     },
     attention: attention(),
+    ai_review: { waiting: 0, cleared: 0 },
     noise: { sources: [], signatures: [] },
     recent_alerts: [],
     blocked: {

@@ -102,6 +102,7 @@ describe('BottomNavigation', () => {
         ),
       ).toEqual([
         'Incident response',
+        'Cleared by the AI',
         'Alerts',
         'Trust',
         'Threat intelligence',
