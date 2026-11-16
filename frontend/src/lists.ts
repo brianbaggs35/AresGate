@@ -13,15 +13,15 @@ export const LIST_PAGES: Record<ViewPage, { title: string; route: string }> = {
 /** What a page's address holds, as a view keeps it: each filter that is set, with its value or
  * values, and nothing for one that has none. */
 export function queryOfRoute(query: LocationQuery): ViewQuery {
-  const kept: ViewQuery = {}
+  const kept = new Map<string, string | string[]>()
   for (const [name, value] of Object.entries(query)) {
     const values = (Array.isArray(value) ? value : [value]).filter(
       (item): item is string => typeof item === 'string' && item !== '',
     )
     if (values.length === 0) continue
-    kept[name] = Array.isArray(value) ? values : (values[0] as string)
+    kept.set(name, Array.isArray(value) ? values : (values[0] as string))
   }
-  return kept
+  return Object.fromEntries(kept)
 }
 
 /** Whether two queries set the same filters to the same things, whatever order they came in. */

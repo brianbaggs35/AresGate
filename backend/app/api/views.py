@@ -30,7 +30,7 @@ LIMIT = 20
 MAX_NAMES = 20
 MAX_VALUES = 20
 MAX_VALUE_LENGTH = 500
-_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,39}$")
+_NAME = re.compile(r"^[A-Za-z]\w{0,39}$", re.ASCII)
 
 
 def _tidy(query: dict[str, str | list[str]]) -> dict[str, str | list[str]]:

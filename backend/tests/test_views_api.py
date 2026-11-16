@@ -218,16 +218,16 @@ class TestForgettingAView:
         view = save(client, csrf_token).json()
 
         response = client.delete(f"{BASE}/{view['id']}", headers=headers(csrf_token))
+        left = named(client)
 
         assert response.status_code == 204
-        assert named(client) == []
+        assert left == []
 
     def test_one_that_is_not_there_is_not_found(self, client: TestClient, csrf_token: str) -> None:
-        assert client.delete(f"{BASE}/99", headers=headers(csrf_token)).status_code == 404
-        assert (
-            client.patch(f"{BASE}/99", json={"name": "x"}, headers=headers(csrf_token)).status_code
-            == 404
-        )
+        deleted = client.delete(f"{BASE}/99", headers=headers(csrf_token))
+        renamed = client.patch(f"{BASE}/99", json={"name": "x"}, headers=headers(csrf_token))
+
+        assert [deleted.status_code, renamed.status_code] == [404, 404]
 
 
 class TestWhoseTheyAre:
