@@ -111,7 +111,6 @@ const textX = (column: string, x: number, blockWidth: number) =>
         :viewBox="`0 0 ${width} ${height}`"
         :width="width"
         :height="height"
-        role="group"
         aria-label="Traffic from who connected, through the service, to what they reached"
         class="flow__svg"
         @mouseleave="hovered = null"
