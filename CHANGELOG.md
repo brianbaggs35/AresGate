@@ -8,6 +8,21 @@ Every release's notes are here, newest first. The format follows
 
 ### Changed
 
+- **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now
+  spoken to by their official Python SDKs instead of requests written by hand, so what each
+  provider takes and answers is kept up to date by its SDK. The SDKs send through the same guarded
+  client as before: only the addresses a provider may be at, certificates checked, no redirects,
+  a limit on what is read, the same deadline, and every request in the API log without a secret.
+  An SDK never retries by itself, and no key or setting is read from the environment that you
+  didn't give AresGate. Prompt caching is kept as it was (Anthropic's `cache_control`, OpenAI's
+  explicit breakpoints and `prompt_cache_key`, and Ollama's `keep_alive`), and token counts and
+  costs are read the same way. **Fetch models** now works for Anthropic and OpenAI too: it lists the
+  models the key may use, and one newer than AresGate's list can be chosen (it has no price, so its
+  tokens are counted and no cost is shown). Claude Fable 5.2 is added, and the prices were read
+  again on 2026-11-15. The API of Ollama's SDK is stricter than the old code was about what it
+  reads, so a malformed answer from an Ollama is now reported as "not in a form AresGate
+  understands" instead of being skipped.
+
 - **The dashboard is built once for every page that asks within a few seconds, and answers
   "nothing new" without sending it again.** Each open page asks for the dashboard every 30 seconds,
   and each ask used to run all of its questions and send all of the answer, even when nothing had

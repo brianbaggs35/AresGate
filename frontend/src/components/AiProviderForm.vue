@@ -36,6 +36,7 @@ import {
   problemsByField,
   providerFieldId,
   settingsFrom,
+  UNPRICED_NOTE,
 } from '@/ai'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import SecretField from '@/components/SecretField.vue'
@@ -46,9 +47,10 @@ import { useSessionStore } from '@/stores/session'
 /**
  * The settings of the AI provider that was chosen: how to reach it, which model to ask, and
  * buttons to test it. A hosted provider (Anthropic, OpenAI) takes an API key and one model of a
- * list that comes with its prices. An Ollama on the owner's computer takes an address, and
- * Ollama's cloud a key; both have whatever models they have, which a button asks for and a list
- * then offers. Testing or asking for models saves what was filled in first, so what is tested is
+ * list that comes with its prices, to which a button adds the newer models its account may use
+ * (which have no price here). An Ollama on the owner's computer takes an address, and Ollama's
+ * cloud a key; both have whatever models they have, which a button asks for and a list then
+ * offers. Testing or asking for models saves what was filled in first, so what is tested is
  * what is kept. What goes between the model and the buttons (the switch that turns AI on) is the
  * slot.
  */
@@ -68,7 +70,8 @@ const id = (field: string) => providerFieldId(props.provider.key, field)
 const hosted = computed(() => props.provider.kind === 'hosted')
 const chosen = computed(() => props.provider.models.find((model) => model.id === draft.model))
 const testable = computed(() => canTest(props.provider, draft))
-const askable = computed(() => !hosted.value && testable.value)
+const askable = computed(() => testable.value)
+const unlisted = computed(() => hosted.value && draft.model !== '' && !chosen.value)
 const plans = computed(() => hasPlans(props.provider))
 const host = (url: string) => new URL(url).hostname
 
@@ -265,7 +268,7 @@ async function forget() {
         :id="id('model')"
         v-model="draft.model"
         label="Model"
-        :items="modelItems(provider)"
+        :items="modelItems(provider, undefined, draft.model)"
         :hint="chosen ? modelHint(chosen) : undefined"
         persistent-hint
         :error-messages="problems.model"
@@ -286,6 +289,24 @@ async function forget() {
         data-test="provider-model"
         @update:model-value="draft.model = $event ?? ''"
       />
+
+      <p
+        v-if="hosted"
+        class="text-body-medium text-medium-emphasis provider__make-key"
+        data-test="provider-models-help"
+      >
+        Fetch models asks {{ provider.label }} which models this key may use, and adds the ones
+        newer than AresGate's list.
+      </p>
+
+      <p
+        v-if="unlisted"
+        class="provider__deprecated text-body-medium"
+        data-test="provider-unlisted"
+      >
+        <TriangleAlert :size="16" aria-hidden="true" />
+        {{ UNPRICED_NOTE }}
+      </p>
 
       <div v-if="chosen" class="provider__price" data-test="provider-price">
         <p
@@ -381,7 +402,6 @@ async function forget() {
           Test connection
         </v-btn>
         <v-btn
-          v-if="!hosted"
           variant="tonal"
           :prepend-icon="ListRestart"
           :loading="working === 'models'"

@@ -12,7 +12,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 # When the prices below were read from the providers' pages.
-PRICES_AS_OF = "2026-10-27"
+PRICES_AS_OF = "2026-11-15"
 
 MILLION = Decimal(1_000_000)
 
@@ -235,9 +235,15 @@ ANTHROPIC = ProviderDef(
             _price("4", "20", "0.20", "5"),
         ),
         _claude(
+            "claude-fable-5-2",
+            "Claude Fable 5.2",
+            "The most capable, and the most expensive",
+            _price("8", "40", "0.20", "10"),
+        ),
+        _claude(
             "claude-fable-5-1",
             "Claude Fable 5.1",
-            "The most capable, and the most expensive",
+            "The previous Fable, which costs more than 5.2",
             _price("10", "50", "0.25", "12.50"),
         ),
     ),

@@ -138,7 +138,7 @@ export function testProvider(key: string, csrfToken: string): Promise<AiCheck> {
   return apiPost<AiCheck>(`/ai/providers/${key}/test`, undefined, csrfToken)
 }
 
-/** Asks an Ollama which models it has. */
+/** Asks a provider which models its account may use. */
 export function fetchProviderModels(key: string, csrfToken: string): Promise<AiCheck> {
   return apiPost<AiCheck>(`/ai/providers/${key}/models`, undefined, csrfToken)
 }

@@ -3,6 +3,7 @@ import { VSelect } from 'vuetify/components'
 import * as aiApi from '@/api/ai'
 import { ApiError } from '@/api/client'
 import AiProviderForm from '@/components/AiProviderForm.vue'
+import { UNPRICED_NOTE } from '@/ai'
 import { UNCACHED, anthropic, ollama, ollamaCloud, openai } from '@/test/ai'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -54,6 +55,8 @@ async function open(provider: aiApi.AiProvider = anthropic()) {
   }
 }
 
+const NEXT = { name: 'gpt-next-1', size: null, family: null, parameters: null, quantization: null }
+
 const kept = (overrides: Partial<aiApi.AiProvider> = {}) =>
   anthropic({
     configured: true,
@@ -71,7 +74,7 @@ describe('AiProviderForm', () => {
       expect(input('provider-key').attributes('id')).toBe('anthropic-api_key')
       expect(find('provider-url').exists()).toBe(false)
       expect(find('provider-model').text()).toContain('Claude Haiku 5.5')
-      expect(find('provider-models-fetch').exists()).toBe(false)
+      expect(find('provider-models-fetch').exists()).toBe(true)
       expect(find('provider-status').exists()).toBe(false)
       expect(find('provider-remove').exists()).toBe(false)
     })
@@ -582,10 +585,26 @@ describe('AiProviderForm', () => {
       expect(find('provider-test').attributes('disabled')).toBeUndefined()
     })
 
-    it('has no way to fetch models for a hosted provider', async () => {
+    it('can fetch the models of a hosted provider too, and says what that does', async () => {
       const { find } = await open(openai())
 
-      expect(find('provider-models-fetch').exists()).toBe(false)
+      expect(find('provider-models-fetch').exists()).toBe(true)
+      expect(find('provider-models-help').text()).toBe(
+        "Fetch models asks OpenAI which models this key may use, and adds the ones newer than AresGate's list.",
+      )
+    })
+
+    it('says that a model the list does not know has no price', async () => {
+      const { find } = await open(openai({ model: 'gpt-next-1', found: [NEXT] }))
+
+      expect(find('provider-unlisted').text()).toBe(UNPRICED_NOTE)
+      expect(find('provider-price').exists()).toBe(false)
+    })
+
+    it('says nothing of a price that is not known for a model that is in the list', async () => {
+      const { find } = await open(openai())
+
+      expect(find('provider-unlisted').exists()).toBe(false)
     })
   })
 

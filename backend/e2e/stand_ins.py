@@ -1647,15 +1647,37 @@ def _answer_of_an_agent(asked: Mapping[str, Any]) -> str | None:
 
 
 def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
-    """Anthropic's Messages API: a key in ``x-api-key``, a version header, and an answer of one
-    text block with the tokens counted in ``usage``. Asked for a reading of an incident, it gives
-    one."""
+    """Anthropic's Messages API: a key (the SDK sends it as a bearer token, and ``x-api-key`` is
+    taken too), a version header, and an answer of one text block with the tokens counted in
+    ``usage``. Asked for a reading of an incident, it gives one. ``/v1/models`` lists ``models``."""
 
     def handle(seen: Seen) -> Answer:
+        signed = api_key in (
+            seen.headers.get("x-api-key"),
+            seen.headers.get("authorization", "").removeprefix("Bearer "),
+        )
+        if not signed or "anthropic-version" not in seen.headers:
+            return _json({"type": "error", "error": {"type": "authentication_error"}}, 401)
+        if seen.path.split("?")[0] == "/v1/models" and seen.method == "GET":
+            ids = sorted(models)
+            return _json(
+                {
+                    "data": [
+                        {
+                            "type": "model",
+                            "id": name,
+                            "display_name": name,
+                            "created_at": "2026-10-01T00:00:00Z",
+                        }
+                        for name in ids
+                    ],
+                    "has_more": False,
+                    "first_id": ids[0] if ids else None,
+                    "last_id": ids[-1] if ids else None,
+                }
+            )
         if seen.path != "/v1/messages" or seen.method != "POST":
             return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
-        if seen.headers.get("x-api-key") != api_key or "anthropic-version" not in seen.headers:
-            return _json({"type": "error", "error": {"type": "authentication_error"}}, 401)
         asked = json.loads(seen.body)
         if asked.get("model") not in models or not isinstance(asked.get("max_tokens"), int):
             return _json({"type": "error", "error": {"type": "not_found_error"}}, 404)
@@ -1710,17 +1732,32 @@ def anthropic(api_key: str, models: Collection[str] = ()) -> Handler:
 
 
 def openai(api_key: str, models: Collection[str] = ()) -> Handler:
-    """OpenAI's Responses API: a bearer key, at least 16 output tokens asked for, no reasoning
-    effort "none" for the models that can't do without, and an answer that says how it ended with
-    the tokens counted in ``usage``."""
+    """OpenAI's Responses API (and ``/v1/models``, which lists ``models``): a bearer key, at least
+    16 output tokens asked for, no reasoning effort "none" for the models that can't do without, and
+    an answer that says how it ended with the tokens counted in ``usage``."""
 
     def handle(seen: Seen) -> Answer:
-        if seen.path != "/v1/responses" or seen.method != "POST":
-            return _json({"error": {"type": "invalid_request_error"}}, 404)
         if seen.headers.get("authorization") != f"Bearer {api_key}":
             return _json(
                 {"error": {"type": "invalid_request_error", "code": "invalid_api_key"}}, 401
             )
+        if seen.path == "/v1/models" and seen.method == "GET":
+            return _json(
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": name,
+                            "object": "model",
+                            "created": 1_790_000_000,
+                            "owned_by": "openai",
+                        }
+                        for name in sorted(models)
+                    ],
+                }
+            )
+        if seen.path != "/v1/responses" or seen.method != "POST":
+            return _json({"error": {"type": "invalid_request_error"}}, 404)
         asked = json.loads(seen.body)
         limit = asked.get("max_output_tokens")
         if asked.get("model") not in models or not isinstance(limit, int) or limit < 16:
@@ -1853,7 +1890,14 @@ def ollama(
                 waited = 0.0 if loaded else load_seconds
                 loaded.add(asked["model"])
                 return Answer(
-                    body=json.dumps({"model": asked["model"], "done": True, "done_reason": "load"}),
+                    body=json.dumps(
+                        {
+                            "model": asked["model"],
+                            "message": {"role": "assistant", "content": ""},
+                            "done": True,
+                            "done_reason": "load",
+                        }
+                    ),
                     headers={"Content-Type": "application/json"},
                     delay=waited,
                 )

@@ -32,6 +32,14 @@ def lines(*objects: object) -> str:
     return "\n".join(json.dumps(item) for item in objects) + "\n"
 
 
+def streamed(definition: ProviderDef, answer: Answer) -> Answer:
+    """What a provider says of the body it streams, which an SDK reads it by."""
+    kind = "application/x-ndjson" if definition.wire is catalog.Wire.OLLAMA else "text/event-stream"
+    if answer.status != 200 or "Content-Type" in answer.headers:
+        return answer
+    return Answer(answer.status, answer.body, {**answer.headers, "Content-Type": kind})
+
+
 class Log:
     def __init__(self) -> None:
         self.calls: list[Call] = []
@@ -51,7 +59,7 @@ def stream(
     def handler(request: Seen) -> Answer:
         if seen is not None:
             seen.append(request)
-        return answer
+        return streamed(definition, answer)
 
     server = serve(handler)
     target = Target(
@@ -118,8 +126,6 @@ ANTHROPIC_ANSWER = sse(
         "delta": {"type": "thinking_delta", "thinking": "x"},
     },
     ": a comment",
-    "data: not json",
-    "data: [1, 2]",
     {"type": "something_new"},
     {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 7}},
     {"type": "message_stop"},
@@ -151,8 +157,7 @@ class TestAnthropic:
         assert body["stream"] is True
         assert body["max_tokens"] == 300
         assert body["output_config"]["format"]["schema"] == SCHEMA
-        assert seen[0].headers["x-api-key"] == "sk-a-key"
-        assert seen[0].headers["accept"] == "text/event-stream"
+        assert seen[0].headers["authorization"] == "Bearer sk-a-key"
         assert [(call.path, call.status_code) for call in log.calls] == [("/v1/messages", 200)]
 
     def test_an_answer_that_ran_out_of_room_says_so(self, serve: Serve) -> None:
@@ -240,7 +245,6 @@ class TestOpenAi:
         assert sent["stream"] is True
         assert sent["text"]["format"]["schema"] == SCHEMA
         assert seen[0].headers["authorization"] == "Bearer sk-a-key"
-        assert seen[0].headers["accept"] == "text/event-stream"
 
     def test_what_was_written_is_kept_when_the_end_does_not_repeat_it(self, serve: Serve) -> None:
         body = sse(delta("Hel"), delta("lo"), completed({"usage": {"output_tokens": 2}}))
@@ -282,8 +286,6 @@ class TestOpenAi:
     def test_events_that_are_not_for_it_are_left_alone(self, serve: Serve) -> None:
         body = sse(
             "event: x",
-            "data: [DONE]",
-            "data: 3",
             {"type": "response.in_progress"},
             completed({}),
         )
@@ -327,24 +329,27 @@ class TestOllama:
         assert sent["stream"] is True
         assert sent["keep_alive"] == "10m"
         assert sent["format"] == SCHEMA
-        assert seen[0].headers["accept"] == "application/json"
 
-    def test_lines_that_are_not_objects_are_left_alone(self, serve: Serve) -> None:
-        body = "not json\n[1]\n" + lines({"message": {"content": "Hi"}, "done": True})
+    @pytest.mark.parametrize("line", ["not json", "[1]"])
+    def test_a_line_that_is_not_an_object_is_not_understood(self, serve: Serve, line: str) -> None:
+        body = (
+            line + "\n" + lines({"message": {"role": "assistant", "content": "Hi"}, "done": True})
+        )
 
-        pieces, done, _ = stream(serve, catalog.OLLAMA, Answer(body=body))
-
-        assert (pieces, done) == (["Hi"], Completion(text="Hi", input_tokens=0, output_tokens=0))
+        fails(serve, catalog.OLLAMA, Answer(body=body), "not in a form AresGate understands")
 
     def test_an_error_line_ends_it(self, serve: Serve) -> None:
-        body = lines({"message": {"content": "Hi"}, "done": False}, {"error": "out of memory"})
+        body = lines(
+            {"message": {"role": "assistant", "content": "Hi"}, "done": False},
+            {"error": "out of memory"},
+        )
 
         error = fails(serve, catalog.OLLAMA, Answer(body=body), "part of the way")
 
         assert "memory" not in str(error)
 
     def test_a_stream_that_stops_before_its_end_is_not_an_answer(self, serve: Serve) -> None:
-        body = lines({"message": {"content": "Hi"}, "done": False})
+        body = lines({"message": {"role": "assistant", "content": "Hi"}, "done": False})
 
         fails(serve, catalog.OLLAMA, Answer(body=body), "stopped before the answer")
 

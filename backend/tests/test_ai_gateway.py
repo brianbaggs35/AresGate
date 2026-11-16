@@ -41,7 +41,7 @@ def anthropic_says(text: str, tokens: tuple[int, int] = (1000, 200)) -> Handler:
     """Anthropic's Messages API, answering with a text and counting these tokens."""
 
     def handle(seen: Seen) -> Reply:
-        if seen.headers.get("x-api-key") != KEY:
+        if seen.headers.get("authorization") != f"Bearer {KEY}":
             return Reply(status=401, body=json.dumps({"error": {"type": "authentication_error"}}))
         return Reply(
             body=json.dumps(
@@ -267,7 +267,7 @@ class TestWhatTheProviderIsShown:
             lambda seen: Reply(
                 body=json.dumps(
                     {
-                        "message": {"content": f"{DEVICE} looks fine"},
+                        "message": {"role": "assistant", "content": f"{DEVICE} looks fine"},
                         "done": True,
                         "prompt_eval_count": 50,
                         "eval_count": 5,

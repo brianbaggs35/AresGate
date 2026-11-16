@@ -139,6 +139,33 @@ describe('prices', () => {
       expect.objectContaining({ value: 'claude-sonnet-5-5' }),
     ])
   })
+
+  it('adds the models the account has that the list does not know, with no price', () => {
+    const found = [
+      { name: 'claude-sonnet-5-5', size: null, family: null, parameters: null, quantization: null },
+      { name: 'claude-next-9', size: null, family: null, parameters: null, quantization: null },
+    ]
+
+    expect(modelItems(anthropic({ found }), 'en-US').slice(2)).toEqual([
+      {
+        value: 'claude-next-9',
+        title: 'claude-next-9',
+        props: { subtitle: 'Newer than the list: AresGate has no price for it' },
+      },
+    ])
+  })
+
+  it('keeps the model that was saved or chosen in the list, once', () => {
+    const items = modelItems(anthropic({ model: 'claude-old-1' }), 'en-US', 'claude-old-1')
+
+    expect(items.map((item) => item.value)).toEqual([
+      'claude-haiku-5-5',
+      'claude-sonnet-5-5',
+      'claude-old-1',
+    ])
+    expect(items[2]?.props.subtitle).toBe('The model you saved')
+    expect(modelItems(anthropic(), 'en-US', '').length).toBe(2)
+  })
 })
 
 describe('the form for a provider', () => {
