@@ -40,9 +40,10 @@ test.describe('agents working together', () => {
     await expect(agents.handoffsSection).toHaveCount(0)
 
     await agents.card('Orchestrator').getByTestId('agent-run').click()
-    // The orchestrator reports and asks the investigator, whose run waits; then that is run too.
-    expect(await harness.runAgents()).toBe(1)
-    expect(await harness.runAgents()).toBe(1)
+    // The orchestrator reports and asks the investigator, whose run waits; then that is run too. The
+    // click only queues a run, so each is asked for until the run is there.
+    await expect.poll(() => harness.runAgents(), SEEN).toBe(1)
+    await expect.poll(() => harness.runAgents(), SEEN).toBe(1)
 
     await expect(agents.handoffsSection).toBeVisible(SEEN)
     await expect(agents.handoffs).toHaveCount(1)
@@ -82,7 +83,7 @@ test.describe('agents working together', () => {
     await agents.save.click()
     await expect(agents.dialog).toHaveCount(0)
     await agents.card('Planner').getByTestId('agent-run').click()
-    expect(await harness.runAgents()).toBe(1)
+    await expect.poll(() => harness.runAgents(), SEEN).toBe(1)
 
     await expect(agents.stepsSection).toBeVisible(SEEN)
     await expect(agents.planSteps).toHaveCount(1)
@@ -119,13 +120,13 @@ test.describe('agents working together', () => {
     await agents.save.click()
     await expect(agents.dialog).toHaveCount(0)
     await agents.card('Planner').getByTestId('agent-run').click()
-    expect(await harness.runAgents()).toBe(1)
+    await expect.poll(() => harness.runAgents(), SEEN).toBe(1)
     await expect(agents.planSteps).toHaveCount(1, SEEN)
 
     await agents.dismissStep.click()
     await expect(agents.planSteps).toHaveCount(0, SEEN)
     await agents.card('Planner').getByTestId('agent-run').click()
-    expect(await harness.runAgents()).toBe(1)
+    await expect.poll(() => harness.runAgents(), SEEN).toBe(1)
 
     await expect(agents.stepsSection.getByTestId('recent-status')).toHaveText('Dismissed', SEEN)
     await expect(agents.planSteps).toHaveCount(0)
