@@ -53,11 +53,14 @@ test.describe('the traffic chart you can act on', () => {
     dashboard,
   }) => {
     const hours = dashboard.alertsCard.getByTestId('bar-slot')
+    // The hours are drawn once the alerts have loaded, so what there is to narrow is counted then.
+    await expect(hours).not.toHaveCount(0)
     const before = await hours.count()
     await expect(dashboard.trafficChart.getByTestId('chart-zoom-reset')).toBeHidden()
     const plot = await plotAt(page, dashboard.trafficChart)
 
-    await page.mouse.move(plot.x(0.9), plot.y)
+    // Several hours wide, so the span holds more than one start of an hour whenever it is run.
+    await page.mouse.move(plot.x(0.75), plot.y)
     await page.mouse.down()
     await page.mouse.move(plot.x(0.98), plot.y, { steps: 8 })
     await expect(dashboard.trafficChart.getByTestId('chart-selection')).toBeVisible()
