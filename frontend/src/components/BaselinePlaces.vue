@@ -36,8 +36,10 @@ const port = ref('443')
 /** Which load is the newest, so the answer for a device that is no longer shown is dropped. */
 let latest = 0
 
-const where = (place: BaselinePlace) =>
-  `${place.network}, ${place.port === 0 ? 'no port' : `port ${place.port.toString()}`}`
+const where = (place: BaselinePlace) => {
+  const port = place.port === 0 ? 'no port' : `port ${place.port.toString()}`
+  return `${place.network}, ${port}`
+}
 
 async function load() {
   const mine = ++latest

@@ -410,37 +410,46 @@ def usual_destinations_for_device(
             .limit(MAX_DEVICES)
         ).all()
     shown = _between(args.limit, MAX_ITEMS // 2, 1, MAX_ITEMS)
-    lines: list[str] = []
-    for client in clients:
-        places = learned.places(db, client, limit=500)
-        if not places:
-            continue
-        who = redactor.address(str(client))
-        name = learned.name_of(db, client)
-        label = f" ({redactor.name(name)})" if name else ""
-        began = min(place.first_seen_at for place in places)
-        judged = began <= now - known_places.WATCHED_FOR and len(places) >= known_places.MIN_PLACES
-        enough = (
-            "enough is known to call a new place unusual"
-            if judged
-            else f"too little is known to judge (it needs {known_places.WATCHED_FOR.days} days "
-            f"and {known_places.MIN_PLACES} places), so a new place is only learned"
-        )
-        top = "; ".join(
-            f"{_network(redactor, place.network)}"
-            f"{f' port {place.port}' if place.port else ''}, "
-            f"{_plural(place.hits, 'time')}, last {_when(place.last_seen_at)}"
-            f"{', expected' if place.expected else ''}"
-            for place in places[:shown]
-        )
-        lines.append(
-            f"[device {who}]{label} talks to {_plural(len(places), 'place')} "
-            f"({sum(place.expected for place in places)} expected), learned since "
-            f"{_when(began)}; {enough}. Most visited: {top}"
-        )
+    lines = [
+        line
+        for client in clients
+        if (line := _device_line(db, redactor, client, shown, now)) is not None
+    ]
     if not lines:
         return Found(["Nothing is known of where that device talks to."], [], "nothing learned")
     return Found(lines, [], _plural(len(lines), "device baseline"))
+
+
+def _device_line(
+    db: Session, redactor: Redactor, client: IPv4Address | IPv6Address, shown: int, now: datetime
+) -> str | None:
+    """What is known of where one device talks to, or None if nothing is."""
+    places = learned.places(db, client, limit=500)
+    if not places:
+        return None
+    who = redactor.address(str(client))
+    name = learned.name_of(db, client)
+    label = f" ({redactor.name(name)})" if name else ""
+    began = min(place.first_seen_at for place in places)
+    judged = began <= now - known_places.WATCHED_FOR and len(places) >= known_places.MIN_PLACES
+    enough = (
+        "enough is known to call a new place unusual"
+        if judged
+        else f"too little is known to judge (it needs {known_places.WATCHED_FOR.days} days "
+        f"and {known_places.MIN_PLACES} places), so a new place is only learned"
+    )
+    top = "; ".join(
+        f"{_network(redactor, place.network)}"
+        f"{f' port {place.port}' if place.port else ''}, "
+        f"{_plural(place.hits, 'time')}, last {_when(place.last_seen_at)}"
+        f"{', expected' if place.expected else ''}"
+        for place in places[:shown]
+    )
+    return (
+        f"[device {who}]{label} talks to {_plural(len(places), 'place')} "
+        f"({sum(place.expected for place in places)} expected), learned since "
+        f"{_when(began)}; {enough}. Most visited: {top}"
+    )
 
 
 def _network(redactor: Redactor, network: str) -> str:
