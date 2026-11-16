@@ -23,6 +23,7 @@ from app.api import (
     dashboard_layout,
     devices,
     events,
+    flow,
     health,
     incident_response,
     incidents,
@@ -61,6 +62,7 @@ api_router.include_router(interfaces.router)
 api_router.include_router(captures.router)
 api_router.include_router(assets.router)
 api_router.include_router(devices.router)
+api_router.include_router(flow.router)
 api_router.include_router(agents.router)
 api_router.include_router(ai.router)
 api_router.include_router(ai_chat.router)

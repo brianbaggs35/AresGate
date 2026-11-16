@@ -490,6 +490,30 @@ the words and defaults are in `src/devices.ts`), as on the Assets page.
 - An address nothing is known of (in no event of the week, no incident, and not an asset) has no
   page: the API answers 404 and the page says so.
 
+## Network Flow
+
+Where the traffic goes, as the firewall wrote it down (`GET /api/flow?hours=&direction=`, the paths
+are put together in `app/flows.py`). Each firewall event that names both ends is a path through
+three columns: the address that connected, the service it asked for (protocol and port) and the
+address it reached. They are counted, not measured: a connection is an event the firewall logged,
+not a number of bytes, and the page says so. The busiest eight sources, six services and eight
+destinations are drawn and the rest are folded into one *Others* block in each column, so the
+picture stays readable on a network that is scanned all week; more than 5,000 different paths is
+said (`capped`) rather than hidden.
+
+`FlowSankey` draws it as an SVG: blocks as tall as what went through them on one scale for every
+column, bands as thick as the connections they carry, and the refused part of a band along its top
+edge in its own color. Color is never the only sign: each block is named with its count, a block's
+accessible name says how many were refused, and `ChartFrame` offers the same numbers as a table.
+Pointing at or focusing a block lights its paths and dims the rest; a click, Enter or Space picks
+it, which opens `FlowDetail` beside it (below it on a phone): the totals, the share refused, what
+it is joined to, a button to the Logs search that finds exactly those firewall events (`from:`,
+`to:` or `protocol:` and `port:`, over the same window), and for an address its page in Devices.
+Under the picture a stacked bar chart shows the connections let through and refused in each stretch
+of the window; a bar leads to the logs of that time, as the Logs page's own volume chart does. The
+window (hour, six hours, day, week) and the direction (all, leaving, arriving, inside) are in the
+address of the page.
+
 ## Integrations
 
 The Integrations page (`IntegrationsView`) has one `IntegrationCard` for each integration, with a

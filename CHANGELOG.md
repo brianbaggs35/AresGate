@@ -8,6 +8,15 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Network Flow.** A new page in the menu, under Network, draws where the traffic on your network
+  goes: who connected, which service they used and what they reached, as bands as thick as the
+  connections they carry, with the refused part of each in its own color. Point at or pick a block
+  to light its paths and see its details, with a button to the logs that make it up, and read the
+  connections let through and refused over the window underneath. Choose the last hour, six
+  hours, day or week, and all connections or only those leaving, arriving or staying inside. It is
+  built from the firewall's log, so it counts connections, not bytes. See
+  [Network Flow](DOCS/ui.md#network-flow).
+
 - **Incidents as a table.** A new layout toggle on the Incidents page shows the incidents as a
   table you can sort by severity, name, address, confidence, status, last seen or signals, and
   *Group by address* gathers the incidents about one address under a header you can fold away or
