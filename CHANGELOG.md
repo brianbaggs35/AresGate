@@ -6,6 +6,19 @@ Every release's notes are here, newest first. The format follows
 
 ## 0.1.8
 
+### Added
+
+- **Five more kinds of agent, and a feed of what the team has been doing.** The Security triage
+  agent groups the alerts that are the same activity and says what to look at first; the Network
+  threat analyst reads the firewall and the traffic for scanning, strange connections and data
+  leaving; the Endpoint security analyst reads the alerts about your devices with what is known of
+  their software and vulnerabilities; the Response planner turns the most serious findings into
+  steps with what each risks (it only plans); and the Security orchestrator weighs what every
+  agent reported and says which should look further. They are made like the others, and like the
+  others they only read. The Agents page now shows how the runs of the last 30 days went (how many,
+  how many finished, how long they take, how many findings), with a feed of the latest runs of all
+  the agents and where each is now, and each agent's card shows the same for itself.
+
 ### Changed
 
 - **AresGate asks the AI providers with their own SDKs.** OpenAI, Anthropic and Ollama are now

@@ -486,6 +486,238 @@ INCIDENT_INVESTIGATOR: Final = Template(
     ),
 )
 
+SECURITY_TRIAGE: Final = Template(
+    key="security_triage",
+    name="Security triage",
+    tagline="Sorts the alerts into what matters, what repeats and what is noise",
+    description=(
+        "Reads the latest alerts and incidents, groups the ones that are really the same thing, "
+        "and says for each group how serious it is, how sure AresGate is and in what order the "
+        "owner should look at them. Where the pattern is only routine scanning, it says so."
+    ),
+    icon="list-checks",
+    brief=(
+        "You triage security alerts. You are given the latest alerts, the open incidents, the "
+        "alerts that fire most and the incidents that keep coming back. Group the ones that are "
+        "the same activity, say which groups are noise and which are not, and give each group "
+        "that matters a severity, a confidence and a place in the order the owner should look "
+        "at them. Say how many alerts a group stands for. Do not invent alerts."
+    ),
+    goal="Sort my alerts: tell me what to look at first, and group the repeats and the noise.",
+    first=(
+        Lookup("alerts", Args(hours=24, limit=10)),
+        Lookup("open_incidents", Args(limit=5)),
+        Lookup("noisy_alerts", Args(hours=24, limit=5)),
+        Lookup("repeated_incidents", Args(limit=5)),
+    ),
+    asks=(
+        "alerts",
+        "open_incidents",
+        "incident",
+        "noisy_alerts",
+        "repeated_incidents",
+        "attack_chains",
+        "blocked_sources",
+        "device",
+    ),
+    interval_minutes=120,
+    needs=("ai", "alerts"),
+    setup=(
+        "Connect at least one source of alerts under Integrations: OPNsense with Suricata, "
+        "Wazuh, ntopng or CrowdSec each give it something to sort.",
+        CHOOSE_AI,
+        "Start it once by hand, then leave it on its schedule.",
+    ),
+)
+NETWORK_ANALYST: Final = Template(
+    key="network_analyst",
+    name="Network threat analyst",
+    tagline="Reads the firewall and the traffic for scanning, strange connections and exfiltration",
+    description=(
+        "Looks at what the firewall turned away, which ports are aimed at, which devices talk to "
+        "places they never did and how the attacks it has seen chain together, and says what looks "
+        "like scanning, command and control or data leaving the house."
+    ),
+    icon="network",
+    brief=(
+        "You analyse network threats. You are given what the firewall refused, which ports are "
+        "aimed at, how the last day compares with the week before and the attacks that crossed "
+        "devices. Say what looks like scanning or reconnaissance, a connection that a device "
+        "should not be making, command and control or data leaving the network, and what is only "
+        "the usual noise of the internet. Name the addresses, ports and devices, and say how a "
+        "person could tell whether it is real."
+    ),
+    goal=(
+        "Tell me about network behaviour that looks like an attack or like "
+        "data leaving, and skip routine scanning."
+    ),
+    first=(
+        Lookup("blocked_sources", Args(hours=24, limit=5)),
+        Lookup("targeted_ports", Args(hours=24, limit=5)),
+        Lookup("what_changed", Args(hours=24, limit=5)),
+        Lookup("attack_chains", Args(limit=3)),
+    ),
+    asks=(
+        "blocked_sources",
+        "targeted_ports",
+        "what_changed",
+        "attack_chains",
+        "alerts",
+        "noisy_alerts",
+        "device",
+        "new_devices",
+        "reputation",
+        "who_is",
+    ),
+    interval_minutes=240,
+    needs=("ai", "firewall"),
+    setup=(
+        "Connect OPNsense under Integrations and turn on its firewall log. Suricata alerts through "
+        "OPNsense and ntopng's view of the traffic sharpen what it can say.",
+        CHOOSE_AI,
+        "Give it a week of data before you trust its sense of what is usual.",
+    ),
+)
+ENDPOINT_ANALYST: Final = Template(
+    key="endpoint_analyst",
+    name="Endpoint security analyst",
+    tagline="Reads what Wazuh and the devices say about weak and suspicious systems",
+    description=(
+        "Looks at the devices AresGate knows, what they run and what is open on them, the "
+        "vulnerabilities found in their software and the alerts about them, and says which devices "
+        "are most exposed and which look compromised."
+    ),
+    icon="laptop",
+    brief=(
+        "You assess the security of the devices on the network. You are given the alerts, the "
+        "devices that are new or unusual, and what is known of their software, open ports and "
+        "vulnerabilities. Say which devices are most exposed and why, which have alerts that "
+        "suggest something is running that should not be, and how the network and the device "
+        "evidence fit together. Name the device and the software or port. Do not claim that a "
+        "device is compromised unless an alert says what happened."
+    ),
+    goal=(
+        "Tell me which of my devices are the most exposed or look compromised, "
+        "and what to fix first."
+    ),
+    first=(
+        Lookup("alerts", Args(hours=24, limit=10)),
+        Lookup("host_vulnerabilities", Args(limit=5)),
+        Lookup("new_devices", Args(limit=5)),
+    ),
+    asks=(
+        "alerts",
+        "device",
+        "host_details",
+        "host_vulnerabilities",
+        "installed_software",
+        "open_ports",
+        "vulnerability",
+        "new_devices",
+        "incident",
+        "open_incidents",
+    ),
+    interval_minutes=480,
+    needs=("ai", "alerts", "devices"),
+    setup=(
+        "Connect Wazuh under Integrations: its agents tell AresGate what the devices run and "
+        "what is wrong with it.",
+        "Connect OPNsense or ntopng, which tell AresGate which devices are on the network.",
+        CHOOSE_AI,
+    ),
+)
+RESPONSE_PLANNER: Final = Template(
+    key="response_planner",
+    name="Response planner",
+    tagline="Turns what the agents found into steps you can take, in order",
+    description=(
+        "Reads the most serious findings of the other agents and the open incidents and writes "
+        "what to do about each: what to contain first, which devices and addresses are involved "
+        "and how to check afterwards that it worked. It only plans; nothing is changed until you "
+        "do it yourself."
+    ),
+    icon="life-buoy",
+    brief=(
+        "You plan the response to security findings. You are given what the other agents "
+        "reported and the open incidents. For the ones that matter, write what the owner should "
+        "do in order: contain first, then fix, then check. Name the devices, addresses and "
+        "services involved. Say what each step risks, such as cutting a device off the network, "
+        "so the owner can decide. You can only advise: never say that you blocked or changed "
+        "anything."
+    ),
+    goal=(
+        "Tell me what to do about my most serious findings, step by step, and what each step risks."
+    ),
+    first=(
+        Lookup("agent_findings", Args(limit=10)),
+        Lookup("open_incidents", Args(limit=5)),
+    ),
+    asks=(
+        "agent_findings",
+        "open_incidents",
+        "incident",
+        "attack_chains",
+        "device",
+        "host_vulnerabilities",
+        "blocked_sources",
+        "reputation",
+    ),
+    interval_minutes=720,
+    needs=("ai", "alerts"),
+    setup=(
+        "Make the agents you want it to act on, such as the Threat hunter and the Incident "
+        "investigator, and run each once: it plans from what they reported.",
+        CHOOSE_AI,
+        "Read its steps before you take one: it never changes anything itself.",
+    ),
+)
+SECURITY_ORCHESTRATOR: Final = Template(
+    key="security_orchestrator",
+    name="Security orchestrator",
+    tagline="Pulls what every agent found into one assessment and says who should look next",
+    description=(
+        "Reads what the other agents reported, the incidents that are open and how the "
+        "integrations are doing, weighs them against each other, says which findings are really "
+        "one problem and which agent should look further."
+    ),
+    icon="workflow",
+    brief=(
+        "You coordinate the other security agents. You are given what each of them reported, the "
+        "open incidents, the attacks that crossed devices and how the integrations are doing. "
+        "Decide which findings are the same problem seen by different agents, rank the problems "
+        "by how much they matter, and say for each which kind of agent should look further and "
+        "why. Say plainly when the agents agree and when they disagree. Do not repeat every "
+        "finding, and do not claim more than they reported."
+    ),
+    goal=(
+        "Give me one assessment of what the agents found, in order of "
+        "importance, and say which should dig deeper."
+    ),
+    first=(
+        Lookup("agent_findings", Args(limit=10)),
+        Lookup("open_incidents", Args(limit=5)),
+        Lookup("attack_chains", Args(limit=3)),
+        Lookup("integrations"),
+    ),
+    asks=(
+        "agent_findings",
+        "open_incidents",
+        "incident",
+        "attack_chains",
+        "repeated_incidents",
+        "integrations",
+        "alerts",
+    ),
+    interval_minutes=360,
+    needs=("ai", "alerts"),
+    setup=(
+        "Make the specialist agents first, such as the Threat hunter, the Network threat analyst "
+        "and the Endpoint security analyst, and run each once: it weighs what they reported.",
+        CHOOSE_AI,
+        "Start it once by hand, then leave it on its schedule.",
+    ),
+)
+
 TEMPLATES: Final[tuple[Template, ...]] = (
     THREAT_HUNTER,
     INTELLIGENCE_ANALYST,
@@ -499,6 +731,11 @@ TEMPLATES: Final[tuple[Template, ...]] = (
     DAILY_BRIEFING,
     INCIDENT_INVESTIGATOR,
     ANOMALY_WATCH,
+    SECURITY_TRIAGE,
+    NETWORK_ANALYST,
+    ENDPOINT_ANALYST,
+    RESPONSE_PLANNER,
+    SECURITY_ORCHESTRATOR,
 )
 
 

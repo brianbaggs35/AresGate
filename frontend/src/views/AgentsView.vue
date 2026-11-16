@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { fetchAgents, startRun, type Agent, type Overview } from '@/api/agents'
 import { errorMessage } from '@/api/client'
 import { agentIcon } from '@/agents'
+import AgentActivity from '@/components/AgentActivity.vue'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
 import AgentMission from '@/components/AgentMission.vue'
@@ -149,6 +150,8 @@ onMounted(() => load())
         :total="overview.attention_total"
         :briefing="overview.briefing"
       />
+
+      <AgentActivity :activity="overview.activity" :performance="overview.performance" />
 
       <AgentSpend :usage="overview.usage" :limits="overview.limits" />
 

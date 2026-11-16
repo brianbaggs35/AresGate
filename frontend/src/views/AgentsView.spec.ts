@@ -3,7 +3,17 @@ import type { Overview } from '@/api/agents'
 import { ApiError } from '@/api/client'
 import AgentCard from '@/components/AgentCard.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
-import { agent, attention, briefing, check, limits, overview, template, usage } from '@/test/agents'
+import {
+  activity,
+  agent,
+  attention,
+  briefing,
+  check,
+  limits,
+  overview,
+  template,
+  usage,
+} from '@/test/agents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 import AgentsView from '@/views/AgentsView.vue'
 
@@ -162,6 +172,21 @@ describe('AgentsView', () => {
 
     expect(find('mission-line').text()).toBe('1 thing needs you')
     expect(find('mission-briefing').exists()).toBe(true)
+  })
+
+  it('shows what the team has been doing, once there are runs', async () => {
+    const { find, wrapper } = await open(
+      overview({ activity: [activity(), activity({ agent_id: 4, agent_name: 'Triage' })] }),
+    )
+
+    expect(find('agents-activity').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="activity-entry"]')).toHaveLength(2)
+  })
+
+  it('shows nothing of the team before an agent has run', async () => {
+    const { find } = await open()
+
+    expect(find('agents-activity').exists()).toBe(false)
   })
 
   it('shows no mission control before there is an agent', async () => {

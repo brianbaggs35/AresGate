@@ -1,4 +1,5 @@
 import type {
+  Activity,
   Agent,
   AttentionItem,
   Briefing,
@@ -8,6 +9,7 @@ import type {
   Edge,
   Finding,
   Overview,
+  Performance,
   Proposal,
   ProposalList,
   Run,
@@ -98,6 +100,16 @@ export const settings = (overrides: Partial<AgentSettings> = {}): AgentSettings 
   ...overrides,
 })
 
+export const performance = (overrides: Partial<Performance> = {}): Performance => ({
+  finished: 0,
+  succeeded: 0,
+  failed: 0,
+  cancelled: 0,
+  average_seconds: null,
+  findings: 0,
+  ...overrides,
+})
+
 export const run = (overrides: Partial<Run> = {}): Run => ({
   id: 7,
   trigger: 'manual',
@@ -144,6 +156,7 @@ export const agent = (overrides: Partial<Agent> = {}): Agent => ({
   recent: ['succeeded', 'failed', 'succeeded'],
   usage: usage(),
   proposals: 0,
+  performance: performance({ finished: 3, succeeded: 2, failed: 1, average_seconds: 12 }),
   ...overrides,
 })
 
@@ -198,6 +211,16 @@ export const overview = (overrides: Partial<Overview> = {}): Overview => ({
   attention: [],
   attention_total: 0,
   briefing: null,
+  activity: [],
+  performance: performance(),
+  ...overrides,
+})
+
+export const activity = (overrides: Partial<Activity> = {}): Activity => ({
+  agent_id: 3,
+  agent_name: 'Night watch',
+  icon: 'radar',
+  run: run(),
   ...overrides,
 })
 

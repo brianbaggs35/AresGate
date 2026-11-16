@@ -24,6 +24,11 @@ agent still looks, but it only keeps what it saw, and the page says why the AI c
 | Daily briefing | Reads what the other agents reported, the open incidents, what changed at the firewall and how the integrations are doing, and writes one short briefing. | Every day |
 | Incident investigator | Looks into the most serious open incidents as an analyst would: what happened, who is behind it, how sure AresGate is and what to do. | Every 4 hours |
 | Anomaly watch | Compares the last day at the firewall with the week before, and says when something is not usual. | Every 6 hours |
+| Security triage | Groups the alerts that are the same activity, says which groups are noise and which are not, and in what order to look at them. | Every 2 hours |
+| Network threat analyst | Reads what the firewall turned away, which ports are aimed at and how the last day compares with the week before, and says what looks like scanning, command and control or data leaving. | Every 4 hours |
+| Endpoint security analyst | Reads the alerts about your devices with what is known of their software, open ports and vulnerabilities, and says which are most exposed or look compromised. | Every 8 hours |
+| Response planner | Turns the most serious findings of the other agents into steps, in order, with what each step risks. It only plans: nothing is changed until you do it. | Every 12 hours |
+| Security orchestrator | Weighs what every agent reported against the others, says which findings are really one problem and which kind of agent should look further. | Every 6 hours |
 
 Your own instructions are added to what a kind already does, and the AI is told that they come from
 you. They can narrow what an agent cares about ("ignore routine scanning"); they cannot make it do
@@ -219,6 +224,12 @@ that all is quiet, or how many agents are at work), shows the latest daily brief
 most serious findings across all agents, each leading to the agent that raised it. Only the
 findings of an agent's last finished run are listed, and only the medium, high and critical ones,
 so a finding the agent no longer reports goes away by itself.
+
+Under it is what the team has been doing: how many runs of all the agents ended in the last 30 days,
+how many of them finished (a run you stopped is counted as neither a success nor a failure), how
+long a run takes on average and how many findings the finished ones raised, and a feed of the
+latest twelve runs of any agent with where each is now (a run that is going names its step) or what
+it came to. Each entry leads to the agent. Each agent's card carries the same figures for itself.
 
 ## Privacy
 

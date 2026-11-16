@@ -13,9 +13,12 @@ import {
   FileText,
   Flame,
   HeartPulse,
+  Laptop,
+  LifeBuoy,
   ListChecks,
   LoaderCircle,
   Microscope,
+  Network,
   Newspaper,
   Pause,
   Radar,
@@ -25,12 +28,14 @@ import {
   Swords,
   Telescope,
   Wifi,
+  Workflow,
 } from '@lucide/vue'
 import type { IconProps } from 'vuetify'
 
 import type {
   Agent,
   AgentState,
+  Performance,
   Finding,
   Edge,
   ProposalStatus,
@@ -44,7 +49,7 @@ import type { BarSeries } from '@/charts/BarChart.vue'
 import { dayLabel, formatMoney, formatTokens } from '@/aiUsage'
 import type { ChatCite } from '@/api/aiChat'
 import { severityColor } from '@/charts/palette'
-import { formatAgo, formatCount } from '@/format'
+import { formatAgo, formatCount, formatSpan } from '@/format'
 import { SEVERITIES, SEVERITY, type Severity } from '@/severity'
 
 type Icon = NonNullable<IconProps['icon']>
@@ -63,6 +68,11 @@ const ICONS: Readonly<Record<string, Icon>> = {
   newspaper: Newspaper,
   activity: Activity,
   microscope: Microscope,
+  'list-checks': ListChecks,
+  network: Network,
+  laptop: Laptop,
+  'life-buoy': LifeBuoy,
+  workflow: Workflow,
 }
 
 /** The icon for a kind of agent, and a robot for one that this version doesn't know. */
@@ -341,3 +351,25 @@ export function refsOf(step: Pick<Step, 'detail'>): ChatCite[] {
 /** How many lines a step saw that it did not keep. */
 export const moreOf = (step: Pick<Step, 'detail'>): number =>
   typeof step.detail.more === 'number' ? step.detail.more : 0
+
+/** The share of the runs that ended in the last 30 days that finished, as a percentage, or null
+ * when none has ended. A run the owner stopped is not counted as a failure, nor as a success. */
+export function finishedShare(
+  performance: Pick<Performance, 'succeeded' | 'failed'>,
+): number | null {
+  const counted = performance.succeeded + performance.failed
+  return counted === 0 ? null : Math.round((performance.succeeded / counted) * 100)
+}
+
+/** How the runs of an agent, or of all of them, went in the last 30 days, in a line. */
+export function performanceLine(performance: Performance): string {
+  const share = finishedShare(performance)
+  if (performance.finished === 0) return 'No runs have ended in the last 30 days'
+  const runs = `${formatCount(performance.finished)} ${performance.finished === 1 ? 'run' : 'runs'}`
+  const parts = [runs]
+  if (share !== null) parts.push(`${formatCount(share)}% finished`)
+  if (performance.average_seconds !== null) {
+    parts.push(`${formatSpan(performance.average_seconds)} on average`)
+  }
+  return parts.join(' · ')
+}

@@ -1,5 +1,5 @@
 import AgentCard from '@/components/AgentCard.vue'
-import { agent, run, usage } from '@/test/agents'
+import { agent, performance, run, usage } from '@/test/agents'
 import { mountWithPlugins } from '@/test/mount'
 
 async function open(item = agent(), busy = false) {
@@ -146,5 +146,21 @@ describe('AgentCard', () => {
 
     const many = await open(agent({ proposals: 3 }))
     expect(many.find('agent-proposals').text()).toBe('3 clean-ups are waiting for you.')
+  })
+
+  it('says how its runs went over the last 30 days, once some have ended', async () => {
+    const { find } = await open(
+      agent({
+        performance: performance({ finished: 4, succeeded: 3, failed: 1, average_seconds: 9 }),
+      }),
+    )
+
+    expect(find('agent-performance').text()).toBe('4 runs · 75% finished · 9 s on average')
+  })
+
+  it('says nothing of how its runs went before one has ended', async () => {
+    const { find } = await open(agent({ performance: performance() }))
+
+    expect(find('agent-performance').exists()).toBe(false)
   })
 })

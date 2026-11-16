@@ -57,6 +57,17 @@ export interface Usage {
   unpriced_calls: number
 }
 
+/** How the runs that ended in the last 30 days went: how many ended each way, how long they took
+ * on average (null before any ended), and how many findings the ones that finished raised. */
+export interface Performance {
+  finished: number
+  succeeded: number
+  failed: number
+  cancelled: number
+  average_seconds: number | null
+  findings: number
+}
+
 /** One time an agent ran. */
 export interface Run {
   id: number
@@ -104,6 +115,8 @@ export interface Agent {
   usage: Usage
   /** How many of its suggestions wait for the owner. */
   proposals: number
+  /** How its runs went over the last 30 days. */
+  performance: Performance
 }
 
 /** Where a suggestion of the cleanup agent is. */
@@ -184,6 +197,14 @@ export interface Briefing {
   summary: string
 }
 
+/** One run of any agent, for the feed of what the team has been doing. */
+export interface Activity {
+  agent_id: number
+  agent_name: string
+  icon: string
+  run: Run
+}
+
 export interface Overview {
   agents: Agent[]
   templates: Template[]
@@ -200,6 +221,9 @@ export interface Overview {
   attention_total: number
   /** The latest daily briefing, if an agent writes one. */
   briefing: Briefing | null
+  /** The latest runs of all the agents, newest first, and how all their runs went in 30 days. */
+  activity: Activity[]
+  performance: Performance
 }
 
 export interface Finding {

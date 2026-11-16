@@ -39,6 +39,8 @@ PROPOSALS_SHOWN = 30
 # How many of an agent's last runs a card draws, and how far back its counts go.
 RECENT = 14
 WEEK = timedelta(days=7)
+# How many runs the feed of what the team has been doing lists.
+ACTIVITY_SHOWN = 12
 # How far back what the agents used of the AI is counted, which is how long a run is kept.
 USAGE_DAYS = 30
 
@@ -94,6 +96,19 @@ class UsageOut(BaseModel):
     cached_tokens: int
     cost_micros: int
     unpriced_calls: int
+
+
+class PerformanceOut(BaseModel):
+    """How the runs that ended in the last 30 days went: how many ended each way, how long they
+    took on average (None before any ended), and how many findings the ones that succeeded
+    raised."""
+
+    finished: int
+    succeeded: int
+    failed: int
+    cancelled: int
+    average_seconds: int | None
+    findings: int
 
 
 class RunOut(BaseModel):
@@ -168,6 +183,8 @@ class AgentOut(BaseModel):
     usage: UsageOut
     # How many of its suggestions wait for the owner.
     proposals: int
+    # How its runs went over the last 30 days.
+    performance: PerformanceOut
 
 
 class FindingOut(BaseModel):
@@ -263,6 +280,15 @@ class BriefingOut(BaseModel):
     summary: str
 
 
+class ActivityOut(BaseModel):
+    """One run of any agent, for the feed of what the team has been doing."""
+
+    agent_id: int
+    agent_name: str
+    icon: str
+    run: RunOut
+
+
 class Overview(BaseModel):
     agents: list[AgentOut]
     templates: list[TemplateOut]
@@ -278,6 +304,10 @@ class Overview(BaseModel):
     attention: list[AttentionOut]
     attention_total: int
     briefing: BriefingOut | None
+    # The latest runs of all the agents, newest first, and how all their runs went in the last
+    # 30 days.
+    activity: list[ActivityOut]
+    performance: PerformanceOut
 
 
 class AgentIn(BaseModel):
@@ -400,6 +430,54 @@ def _usage(db: Session, now: datetime, agent_id: int | None = None) -> UsageOut:
     )
 
 
+def _performance(db: Session, now: datetime, agent_id: int | None = None) -> PerformanceOut:
+    """How the runs that ended in the last 30 days went, of one agent or of all."""
+    seconds = func.extract("epoch", AgentRun.finished_at - AgentRun.started_at)
+    query = select(
+        func.count(),
+        func.count().filter(AgentRun.status == "succeeded"),
+        func.count().filter(AgentRun.status == "failed"),
+        func.count().filter(AgentRun.status == "cancelled"),
+        func.avg(seconds).filter(AgentRun.started_at.is_not(None)),
+        func.coalesce(
+            func.sum(func.jsonb_array_length(AgentRun.findings)).filter(
+                AgentRun.status == "succeeded"
+            ),
+            0,
+        ),
+    ).where(AgentRun.finished_at >= now - timedelta(days=USAGE_DAYS))
+    if agent_id is not None:
+        query = query.where(AgentRun.agent_id == agent_id)
+    finished, succeeded, failed, cancelled, average, findings = db.execute(query).one()
+    return PerformanceOut(
+        finished=finished,
+        succeeded=succeeded,
+        failed=failed,
+        cancelled=cancelled,
+        average_seconds=None if average is None else round(average),
+        findings=int(findings),
+    )
+
+
+def _activity(db: Session) -> list[ActivityOut]:
+    """The latest runs of every agent, whatever state they are in."""
+    rows = db.execute(
+        select(AgentRun, Agent)
+        .join(Agent, Agent.id == AgentRun.agent_id)
+        .order_by(AgentRun.id.desc())
+        .limit(ACTIVITY_SHOWN)
+    ).all()
+    return [
+        ActivityOut(
+            agent_id=agent.id,
+            agent_name=agent.name,
+            icon=item.icon if (item := catalog.template(agent.template)) else "bot",
+            run=_run_out(run),
+        )
+        for run, agent in rows
+    ]
+
+
 def _days(db: Session, now: datetime, agent_id: int) -> list[DayOut]:
     """Each of the last 30 days (UTC), oldest first, with what the agent's runs of that day used
     of the AI."""
@@ -472,6 +550,7 @@ def _agent_out(db: Db, agent: Agent, waiting: dict[int, int] | None = None) -> A
         recent=[_status(run.status) for run in reversed(runs)],
         usage=_usage(db, utcnow(), agent.id),
         proposals=suggested.get(agent.id, 0),
+        performance=_performance(db, utcnow(), agent.id),
     )
 
 
@@ -779,6 +858,8 @@ def list_agents(db: Db) -> Overview:
         attention=[AttentionOut(**vars(item)) for item in needing.items],
         attention_total=needing.total,
         briefing=BriefingOut(**vars(needing.briefing)) if needing.briefing else None,
+        activity=_activity(db),
+        performance=_performance(db, now),
     )
 
 
