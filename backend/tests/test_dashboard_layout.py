@@ -19,7 +19,8 @@ def test_each_preset_places_every_widget_once_and_the_first_is_the_default() -> 
     assert dashboard_layout.default_places() == PRESETS[0].places
     assert [place.size for place in PRESETS[0].places] == [widget.size for widget in WIDGETS]
     assert not any(place.hidden for place in PRESETS[0].places)
-    assert {"overview", "threat_watch", "compact"} == dashboard_layout.PRESET_KEYS
+    keys = dashboard_layout.PRESET_KEYS
+    assert keys == {"overview", "threat_watch", "compact"}
 
 
 def test_threat_watch_leads_with_what_needs_a_decision_and_leaves_the_rest_out() -> None:

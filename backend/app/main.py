@@ -30,6 +30,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Checked when the server starts, so a missing or short key stops it with a clear
         # message instead of failing later, the first time something is encrypted.
         app.state.secret_key = load_secret_key(settings)
+        # Said when the server stops, so a stream that is open ends then instead of holding the
+        # shutdown up until it ends by itself.
+        app.state.stopping = asyncio.Event()
         # Tests and the end-to-end harness leave logging as it is, so pytest can capture it.
         if settings.environment != "test":
             logs.configure(settings, secrets=[app.state.secret_key.get_secret_value()])
@@ -42,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            app.state.stopping.set()
             if purging:
                 purging.cancel()
                 await asyncio.wait({purging})

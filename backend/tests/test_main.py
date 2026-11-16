@@ -32,6 +32,14 @@ def test_the_server_starts_with_the_secret_key_loaded(settings: Settings) -> Non
         assert app.state.secret_key == settings.secret_key
 
 
+def test_open_streams_are_told_to_end_when_the_server_stops(settings: Settings) -> None:
+    app = create_app(settings)
+    with TestClient(app):
+        assert not app.state.stopping.is_set()
+
+    assert app.state.stopping.is_set()
+
+
 def test_the_server_will_not_start_without_a_usable_secret_key(settings: Settings) -> None:
     app = create_app(settings.model_copy(update={"secret_key": SecretStr("too short")}))
     with pytest.raises(SecretKeyError, match="needs at least 32"), TestClient(app):

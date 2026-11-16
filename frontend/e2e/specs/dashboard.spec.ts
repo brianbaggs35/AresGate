@@ -55,14 +55,12 @@ test.describe('dashboard', () => {
     await expect(dashboard.collectionTile).toContainText('None')
     await expect(dashboard.alertsTile).toContainText('Alerts')
     await expect(dashboard.alertsTile).toContainText('None, as in the day before')
-    await expect(dashboard.trafficChart.getByTestId('chart-empty')).toContainText(
-      'No traffic recorded yet',
-    )
-    await expect(dashboard.alertsCard.getByTestId('chart-empty')).toContainText('No alerts')
-    await expect(dashboard.sourcesCard.getByTestId('chart-empty')).toContainText(
-      'Nothing was blocked',
-    )
-    await expect(dashboard.latestAlerts).toContainText('No alerts')
+    // With nothing connected, each chart says what to connect rather than showing an empty one.
+    for (const widget of ['traffic', 'alerts', 'sources', 'latest']) {
+      await expect(
+        page.getByTestId(`widget-${widget}`).getByTestId('widget-needs-words'),
+      ).toContainText('Connect')
+    }
     await expect(dashboard.updated).toContainText('Updated')
   })
 

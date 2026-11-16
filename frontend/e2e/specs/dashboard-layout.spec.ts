@@ -39,7 +39,7 @@ test.describe('dashboard layout', () => {
     await dashboard.customize.click()
     await expect(dashboard.sheet).toBeVisible()
 
-    await dashboard.sheetRow('sources').getByRole('switch').uncheck()
+    await dashboard.sheetRow('sources').getByRole('checkbox').uncheck()
     await expect(dashboard.sourcesCard).toBeHidden()
 
     await page.reload()
@@ -59,7 +59,7 @@ test.describe('dashboard layout', () => {
 
     await dashboard.sheetRow('filtered').getByTestId('widget-down').click()
 
-    await expect(dashboard.sheetStatus).toHaveText('Filtered is now number 2 of 9.')
+    await expect(dashboard.sheetStatus).toHaveText('What was left out is now number 2 of 9.')
     await page.reload()
     const after = await order(dashboard.widgets)
     expect(after.slice(0, 2)).toEqual([before[1], before[0]])
@@ -90,11 +90,11 @@ test.describe('dashboard layout', () => {
     await dashboard.preset('compact').click()
     await expect(dashboard.preset('compact')).toHaveAttribute('aria-pressed', 'true')
     await expect(dashboard.sourcesCard).toBeVisible()
-    await expect(dashboard.sheetRow('blocked').getByRole('switch')).not.toBeChecked()
+    await expect(dashboard.sheetRow('blocked').getByRole('checkbox')).not.toBeChecked()
 
     await dashboard.sheetReset.click()
     await expect(dashboard.preset('overview')).toHaveAttribute('aria-pressed', 'true')
-    await expect(dashboard.sheetRow('blocked').getByRole('switch')).toBeChecked()
+    await expect(dashboard.sheetRow('blocked').getByRole('checkbox')).toBeChecked()
   })
 
   test('says what a widget needs when nothing that feeds it is connected', async ({
@@ -154,7 +154,7 @@ test.describe('wall display', () => {
 
     await page.goto('/?wall')
 
-    await expect(dashboard.wallAlarm).toContainText('need you now')
+    await expect(dashboard.wallAlarm).toContainText(/needs? you now/)
     await expect(dashboard.wallFullscreen).toBeVisible()
   })
 
