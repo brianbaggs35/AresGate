@@ -75,8 +75,16 @@ says after a verdict is `JudgedNotice`, which the Incidents page uses too.
 
 ## Incidents
 
-Both lists can be closer together (`DensityToggle` in the page header, remembered in this browser)
-and are read from the keyboard: `J` and `K` move the keyboard from one incident to the next,
+Both lists can be closer together (`DensityToggle` in the page header, remembered in this browser).
+The incidents can also be read as a table (`IncidentLayoutToggle`, also remembered): a row each in
+`IncidentTable`, a semantic `<table>` whose column buttons sort it (the most serious, newest or
+biggest first, then the other way, then back to the order the API sent) and set `aria-sort`. It
+sorts only the incidents loaded so far, and its caption says how many more are not, so a sort
+never looks like the whole list. *Group by address* gathers the incidents about one address
+under a header that says how many there are and the worst severity, which folds away
+(`aria-expanded`) and has a box that picks the group; an address with one incident stands alone.
+The rows keep the test ids and boxes of the cards, so `J`, `K`, `X` and the bulk bar work on them
+unchanged. A phone keeps the cards, whatever was chosen. Both lists are read from the keyboard: `J` and `K` move the keyboard from one incident to the next,
 `Enter` opens it, `X` picks it for a change to many, and `?` anywhere lists every key
 (`ShortcutsDialog`). The principles are in [the look](design.md#reading-for-a-long-time).
 

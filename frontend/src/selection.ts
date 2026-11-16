@@ -57,6 +57,17 @@ export function useSelection(items: Ref<readonly { id: number }[]>) {
     set(wholePage.value ? [] : ids.value)
   }
 
+  /** Ticks all of `wanted`, or takes them all off, leaving the others as they are. */
+  function toggleMany(wanted: readonly number[], on: boolean) {
+    anchor = null
+    const next = new Set(picked.value)
+    for (const id of wanted) {
+      if (on) next.add(id)
+      else next.delete(id)
+    }
+    set(next)
+  }
+
   function pickEverything() {
     anchor = null
     picked.value = new Set(ids.value)
@@ -86,6 +97,7 @@ export function useSelection(items: Ref<readonly { id: number }[]>) {
     has,
     toggle,
     togglePage,
+    toggleMany,
     pickEverything,
     clear,
   }

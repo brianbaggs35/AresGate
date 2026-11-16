@@ -103,6 +103,17 @@ describe('picking incidents', () => {
     expect([has(1), has(2), has(3)]).toEqual([true, false, true])
   })
 
+  it('ticks some together, or takes them off, and leaves the others as they are', () => {
+    const { toggle, toggleMany, picked } = picking(1, 2, 3, 4)
+    toggle(1)
+
+    toggleMany([2, 3], true)
+    expect([...picked.value]).toEqual([1, 2, 3])
+
+    toggleMany([1, 2], false)
+    expect([...picked.value]).toEqual([3])
+  })
+
   it('lets go of all of them', () => {
     const { pickEverything, clear, any, everything, picked } = picking(1, 2)
     pickEverything()

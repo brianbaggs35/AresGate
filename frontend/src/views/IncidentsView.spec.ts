@@ -4,6 +4,7 @@ import { VBtnToggle, VSelect } from 'vuetify/components'
 import { ApiError } from '@/api/client'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
+import { GROUPING_STORAGE_KEY, LAYOUT_STORAGE_KEY } from '@/stores/incident-layout'
 import { useSessionStore } from '@/stores/session'
 import { bulkResult, incident, page } from '@/test/incidents'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
@@ -27,13 +28,28 @@ function some() {
 interface Options {
   route?: string
   answer?: incidentsApi.IncidentPage | Error
+  /** The width of the screen, for the phone. */
+  width?: number
+  /** What was chosen in this browser before. */
+  saved?: Record<string, string>
 }
 
-async function open({ route = '/incidents', answer = some() }: Options = {}) {
+async function open({
+  route = '/incidents',
+  answer = some(),
+  width = 1280,
+  saved = {},
+}: Options = {}) {
   const fetchIncidents = vi.spyOn(incidentsApi, 'fetchIncidents')
   if (answer instanceof Error) fetchIncidents.mockRejectedValue(answer)
   else fetchIncidents.mockResolvedValue(answer)
-  const mounted = await mountWithPlugins(IncidentsView, { signedIn: 'admin', withApp: true, route })
+  for (const [key, value] of Object.entries(saved)) localStorage.setItem(key, value)
+  const mounted = await mountWithPlugins(IncidentsView, {
+    signedIn: 'admin',
+    withApp: true,
+    route,
+    width,
+  })
   await flushPromises()
   const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
   const text = (selector: string) => find(selector).text()
@@ -1374,5 +1390,100 @@ describe('IncidentsView, by keyboard and in a closer list', () => {
     const { find } = await open({ answer: three() })
 
     expect(find('density').exists()).toBe(true)
+  })
+})
+
+describe('IncidentsView as a table', () => {
+  const table = { [LAYOUT_STORAGE_KEY]: 'table' }
+  const same = () =>
+    page(
+      [
+        incident({ id: 5, title: 'Scan', subject: '198.51.100.7' }),
+        incident({ id: 6, title: 'Probe', subject: '198.51.100.7', severity: 'critical' }),
+        incident({ id: 7, title: 'Brute force', subject: '203.0.113.9' }),
+      ],
+      { total: 3 },
+    )
+
+  it('lists the incidents as cards until the table is chosen', async () => {
+    const { find } = await open({ answer: same() })
+
+    expect(find('incident-list').exists()).toBe(true)
+    expect(find('incident-table').exists()).toBe(false)
+    expect(find('layout').exists()).toBe(true)
+  })
+
+  it('lists them as a table when that is what was chosen, which the toggle changes', async () => {
+    const { find, wrapper } = await open({ answer: same(), saved: table })
+
+    expect(find('incident-table').exists()).toBe(true)
+    expect(find('incident-list').exists()).toBe(false)
+    expect(wrapper.findAll('[data-test="incident"]')).toHaveLength(3)
+
+    await find('layout-cards').trigger('click')
+
+    expect(find('incident-list').exists()).toBe(true)
+    expect(find('incident-table').exists()).toBe(false)
+  })
+
+  it('gathers the incidents about one address when that was chosen', async () => {
+    const { find } = await open({
+      answer: same(),
+      saved: { ...table, [GROUPING_STORAGE_KEY]: 'address' },
+    })
+
+    expect(find('incident-group').text()).toContain('198.51.100.7')
+  })
+
+  it('keeps cards on a phone, with no choice of layout', async () => {
+    const { find } = await open({ answer: same(), saved: table, width: 400 })
+
+    expect(find('incident-list').exists()).toBe(true)
+    expect(find('incident-table').exists()).toBe(false)
+    expect(find('layout').exists()).toBe(false)
+  })
+
+  it('picks rows, with the box and with a group, for a change to many', async () => {
+    const { wrapper, find, text } = await open({
+      answer: same(),
+      saved: { ...table, [GROUPING_STORAGE_KEY]: 'address' },
+    })
+
+    await wrapper.findAll('[data-test="incident-select"]')[2]!.trigger('click')
+    expect(text('bulk-count')).toBe('1 selected')
+
+    await find('group-select').setValue(true)
+    expect(text('bulk-count')).toBe('3 selected')
+    expect(wrapper.findAll('.incident-table__row--selected')).toHaveLength(3)
+
+    await find('group-select').setValue(false)
+    expect(text('bulk-count')).toBe('1 selected')
+  })
+
+  it('has J, K and X work on its rows', async () => {
+    const { wrapper, text } = await open({ answer: same(), saved: table })
+    const links = () => [...document.querySelectorAll<HTMLElement>('[data-test="incident"]')]
+    const press = (key: string) =>
+      document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+
+    press('j')
+    press('j')
+    expect(document.activeElement).toBe(links()[1])
+
+    press('x')
+    await flushPromises()
+    expect(wrapper.findAll('.incident-table__row--selected')).toHaveLength(1)
+    expect(text('bulk-count')).toBe('1 selected')
+  })
+
+  it('says how many more there are than the table has, once it is sorted', async () => {
+    const { find } = await open({
+      answer: page(same().items, { total: 40 }),
+      saved: table,
+    })
+
+    await find('sort-severity').trigger('click')
+
+    expect(find('incident-table').text()).toContain('37 more are not loaded yet')
   })
 })
