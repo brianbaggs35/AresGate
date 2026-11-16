@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { BaselineSeries } from '@/api/baselines'
+import type { BaselineHour, BaselineSeries } from '@/api/baselines'
 import BarChart from '@/charts/BarChart.vue'
 import { formatBytes, formatCount, formatDateTime } from '@/format'
 
@@ -32,10 +32,16 @@ const caption = computed(
     `The middle of what passed in each hour of the day, UTC, learned from up to ${formatCount(props.series.samples)} hours.`,
 )
 const busiest = computed(() =>
-  props.series.hours.reduce((most, hour) => (hour.median > most.median ? hour : most)),
+  props.series.hours.reduce(
+    (most, hour) => (hour.median > most.median ? hour : most),
+    props.series.hours[0] as BaselineHour,
+  ),
 )
 const quietest = computed(() =>
-  props.series.hours.reduce((least, hour) => (hour.median < least.median ? hour : least)),
+  props.series.hours.reduce(
+    (least, hour) => (hour.median < least.median ? hour : least),
+    props.series.hours[0] as BaselineHour,
+  ),
 )
 const hour = (value: number) => `${value.toString().padStart(2, '0')}:00`
 </script>

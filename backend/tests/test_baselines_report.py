@@ -226,7 +226,8 @@ class TestCorrectingWhatWasLearned:
         made = report.mark(session, ip_address(CLIENT), network, 443, expected=True, now=NOW)
         session.commit()
         marked = session.get(KnownDestination, (ip_address(CLIENT), network, 443))
-        assert marked is not None and marked.expected is True
+        assert marked is not None
+        assert marked.expected is True
         unmarked = report.mark(session, ip_address(CLIENT), network, 443, expected=False, now=NOW)
         session.commit()
         session.refresh(marked)

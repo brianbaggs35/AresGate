@@ -34,7 +34,7 @@ MAX_PLACES: Final = 200
 
 
 @dataclass(frozen=True)
-class Hour:
+class Usual:
     """What is usual for an hour of the day (UTC): the median bytes in it, the spread that says
     how far is far, and how many hours that was learned from."""
 
@@ -63,7 +63,7 @@ class Series:
     # What the owner calls the interface, if they have placed it.
     name: str | None
     direction: str
-    hours: tuple[Hour, ...]
+    hours: tuple[Usual, ...]
     learned_at: datetime | None
     deviations: tuple[Deviation, ...]
 
@@ -144,7 +144,7 @@ def interfaces(db: Session, now: datetime) -> Interfaces:
                 name=place.interface.name if place and place.interface else None,
                 direction=direction,
                 hours=tuple(
-                    Hour(row.bucket - traffic.ANY_DAY, row.median, row.spread, row.samples)
+                    Usual(row.bucket - traffic.ANY_DAY, row.median, row.spread, row.samples)
                     for row in hours
                 ),
                 learned_at=max(row.updated_at for row in hours),
