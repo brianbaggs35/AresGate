@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, UTCDateTime, utcnow
 
 # How a run came about: the owner asked for it, or the agent's schedule did.
-TRIGGERS = ("manual", "schedule")
+TRIGGERS = ("manual", "schedule", "handoff")
 # Where a run is: waiting for the worker, going, or over (and how it ended).
 STATUSES = ("queued", "running", "succeeded", "failed", "cancelled")
 # The fewest minutes between the starts of a scheduled agent's runs.
@@ -31,6 +31,10 @@ MIN_INTERVAL_MINUTES = 5
 AI_SOURCES = ("shared", "own", "off")
 # What the cleanup agent does with what it finds: only suggest it, or do the surest of it too.
 CLEANUP_MODES = ("suggest", "auto")
+# Where a hand-off is: it started a run of the other agent, or it was refused (and says why).
+HANDOFF_STATUSES = ("queued", "refused")
+# Where a step the response planner proposes is: waiting for the owner, approved or dismissed.
+PLAN_STATUSES = ("pending", "approved", "dismissed")
 # Where a suggestion of the cleanup agent is: waiting for the owner, done, turned down, or done and
 # taken back.
 PROPOSAL_STATUSES = ("pending", "applied", "dismissed", "undone")
@@ -100,7 +104,7 @@ class AgentRun(Base):
 
     __tablename__ = "agent_runs"
     __table_args__ = (
-        CheckConstraint("trigger IN ('manual', 'schedule')", name="trigger"),
+        CheckConstraint("trigger IN ('manual', 'schedule', 'handoff')", name="trigger"),
         CheckConstraint(
             "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="status"
         ),
@@ -192,3 +196,71 @@ class AgentProposal(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     undo: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+
+
+class AgentHandoff(Base):
+    """One time an agent asked another kind of agent to look into something: who asked (``run_id``
+    is the run that did, ``from_agent_id`` its agent), which kind it asked for and which agent
+    answered, what about (``subject`` is something the asking run really looked at, and
+    ``incident_id`` the incident, if it is one) and why. ``depth`` is how many hand-offs deep the
+    run it started is, which is limited. A refused hand-off is kept too, with the reason, so that
+    the owner can see what the agents wanted to do."""
+
+    __tablename__ = "agent_handoffs"
+    __table_args__ = (
+        CheckConstraint("status IN ('queued', 'refused')", name="status"),
+        Index("ix_agent_handoffs_created_at", "created_at"),
+        Index("ix_agent_handoffs_run_id", "run_id"),
+        Index("ix_agent_handoffs_to_run_id", "to_run_id"),
+        Index("ix_agent_handoffs_incident_id", "incident_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agent_runs.id", ondelete="CASCADE"))
+    from_agent_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    to_kind: Mapped[str] = mapped_column(String(32))
+    to_agent_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("agents.id", ondelete="SET NULL"), default=None
+    )
+    to_run_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("agent_runs.id", ondelete="SET NULL"), default=None
+    )
+    subject: Mapped[str] = mapped_column(String(200))
+    incident_id: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    reason: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(7))
+    refusal: Mapped[str | None] = mapped_column(String(200), default=None)
+    depth: Mapped[int] = mapped_column(SmallInteger, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AgentPlanStep(Base):
+    """One step the response planner proposes: what to do (``title``, ``detail``), what it risks,
+    and the incident it is about, if it names one. It waits for the owner, who approves it, which
+    records the decision and puts the step on the incident as a response task, or dismisses it.
+    Nothing is done by an agent. ``key`` is the same for the same step planned again, so a step
+    that was decided is not proposed twice."""
+
+    __tablename__ = "agent_plan_steps"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "key", name="uq_agent_plan_steps_agent_id_key"),
+        CheckConstraint("status IN ('pending', 'approved', 'dismissed')", name="status"),
+        Index("ix_agent_plan_steps_status", "status"),
+        Index("ix_agent_plan_steps_incident_id", "incident_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    agent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agents.id", ondelete="CASCADE"))
+    run_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("agent_runs.id", ondelete="SET NULL"), default=None
+    )
+    key: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    risk: Mapped[str] = mapped_column(Text, default="")
+    incident_id: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    status: Mapped[str] = mapped_column(String(9), default="pending")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

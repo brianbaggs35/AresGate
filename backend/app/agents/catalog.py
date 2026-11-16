@@ -43,6 +43,11 @@ class Template:
     # Whether it suggests tidying incidents, which the owner applies (or it does itself when the
     # agents are set to, for the surest of them), always in ways that can be taken back.
     proposes: bool = False
+    # Whether it may ask another kind of agent to look into something (a hand-off, recorded and
+    # limited: app/agents/handoffs.py), and whether the steps it plans wait for the owner to
+    # approve or dismiss them (app/agents/steps.py).
+    hands_off: bool = False
+    plans: bool = False
     needs: tuple[str, ...] = ()
     setup: tuple[str, ...] = ()
 
@@ -521,6 +526,7 @@ SECURITY_TRIAGE: Final = Template(
         "device",
     ),
     interval_minutes=120,
+    hands_off=True,
     needs=("ai", "alerts"),
     setup=(
         "Connect at least one source of alerts under Integrations: OPNsense with Suricata, "
@@ -663,6 +669,7 @@ RESPONSE_PLANNER: Final = Template(
         "reputation",
     ),
     interval_minutes=720,
+    plans=True,
     needs=("ai", "alerts"),
     setup=(
         "Make the agents you want it to act on, such as the Threat hunter and the Incident "
@@ -709,6 +716,7 @@ SECURITY_ORCHESTRATOR: Final = Template(
         "alerts",
     ),
     interval_minutes=360,
+    hands_off=True,
     needs=("ai", "alerts"),
     setup=(
         "Make the specialist agents first, such as the Threat hunter, the Network threat analyst "
@@ -737,6 +745,11 @@ TEMPLATES: Final[tuple[Template, ...]] = (
     RESPONSE_PLANNER,
     SECURITY_ORCHESTRATOR,
 )
+
+
+# The kinds an agent may hand work to: not the ones that test the network, which only the owner
+# starts.
+HANDOFF_KINDS: Final = tuple(item.key for item in TEMPLATES if not item.active)
 
 
 def template(key: str) -> Template | None:
