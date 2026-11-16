@@ -144,14 +144,22 @@ def _look(sessions: sessionmaker[Session]) -> str:
         return signature(db)
 
 
-async def _events(request: Request, sessions: sessionmaker[Session]) -> AsyncGenerator[str]:
+async def _events(
+    request: Request, sessions: sessionmaker[Session], stopping: asyncio.Event
+) -> AsyncGenerator[str]:
     """A ``ready`` when it begins, a ``changed`` each time what the dashboard shows may have, and
-    a comment now and then so a quiet stream is not closed. Nothing but a signature goes out."""
+    a comment now and then so a quiet stream is not closed. Nothing but a signature goes out. It
+    ends when the page has gone, when its time is up, and at once when the server is stopping."""
     last = await run_in_threadpool(_look, sessions)
     yield f"event: ready\ndata: {last}\n\n"
     started = quiet_since = time.monotonic()
     while time.monotonic() - started < STREAM_SECONDS:
-        await asyncio.sleep(CHECK_SECONDS)
+        try:
+            await asyncio.wait_for(stopping.wait(), timeout=CHECK_SECONDS)
+        except TimeoutError:
+            pass
+        else:
+            return
         if await request.is_disconnected():
             return
         seen = await run_in_threadpool(_look, sessions)
@@ -174,7 +182,7 @@ async def stream(request: Request, db: Db) -> StreamingResponse:
     await run_in_threadpool(db.commit)
     sessions: sessionmaker[Session] = request.app.state.sessions()
     return StreamingResponse(
-        _events(request, sessions),
+        _events(request, sessions, request.app.state.stopping),
         media_type="text/event-stream",
         # Nothing is kept, and nginx is not to hold it back (docker/nginx/templates/aresgate.conf).
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},

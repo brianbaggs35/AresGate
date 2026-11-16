@@ -36,10 +36,14 @@ def whole(**changes: Any) -> dict[str, Any]:
 
 
 def test_it_is_only_for_someone_signed_in(client: TestClient, account: User) -> None:
-    assert client.get(LAYOUT).status_code == 401
-    assert client.put(LAYOUT, json=whole()).status_code == 401
-    assert client.delete(LAYOUT).status_code == 401
-    assert client.get(f"{BASE}/stream").status_code == 401
+    answers = [
+        client.get(LAYOUT),
+        client.put(LAYOUT, json=whole()),
+        client.delete(LAYOUT),
+        client.get(f"{BASE}/stream"),
+    ]
+
+    assert [answer.status_code for answer in answers] == [401, 401, 401, 401]
 
 
 class TestReading:
@@ -162,7 +166,9 @@ class TestResetting:
     def test_there_is_nothing_to_do_for_an_account_that_never_changed_it(
         self, client: TestClient, csrf_token: str
     ) -> None:
-        assert client.delete(LAYOUT, headers=headers(csrf_token)).status_code == 204
+        answer = client.delete(LAYOUT, headers=headers(csrf_token))
+
+        assert answer.status_code == 204
 
 
 class TestWhatChanged:
@@ -211,10 +217,13 @@ def looking(monkeypatch: pytest.MonkeyPatch, *signatures: str) -> None:
     monkeypatch.setattr(api, "_look", look)
 
 
-def run_events(request: FakeRequest) -> list[str]:
+def run_events(request: FakeRequest, stopped: bool = False) -> list[str]:
     async def collect() -> list[str]:
         out: list[str] = []
-        events: AsyncGenerator[str] = api._events(request, object())  # type: ignore[arg-type]
+        stopping = asyncio.Event()
+        if stopped:
+            stopping.set()
+        events: AsyncGenerator[str] = api._events(request, object(), stopping)  # type: ignore[arg-type]
         async for item in events:
             out.append(item)
         return out
@@ -252,6 +261,16 @@ class TestTheStream:
         looking(monkeypatch, "same")
 
         sent = run_events(FakeRequest(asks_before_leaving=0))
+
+        assert sent == ["event: ready\ndata: same\n\n"]
+
+    def test_it_ends_at_once_when_the_server_is_stopping(
+        self, monkeypatch: pytest.MonkeyPatch, quickly: None
+    ) -> None:
+        looking(monkeypatch, "same")
+        monkeypatch.setattr(api, "CHECK_SECONDS", 1000.0)
+
+        sent = run_events(FakeRequest(), stopped=True)
 
         assert sent == ["event: ready\ndata: same\n\n"]
 

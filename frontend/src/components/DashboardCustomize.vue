@@ -206,7 +206,7 @@ function drop(target: WidgetId) {
               </span>
             </li>
           </ul>
-          <p class="sr-only" role="status" data-test="customize-status">{{ announced }}</p>
+          <output class="sr-only" data-test="customize-status">{{ announced }}</output>
         </section>
       </div>
 
