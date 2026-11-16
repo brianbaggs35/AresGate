@@ -314,8 +314,8 @@ describe('DashboardView', () => {
     it('open the alerts they count, in the window they count', async () => {
       const { find } = await open()
       expect(find('tile-alerts').attributes('href')).toBe('/logs?q=kind:alert+since:24h')
-      expect(find('tile-alerts').attributes('aria-label')).toBe(
-        '9 alerts in the last 24 hours, show them',
+      expect(find('tile-alerts').find('[data-test="stat-go-label"]').text()).toBe(
+        '. Shows the alerts of the last 24 hours',
       )
     })
 
@@ -324,8 +324,8 @@ describe('DashboardView', () => {
       expect(find('tile-blocked').attributes('href')).toBe(
         '/logs?q=kind:firewall+severity%3E=low+since:24h',
       )
-      expect(find('tile-blocked').attributes('aria-label')).toBe(
-        '1,250 blocked connections in the last 24 hours, show them',
+      expect(find('tile-blocked').find('[data-test="stat-go-label"]').text()).toBe(
+        '. Shows the blocked connections of the last 24 hours',
       )
     })
 

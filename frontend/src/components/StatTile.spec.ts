@@ -147,12 +147,15 @@ describe('StatTile', () => {
         label: 'Alerts',
         value: 5,
         to: '/logs',
-        toLabel: '5 alerts in the last 24 hours, show them',
+        toLabel: 'Shows the alerts of the last 24 hours',
       },
     })
-    expect(wrapper.find('a').attributes('aria-label')).toBe(
-      '5 alerts in the last 24 hours, show them',
+    // After what is on the tile, never in place of it.
+    expect(wrapper.find('a').text()).toContain('Alerts')
+    expect(wrapper.find('[data-test="stat-go-label"]').text()).toBe(
+      '. Shows the alerts of the last 24 hours',
     )
+    expect(wrapper.find('a').attributes('aria-label')).toBeUndefined()
     expect(wrapper.find('[data-test="stat-go"]').exists()).toBe(true)
   })
 
@@ -161,6 +164,6 @@ describe('StatTile', () => {
       props: { label: 'Alerts', value: 5, toLabel: 'never shown' },
     })
     expect(wrapper.find('[data-test="stat-go"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="never shown"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="stat-go-label"]').exists()).toBe(false)
   })
 })

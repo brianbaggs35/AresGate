@@ -31,7 +31,7 @@ def get_since(db: Db, auth: Annotated[SignedIn, Depends(signed_in)]) -> SinceOut
     found = news.of(db, auth.user.id, utcnow())
     db.commit()
     return SinceOut(
-        since=found.since,
+        since=found.after,
         incidents={name: found.incidents.get(level, 0) for level, name in SEVERITY_NAMES.items()},
         cleared_by_ai=found.cleared_by_ai,
         new_devices=found.new_devices,

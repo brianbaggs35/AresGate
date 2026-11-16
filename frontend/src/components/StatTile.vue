@@ -26,8 +26,9 @@ const props = defineProps<{
   /** What the line shows, in words. */
   trendLabel?: string
   to?: RouteLocationRaw
-  /** For a tile that leads somewhere: what it says, for a screen reader, in a sentence such as
-   * "12 open incidents, show them". Without it a link is only named by what is on the tile. */
+  /** For a tile that leads somewhere: where, for a screen reader, in words such as "Shows the
+   * alerts of the last 24 hours". It is read after what is on the tile, never in place of it, so
+   * the name of the link still holds the words that can be seen. */
   toLabel?: string
   /** Without a card of its own, for a tile that sits inside another surface. */
   flat?: boolean
@@ -40,7 +41,6 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
 <template>
   <v-card
     :to="to"
-    :aria-label="to !== undefined ? toLabel : undefined"
     :hover="to !== undefined"
     class="stat-tile pa-5"
     :class="{ 'stat-tile--flat': flat }"
@@ -55,6 +55,9 @@ const ARROWS = { up: ArrowUp, down: ArrowDown, flat: Minus } as const
         aria-hidden="true"
       />
       <span data-test="stat-label">{{ label }}</span>
+      <span v-if="to !== undefined && toLabel" class="sr-only" data-test="stat-go-label">
+        . {{ toLabel }}
+      </span>
       <v-icon
         v-if="to !== undefined"
         :icon="ChevronRight"
