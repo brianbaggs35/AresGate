@@ -27,7 +27,11 @@ export async function waitForMotion(page: Page): Promise<void> {
  */
 export async function expectAccessible(
   page: Page,
-  { include, disableRules = [] }: { include?: string; disableRules?: string[] } = {},
+  {
+    include,
+    disableRules = [],
+    where,
+  }: { include?: string; disableRules?: string[]; where?: string } = {},
 ): Promise<void> {
   // Text caught halfway through a fade looks faint to axe, so let transitions finish first.
   await waitForMotion(page)
@@ -38,7 +42,7 @@ export async function expectAccessible(
     rule: violation.id,
     impact: violation.impact,
     help: violation.help,
-    elements: violation.nodes.map((node) => node.target.join(' ')),
+    elements: violation.nodes.map((node) => `${node.target.join(' ')}: ${node.html.slice(0, 400)}`),
   }))
-  expect(found, 'axe found accessibility problems').toEqual([])
+  expect(found, `axe found accessibility problems${where ? ` on ${where}` : ''}`).toEqual([])
 }
