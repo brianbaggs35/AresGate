@@ -38,6 +38,31 @@ describe('App', () => {
     expect(wrapper.text()).toContain('AresGate')
   })
 
+  it('shows a wall display with no menu or bars, only the dashboard', async () => {
+    vi.spyOn(dashboardApi, 'fetchDashboard').mockResolvedValue(dashboard())
+    vi.spyOn(collectorsApi, 'fetchCollectors').mockResolvedValue(report())
+    const { wrapper } = await mountWithPlugins(App, {
+      route: '/?wall',
+      signedIn: 'admin',
+      width: 1280,
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-test="posture"]').exists()).toBe(true)
+    expect(wrapper.find('.app-drawer').exists()).toBe(false)
+    expect(wrapper.find('.v-app-bar').exists()).toBe(false)
+    expect(wrapper.find('[data-test="wall-exit"]').exists()).toBe(true)
+  })
+
+  it('keeps the menu on another page that has ?wall in its address', async () => {
+    const { wrapper } = await mountWithPlugins(App, {
+      route: '/settings/account?wall',
+      signedIn: 'admin',
+      width: 1280,
+    })
+    await flushPromises()
+    expect(wrapper.find('.app-drawer').exists()).toBe(true)
+  })
+
   it('shows the sign-in page on its own, with no menu', async () => {
     const { wrapper } = await mountWithPlugins(App, { route: '/sign-in', width: 1280 })
     await flushPromises()

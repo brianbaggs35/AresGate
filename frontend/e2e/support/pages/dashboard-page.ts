@@ -57,6 +57,20 @@ export class DashboardPage {
   readonly error: Locator
   readonly retry: Locator
   readonly stale: Locator
+  /** The widgets as laid out, in order, and the sheet where the owner changes them. */
+  readonly widgets: Locator
+  readonly customize: Locator
+  readonly sheet: Locator
+  readonly sheetWidgets: Locator
+  readonly sheetStatus: Locator
+  readonly sheetError: Locator
+  readonly sheetReset: Locator
+  readonly sheetDone: Locator
+  /** The wall display: the buttons into and out of it, and the alarm it raises. */
+  readonly wall: Locator
+  readonly wallExit: Locator
+  readonly wallFullscreen: Locator
+  readonly wallAlarm: Locator
 
   constructor(private readonly page: Page) {
     this.heading = page.getByTestId('page-heading')
@@ -101,12 +115,34 @@ export class DashboardPage {
     this.error = page.getByTestId('dashboard-error')
     this.retry = page.getByTestId('retry')
     this.stale = page.getByTestId('dashboard-stale')
+    this.widgets = page.getByTestId('widgets').locator('.widget')
+    this.customize = page.getByTestId('customize-open')
+    this.sheet = page.getByTestId('customize')
+    this.sheetWidgets = this.sheet.getByTestId('widget-list').locator('> li')
+    this.sheetStatus = this.sheet.getByTestId('customize-status')
+    this.sheetError = this.sheet.getByTestId('customize-error')
+    this.sheetReset = this.sheet.getByTestId('customize-reset')
+    this.sheetDone = this.sheet.getByTestId('customize-done')
+    this.wall = page.getByTestId('wall-enter')
+    this.wallExit = page.getByTestId('wall-exit')
+    this.wallFullscreen = page.getByTestId('wall-fullscreen')
+    this.wallAlarm = page.getByTestId('wall-alarm')
   }
 
   /** One of the three verdict buttons on a card of the lane, by the verdict, such as
    * `not_suspicious`, and the card's place in the lane. */
   quick(verdict: string, index = 0): Locator {
     return this.needsYouCards.nth(index).getByTestId(`quick-${verdict}`)
+  }
+
+  /** A row of the sheet, by the widget's id such as `traffic`. */
+  sheetRow(id: string): Locator {
+    return this.sheet.getByTestId(`widget-${id}`)
+  }
+
+  /** A preset of the sheet, by its key such as `quiet`. */
+  preset(key: string): Locator {
+    return this.sheet.getByTestId(`preset-${key}`)
   }
 
   async goto(): Promise<void> {

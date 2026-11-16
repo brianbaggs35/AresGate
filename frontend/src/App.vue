@@ -32,8 +32,11 @@ watch(
   { immediate: true },
 )
 
+// A dashboard on a wall (?wall) has no menu or bars, only the dashboard.
+const wall = computed(() => route.name === 'home' && 'wall' in route.query)
+
 // The menu and bars are for someone who is signed in. Setting up and signing in stand alone.
-const chrome = computed(() => session.signedIn && !route.meta.public)
+const chrome = computed(() => session.signedIn && !route.meta.public && !wall.value)
 
 // The palette is for someone who is signed in, so signing out puts it away.
 watch(chrome, (shown) => {

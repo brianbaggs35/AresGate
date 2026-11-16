@@ -1,8 +1,10 @@
 import { ApiError } from '@/api/client'
 import * as collectorsApi from '@/api/collectors'
 import * as dashboardApi from '@/api/dashboard'
+import * as layoutApi from '@/api/dashboardLayout'
 import * as incidentsApi from '@/api/incidents'
 import * as verdictsApi from '@/api/verdicts'
+import { useDashboardLayoutStore } from '@/stores/dashboardLayout'
 import { prefetchDashboard, takePrefetched } from '@/prefetch'
 import { useReviewStore } from '@/stores/review'
 import { useSessionStore } from '@/stores/session'
@@ -93,13 +95,21 @@ interface Mocks {
   collectors?: collectorsApi.CollectorsReport | Error
   /** The incidents that need a decision. None, unless given. */
   incidents?: incidentsApi.IncidentPage | Error
+  /** How the account has laid out the dashboard. The default one, unless given. */
+  layout?: layoutApi.PlaceOut[]
 }
 
 function mocks({
   dashboard: shown = busy(),
   collectors = report([collector()]),
   incidents = page([]),
+  layout = [],
 }: Mocks = {}) {
+  vi.spyOn(layoutApi, 'fetchLayout').mockResolvedValue({
+    preset: null,
+    widgets: layout,
+    presets: [],
+  })
   const fetchDashboard = vi.spyOn(dashboardApi, 'fetchDashboard')
   if (shown instanceof Error) fetchDashboard.mockRejectedValue(shown)
   else fetchDashboard.mockResolvedValue(shown)
@@ -729,6 +739,223 @@ describe('DashboardView', () => {
     it('goes to the sign-in page when the sign-in has ended', async () => {
       const { pinia } = await open({ dashboard: new ApiError(401, 'Sign in.', 'unauthenticated') })
       expect(useSessionStore(pinia).expired).toBe(true)
+    })
+  })
+})
+
+describe('DashboardView, as its owner has laid it out', () => {
+  const place = (id: string, size: 'half' | 'full' = 'full', hidden = false) => ({
+    id,
+    size,
+    hidden,
+  })
+  const shownIds = (wrapper: {
+    findAll: (selector: string) => { attributes: (n: string) => unknown }[]
+  }) => wrapper.findAll('.widget').map((each) => each.attributes('data-test'))
+
+  it('shows the widgets in the order chosen, and none that are hidden', async () => {
+    const { wrapper } = await open({
+      layout: [place('latest'), place('traffic', 'half'), place('alerts', 'half', true)],
+    })
+
+    const shown = shownIds(wrapper)
+    expect(shown.slice(0, 2)).toEqual(['widget-latest', 'widget-traffic'])
+    expect(shown).not.toContain('widget-alerts')
+    expect(wrapper.find('.widget--half').exists()).toBe(true)
+    expect(wrapper.find('[data-test="no-widgets"]').exists()).toBe(false)
+  })
+
+  it('says so, and offers the way back, when every widget is hidden', async () => {
+    const { find, wrapper } = await open()
+    const layout = useDashboardLayoutStore()
+    layout.places = layout.places.map((each) => ({ ...each, hidden: true }))
+    await flushPromises()
+
+    expect(find('no-widgets').exists()).toBe(true)
+    await find('no-widgets-customize').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[data-test="customize"]')).not.toBeNull()
+    expect(wrapper.find('.widget').exists()).toBe(false)
+  })
+
+  it('opens the customizing sheet', async () => {
+    const { find } = await open()
+
+    await find('customize-open').trigger('click')
+    await flushPromises()
+
+    expect(document.querySelector('[data-test="customize"]')).not.toBeNull()
+
+    document.querySelector<HTMLElement>('[data-test="customize-done"]')!.click()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(document.querySelector('.v-overlay--active [data-test="customize"]')).toBeNull()
+  })
+
+  it('says what a widget needs connected where there is none to feed it', async () => {
+    const { find } = await open({ collectors: report([]), layout: [place('blocked')] })
+
+    expect(find('widget-needs-words').text()).toBe('Connect OPNsense to see this.')
+  })
+
+  it('draws a widget that has what it needs', async () => {
+    const { find } = await open({ layout: [place('blocked')] })
+
+    expect(find('widget-needs').exists()).toBe(false)
+  })
+
+  describe('as it hears from the server', () => {
+    class Source {
+      static made: Source[] = []
+      listeners = new Map<string, () => void>()
+      constructor(public url: string) {
+        Source.made.push(this)
+      }
+      addEventListener(name: string, listener: () => void) {
+        this.listeners.set(name, listener)
+      }
+      close() {}
+    }
+
+    beforeEach(() => {
+      Source.made = []
+      vi.stubGlobal('EventSource', Source)
+    })
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('asks again at once when told something changed, and says it is live', async () => {
+      const { fetchDashboard, text } = await open()
+      expect(Source.made.map((each) => each.url)).toEqual(['/api/dashboard/stream'])
+      expect(text('updated')).toContain('every 30 seconds')
+
+      Source.made[0]!.listeners.get('ready')!()
+      Source.made[0]!.listeners.get('changed')!()
+      await flushPromises()
+
+      expect(fetchDashboard).toHaveBeenCalledTimes(2)
+      expect(text('updated')).toContain('Changes appear here as they happen')
+    })
+  })
+
+  describe('as a wall display', () => {
+    const wallOpen = (options: Mocks = {}, route = '/?wall') => {
+      const fetches = mocks(options)
+      return mountWithPlugins(DashboardView, {
+        signedIn: 'admin',
+        withApp: true,
+        route,
+      }).then(async (mounted) => {
+        await flushPromises()
+        const find = (selector: string) => mounted.wrapper.find(`[data-test="${selector}"]`)
+        return { ...mounted, ...fetches, find }
+      })
+    }
+
+    afterEach(() => {
+      vi.useRealTimers()
+      Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+    })
+
+    it('goes in and out of it by the address', async () => {
+      const { find, router, wrapper } = await wallOpen({}, '/')
+
+      await find('wall-enter').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      expect(router.currentRoute.value.query).toEqual({ wall: '1' })
+      expect(wrapper.find('[data-test="wall-exit"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="range"]').exists()).toBe(false)
+
+      await wrapper.find('[data-test="wall-exit"]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      expect(router.currentRoute.value.query).toEqual({})
+      expect(wrapper.find('[data-test="range"]').exists()).toBe(true)
+    })
+
+    it('shows only the dashboard, larger, with its own words about when it asks again', async () => {
+      const calm = { ...busy(), attention: attention({ incidents: 3, needs_you: 1 }) }
+      const { wrapper, find } = await wallOpen({ dashboard: calm })
+
+      expect(wrapper.find('.dashboard--wall').exists()).toBe(true)
+      expect(find('updated').text()).toContain('every 10 seconds')
+      expect(find('wall-alarm').exists()).toBe(false)
+    })
+
+    it('shows an alarm that cannot be missed when something needs the owner now', async () => {
+      const urgent = { ...busy(), attention: attention({ incidents: 3, needs_you: 2, urgent: 2 }) }
+      const { find } = await wallOpen({ dashboard: urgent })
+
+      expect(find('wall-alarm').text()).toContain('2 incidents need you now')
+    })
+
+    it('says it in the singular for one', async () => {
+      const urgent = { ...busy(), attention: attention({ incidents: 3, needs_you: 1, urgent: 1 }) }
+      const { find } = await wallOpen({ dashboard: urgent })
+
+      expect(find('wall-alarm').text()).toContain('1 incident needs you now')
+    })
+
+    it('asks again every ten seconds, and not every thirty', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      const { fetchDashboard } = await wallOpen()
+      expect(fetchDashboard).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(10_000)
+      await flushPromises()
+      expect(fetchDashboard).toHaveBeenCalledTimes(2)
+
+      vi.advanceTimersByTime(20_000)
+      await flushPromises()
+      expect(fetchDashboard).toHaveBeenCalledTimes(4)
+    })
+
+    it('does not ask every thirty seconds when it is not a wall display', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      const { fetchDashboard } = await open()
+
+      vi.advanceTimersByTime(10_000)
+      await flushPromises()
+      expect(fetchDashboard).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(20_000)
+      await flushPromises()
+      expect(fetchDashboard).toHaveBeenCalledTimes(2)
+    })
+
+    it('fills the screen on a click, and gives up if the browser will not', async () => {
+      const fill = vi.fn().mockResolvedValue(undefined)
+      document.documentElement.requestFullscreen = fill
+      const { find } = await wallOpen()
+
+      await find('wall-fullscreen').trigger('click')
+      expect(fill).toHaveBeenCalledTimes(1)
+
+      fill.mockRejectedValue(new Error('not allowed'))
+      await find('wall-fullscreen').trigger('click')
+      await flushPromises()
+      expect(find('wall-fullscreen').exists()).toBe(true)
+
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen')
+    })
+
+    it('leaves full screen when it leaves the wall, and when it goes', async () => {
+      const exit = vi.fn().mockResolvedValue(undefined)
+      document.exitFullscreen = exit
+      Object.defineProperty(document, 'fullscreenElement', {
+        value: document.body,
+        configurable: true,
+      })
+      const { find, wrapper } = await wallOpen()
+
+      await find('wall-exit').trigger('click')
+      await flushPromises()
+      expect(exit).toHaveBeenCalledTimes(1)
+
+      exit.mockRejectedValue(new Error('already'))
+      wrapper.unmount()
+      await flushPromises()
+      expect(exit).toHaveBeenCalledTimes(2)
     })
   })
 })
