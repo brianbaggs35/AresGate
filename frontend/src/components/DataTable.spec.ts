@@ -4,13 +4,12 @@ import { mountWithPlugins } from '@/test/mount'
 const slots = { default: '<table><tbody><tr><th>Name</th><td>Value</td></tr></tbody></table>' }
 
 describe('DataTable', () => {
-  it('holds a table in a region a keyboard can reach and a screen reader can name', async () => {
+  it('holds a table in a region a screen reader can name', async () => {
     const { wrapper } = await mountWithPlugins(DataTable, { props: { label: 'Incidents' }, slots })
     const region = wrapper.find('[data-test="data-table"]')
 
-    expect(region.attributes('role')).toBe('region')
+    expect(region.element.tagName).toBe('SECTION')
     expect(region.attributes('aria-label')).toBe('Incidents')
-    expect(region.attributes('tabindex')).toBe('0')
     expect(region.find('table').exists()).toBe(true)
   })
 

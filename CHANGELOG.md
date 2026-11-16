@@ -22,10 +22,10 @@ Every release's notes are here, newest first. The format follows
   to the test report. Pages that show data now use a big screen: they grow past 1600 px, lists of
   cards become two columns where there is room, and a *Wall display* is scaled to the screen (up to
   three times at 4K). Wide tables share one frame (`DataTable`) that scrolls inside itself, can be
-  reached by keyboard, fades at an edge with more beyond it and can keep its first column in place
+  named for a screen reader, fades at an edge with more beyond it and can keep its first column in place
   (the Incidents table uses it). In Windows high contrast chips, cards, rows and the current page in
   the menu keep an edge of their own, since backgrounds and shadows are dropped; when the system asks
-  for less motion nothing animates for long or repeats; numbers in tables, times and chips line up
+  for less motion the sweep checks nothing is left repeating; numbers in tables, times and chips line up
   (`tabular-nums`) and text that is cut off has its whole value as a tooltip. See
   [UI](DOCS/ui.md#rules-for-any-page).
 - **Trends where there were only lists.** The Alerts page charts the messages of the last two days

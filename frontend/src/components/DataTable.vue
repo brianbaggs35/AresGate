@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The frame a wide table sits in, so every table behaves the same where it is wider than the
- * screen: it scrolls sideways inside its own box (never the page), the box can be reached with
- * the keyboard and is named for a screen reader, a fade at an edge says there is more that way,
+ * screen: it scrolls sideways inside its own box (never the page), the box is a named region
+ * for a screen reader (what scrolls holds controls, so the keyboard reaches it), a fade at an edge says there is more that way,
  * and, with `stickyFirst`, the first column stays while the rest goes by. It leaves the table
  * itself alone, so the page keeps its own columns and cells.
  */
@@ -15,16 +15,14 @@ defineProps<{
 </script>
 
 <template>
-  <div
+  <section
     class="data-table"
     :class="{ 'data-table--sticky-first': stickyFirst }"
-    role="region"
     :aria-label="label"
-    tabindex="0"
     data-test="data-table"
   >
     <slot />
-  </div>
+  </section>
 </template>
 
 <style scoped>
@@ -42,11 +40,6 @@ defineProps<{
       100% no-repeat scroll,
     radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.22), transparent) right center /
       0.5rem 100% no-repeat scroll;
-}
-
-.data-table:focus-visible {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: -2px;
 }
 
 .data-table--sticky-first :deep(tr > :first-child) {
