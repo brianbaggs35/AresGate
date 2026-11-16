@@ -1,9 +1,16 @@
-"""Asking an AI provider, in the language each one speaks.
+"""Asking an AI provider, in the language each one speaks, with the provider's own SDK.
 
-Every request goes through ``ApiClient`` (see app/integrations/client.py), so it is kept to the
-addresses its provider may be at, checks the certificate, never follows a redirect, limits what it
-reads and is written to the API log without any secret. This module only knows what to send and
-how to read what came back.
+OpenAI's and Anthropic's Python SDKs and Ollama's are what speak to each provider: they build the
+request, send it and read the answer, so a change in what a provider takes or says is theirs to
+follow. What they send goes through ``ApiClient`` (see app/integrations/client.py), which each SDK
+is given as its HTTP client (``ApiClient.sdk_http``, and ``bridge.OllamaTransport`` for Ollama's,
+which is built on another HTTP library). So every request is kept to the addresses its provider
+may be at, checks the certificate, never follows a redirect, limits what it reads and is written
+to the API log without any secret, exactly as before, and an SDK never retries by itself. This
+module only knows what to ask for and how to read what came back.
+
+What each provider's API takes and answers is from its own documentation (the SDKs' arguments are
+the API's fields):
 
 What each provider's API takes and answers is from its own documentation:
 
@@ -39,8 +46,8 @@ What each provider's API takes and answers is from its own documentation:
   ``prompt_eval_count`` and ``eval_count``. GET /api/tags lists the models, on the computer or,
   with a bearer key, in Ollama's cloud.
 
-Streaming (``stream``) asks each provider to send the answer as it is written. Each streams
-differently:
+Streaming (``stream``) asks each provider to send the answer as it is written. The SDKs read the
+stream and give its events; each provider's events are different:
 
 - Anthropic: ``"stream": true`` makes the answer server-sent events, each with an ``event:`` name
   and a ``data:`` line whose JSON repeats it as ``type``. ``message_start`` holds the message with
@@ -68,16 +75,24 @@ differently:
 import json
 import re
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Iterator, Mapping
-from contextlib import aclosing
+from collections.abc import AsyncGenerator, Generator, Iterator, Mapping
+from contextlib import aclosing, contextmanager
 from copy import replace
 from dataclasses import dataclass
-from typing import TypeIs, cast
+from typing import Any, TypeIs, cast
 
+import anthropic
+import httpx
+import ollama
+import openai
+from anthropic import AsyncAnthropic
+from ollama import AsyncClient as AsyncOllama
+from openai import AsyncOpenAI
+
+from app.ai import bridge
 from app.ai.catalog import Caching, ModelDef, ProviderDef, Wire
-from app.integrations.client import ApiClient, NotSuccess, Reply
+from app.integrations.client import ApiClient, CallFailed, in_chain
 
-ANTHROPIC_VERSION = "2023-06-01"
 # OpenAI won't take fewer than this many output tokens in a request.
 OPENAI_MIN_OUTPUT = 16
 # A rule of thumb for how many characters a token is, to tell whether a prompt is long enough for
@@ -222,41 +237,39 @@ def _openai_body(
     return body
 
 
-def _request(
+def _arguments(
     provider: ProviderDef,
     model: str,
-    key: str | None,
     system: str,
     prompt: str,
     schema: Mapping[str, object] | None,
     max_tokens: int,
     cache_key: str | None,
-) -> tuple[str, dict[str, str], dict[str, object]]:
-    """The path, the headers and the body of a request for an answer. ``system`` is the fixed
-    start of the prompt, which is what is cached, and ``prompt`` is what changes from one request
-    to the next."""
+) -> dict[str, Any]:
+    """What to ask the provider's SDK for an answer, which is the fields of its API. ``system`` is
+    the fixed start of the prompt, which is what is cached, and ``prompt`` is what changes from
+    one request to the next."""
     known = provider.model(model)
     if provider.wire is Wire.ANTHROPIC:
-        body: dict[str, object] = {
+        arguments: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": prompt}],
         }
         if _marks(known, system):
-            body["system"] = [
+            arguments["system"] = [
                 {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
             ]
         if schema is not None:
-            body["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
-        headers = {"x-api-key": key or "", "anthropic-version": ANTHROPIC_VERSION}
-        return "/v1/messages", headers, body
+            arguments["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
+        return arguments
     if provider.wire is Wire.OPENAI:
-        body = _openai_body(model, known, system, prompt, max_tokens)
+        arguments = _openai_body(model, known, system, prompt, max_tokens)
         if known is not None and known.caching is Caching.AUTOMATIC and cache_key:
-            body["prompt_cache_key"] = cache_key
+            arguments["prompt_cache_key"] = cache_key
         if schema is not None:
-            body["text"] = {
+            arguments["text"] = {
                 "format": {
                     "type": "json_schema",
                     "name": "answer",
@@ -264,17 +277,15 @@ def _request(
                     "schema": schema,
                 }
             }
-        return "/v1/responses", {"Authorization": f"Bearer {key or ''}"}, body
-    body = {
+        return arguments
+    arguments = {
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-        "stream": False,
         "options": {"temperature": 0, "num_predict": max_tokens},
     }
     if schema is not None:
-        body["format"] = schema
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
-    return "/api/chat", headers, body
+        arguments["format"] = schema
+    return arguments
 
 
 def _anthropic(data: dict[str, object]) -> Completion:
@@ -340,15 +351,93 @@ def _ollama(data: dict[str, object]) -> Completion:
 
 _READERS = {Wire.ANTHROPIC: _anthropic, Wire.OPENAI: _openai, Wire.OLLAMA: _ollama}
 
+# The headers an SDK adds from the environment, which AresGate doesn't send: another account's
+# organization or project.
+_NOT_SENT = {Wire.OPENAI: ("openai-organization", "openai-project")}
 
-def read_completion(provider: ProviderDef, reply: Reply) -> Completion:
-    """What came back, or ``AiFailed`` saying why there is no answer."""
-    if not reply.ok:
-        raise AiFailed(explain(reply.status, provider), reply.status)
-    data = reply.json()
+
+def _translate(error: Exception, provider: ProviderDef) -> Exception | None:
+    """What an error of a provider's SDK means: ``CallFailed`` if the request got no answer, and
+    ``AiFailed`` if it did and it isn't a success. None for an error that isn't the SDK's."""
+    if (failed := in_chain(error, CallFailed)) is not None:
+        return failed
+    status = getattr(error, "status_code", None)
+    if isinstance(status, int):
+        if status < 400:
+            # An error in the middle of an answer that began well (Ollama's SDK says -1).
+            return AiFailed("The model stopped answering part of the way through.", status)
+        return AiFailed(explain(status, provider), status)
+    # Ollama's SDK checks what it answers: a line or a field that isn't what it expects is a
+    # ``ValueError`` (a ``json.JSONDecodeError`` and a pydantic ``ValidationError`` are), and an
+    # answer that isn't an object is a ``TypeError`` or an ``AttributeError``.
+    understood: tuple[type[Exception], ...] = (
+        anthropic.APIError,
+        openai.OpenAIError,
+        json.JSONDecodeError,
+    )
+    if provider.wire is Wire.OLLAMA:
+        understood = (ollama.RequestError, ValueError, TypeError, AttributeError)
+    if isinstance(error, understood):
+        return AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
+    return None
+
+
+@contextmanager
+def _translated(provider: ProviderDef) -> Generator[None]:
+    """Turns the errors of the SDK inside it into ``AiFailed`` and ``CallFailed``."""
+    try:
+        yield
+    except Exception as error:
+        translated = _translate(error, provider)
+        if translated is None:
+            raise
+        raise translated from None
+
+
+def _sdk(client: ApiClient, provider: ProviderDef, key: str | None) -> Any:
+    """The provider's SDK, sending through ``client``. It never retries by itself, since every
+    request is one that is logged, counted and held to the deadline."""
+    if provider.wire is Wire.ANTHROPIC:
+        return AsyncAnthropic(
+            api_key=key or "",
+            base_url=client.origin_url,
+            http_client=client.sdk_http(),
+            max_retries=0,
+        )
+    if provider.wire is Wire.OPENAI:
+        return AsyncOpenAI(
+            api_key=key or "",
+            base_url=f"{client.origin_url}/v1",
+            http_client=client.sdk_http(_NOT_SENT[Wire.OPENAI]),
+            max_retries=0,
+        )
+    return AsyncOllama(
+        host=client.origin_url,
+        headers={"Authorization": f"Bearer {key}"} if key else None,
+        transport=bridge.OllamaTransport(client, () if key else ("authorization",)),
+        follow_redirects=False,
+        timeout=httpx.Timeout(client.read_timeout.read, connect=client.read_timeout.connect),
+        trust_env=False,
+    )
+
+
+async def _create(sdk: Any, provider: ProviderDef, arguments: dict[str, Any], **more: Any) -> Any:
+    """Has the SDK ask for the answer, and gives what it returns."""
+    if provider.wire is Wire.ANTHROPIC:
+        return await sdk.messages.create(**arguments, **more)
+    if provider.wire is Wire.OPENAI:
+        return await sdk.responses.create(**arguments, **more)
+    return await sdk.chat(**arguments, **more)
+
+
+def _as_object(answer: object, provider: ProviderDef) -> dict[str, object]:
+    """What an SDK's answer says, as the plain object its API sent, or ``AiFailed`` if it isn't
+    one."""
+    dump = getattr(answer, "to_dict", None) or getattr(answer, "model_dump", None)
+    data = dump() if callable(dump) else answer
     if not _is_object(data):
         raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
-    return _READERS[provider.wire](data)
+    return data
 
 
 async def complete(
@@ -370,29 +459,30 @@ async def complete(
     caches it when it is long enough. ``keep_alive`` asks an Ollama to keep the model in memory for
     that long after the answer (``"10m"``), which no other provider has. Raises ``AiFailed``, or
     ``CallFailed`` when nothing came back."""
-    path, headers, body = _request(
-        provider, model, key, system, prompt, schema, max_tokens, cache_key
-    )
+    arguments = _arguments(provider, model, system, prompt, schema, max_tokens, cache_key)
     if keep_alive is not None and provider.wire is Wire.OLLAMA:
-        body["keep_alive"] = keep_alive
-    reply = await client.request("POST", path, json_body=body, headers=headers)
-    return read_completion(provider, reply)
+        arguments["keep_alive"] = keep_alive
+    async with client.within_deadline():
+        with _translated(provider):
+            sdk = _sdk(client, provider, key)
+            answer = _as_object(await _create(sdk, provider, arguments), provider)
+    return _READERS[provider.wire](answer)
 
 
 # -- the answer as it is written
 
 
 class _Reader(ABC):
-    """Reads a provider's streamed answer a line at a time: what ``feed`` is given gives the next
-    of the text, and ``completion`` says what the whole of it counted once it has ended."""
+    """Reads a provider's streamed answer an event at a time: what ``feed`` is given gives the
+    next of the text, and ``completion`` says what the whole of it counted once it has ended."""
 
     def __init__(self) -> None:
         self.parts: list[str] = []
         self.finished = False
 
     @abstractmethod
-    def feed(self, line: str) -> Iterator[str]:
-        """The text, if any, that one line of the provider's stream gives."""
+    def feed(self, event: dict[str, object]) -> Iterator[str]:
+        """The text, if any, that one event of the provider's stream gives."""
 
     @abstractmethod
     def completion(self) -> Completion:
@@ -405,18 +495,6 @@ class _Reader(ABC):
 
     def written(self) -> str:
         return "".join(self.parts)
-
-
-def _event(line: str) -> dict[str, object] | None:
-    """The JSON of a ``data:`` line of a server-sent stream. A line that is anything else (an
-    ``event:`` name, a comment, an empty line that ends an event) is nothing to read."""
-    if not line.startswith("data:"):
-        return None
-    try:
-        loaded = json.loads(line.removeprefix("data:").strip())
-    except ValueError:
-        return None
-    return loaded if _is_object(loaded) else None
 
 
 class _AnthropicReader(_Reader):
@@ -435,11 +513,8 @@ class _AnthropicReader(_Reader):
             if name in usage:
                 self._usage[name] = _count(usage[name])
 
-    def feed(self, line: str) -> Iterator[str]:
-        event = _event(line)
-        kind = event.get("type") if event else None
-        if event is None:
-            return
+    def feed(self, event: dict[str, object]) -> Iterator[str]:
+        kind = event.get("type")
         if kind == "message_start":
             self._count_usage(_object(_object(event.get("message")).get("usage")))
         elif kind == "content_block_delta":
@@ -451,8 +526,6 @@ class _AnthropicReader(_Reader):
             self._count_usage(_object(event.get("usage")))
         elif kind == "message_stop":
             self.finished = True
-        elif kind == "error":
-            raise AiFailed("The model stopped answering part of the way through.")
 
     def completion(self) -> Completion:
         if self._stop == "refusal":
@@ -475,11 +548,8 @@ class _OpenAiReader(_Reader):
         super().__init__()
         self._ended: dict[str, object] | None = None
 
-    def feed(self, line: str) -> Iterator[str]:
-        event = _event(line)
-        kind = event.get("type") if event else None
-        if event is None:
-            return
+    def feed(self, event: dict[str, object]) -> Iterator[str]:
+        kind = event.get("type")
         if kind == "response.output_text.delta":
             yield from self._write(_text(event.get("delta")) or "")
         elif kind == "response.refusal.delta":
@@ -501,18 +571,10 @@ class _OllamaReader(_Reader):
         super().__init__()
         self._last: dict[str, object] = {}
 
-    def feed(self, line: str) -> Iterator[str]:
-        try:
-            loaded = json.loads(line)
-        except ValueError:
-            return
-        if not _is_object(loaded):
-            return
-        if loaded.get("error"):
-            raise AiFailed("The model stopped answering part of the way through.")
-        yield from self._write(_text(_object(loaded.get("message")).get("content")) or "")
-        if loaded.get("done") is True:
-            self._last = loaded
+    def feed(self, event: dict[str, object]) -> Iterator[str]:
+        yield from self._write(_text(_object(event.get("message")).get("content")) or "")
+        if event.get("done") is True:
+            self._last = event
             self.finished = True
 
     def completion(self) -> Completion:
@@ -543,22 +605,19 @@ async def stream(
     ``str``, then, when it has ended, the ``Completion`` with what it counted. The rest is as for
     ``complete``. Raises ``AiFailed`` (also for an answer that stops short of its end), or
     ``CallFailed`` when nothing came back."""
-    path, headers, body = _request(
-        provider, model, key, system, prompt, schema, max_tokens, cache_key
-    )
-    body["stream"] = True
+    arguments = _arguments(provider, model, system, prompt, schema, max_tokens, cache_key)
     if keep_alive is not None and provider.wire is Wire.OLLAMA:
-        body["keep_alive"] = keep_alive
-    if provider.wire is not Wire.OLLAMA:
-        headers = {**headers, "Accept": "text/event-stream"}
+        arguments["keep_alive"] = keep_alive
     reader = _READERS_OF_STREAMS[provider.wire]()
-    try:
-        async with aclosing(client.stream("POST", path, json_body=body, headers=headers)) as lines:
-            async for line in lines:
-                for piece in reader.feed(line):
-                    yield piece
-    except NotSuccess as refused:
-        raise AiFailed(explain(refused.status, provider), refused.status) from None
+    async with client.within_deadline():
+        with _translated(provider):
+            sdk = _sdk(client, provider, key)
+            events = await _create(sdk, provider, arguments, stream=True)
+            # An Ollama's is an asynchronous generator, and the others' are streams with a context.
+            async with aclosing(events) if provider.wire is Wire.OLLAMA else events as received:
+                async for event in received:
+                    for piece in reader.feed(_as_object(event, provider)):
+                        yield piece
     if not reader.finished:
         raise AiFailed(f"{provider.label} stopped before the answer was finished.")
     yield reader.completion()
@@ -571,21 +630,15 @@ async def load_model(
     without asking it anything. Ollama's API documents that a chat request with no messages loads
     the model and answers when it has. Raises ``AiFailed``, or ``CallFailed`` when nothing came
     back."""
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
-    body: dict[str, object] = {
-        "model": model,
-        "messages": [],
-        "stream": False,
-        "keep_alive": keep_alive,
-    }
-    reply = await client.request("POST", "/api/chat", json_body=body, headers=headers)
-    if not reply.ok:
-        raise AiFailed(explain(reply.status, provider), reply.status)
+    async with client.within_deadline():
+        with _translated(provider):
+            sdk = _sdk(client, provider, key)
+            await sdk.chat(model=model, messages=[], keep_alive=keep_alive)
 
 
 def _found(entry: object) -> FoundModel | None:
     item = _object(entry)
-    name = _text(item.get("name")) or _text(item.get("model"))
+    name = _text(item.get("name")) or _text(item.get("model")) or _text(item.get("id"))
     if name is None or not MODEL_NAME.fullmatch(name):
         return None
     details = _object(item.get("details"))
@@ -599,21 +652,48 @@ def _found(entry: object) -> FoundModel | None:
     )
 
 
+# What OpenAI lists that isn't a model to ask questions of: the ones that make pictures, speech and
+# vectors, listen, or search, and its own earlier generations.
+_NOT_CHAT = re.compile(
+    r"image|audio|realtime|tts|transcribe|diariz|embedding|moderation|search|dall-e|whisper|sora"
+    r"|computer-use|davinci|babbage|instruct",
+    re.IGNORECASE,
+)
+_OPENAI_CHAT = re.compile(r"^(gpt-|o\d)")
+
+
+def _is_chat_model(provider: ProviderDef, name: str) -> bool:
+    if provider.wire is Wire.OPENAI:
+        return _OPENAI_CHAT.match(name) is not None and _NOT_CHAT.search(name) is None
+    return True
+
+
+async def _every_model(sdk: Any, provider: ProviderDef) -> list[object]:
+    """What a provider lists as its models, at most ``MAX_MODELS`` of them."""
+    if provider.wire is Wire.OLLAMA:
+        return _list(_as_object(await sdk.list(), provider).get("models"))[:MAX_MODELS]
+    listed: list[object] = []
+    pages = sdk.models.list(limit=100) if provider.wire is Wire.ANTHROPIC else sdk.models.list()
+    async for entry in pages:
+        listed.append(_as_object(entry, provider))
+        if len(listed) >= MAX_MODELS:
+            break
+    return listed
+
+
 async def list_models(
     client: ApiClient, provider: ProviderDef, key: str | None
 ) -> list[FoundModel]:
-    """The models an Ollama has, installed or in its cloud, by name. Raises ``AiFailed``, or
+    """The models a provider says its account may use, by name: an Ollama's, installed or in its
+    cloud, and the models of OpenAI and Anthropic that answer questions. Raises ``AiFailed``, or
     ``CallFailed`` when nothing came back."""
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
-    reply = await client.request("GET", "/api/tags", headers=headers)
-    if not reply.ok:
-        raise AiFailed(explain(reply.status, provider), reply.status)
-    data = reply.json()
-    if not _is_object(data):
-        raise AiFailed(f"{provider.label} answered, but not in a form AresGate understands.")
+    async with client.within_deadline():
+        with _translated(provider):
+            sdk = _sdk(client, provider, key)
+            entries = await _every_model(sdk, provider)
     unique: dict[str, FoundModel] = {}
-    for entry in _list(data.get("models"))[:MAX_MODELS]:
+    for entry in entries:
         model = _found(entry)
-        if model is not None:
+        if model is not None and _is_chat_model(provider, model.name):
             unique.setdefault(model.name, model)
     return sorted(unique.values(), key=lambda model: model.name)

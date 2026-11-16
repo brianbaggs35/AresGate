@@ -239,6 +239,30 @@ test.describe('Settings > AI', () => {
     await expect(aiSettings.status('ollama_cloud')).toHaveText('Connected')
   })
 
+  test('fetches the models a hosted provider has, and says a newer one has no price', async ({
+    harness,
+    aiSettings,
+  }) => {
+    await harness.standIn({
+      kind: 'anthropic',
+      api_key: KEY,
+      models: [HAIKU, 'claude-future-9-1'],
+      provider: 'anthropic',
+    })
+    await aiSettings.goto()
+    await aiSettings.choose('anthropic')
+    await expect(aiSettings.unlisted('anthropic')).toHaveCount(0)
+
+    await aiSettings.apiKey('anthropic').fill(KEY)
+    await aiSettings.fetchModels('anthropic').click()
+
+    await expect(aiSettings.notice('anthropic')).toHaveText('It has 2 models.')
+    await aiSettings.chooseModel('anthropic', /claude-future-9-1/)
+    await expect(aiSettings.unlisted('anthropic')).toContainText('has no price for this model')
+    await aiSettings.test('anthropic').click()
+    await expect(aiSettings.status('anthropic')).toHaveText('Connected')
+  })
+
   test('lists only the models free usage covers for a free account, and explains a 402 for the others', async ({
     harness,
     aiSettings,

@@ -99,6 +99,11 @@ export class AiSettingsPage {
     return this.card(key).getByTestId('provider-notice')
   }
 
+  /** The note that a model has no price, shown for a model that isn't in AresGate's list. */
+  unlisted(key: string): Locator {
+    return this.card(key).getByTestId('provider-unlisted')
+  }
+
   failure(key: string): Locator {
     return this.card(key).getByTestId('provider-failure')
   }

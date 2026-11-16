@@ -84,7 +84,7 @@ def test_every_provider_is_listed_with_its_models_and_prices(
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["enabled"], body["provider"], body["priced_as_of"]) == (False, None, "2026-10-27")
+    assert (body["enabled"], body["provider"], body["priced_as_of"]) == (False, None, "2026-11-15")
     assert [item["key"] for item in body["providers"]] == [
         "ollama",
         "ollama_cloud",
@@ -381,14 +381,38 @@ def test_models_that_could_not_be_fetched_say_why(
     assert event.outcome == Outcome.FAILURE.value
 
 
-def test_models_cannot_be_fetched_for_a_provider_with_a_list_of_its_own(
-    client: TestClient, csrf_token: str
+def test_a_hosted_provider_adds_the_models_its_key_may_use_to_its_list(
+    client: TestClient, csrf_token: str, app: FastAPI, serve: Serve, session: Session
 ) -> None:
+    server = serve(stand_ins.openai(KEY, {"gpt-6-luna", "gpt-7-next"}))
+    app.state.ai_origins["openai"] = server.url
     put(client, csrf_token, "openai", {"model": "gpt-6-luna", "api_key": KEY})
 
-    response = post(client, csrf_token, "/providers/openai/models")
+    body = post(client, csrf_token, "/providers/openai/models").json()
 
-    assert response.status_code == 409
+    assert (body["ok"], body["message"]) == (True, "It has 2 models.")
+    assert [item["name"] for item in body["provider"]["found"]] == ["gpt-6-luna", "gpt-7-next"]
+    assert KEY not in json.dumps(body)
+    [event] = audited(session, Action.AI_MODELS_FETCHED)
+    assert event.outcome == Outcome.SUCCESS.value
+
+
+def test_a_model_a_hosted_provider_said_it_has_can_be_chosen_though_the_list_lacks_it(
+    client: TestClient, csrf_token: str, app: FastAPI, serve: Serve
+) -> None:
+    server = serve(stand_ins.openai(KEY, {"gpt-6-luna", "gpt-7-next"}))
+    app.state.ai_origins["openai"] = server.url
+    put(client, csrf_token, "openai", {"model": "gpt-6-luna", "api_key": KEY})
+    refused = put(client, csrf_token, "openai", {"model": "gpt-7-next"})
+    post(client, csrf_token, "/providers/openai/models")
+
+    chosen = put(client, csrf_token, "openai", {"model": "gpt-7-next"})
+
+    assert refused.status_code == 422
+    assert refused.json()["detail"][0]["loc"] == ["body", "model"]
+    assert chosen.status_code == 200
+    assert chosen.json()["model"] == "gpt-7-next"
+    assert chosen.json()["status"] == "untested"
 
 
 def test_a_missing_key_is_said_so_when_fetching_models(

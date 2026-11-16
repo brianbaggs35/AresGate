@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents import settings as agent_settings
-from app.ai import catalog, gateway, limits, service
+from app.ai import catalog, gateway, limits, service, wire
 from app.ai.gateway import Question, Unavailable
 from app.audit import Action
 from app.config import Settings
@@ -160,6 +160,16 @@ class TestWhichProviderTheAgentsAsk:
             own(session, model="gpt-9")
 
         assert raised.value.problems == {"model": "Choose one of the models the provider offers."}
+
+    def test_a_model_the_provider_said_it_has_is_one_it_offers(
+        self, session: Session, settings: Settings
+    ) -> None:
+        row = saved(session, settings, catalog.ANTHROPIC)
+        service.record_models(row, [wire.FoundModel("claude-next-9", None, None, None, None)], NOW)
+
+        own(session, model="claude-next-9")
+
+        assert agent_settings.get(session, NOW).model == "claude-next-9"
 
     def test_a_provider_with_no_model_needs_one(self, session: Session, settings: Settings) -> None:
         saved(session, settings, catalog.OLLAMA, model="")

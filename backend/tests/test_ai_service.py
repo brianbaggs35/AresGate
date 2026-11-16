@@ -135,6 +135,20 @@ class TestSaving:
             == KEY
         )
 
+    def test_a_model_the_provider_said_it_has_can_be_kept_though_the_list_lacks_it(
+        self, session: Session, settings: Settings
+    ) -> None:
+        row = saved(session, settings, catalog.ANTHROPIC)
+        submission = Submission(model="claude-next-9")
+        with pytest.raises(SettingsError) as refused:
+            service.save(session, settings, HOME, catalog.ANTHROPIC, submission, NOW)
+        service.record_models(row, [wire.FoundModel("claude-next-9", None, None, None, None)], NOW)
+
+        again = service.save(session, settings, HOME, catalog.ANTHROPIC, submission, NOW)
+
+        assert refused.value.problems == {"model": "Choose one of the models in the list."}
+        assert again.model == "claude-next-9"
+
     @pytest.mark.parametrize("key", ["has a space", "tab\tin", "x" * (service.MAX_KEY + 1)])
     def test_a_key_that_cannot_be_one_is_refused(
         self, session: Session, settings: Settings, key: str

@@ -177,14 +177,36 @@ export function isReady(provider: AiProvider): provider is AiProvider & { model:
 }
 
 /** The models a hosted provider offers, to choose from: the name, and under it what it is for
- * and what it costs. */
-export function modelItems(provider: AiProvider, locale?: string) {
-  return provider.models.map((model) => ({
+ * and what it costs. The models its account said it has (Fetch models) that the list doesn't know
+ * come after them, with no price. The model that is kept or chosen is always among them. */
+export function modelItems(provider: AiProvider, locale?: string, chosen = '') {
+  const items = provider.models.map((model) => ({
     value: model.id,
     title: model.label,
     props: { subtitle: `${model.note} · ${priceNote(model, locale)}` },
   }))
+  const listed = new Set(provider.models.map((model) => model.id))
+  for (const model of provider.found) {
+    if (listed.has(model.name)) continue
+    listed.add(model.name)
+    items.push({
+      value: model.name,
+      title: model.name,
+      props: { subtitle: 'Newer than the list: AresGate has no price for it' },
+    })
+  }
+  for (const name of new Set([chosen, provider.model ?? ''])) {
+    if (!name || listed.has(name)) continue
+    items.push({ value: name, title: name, props: { subtitle: 'The model you saved' } })
+  }
+  return items
 }
+
+/** What AresGate says of a model of a hosted provider that isn't in its list: nothing is known
+ * of its price, so its tokens are counted and no cost is shown, and a spending limit can't hold
+ * it. */
+export const UNPRICED_NOTE =
+  "AresGate has no price for this model, so it counts the tokens it uses and shows no cost, and a spending limit can't hold it."
 
 /** The models an Ollama said it has that the account may use: with a free plan, only the ones
  * its free usage covers, because the others answer 402 Payment Required. */

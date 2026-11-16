@@ -9,7 +9,7 @@ from app.ai import catalog, wire
 from app.ai.catalog import ProviderDef
 from app.ai.wire import AiFailed, Completion
 from app.integrations import netguard
-from app.integrations.client import ApiClient, Call, Reply, Target
+from app.integrations.client import ApiClient, Call, Target
 from app.integrations.netguard import HOME_NETWORK_AND_LOOPBACK
 from e2e import stand_ins
 from tests.stubs import Answer, Seen, Serve
@@ -17,10 +17,6 @@ from tests.stubs import Answer, Seen, Serve
 SCHEMA = {"type": "object", "properties": {"verdict": {"type": "string"}}}
 # About 1,250 tokens by the rule of thumb: long enough for either provider to cache.
 LONG_SYSTEM = "Be brief. " * 500
-
-
-def ok(body: object) -> Reply:
-    return Reply(200, json.dumps(body))
 
 
 class Log:
@@ -88,8 +84,8 @@ class TestAsking:
         assert answer == Completion("OK", 14, 1, 0, truncated=True)
         (request,) = seen
         assert request.path == "/v1/messages"
-        assert request.headers["x-api-key"] == "sk-a-key"
-        assert request.headers["anthropic-version"] == wire.ANTHROPIC_VERSION
+        assert request.headers["authorization"] == "Bearer sk-a-key"
+        assert "anthropic-version" in request.headers
         assert json.loads(request.body) == {
             "model": "claude-haiku-5-5",
             "max_tokens": 50,
@@ -271,6 +267,7 @@ class TestAsking:
                 {"role": "user", "content": "Hello"},
             ],
             "stream": False,
+            "tools": [],
             "options": {"temperature": 0, "num_predict": 7},
             "format": SCHEMA,
         }
@@ -350,6 +347,7 @@ class TestAsking:
         assert json.loads(request.body) == {
             "model": "llama3.2:3b",
             "messages": [],
+            "tools": [],
             "stream": False,
             "keep_alive": "10m",
         }
@@ -421,11 +419,28 @@ class TestAsking:
 
 
 class TestReadingAnswers:
-    def read(self, definition: ProviderDef, body: object, status: int = 200) -> Completion:
-        return wire.read_completion(definition, Reply(status, json.dumps(body)))
+    def read(
+        self,
+        serve: Serve,
+        definition: ProviderDef,
+        body: object,
+        status: int = 200,
+        key: str | None = "sk-a-key",
+    ) -> Completion:
+        answer, _ = ask(
+            serve,
+            definition,
+            lambda seen: Answer(
+                status, json.dumps(body), headers={"Content-Type": "application/json"}
+            ),
+            lambda client: wire.complete(client, definition, "m", key, system="s", prompt="p"),
+            key=key,
+        )
+        return answer  # type: ignore[no-any-return]
 
-    def test_anthropic_joins_its_text_blocks_and_counts_its_tokens(self) -> None:
+    def test_anthropic_joins_its_text_blocks_and_counts_its_tokens(self, serve: Serve) -> None:
         answer = self.read(
+            serve,
             catalog.ANTHROPIC,
             {
                 "content": [
@@ -448,12 +463,15 @@ class TestReadingAnswers:
         # it, so the whole is the three together.
         assert answer == Completion('{"a":1}', 56, 9, 20, 6, truncated=False)
 
-    def test_anthropic_that_declines_says_so(self) -> None:
+    def test_anthropic_that_declines_says_so(self, serve: Serve) -> None:
         with pytest.raises(AiFailed, match="declined"):
-            self.read(catalog.ANTHROPIC, {"content": [], "stop_reason": "refusal"})
+            self.read(serve, catalog.ANTHROPIC, {"content": [], "stop_reason": "refusal"})
 
-    def test_anthropic_that_was_cut_short_says_the_answer_may_be_incomplete(self) -> None:
+    def test_anthropic_that_was_cut_short_says_the_answer_may_be_incomplete(
+        self, serve: Serve
+    ) -> None:
         answer = self.read(
+            serve,
             catalog.ANTHROPIC,
             {"content": [{"type": "text", "text": "{"}], "stop_reason": "max_tokens"},
         )
@@ -461,7 +479,9 @@ class TestReadingAnswers:
         assert answer.truncated
         assert (answer.input_tokens, answer.output_tokens) == (0, 0)
 
-    def test_openai_reads_the_text_of_its_messages_and_counts_the_tokens(self) -> None:
+    def test_openai_reads_the_text_of_its_messages_and_counts_the_tokens(
+        self, serve: Serve
+    ) -> None:
         body: dict[str, object] = {
             "status": "completed",
             "output": [
@@ -480,13 +500,14 @@ class TestReadingAnswers:
                 "input_tokens_details": {"cached_tokens": 32},
             },
         }
-        answer = self.read(catalog.OPENAI, body)
+        answer = self.read(serve, catalog.OPENAI, body)
 
         assert answer == Completion("Hello", 50, 7, 32, truncated=False)
 
-    def test_openai_that_declines_says_so(self) -> None:
+    def test_openai_that_declines_says_so(self, serve: Serve) -> None:
         with pytest.raises(AiFailed, match="declined"):
             self.read(
+                serve,
                 catalog.OPENAI,
                 {
                     "output": [
@@ -495,14 +516,17 @@ class TestReadingAnswers:
                 },
             )
 
-    def test_openai_that_could_not_answer_says_so_without_quoting_it(self) -> None:
+    def test_openai_that_could_not_answer_says_so_without_quoting_it(self, serve: Serve) -> None:
         with pytest.raises(AiFailed) as caught:
-            self.read(catalog.OPENAI, {"error": {"message": "secret detail"}})
+            self.read(serve, catalog.OPENAI, {"error": {"message": "secret detail"}})
 
         assert "secret detail" not in str(caught.value)
 
-    def test_openai_that_ran_out_of_tokens_has_nothing_to_read_and_says_so(self) -> None:
+    def test_openai_that_ran_out_of_tokens_has_nothing_to_read_and_says_so(
+        self, serve: Serve
+    ) -> None:
         answer = self.read(
+            serve,
             catalog.OPENAI,
             {
                 "status": "incomplete",
@@ -514,8 +538,9 @@ class TestReadingAnswers:
 
         assert answer == Completion("", 9, 16, 0, truncated=True)
 
-    def test_an_ollama_gives_its_message_and_how_many_tokens_it_counted(self) -> None:
+    def test_an_ollama_gives_its_message_and_how_many_tokens_it_counted(self, serve: Serve) -> None:
         answer = self.read(
+            serve,
             catalog.OLLAMA,
             {
                 "message": {"role": "assistant", "content": "hi"},
@@ -524,36 +549,67 @@ class TestReadingAnswers:
                 "prompt_eval_count": 11,
                 "eval_count": 3,
             },
+            key=None,
         )
 
         assert answer == Completion("hi", 11, 3, 0, truncated=False)
 
-    def test_an_ollama_that_stopped_at_the_limit_says_so(self) -> None:
-        answer = self.read(catalog.OLLAMA, {"message": {"content": "hi"}, "done_reason": "length"})
+    def test_an_ollama_that_stopped_at_the_limit_says_so(self, serve: Serve) -> None:
+        answer = self.read(
+            serve,
+            catalog.OLLAMA,
+            {"message": {"role": "assistant", "content": "hi"}, "done_reason": "length"},
+            key=None,
+        )
 
         assert answer.truncated
 
     @pytest.mark.parametrize("definition", catalog.PROVIDERS)
+    @pytest.mark.parametrize("text", ["[]", "nonsense", '"hi"', "12"])
     def test_something_that_is_not_an_object_is_not_understood(
-        self, definition: ProviderDef
+        self, serve: Serve, definition: ProviderDef, text: str
     ) -> None:
-        for text in ("[]", "nonsense", '"hi"'):
-            reply = Reply(200, text)
+        with pytest.raises(AiFailed, match="not in a form AresGate understands"):
+            ask(
+                serve,
+                definition,
+                lambda seen: Answer(200, text, headers={"Content-Type": "application/json"}),
+                lambda client: wire.complete(
+                    client,
+                    definition,
+                    "m",
+                    "k" if definition.needs_key else None,
+                    system="s",
+                    prompt="p",
+                ),
+                key="k" if definition.needs_key else None,
+            )
 
-            with pytest.raises(AiFailed, match="not in a form AresGate understands"):
-                wire.read_completion(definition, reply)
-
-    @pytest.mark.parametrize("definition", catalog.PROVIDERS)
-    def test_nonsense_in_the_numbers_counts_as_none(self, definition: ProviderDef) -> None:
+    @pytest.mark.parametrize("definition", [catalog.ANTHROPIC, catalog.OPENAI])
+    def test_nonsense_in_the_numbers_counts_as_none(
+        self, serve: Serve, definition: ProviderDef
+    ) -> None:
         body: dict[str, object] = {
             "usage": {"input_tokens": True, "output_tokens": "9"},
+            "content": [],
+            "output": [],
+        }
+
+        answer = self.read(serve, definition, body)
+
+        assert (answer.input_tokens, answer.output_tokens) == (0, 0)
+
+    def test_an_ollama_that_counts_in_a_way_it_does_not_is_not_understood(
+        self, serve: Serve
+    ) -> None:
+        body: dict[str, object] = {
+            "message": {"role": "assistant", "content": "x"},
             "prompt_eval_count": -4,
             "eval_count": 1.5,
         }
 
-        answer = self.read(definition, body)
-
-        assert (answer.input_tokens, answer.output_tokens) == (0, 0)
+        with pytest.raises(AiFailed, match="not in a form AresGate understands"):
+            self.read(serve, catalog.OLLAMA, body, key=None)
 
 
 class TestExplaining:
@@ -594,13 +650,22 @@ class TestExplaining:
 
 
 class TestFindingModels:
-    def list_from(self, serve: Serve, body: object, status: int = 200) -> list[wire.FoundModel]:
+    def list_from(
+        self,
+        serve: Serve,
+        body: object,
+        status: int = 200,
+        definition: ProviderDef = catalog.OLLAMA,
+    ) -> list[wire.FoundModel]:
+        key = "sk-a-key" if definition.needs_key else None
         found, _ = ask(
             serve,
-            catalog.OLLAMA,
-            lambda seen: Answer(status, json.dumps(body)),
-            lambda client: wire.list_models(client, catalog.OLLAMA, None),
-            key=None,
+            definition,
+            lambda seen: Answer(
+                status, json.dumps(body), headers={"Content-Type": "application/json"}
+            ),
+            lambda client: wire.list_models(client, definition, key),
+            key=key,
         )
         return found  # type: ignore[no-any-return]
 
@@ -611,6 +676,7 @@ class TestFindingModels:
                 "models": [
                     {
                         "name": "qwen3:8b",
+                        "model": "qwen3:8b",
                         "size": 5_200_000_000,
                         "details": {
                             "family": "qwen3",
@@ -619,7 +685,7 @@ class TestFindingModels:
                         },
                     },
                     {"model": "llama3.2:3b"},
-                    {"name": "qwen3:8b"},
+                    {"model": "qwen3:8b"},
                 ]
             },
         )
@@ -629,40 +695,91 @@ class TestFindingModels:
             wire.FoundModel("qwen3:8b", 5_200_000_000, "qwen3", "8.2B", "Q4_K_M"),
         ]
 
-    def test_what_is_not_a_model_is_left_out(self, serve: Serve) -> None:
+    def test_what_is_not_a_model_name_is_left_out(self, serve: Serve) -> None:
         found = self.list_from(
             serve,
             {
                 "models": [
-                    "text",
-                    {"name": "has a space"},
-                    {"name": ""},
-                    {"name": "ok:1b", "size": True},
-                    {"name": "big:1b", "size": -1},
+                    {"model": "has a space"},
+                    {"model": "ok:1b", "size": 7},
+                    {"model": "-starts-with-a-dash"},
                 ]
             },
         )
 
-        assert found == [
-            wire.FoundModel("big:1b", None, None, None, None),
-            wire.FoundModel("ok:1b", None, None, None, None),
-        ]
+        assert found == [wire.FoundModel("ok:1b", 7, None, None, None)]
 
-    def test_a_list_that_is_not_one_is_empty(self, serve: Serve) -> None:
-        assert self.list_from(serve, {"models": "many"}) == []
+    @pytest.mark.parametrize("body", [{"models": "many"}, {"models": [{"model": 5}]}, [], 3])
+    def test_a_list_that_is_not_one_is_not_understood(self, serve: Serve, body: object) -> None:
+        with pytest.raises(AiFailed, match="not in a form AresGate understands"):
+            self.list_from(serve, body)
 
     def test_no_more_than_500_are_kept(self, serve: Serve) -> None:
-        body = {"models": [{"name": f"m{index:04d}:1b"} for index in range(wire.MAX_MODELS + 20)]}
+        body = {
+            "models": [
+                {"name": f"m{index:04d}:1b", "model": f"m{index:04d}:1b"}
+                for index in range(wire.MAX_MODELS + 20)
+            ]
+        }
 
         assert len(self.list_from(serve, body)) == wire.MAX_MODELS
-
-    def test_an_answer_that_is_not_an_object_is_not_understood(self, serve: Serve) -> None:
-        with pytest.raises(AiFailed, match="not in a form AresGate understands"):
-            self.list_from(serve, [])
 
     def test_a_refusal_is_explained(self, serve: Serve) -> None:
         with pytest.raises(AiFailed, match="didn't accept the API key"):
             self.list_from(serve, {}, 401)
+
+    def test_anthropic_lists_the_models_the_key_may_use(self, serve: Serve) -> None:
+        found = self.list_from(
+            serve,
+            {
+                "data": [
+                    {"type": "model", "id": "claude-sonnet-5-5", "display_name": "S"},
+                    {"type": "model", "id": "claude-next-9", "display_name": "N"},
+                ],
+                "has_more": False,
+            },
+            definition=catalog.ANTHROPIC,
+        )
+
+        assert [model.name for model in found] == ["claude-next-9", "claude-sonnet-5-5"]
+
+    def test_a_hosted_list_is_cut_at_the_most_it_keeps(
+        self, serve: Serve, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(wire, "MAX_MODELS", 2)
+        body = {
+            "data": [
+                {"type": "model", "id": f"claude-next-{number}", "display_name": "N"}
+                for number in range(5)
+            ],
+            "has_more": False,
+        }
+
+        found = self.list_from(serve, body, definition=catalog.ANTHROPIC)
+
+        assert [model.name for model in found] == ["claude-next-0", "claude-next-1"]
+
+    def test_openai_lists_only_the_models_that_answer_questions(self, serve: Serve) -> None:
+        names = [
+            "gpt-6-luna",
+            "gpt-6.1-sol",
+            "o4-mini",
+            "gpt-image-2",
+            "gpt-realtime-2",
+            "text-embedding-3-large",
+            "whisper-1",
+            "gpt-4o-mini-tts",
+            "gpt-5-search-api",
+            "dall-e-3",
+            "omni-moderation-latest",
+        ]
+        found = self.list_from(
+            serve,
+            {"object": "list", "data": [{"id": name, "object": "model"} for name in names]},
+            definition=catalog.OPENAI,
+        )
+
+        assert [model.name for model in found] == ["gpt-6-luna", "gpt-6.1-sol", "o4-mini"]
 
 
 class TestCaching:
@@ -779,24 +896,19 @@ class TestCaching:
         assert "prompt_cache_key" not in body
 
     def test_anthropic_counts_what_it_read_and_what_it_wrote_on_top_of_what_it_was_sent(
-        self,
+        self, serve: Serve
     ) -> None:
-        reply = Reply(
-            200,
-            json.dumps(
-                {
-                    "content": [{"type": "text", "text": "x"}],
-                    "usage": {
-                        "input_tokens": 50,
-                        "cache_read_input_tokens": 1800,
-                        "cache_creation_input_tokens": 248,
-                        "output_tokens": 503,
-                    },
-                }
-            ),
-        )
+        body = {
+            "content": [{"type": "text", "text": "x"}],
+            "usage": {
+                "input_tokens": 50,
+                "cache_read_input_tokens": 1800,
+                "cache_creation_input_tokens": 248,
+                "output_tokens": 503,
+            },
+        }
 
-        answer = wire.read_completion(catalog.ANTHROPIC, reply)
+        answer = TestReadingAnswers().read(serve, catalog.ANTHROPIC, body)
 
         assert (answer.input_tokens, answer.cached_tokens, answer.cache_write_tokens) == (
             2098,
@@ -804,32 +916,22 @@ class TestCaching:
             248,
         )
 
-    def test_openai_counts_the_cache_reads_and_writes_and_the_thinking(self) -> None:
-        reply = Reply(
-            200,
-            json.dumps(
-                {
-                    "output": [
-                        {"type": "message", "content": [{"type": "output_text", "text": "x"}]}
-                    ],
-                    "usage": {
-                        "input_tokens": 6000,
-                        "input_tokens_details": {
-                            "cached_tokens": 2048,
-                            "cache_write_tokens": 1500,
-                            "cache_write_tokens_details": {
-                                "ttl_30m_tokens": 1500,
-                                "ttl_12h_tokens": 0,
-                            },
-                        },
-                        "output_tokens": 1186,
-                        "output_tokens_details": {"reasoning_tokens": 1024},
-                    },
-                }
-            ),
-        )
+    def test_openai_counts_the_cache_reads_and_writes_and_the_thinking(self, serve: Serve) -> None:
+        body = {
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": "x"}]}],
+            "usage": {
+                "input_tokens": 6000,
+                "input_tokens_details": {
+                    "cached_tokens": 2048,
+                    "cache_write_tokens": 1500,
+                    "cache_write_tokens_details": {"ttl_30m_tokens": 1500, "ttl_12h_tokens": 0},
+                },
+                "output_tokens": 1186,
+                "output_tokens_details": {"reasoning_tokens": 1024},
+            },
+        }
 
-        answer = wire.read_completion(catalog.OPENAI, reply)
+        answer = TestReadingAnswers().read(serve, catalog.OPENAI, body)
 
         assert answer.input_tokens == 6000
         assert (answer.cached_tokens, answer.cache_write_tokens) == (2048, 1500)

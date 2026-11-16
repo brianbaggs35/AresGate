@@ -375,10 +375,9 @@ def fetch_models(
     settings: SettingsDep,
     recorder: RecorderDep,
 ) -> CheckOut:
-    """Asks an Ollama which models it has, and keeps the answer."""
+    """Asks a provider which models its account may use, and keeps the answer: an Ollama's are
+    whatever it has, and OpenAI's and Anthropic's include any newer than the catalog's."""
     definition = _definition(key)
-    if definition.fixed_models:
-        raise HTTPException(status.HTTP_409_CONFLICT, "It has a list of models of its own.")
     row = _saved(db, definition)
     policy = policy_for(definition, request)
     failure: str | None = None

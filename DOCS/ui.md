@@ -172,7 +172,8 @@ between them, one is heard as chosen, and the one AresGate asks says *In use*). 
 `AiProviderForm` for the provider that is chosen and no other, with the same things in the same
 order for all four: the address or the key as a `SecretField` (written, never shown), for Ollama
 Cloud the account (*Free* or *Paid*), the model, what it costs, and *Save*, *Test connection*,
-*Fetch models* (only for the ones whose models are whatever they have) and *Remove*; between the
+*Fetch models* (for the hosted ones it adds the newer models the key may use, with no price) and
+*Remove*; between the
 model and the buttons is the `AiUseSwitch` for using AI with this provider, which cannot be
 turned on until it is ready. A price is always words and numbers ("$0.10 in, $0.50 out per
 million tokens") with how the model is cached and what that costs, what a long prompt costs, the

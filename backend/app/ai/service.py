@@ -7,7 +7,7 @@ it asks, is the one row of ``ai_settings``.
 """
 
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -101,12 +101,15 @@ def usage(db: Session, now: datetime) -> AiSettings:
     return found
 
 
-def _model(definition: ProviderDef, text: str, problems: dict[str, str]) -> str:
-    """The model to keep. A provider with a list takes one of its models, and the others take
-    the name of one, or none yet, since which exist is found by asking."""
+def _model(
+    definition: ProviderDef, text: str, problems: dict[str, str], found: Collection[str] = ()
+) -> str:
+    """The model to keep. A provider with a list takes one of its models, or one it said it has
+    when it was asked (a newer model than the list knows, whose price isn't known), and the
+    others take the name of one, or none yet, since which exist is found by asking."""
     name = text.strip()
     if definition.fixed_models:
-        if definition.model(name) is None:
+        if definition.model(name) is None and name not in found:
             problems["model"] = "Choose one of the models in the list."
         return name
     if name and not wire.MODEL_NAME.fullmatch(name):
@@ -173,15 +176,19 @@ def save(
     """Keeps a provider's settings and key, or raises ``SettingsError`` and keeps nothing. The
     caller commits."""
     problems: dict[str, str] = {}
+    existing = row_for(db, definition)
     model = _model(
-        definition, submission.model.strip() or (definition.default_model or ""), problems
+        definition,
+        submission.model.strip() or (definition.default_model or ""),
+        problems,
+        {str(item["name"]) for item in existing.models_found} if existing is not None else (),
     )
     base_url = _address(definition, submission.base_url, policy, problems)
     new_key = _key(db, definition, submission.api_key, problems)
     plan = _plan(definition, submission.plan, problems)
     if problems:
         raise SettingsError(problems)
-    row = row_for(db, definition)
+    row = existing
     if row is None:
         row = AiProvider(provider=definition.key, created_at=now, models_found=[])
         db.add(row)

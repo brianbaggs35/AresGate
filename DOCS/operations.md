@@ -872,14 +872,20 @@ under a name that is already there says **Replace** and changes that search. A p
 on, nothing about your network is sent to a provider by setting one up, and everything else in
 AresGate works without it. A test sends only the words "Say OK."
 
-- **Four providers.** Anthropic and OpenAI are asked over the internet with an API key you make
-  at the provider (the page links to where). Ollama runs on a computer of your own, so nothing
+- **Four providers, each asked with its own SDK.** Anthropic and OpenAI are asked over the
+  internet with an API key you make at the provider (the page links to where), and every provider
+  is spoken to by that provider's own Python SDK (`anthropic`, `openai` and `ollama`), so a
+  change in what a provider takes or says is the SDK's to follow. The SDKs send through
+  AresGate's own guarded client, so nothing about the rules changes: a provider is reached only at
+  the addresses it may be at, its certificate is checked, a redirect isn't followed, what it
+  answers is limited, an SDK never retries by itself, and each request is in the API log without
+  any secret. Ollama runs on a computer of your own, so nothing
   leaves your network and it costs nothing to ask; Ollama Cloud is the same API run by Ollama,
   with a key from ollama.com.
 - **Models and prices.** Anthropic starts on Claude Haiku 5.5 and OpenAI on GPT-6 Luna, the
-  cheap, fast models that fit reading every incident. Anthropic also offers Sonnet 5.5, Opus 5.5
-  and Fable 5.1, and OpenAI GPT-5.4 nano, GPT-5.4 mini, GPT-6.1 Terra, GPT-6.1 Sol and GPT-6
-  Astra (nano is marked deprecated by OpenAI, and the page says so). Each is listed with what it
+  cheap, fast models that fit reading every incident. Anthropic also offers Sonnet 5.5, Opus 5.5,
+  Fable 5.2 and the previous Fable 5.1, and OpenAI GPT-5.4 nano, GPT-5.4 mini, GPT-6.1 Terra,
+  GPT-6.1 Sol and GPT-6 Astra (nano is marked deprecated by OpenAI, and the page says so). Each is listed with what it
   costs per million tokens in and out, what a long prompt costs for the models that charge more
   for one (Haiku over 100,000 tokens, the GPT-6 models over 272,000), what input costs that the
   provider already has cached and what it costs to have it cached, and a rough price for reading
@@ -888,7 +894,10 @@ AresGate works without it. A test sends only the words "Say OK."
   the date the page shows, and are in `backend/app/ai/catalog.py`: check them there when a
   provider changes its prices. The estimate assumes about 3,000 tokens in, 1,500 of them the
   same every time, and 600 out for one incident. Every request that is really made is recorded with
-  the tokens it counted and what that cost (see *What a provider sees* below).
+  the tokens it counted and what that cost (see *What a provider sees* below). **Fetch models**
+  works for Anthropic and OpenAI too: it asks the provider which models the key may use and adds
+  the ones newer than the list, without a price. Such a model can be chosen, its tokens are
+  counted and no cost is shown, so a spending limit can't hold it; the page says so.
 - **Caching.** The instructions that start every request are the same each time, so a provider
   can keep them and charge much less to read them again. AresGate ends them with a marker the
   provider understands, from the lengths each provider documents (512 tokens for Claude, 1,024
@@ -1120,7 +1129,8 @@ AresGate works without it. A test sends only the words "Say OK."
   the answer has ended, and the answer that is stored is the same as without streaming. Each
   provider is asked with its own kind of streaming (`wire.stream`): Anthropic's and OpenAI's
   server-sent events and Ollama's lines of JSON, read as the documentation of each describes (the
-  pages are named in `app/ai/wire.py`). The answer is a JSON reply, so `AnswerReader` reads the
+  pages are named in `app/ai/wire.py`; the SDKs read the streams and `wire` reads their events).
+  The answer is a JSON reply, so `AnswerReader` reads the
   text of its `answer` out of the JSON as it comes, with the escapes undone however the pieces cut
   them, and an answer that is written before the model asks for a lookup is taken back. A stand-in
   (`HOST_12`) can arrive cut in two, so `RevealStream` holds back the last word of what has come

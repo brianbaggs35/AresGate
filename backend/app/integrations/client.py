@@ -16,14 +16,14 @@ import json
 import logging
 import ssl
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Mapping
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, cast
 
 import httpx2
 
@@ -164,19 +164,56 @@ class ApiClient:
         self._deadline = deadline
         self._hidden = [value for value in target.secrets.values() if len(value) >= 4]
         pin = target.tls_fingerprint if target.tls_mode == "pinned" else None
+        self._timeout = httpx2.Timeout(read_timeout, connect=5.0)
+        self._transport = GuardedTransport(
+            netguard.tls_context(target.tls_mode, target.tls_ca_pem),
+            GuardedBackend(self._policy, pin),
+        )
         self._http = httpx2.AsyncClient(
             base_url=target.origin.url,
-            transport=GuardedTransport(
-                netguard.tls_context(target.tls_mode, target.tls_ca_pem),
-                GuardedBackend(self._policy, pin),
-            ),
+            transport=self._transport,
             # The environment's proxy settings are for the internet: a request to a device on the
             # home network goes straight to it.
             trust_env=False,
             follow_redirects=False,
-            timeout=httpx2.Timeout(read_timeout, connect=5.0),
+            timeout=self._timeout,
             headers={"User-Agent": f"AresGate/{__version__}", "Accept": "application/json"},
         )
+
+    @property
+    def origin_url(self) -> str:
+        """Where the connection is, as an address without a path."""
+        return self._target.origin.url
+
+    @property
+    def read_timeout(self) -> httpx2.Timeout:
+        """How long to wait for each part of an answer, and for a connection."""
+        return self._timeout
+
+    def sdk_http(self, headers_dropped: tuple[str, ...] = ()) -> httpx2.AsyncClient:
+        """An HTTP client for a vendor's own SDK (the OpenAI and Anthropic ones take it as their
+        ``http_client``). It sends through the same guarded connection as ``request`` does, so the
+        SDK is kept to the addresses its provider may be at, checks the certificate, can't follow
+        a redirect, can't read more than ``MAX_BODY`` and is written to the API log without any
+        secret, one entry for each request it makes. ``headers_dropped`` are names of headers it
+        must not send, which an SDK adds from the environment. Close it with the ``ApiClient``."""
+        return httpx2.AsyncClient(
+            transport=_Recorded(self, headers_dropped),
+            trust_env=False,
+            follow_redirects=False,
+            timeout=self._timeout,
+        )
+
+    @asynccontextmanager
+    async def within_deadline(self) -> AsyncGenerator[None]:
+        """Holds whatever is done inside it, such as an SDK's request, to the deadline of the whole
+        request. Raises ``CallFailed`` if it takes longer."""
+        try:
+            async with asyncio.timeout(self._deadline):
+                yield
+        except TimeoutError:
+            where = f"{self._target.origin.host}:{self._target.origin.port}"
+            raise CallFailed(f"{where} didn't answer in time.") from None
 
     def hide(self, value: str) -> None:
         """Keeps a value, such as a token the integration handed out, out of every message."""
@@ -431,6 +468,120 @@ class ApiClient:
         except Exception:
             # The call matters more than its log entry: say so and carry on.
             logger.exception("Couldn't write an API log entry")
+
+    async def send_recorded(self, request: httpx2.Request) -> httpx2.Response:
+        """Sends a request an SDK built, as ``request`` does: kept to the addresses the policy
+        allows, logged whether it works or not, and with the answer limited to ``MAX_BODY``. What
+        comes back is the answer with its body still unread; the entry is written when the body
+        has been read or the answer is closed. Raises ``CallFailed`` if nothing came back."""
+        started = time.monotonic()
+        occurred_at = utcnow()
+        method = request.method
+        path = request.url.path
+        try:
+            if self._policy.read_only and method != "GET":
+                raise CallFailed(
+                    "This service is only read, so AresGate sends it nothing that changes."
+                )
+            response = await self._transport.handle_async_request(request)
+            response.request = request
+        except Exception as problem:
+            error = self._scrub(await self._explain(problem))
+            await self._log(
+                self._logged(started, occurred_at, method, path, request, False, None, None, error)
+            )
+            raise CallFailed(error) from None
+        status = response.status_code
+        error = None
+        if 300 <= status < 400:
+            error = REDIRECTED
+        elif status >= 400:
+            error = _phrase(status)
+        first_byte = round((time.monotonic() - started) * 1000)
+
+        async def finish(kept: bytes, read: int, failure: str | None) -> None:
+            seen = self._looked_at(response, kept, read, first_byte)
+            await self._log(
+                self._logged(
+                    started,
+                    occurred_at,
+                    method,
+                    path,
+                    request,
+                    False,
+                    seen,
+                    status,
+                    failure or error,
+                )
+            )
+
+        async def explain(problem: BaseException) -> str:
+            return self._scrub(await self._explain(problem))
+
+        return httpx2.Response(
+            status,
+            headers=response.headers,
+            stream=_Watched(cast("httpx2.AsyncByteStream", response.stream), explain, finish),
+            extensions=response.extensions,
+            request=request,
+        )
+
+
+class _Recorded(httpx2.AsyncBaseTransport):
+    """The transport of ``ApiClient.sdk_http``: it hands each request to the ``ApiClient``."""
+
+    def __init__(self, api: ApiClient, headers_dropped: tuple[str, ...]) -> None:
+        self._api = api
+        self._dropped = tuple(name.lower() for name in headers_dropped)
+
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
+        for name in self._dropped:
+            request.headers.pop(name, None)
+        return await self._api.send_recorded(request)
+
+
+class _Watched(httpx2.AsyncByteStream):
+    """The body of an answer, read through: it counts what is read, keeps the start of it for the
+    log, stops at ``MAX_BODY`` and has ``finish`` write the entry once, when the body has been
+    read, has failed or has been closed."""
+
+    def __init__(
+        self,
+        body: httpx2.AsyncByteStream,
+        explain: Callable[[BaseException], Awaitable[str]],
+        finish: Callable[[bytes, int, str | None], Awaitable[None]],
+    ) -> None:
+        self._body = body
+        self._explain = explain
+        self._finish = finish
+        self._read = 0
+        self._kept = bytearray()
+        self._error: str | None = None
+        self._finished = False
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        try:
+            async for chunk in self._body:
+                self._read += len(chunk)
+                if self._read > MAX_BODY:
+                    raise CallFailed("It answered with more than AresGate reads.")
+                if len(self._kept) < calldetail.EXCERPT_CHARS:
+                    self._kept += chunk
+                yield chunk
+        except asyncio.CancelledError:
+            self._error = self._error or "The request was stopped before it ended."
+            raise
+        except Exception as problem:
+            self._error = await self._explain(problem)
+            raise CallFailed(self._error) from None
+
+    async def aclose(self) -> None:
+        try:
+            await self._body.aclose()
+        finally:
+            if not self._finished:
+                self._finished = True
+                await self._finish(bytes(self._kept), self._read, self._error)
 
 
 def _phrase(status: int) -> str:

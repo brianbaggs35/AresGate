@@ -102,7 +102,8 @@ def _provider_problems(db: Session, provider: str, model: str | None) -> dict[st
         return {"provider": "Set that provider up under Settings > AI first."}
     if not (model or row.model):
         return {"model": "Choose a model for it first."}
-    if model and definition.fixed_models and definition.model(model) is None:
+    found = {str(item["name"]) for item in row.models_found}
+    if model and definition.fixed_models and definition.model(model) is None and model not in found:
         return {"model": "Choose one of the models the provider offers."}
     return {}
 

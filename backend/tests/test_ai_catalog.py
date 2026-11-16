@@ -68,7 +68,7 @@ def test_prices_are_those_the_providers_publish() -> None:
 
 
 def test_prices_say_where_they_came_from_and_when() -> None:
-    assert catalog.PRICES_AS_OF == "2026-10-27"
+    assert catalog.PRICES_AS_OF == "2026-11-15"
     assert urlsplit(catalog.ANTHROPIC.pricing_url or "").hostname == "platform.claude.com"
     assert urlsplit(catalog.OPENAI.pricing_url or "").hostname == "developers.openai.com"
 
@@ -144,6 +144,7 @@ PUBLISHED = [
     ),
     ("anthropic", "claude-sonnet-5-5", "2", "10", "0.10", "2.50", None),
     ("anthropic", "claude-opus-5-5", "4", "20", "0.20", "5", None),
+    ("anthropic", "claude-fable-5-2", "8", "40", "0.20", "10", None),
     ("anthropic", "claude-fable-5-1", "10", "50", "0.25", "12.50", None),
     (
         "openai",
@@ -206,6 +207,7 @@ def test_the_models_offered_are_the_ones_asked_for_and_their_defaults_come_first
         "claude-haiku-5-5",
         "claude-sonnet-5-5",
         "claude-opus-5-5",
+        "claude-fable-5-2",
         "claude-fable-5-1",
     ]
     assert [model.id for model in catalog.OPENAI.models] == [
