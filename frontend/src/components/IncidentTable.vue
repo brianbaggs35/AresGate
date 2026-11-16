@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import type { Incident } from '@/api/incidents'
+import DataTable from '@/components/DataTable.vue'
 import IncidentStatusChip from '@/components/IncidentStatusChip.vue'
 import SeverityChip from '@/components/SeverityChip.vue'
 import VerdictChip from '@/components/VerdictChip.vue'
@@ -88,7 +89,7 @@ function pickedIn(members: readonly Incident[]) {
 
 <template>
   <v-card class="incident-table" data-test="incident-table">
-    <div class="incident-table__scroll">
+    <DataTable label="Incidents" sticky-first>
       <table class="incident-table__table">
         <caption class="incident-table__caption text-body-medium text-medium-emphasis">
           {{
@@ -227,15 +228,11 @@ function pickedIn(members: readonly Incident[]) {
           </template>
         </tbody>
       </table>
-    </div>
+    </DataTable>
   </v-card>
 </template>
 
 <style scoped>
-.incident-table__scroll {
-  overflow-x: auto;
-}
-
 .incident-table__table {
   width: 100%;
   border-collapse: collapse;

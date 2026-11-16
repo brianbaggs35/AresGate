@@ -66,9 +66,12 @@ const words = (item: Activity) =>
             <v-icon :icon="agentIcon(item.icon)" size="20" />
           </span>
           <span class="entry__text">
-            <span class="text-title-small entry__name">{{ item.agent_name }}</span>
+            <span class="text-title-small entry__name" :title="item.agent_name">{{
+              item.agent_name
+            }}</span>
             <span
               class="text-body-small text-medium-emphasis entry__words"
+              :title="words(item)"
               data-test="activity-words"
             >
               {{ words(item) }}

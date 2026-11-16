@@ -115,7 +115,10 @@ onBeforeUnmount(() => {
     <v-card v-if="event" class="log-drawer__card" data-test="log-drawer">
       <header class="log-drawer__head">
         <SeverityChip :severity="event.severity" />
-        <span class="log-drawer__where text-body-medium text-medium-emphasis">
+        <span
+          class="log-drawer__where text-body-medium text-medium-emphasis"
+          :title="`${event.source_name} · ${event.kind}`"
+        >
           {{ event.source_name }} · {{ event.kind }}
         </span>
         <v-chip

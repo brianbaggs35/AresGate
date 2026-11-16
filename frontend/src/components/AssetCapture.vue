@@ -192,7 +192,7 @@ function notesOf(found: Capture): string {
               <td class="mono">{{ end(row.packet.destination, row.packet.destination_port) }}</td>
               <td>{{ what(row.packet) }}</td>
               <td>{{ formatBytes(row.packet.length) }}</td>
-              <td class="mono preview">{{ row.packet.preview }}</td>
+              <td class="mono preview" :title="row.packet.preview">{{ row.packet.preview }}</td>
             </tr>
           </tbody>
         </v-table>

@@ -788,6 +788,26 @@ the keyboard are not in it yet.
   the edges of the screen with the next card showing at the end, and a row of choices that goes
   past the edge (the views of the incident list) fades out there. Keep a page's intro to a line or
   two: a phone shows it above everything else.
+- **Other sizes.** `AppPage` takes its width from the page (`narrow` for a form, `regular`, `wide` for
+  charts and tables) and gives the pages that show data more on a big screen: `regular` grows to
+  1200 px from 1920 px wide and 1440 px from 2560, `wide` to 1800 and 2400 px (never more than 94%
+  of what is left beside the menu). A form stays a column. Lists of cards (`devices__list`,
+  `threats__list`, `incidents__list`) are a grid of columns at least 44 rem wide, so they are one
+  column until the page has room for two. A *Wall display* scales with the screen (`zoom` 1.25,
+  then 1.5, 2 and 3 from 1920, 2560 and 3840 px wide).
+- **Tables.** A table that can be wider than its box goes in `DataTable`: it scrolls sideways in its
+  own region (never the page), the region is focusable and named, an edge fades where there is more
+  that way, and `sticky-first` keeps the first column while the rest scrolls. A table that turns
+  into cards on a narrow box does it with a container query (`DeviceConnections`), not a media
+  query, so it follows its box and not the window. The logs table keeps its heading under the top
+  bar, so it is not in a scrolling box (a sticky heading cannot be, inside one).
+- **High contrast and motion.** Windows high contrast removes backgrounds and shadows, so what a
+  chip, a card, a row or the page you are on in the menu says is also in a border, an icon or
+  words (`styles/main.scss`), and a chart's series keep their textures. Every animation is behind
+  `prefers-reduced-motion`, and the global rule there is a net: nothing runs for long or repeats.
+- **Numbers and long text.** Cells, times, figures and counts in chips use `tabular-nums` (set once,
+  in `styles/main.scss`). Text that is cut off with an ellipsis has the whole of it as a `title`, and
+  is whole in the page for a screen reader.
 - **Keyboard.** Every action is reachable and visibly focused; when a view replaces another, move
   the keyboard to where it begins (`SectionCard` has `focusTitle()`).
 - **Untrusted text.** Anything another system wrote (a log line, an alert's signature, a host
@@ -805,3 +825,9 @@ the keyboard are not in it yet.
 
 Add its page object to `frontend/e2e/support/pages`, a spec to `e2e/specs`, an axe check in
 `accessibility.spec.ts` (it runs in both themes) and a fit check in `layout.mobile.spec.ts`.
+
+`layouts.desktop.spec.ts` is the sweep: each main page at 360, 768, 1280 and 2560 px, light and
+dark, asserting that none scrolls sideways and attaching a full-page screenshot of each to the
+Playwright report (`e2e-results/report`, which CI uploads for 14 days), so the problems can be seen
+and not only measured; it also runs axe in forced-colors mode and checks that nothing repeats
+under reduced motion. Add a new page to its `PAGES`.

@@ -25,6 +25,18 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  // Wherever numbers are compared or change (a table's cells, a time, a figure, a count in a chip)
+  // they line up and don't shift what is beside them.
+  td,
+  th,
+  time,
+  output,
+  dd,
+  .v-chip,
+  .v-badge__badge {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer aresgate-components {
@@ -150,5 +162,41 @@
   .v-card :is(.text-headline-large, .text-headline-medium, .text-display-small) {
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.015em;
+  }
+
+  // Windows high contrast drops backgrounds and shadows, so whatever they said has to be said
+  // by a border, an outline, an icon or words. Chips and cards get an edge, the page you are on
+  // in the menu gets a bar (its shadow is gone), and a chart's marks keep their textures
+  // (styles/charts.scss).
+  @media (forced-colors: active) {
+    .v-chip {
+      border: 1px solid ButtonText;
+    }
+
+    .v-card {
+      border: 1px solid CanvasText;
+    }
+
+    .app-drawer .v-list-item--active {
+      border-inline-start: 4px solid Highlight;
+      box-shadow: none;
+    }
+
+    .log-table__row td:first-child {
+      border-inline-start: 4px solid CanvasText;
+    }
+  }
+
+  // When the system asks for less motion, nothing moves for long: whatever animates (the hero's
+  // sweep, a pulsing alarm, a fade in) ends at once, and nothing repeats.
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

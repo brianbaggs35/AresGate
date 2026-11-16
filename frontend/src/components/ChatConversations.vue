@@ -35,7 +35,9 @@ const emit = defineEmits<{ delete: [conversation: ConversationSummary] }>()
           class="conversations__link"
           data-test="conversation-link"
         >
-          <span class="text-label-large conversations__title">{{ conversation.title }}</span>
+          <span class="text-label-large conversations__title" :title="conversation.title">{{
+            conversation.title
+          }}</span>
           <span class="text-body-small text-medium-emphasis">
             {{ formatAgo(conversation.updated_at) }}
           </span>
