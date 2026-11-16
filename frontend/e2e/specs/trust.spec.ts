@@ -188,9 +188,16 @@ test.describe('trust', () => {
       { address: '151.101.1.69', severity: 'medium' },
     ])
     await harness.createDecisions([
-      { address: ADDRESS, ai_class: 'noise', verdict: 'not_suspicious', headline: 'A scanner' },
+      {
+        address: ADDRESS,
+        subject: 'incident',
+        ai_class: 'noise',
+        verdict: 'not_suspicious',
+        headline: 'A scanner',
+      },
       {
         address: '151.101.1.69',
+        subject: 'incident',
         ai_class: 'noise',
         verdict: 'not_suspicious',
         headline: 'A monitor',

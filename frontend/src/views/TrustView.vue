@@ -318,7 +318,7 @@ onMounted(load)
                 variant="text"
                 size="small"
                 :to="{ name: 'incident', params: { id: suggestion.incident_id } }"
-                :aria-label="`Look at ${suggestion.subject} first`"
+                :aria-label="`Look first at ${suggestion.subject}`"
                 data-test="suggestion-open"
               >
                 Look first

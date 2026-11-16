@@ -103,14 +103,17 @@ export async function inBatches(
   ids: readonly number[],
   change: (batch: readonly number[]) => Promise<TakenBack>,
 ): Promise<TakenBack> {
-  let done = 0
-  let skipped = 0
-  for (let from = 0; from < ids.length; from += MAX_BULK) {
-    const result = await change(ids.slice(from, from + MAX_BULK))
-    done += result.done
-    skipped += result.skipped
-  }
-  return { done, skipped }
+  const batches: (readonly number[])[] = []
+  for (let from = 0; from < ids.length; from += MAX_BULK)
+    batches.push(ids.slice(from, from + MAX_BULK))
+  return batches.reduce<Promise<TakenBack>>(
+    async (before, batch) => {
+      const total = await before
+      const result = await change(batch)
+      return { done: total.done + result.done, skipped: total.skipped + result.skipped }
+    },
+    Promise.resolve({ done: 0, skipped: 0 }),
+  )
 }
 
 /** Takes many verdicts back at once, each as if it had been taken back by itself. */
