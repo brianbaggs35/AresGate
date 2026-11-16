@@ -19,11 +19,15 @@ Step = Literal["hour", "day"]
 STEPS: dict[Step, timedelta] = {"hour": HOUR, "day": DAY}
 # How an hour of an integration's calls went: none were made, all worked, or one failed.
 HourState = Literal["none", "ok", "problem"]
+# The most buckets a trend has: a week of hours, which is also more than the days asked for.
+MOST_BUCKETS = 24 * 7
 
 
 def starts(now: datetime, step: Step, count: int) -> list[datetime]:
     """The start of each of the last ``count`` buckets, the oldest first. The last is the one that
-    ``now`` is in."""
+    ``now`` is in. A trend has at least two and at most a week of hours."""
+    if not 2 <= count <= MOST_BUCKETS:
+        raise ValueError(f"A trend has from 2 to {MOST_BUCKETS} buckets, not {count}.")
     length = STEPS[step]
     last = now.replace(minute=0, second=0, microsecond=0)
     if step == "day":

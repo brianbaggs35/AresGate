@@ -496,7 +496,9 @@ describe('StatusView', () => {
       expect(trends).toHaveBeenCalledOnce()
       const strips = wrapper.findAll('[data-test="status-parts"] [data-test="health-strip"]')
       expect(strips).toHaveLength(1)
-      expect(strips[0]?.text()).toBe('In the last 3 hours: 2 hours working, 1 with a problem.')
+      expect(strips[0]?.text()).toBe(
+        'OPNsense. In the last 3 hours: 2 hours working, 1 with a problem.',
+      )
     })
 
     it('shows the report without it when it cannot be had', async () => {
