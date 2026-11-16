@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.ai import tools
+from app.ai import denials, tools
 from app.ai.redaction import Level, Redactor
 from app.ai.tools import Args, Ref
 from app.assets import profile
@@ -27,6 +27,7 @@ from app.models import (
     CollectorHealth,
     Device,
     DeviceAddress,
+    Incident,
     IncidentChain,
     IntegrationConnection,
     KnownDestination,
@@ -138,6 +139,7 @@ class TestTheList:
     def test_every_tool_is_found_by_its_name_and_nothing_else_is(self) -> None:
         assert tools.names() == (
             "open_incidents",
+            "unclassified_incidents",
             "incident",
             "alerts",
             "blocked_sources",
@@ -1212,6 +1214,83 @@ class TestTrusted:
         found = run(session, "trusted", Args(limit=3))
 
         assert found.summary == "nothing is trusted"
+
+
+class TestUnclassifiedIncidents:
+    def waiting(self, session: Session, count: int) -> list[Incident]:
+        found = [
+            incident(session, subject=f"198.51.100.{number}", title=f"Scan {number}")
+            for number in range(1, count + 1)
+        ]
+        session.commit()
+        return found
+
+    def test_a_batch_is_the_oldest_waiting_with_how_many_are_left(self, session: Session) -> None:
+        found = self.waiting(session, 7)
+
+        result = run(session, "unclassified_incidents", Args(limit=3))
+
+        assert [line.split("]")[0] for line in result.lines[:3]] == [
+            f"[incident {item.id}" for item in found[:3]
+        ]
+        assert result.lines[3] == (
+            f"4 more incidents wait after incident {found[2].id}: ask again with id "
+            f"{found[2].id} for the next batch."
+        )
+        assert [ref.key for ref in result.refs] == [str(item.id) for item in found[:3]]
+        assert result.summary == "3 incidents to classify, 4 more after"
+
+    def test_the_next_batch_starts_after_the_one_named(self, session: Session) -> None:
+        found = self.waiting(session, 4)
+
+        result = run(session, "unclassified_incidents", Args(limit=5, id=found[1].id))
+
+        assert [ref.key for ref in result.refs] == [str(found[2].id), str(found[3].id)]
+        assert result.lines[-1] == "These are the last ones waiting."
+        assert result.summary == "2 incidents to classify, 0 more after"
+
+    def test_five_are_a_batch_unless_asked_for_another_size(self, session: Session) -> None:
+        self.waiting(session, 12)
+
+        assert len(run(session, "unclassified_incidents").refs) == 5
+        assert len(run(session, "unclassified_incidents", Args(limit=99)).refs) == 10
+
+    def test_judged_and_settled_incidents_and_denied_proposals_are_left_out(
+        self, session: Session
+    ) -> None:
+        keep, judged, settled, denied = self.waiting(session, 4)
+        judged.verdict = "not_suspicious"
+        settled.status = "resolved"
+        denials.record(session, "verdict", "not_suspicious", [denied.id], NOW)
+        session.commit()
+
+        result = run(session, "unclassified_incidents")
+
+        assert [ref.key for ref in result.refs] == [str(keep.id)]
+
+    def test_a_denial_stops_standing_when_the_incident_moves_on(self, session: Session) -> None:
+        found = self.waiting(session, 1)[0]
+        denials.record(session, "verdict", "not_suspicious", [found.id], NOW)
+        found.status = "investigating"
+        session.commit()
+
+        assert [ref.key for ref in run(session, "unclassified_incidents").refs] == [str(found.id)]
+
+    def test_with_none_waiting_it_says_so_and_where_it_looked_from(self, session: Session) -> None:
+        first = run(session, "unclassified_incidents")
+        found = self.waiting(session, 1)[0]
+        later = run(session, "unclassified_incidents", Args(id=found.id))
+
+        assert first.lines == ["No open incident is waiting to be judged."]
+        assert later.lines == [
+            f"No open incident after incident {found.id} is waiting to be judged."
+        ]
+        assert first.summary == later.summary == "nothing to classify"
+
+    def test_a_negative_number_starts_from_the_first(self, session: Session) -> None:
+        self.waiting(session, 2)
+
+        assert len(run(session, "unclassified_incidents", Args(id=-5)).refs) == 2
 
 
 class TestBaselines:

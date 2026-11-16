@@ -3,6 +3,7 @@ import * as denialsApi from '@/api/aiDenials'
 import * as incidentsApi from '@/api/incidents'
 import { ApiError } from '@/api/client'
 import type { ChatAction } from '@/api/aiChat'
+import { NEXT_BATCH } from '@/chat'
 import ChatActions from '@/components/ChatActions.vue'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
@@ -23,9 +24,9 @@ const undo = { statuses: { open: [3] }, rules: [] } as incidentsApi.BulkUndo
 const result = (u: incidentsApi.BulkUndo | null) =>
   ({ undo: u }) as unknown as incidentsApi.BulkResult
 
-async function show(actions: ChatAction[]) {
+async function show(actions: ChatAction[], walkthrough = false) {
   const mounted = await mountWithPlugins(ChatActions, {
-    props: { actions },
+    props: { actions, walkthrough },
     signedIn: 'admin',
     withApp: true,
   })
@@ -365,6 +366,75 @@ describe('ChatActions', () => {
       await click(wrapper, 'proposal-approve')
       await click(wrapper, 'action-undo')
       expect(wrapper.find('[data-test="action-failed"]').text()).toBe('It changed since.')
+    })
+  })
+
+  describe('suggesting something else', () => {
+    const status = (over: Partial<ChatAction> = {}) =>
+      act({ kind: 'status', value: 'resolved', label: 'Mark Incident 3 as resolved', ...over })
+
+    it('puts the proposal in the box, to say what to do instead', async () => {
+      const change = vi.spyOn(incidentsApi, 'changeIncidents')
+      const { wrapper } = await show([status()])
+
+      await wrapper.find('[data-test="proposal-suggest"]').trigger('click')
+
+      expect(wrapper.findComponent(ChatActions).emitted('suggest')).toEqual([
+        ['Instead of "Mark Incident 3 as resolved", '],
+      ])
+      expect(change).not.toHaveBeenCalled()
+    })
+
+    it('is not offered once the proposal is settled', async () => {
+      vi.spyOn(denialsApi, 'denyProposal').mockResolvedValue({ recorded: 1 })
+      const { wrapper } = await show([status()])
+
+      await wrapper.find('[data-test="proposal-deny"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="proposal-suggest"]').exists()).toBe(false)
+    })
+  })
+
+  describe('going on with a walk-through', () => {
+    const status = (over: Partial<ChatAction> = {}) =>
+      act({ kind: 'status', value: 'resolved', label: 'Mark Incident 3 as resolved', ...over })
+
+    it('offers the next batch only once every proposal is settled', async () => {
+      vi.spyOn(denialsApi, 'denyProposal').mockResolvedValue({ recorded: 1 })
+      vi.spyOn(incidentsApi, 'changeIncidents').mockResolvedValue({
+        ...result(null),
+        changed: 1,
+      })
+      const { wrapper } = await show([status(), status({ target_key: '4' })], true)
+      expect(wrapper.find('[data-test="next-batch"]').exists()).toBe(false)
+
+      await wrapper.findAll('[data-test="proposal-deny"]')[0]?.trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="next-batch"]').exists()).toBe(false)
+      await wrapper.find('[data-test="proposal-approve"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-test="next-batch"]').trigger('click')
+
+      expect(wrapper.findComponent(ChatActions).emitted('ask')).toEqual([[NEXT_BATCH]])
+    })
+
+    it('counts a proposal that was denied before as settled', async () => {
+      const { wrapper } = await show([status({ denied: true })], true)
+
+      expect(wrapper.find('[data-test="next-batch"]').exists()).toBe(true)
+    })
+
+    it('offers it at once when nothing was proposed or only pages were', async () => {
+      const { wrapper } = await show([act()], true)
+
+      expect(wrapper.find('[data-test="next-batch"]').exists()).toBe(true)
+    })
+
+    it('is not offered for an answer that is not a batch', async () => {
+      const { wrapper } = await show([act()], false)
+
+      expect(wrapper.find('[data-test="next-batch"]').exists()).toBe(false)
     })
   })
 })

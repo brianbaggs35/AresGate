@@ -8,6 +8,14 @@ Every release's notes are here, newest first. The format follows
 
 ### Added
 
+- **Go through incidents with the assistant.** Ask the assistant to walk you through the incidents
+  nobody has judged yet and it takes them a few at a time (five unless you say), says what it makes
+  of each, and proposes a verdict or status for the ones it is sure of, up to six at a time. You
+  *Approve* or *Deny* each, or press *Suggest something else* to say what to do about it instead,
+  and *Next batch* asks for the next few once you have settled these. A new starter on the
+  Assistant page asks for it; it never starts by itself, and it changes nothing until you approve.
+  See [the assistant](DOCS/ui.md#incidents).
+
 - **Baselines.** A new page in the menu, under Network, shows what AresGate has learned is normal:
   for each interface and direction the usual traffic in each hour of the day as bars, with the
   hours lately that carried far more, and for each device the places it talks to, whether it has

@@ -322,6 +322,16 @@ a proposal already in a conversation shows as denied after a reload. Settings > 
 suggestions* (`DeniedProposalsCard`) lists what stands denied, each with *Forget*, and *Forget all*
 asks first. On a phone, opening a page puts the sheet away.
 
+*Going through the incidents nobody has judged.* The assistant does this only when asked: a starter
+on the page (and one on the list of incidents in the panel) puts *Walk me through the incidents
+nobody has judged yet, five at a time* in the box, which can be changed before it is sent. The
+assistant looks up a batch (`unclassified_incidents`, see
+[the assistant](operations.md#ai-providers)) and says in a line what each is and what it makes of
+it, with a proposal for each it is sure of (up to six an answer, so a batch of five fits). Besides
+*Approve* and *Deny*, *Suggest something else* puts `Instead of "<the proposal>", ` in the box to
+say what to do about it instead. Once every proposal of the latest batch is settled (or there were
+none), *Next batch* asks for the next one at once; it leaves what is being written in the box alone.
+
 ## Threats
 
 The Threats pages answer "is anything really going on?" before they answer anything else, and

@@ -1572,6 +1572,50 @@ def _lookup(tool: str, name: str | None = None) -> dict[str, Any]:
     return {"tool": tool, "id": None, "name": name, "hours": None, "limit": None}
 
 
+def answer_to_a_walkthrough_in_the_chat(prompt: str, question: str) -> str | None:
+    """The assistant's answer to a request to go through the incidents nobody has judged: a batch
+    of two is looked up, and each of the two is suggested a change: the first a verdict with why,
+    the second to be dismissed."""
+    if "walk me through" not in question and "next five" not in question:
+        return None
+    if '<data label="unclassified incidents' not in prompt:
+        return json.dumps(
+            {
+                "lookups": [{**_lookup("unclassified_incidents"), "limit": 2}],
+                "answer": "",
+                "cites": [],
+                "actions": [],
+            }
+        )
+    numbers = list(dict.fromkeys(re.findall(r"\[incident (\w+)\]", prompt)))[:2]
+    if not numbers:
+        return json.dumps(
+            {"lookups": [], "answer": "Nothing is waiting.", "cites": [], "actions": []}
+        )
+    names = [f"incident {number}" for number in numbers]
+    actions: list[dict[str, Any]] = [
+        {
+            "kind": "verdict",
+            "target": names[0],
+            "value": "not_suspicious",
+            "note": "A scanner that never got in.",
+            "also": [],
+        },
+        *(
+            {"kind": "status", "target": name, "value": "dismissed", "note": None, "also": []}
+            for name in names[1:]
+        ),
+    ]
+    return json.dumps(
+        {
+            "lookups": [],
+            "answer": f"Here are {len(names)} of them, and what I would do.",
+            "cites": names,
+            "actions": actions,
+        }
+    )
+
+
 def answer_to_a_change_in_the_chat(prompt: str, question: str) -> str | None:
     """The assistant's answer to a request to change incidents, after a look at the open ones: to
     dismiss them says so for all it was shown, as one suggestion naming the others, and to say a
@@ -1623,6 +1667,9 @@ def _answer_of_the_assistant(asked: Mapping[str, Any]) -> str | None:
         return None
     prompt = _prompt_of(asked)
     question = prompt.rsplit("The owner asks:", 1)[-1].lower()
+    walking = answer_to_a_walkthrough_in_the_chat(prompt, question)
+    if walking is not None:
+        return walking
     changing = answer_to_a_change_in_the_chat(prompt, question)
     if changing is not None:
         return changing

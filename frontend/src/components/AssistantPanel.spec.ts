@@ -4,6 +4,7 @@ import AiCallDialog from '@/components/AiCallDialog.vue'
 import AssistantPanel from '@/components/AssistantPanel.vue'
 import { useAssistantStore } from '@/stores/assistant'
 import { action, answer, conversation, question } from '@/test/aiChat'
+import { NEXT_BATCH } from '@/chat'
 import { flushPromises, mountWithPlugins } from '@/test/mount'
 
 async function open(route = '/', width = 1280) {
@@ -225,5 +226,60 @@ describe('AssistantPanel', () => {
     await wide.wrapper.find('[data-test="action"]').trigger('click')
     await flushPromises()
     expect(wide.assistant.open).toBe(true)
+  })
+  describe('going through the incidents nobody has judged', () => {
+    const batch = () =>
+      conversation({
+        messages: [
+          question(),
+          answer({
+            lookups: [{ tool: 'unclassified_incidents', summary: '2 incidents to classify' }],
+          }),
+        ],
+      })
+
+    it('asks for the next batch at once', async () => {
+      const ask = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(batch())
+      const { wrapper, assistant } = await open('/incidents')
+      assistant.current = batch()
+      await flushPromises()
+
+      await wrapper.find('[data-test="next-batch"]').trigger('click')
+      await flushPromises()
+
+      expect(ask).toHaveBeenCalledWith(
+        expect.any(Number),
+        NEXT_BATCH,
+        'a-security-token',
+        expect.anything(),
+        expect.any(Function),
+      )
+    })
+
+    it('leaves what is being written alone', async () => {
+      const ask = vi.spyOn(chatApi, 'askAndFollow').mockResolvedValue(batch())
+      const { wrapper, assistant } = await open('/incidents')
+      assistant.current = batch()
+      assistant.draft = 'Something else first'
+      await flushPromises()
+
+      await wrapper.find('[data-test="next-batch"]').trigger('click')
+      await flushPromises()
+
+      expect(ask).not.toHaveBeenCalled()
+      expect(assistant.draft).toBe('Something else first')
+    })
+
+    it('puts a proposal in the box when something else is suggested for it', async () => {
+      const { wrapper, assistant } = await open('/incidents')
+      assistant.current = conversation({
+        messages: [question(), answer({ actions: [action()] })],
+      })
+      await flushPromises()
+
+      wrapper.findComponent({ name: 'ChatMessage' }).vm.$emit('suggest', 'Instead of "x", ')
+
+      expect(assistant.draft).toBe('Instead of "x", ')
+    })
   })
 })

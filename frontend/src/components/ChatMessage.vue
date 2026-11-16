@@ -3,7 +3,7 @@ import { Eye, Link2, RotateCcw, Search } from '@lucide/vue'
 import { computed } from 'vue'
 
 import type { ChatCite, ChatMessage } from '@/api/aiChat'
-import { blocks, citeRoute } from '@/chat'
+import { BATCH_TOOL, blocks, citeRoute } from '@/chat'
 import AssistantMark from '@/components/AssistantMark.vue'
 import ChatActions from '@/components/ChatActions.vue'
 import ChatText from '@/components/ChatText.vue'
@@ -18,9 +18,21 @@ const props = defineProps<{
   message: ChatMessage
   /** Whether a failed answer can be asked again now: it is the last one and nothing is under way. */
   canRetry?: boolean
+  /** Whether it is the last thing said, which is the one a walk-through goes on from. */
+  last?: boolean
 }>()
-const emit = defineEmits<{ retry: []; 'show-call': [id: number]; opened: [] }>()
+const emit = defineEmits<{
+  retry: []
+  'show-call': [id: number]
+  opened: []
+  suggest: [text: string]
+  ask: [text: string]
+}>()
 
+/** Whether it is the latest batch of a walk-through, which has a way to ask for the next. */
+const walkthrough = computed(
+  () => props.last && props.message.lookups.some((lookup) => lookup.tool === BATCH_TOOL),
+)
 const fromOwner = computed(() => props.message.role === 'user')
 const parts = computed(() => blocks(props.message.text))
 /** What is cited that has a page to go to. */
@@ -85,9 +97,12 @@ function callLabel(index: number): string {
       </div>
 
       <ChatActions
-        v-if="message.ok && message.actions.length"
+        v-if="message.ok && (message.actions.length > 0 || walkthrough)"
         :actions="message.actions"
+        :walkthrough="walkthrough"
         @opened="emit('opened')"
+        @suggest="emit('suggest', $event)"
+        @ask="emit('ask', $event)"
       />
 
       <section

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Check, ExternalLink, Undo2, X, Zap } from '@lucide/vue'
-import { reactive } from 'vue'
+import { Check, ExternalLink, MessageSquareReply, StepForward, Undo2, X, Zap } from '@lucide/vue'
+import { computed, reactive } from 'vue'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
 
 import { errorMessage } from '@/api/client'
+import { NEXT_BATCH } from '@/chat'
 import type { ChatAction } from '@/api/aiChat'
 import {
   changeIncidents,
@@ -26,10 +27,13 @@ import { useSessionStore } from '@/stores/session'
  * is what makes the request, the same one the page for it makes, so it is in the audit log as
  * yours and can be taken back with *Undo* at once. A status can also be given to the earlier
  * incidents about the same address, and the proposal says how many that is before it is approved.
- * A denial is remembered, so the same change is not proposed again for a while.
+ * A denial is remembered, so the same change is not proposed again for a while. Instead of either,
+ * *Suggest something else* puts the proposal in the box, to say what to do about it instead.
+ * When the answer is a batch of a walk-through (`walkthrough`) and every proposal in it has been
+ * settled, *Next batch* asks for the next one.
  */
-defineProps<{ actions: readonly ChatAction[] }>()
-const emit = defineEmits<{ opened: [] }>()
+const props = defineProps<{ actions: readonly ChatAction[]; walkthrough?: boolean }>()
+const emit = defineEmits<{ opened: []; suggest: [text: string]; ask: [text: string] }>()
 
 const session = useSessionStore()
 const router = useRouter()
@@ -166,6 +170,18 @@ async function undo(at: number) {
   }
 }
 
+/** Whether every proposal has been answered here (approved, denied or taken back), and so that
+ * there is none to answer when there are none. */
+const settled = computed(() =>
+  props.actions.every(
+    (action, at) =>
+      action.kind === 'open' || ['done', 'denied', 'undone'].includes(phaseOf(action, at) ?? ''),
+  ),
+)
+
+/** What is said in the box to suggest something else for a proposal. */
+const instead = (action: ChatAction) => `Instead of "${action.label}", `
+
 const key = (action: ChatAction) =>
   `${action.kind}:${action.target_kind}:${action.target_key}:${action.also.join(',')}:${action.value ?? ''}`
 const reasonOf = (at: number) => (states[at] as { phase: 'failed'; reason: string }).reason
@@ -273,6 +289,15 @@ function effectOf(action: ChatAction, at: number): string {
             >
               Deny
             </v-btn>
+            <v-btn
+              variant="text"
+              :prepend-icon="MessageSquareReply"
+              :disabled="phaseOf(action, at) === 'working'"
+              data-test="proposal-suggest"
+              @click="emit('suggest', instead(action))"
+            >
+              Suggest something else
+            </v-btn>
           </div>
         </template>
 
@@ -317,6 +342,17 @@ function effectOf(action: ChatAction, at: number): string {
           {{ reasonOf(at) }}
         </span>
       </section>
+    </li>
+    <li v-if="walkthrough && settled" class="actions__item">
+      <v-btn
+        color="primary"
+        variant="tonal"
+        :prepend-icon="StepForward"
+        data-test="next-batch"
+        @click="emit('ask', NEXT_BATCH)"
+      >
+        Next batch
+      </v-btn>
     </li>
   </ul>
 </template>
