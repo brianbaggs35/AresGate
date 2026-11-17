@@ -32,6 +32,19 @@ OFFERS: Final = {
         "What the antivirus and security engines make of each address on the internet, and who "
         "it belongs to."
     ),
+    "otx": (
+        "Which threat reports from the AlienVault OTX community name each address on the "
+        "internet, and what they say it is part of."
+    ),
+    "greynoise": (
+        "Whether each address on the internet is one of the many that scan every address, or "
+        "belongs to a common business service."
+    ),
+    "nvd": (
+        "What the National Vulnerability Database says of each CVE the incident names: how "
+        "severe it is and whether it has been seen exploited."
+    ),
+    "fingerbank": "What each device is, from its hardware address: its make, model and system.",
 }
 
 

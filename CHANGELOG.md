@@ -24,6 +24,10 @@ Every release's notes are here, newest first. The format follows
   showed *It needs a little setup first* with only AlienVault OTX or GreyNoise connected, though it
   reads what those kept as well. Any one of the three now makes them ready, and the setup steps say
   so.
+- **An incident says what AlienVault OTX, GreyNoise, NVD and Fingerbank would add.** *What more
+  connecting would show* listed only OPNsense, Wazuh, ntopng, CrowdSec and VirusTotal, so an
+  incident never suggested the other four, however much they would have said about its addresses,
+  CVEs and devices.
 
 ## 0.1.9
 

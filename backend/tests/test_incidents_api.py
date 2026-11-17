@@ -1649,9 +1649,19 @@ class TestWhatWasSent:
             "wazuh",
             "crowdsec",
             "virustotal",
+            "otx",
+            "greynoise",
+            "nvd",
+            "fingerbank",
         ]
         assert missing[1]["source_name"] == "Wazuh"
         assert "MITRE" in missing[1]["adds"]
+        assert [each["source_name"] for each in missing[4:]] == [
+            "AlienVault OTX",
+            "GreyNoise",
+            "NIST NVD",
+            "Fingerbank",
+        ]
 
 
 class TestHowItTravelled:

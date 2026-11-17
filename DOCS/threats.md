@@ -76,7 +76,9 @@ its two ends with an arrow between them, the busiest first (**What was sent, and
 
 `app/incidents/coverage.py` says which of the integrations are not connected and what each would
 add, so the page can say what is being missed and where to connect it (**What more connecting would
-show**). The more integrations are connected, the more every part of the page has to show.
+show**). Every integration has an entry there, the threat intelligence services and Fingerbank
+included, and a test fails when a new one is added without. The more integrations are connected, the
+more every part of the page has to show.
 
 Where the owner has ruled an address safe or suspicious (see
 [Correcting what VirusTotal says](integrations.md#correcting-what-virustotal-says)), that is what
