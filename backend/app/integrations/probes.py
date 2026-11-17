@@ -866,6 +866,19 @@ async def crowdsec(client: ApiClient, target: Target) -> Verdict:
     return Verdict(True, "CrowdSec's local API accepted the key.")
 
 
+# What a service says of a test that it turned away because a limit is reached. That is the
+# service being busy, which says nothing against the key, so the connection stays as it was.
+OTX_LIMITED = (
+    "OTX asked for fewer requests, so the key wasn't tested this time. That says nothing against "
+    "the key, and the next check tries again."
+)
+NVD_LIMITED = (
+    "NVD turned the request away, which it does when a limit is reached, so the key wasn't tested "
+    "this time. A key that NVD doesn't know is answered differently, so the next check tries "
+    "again."
+)
+
+
 async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
     """Asks OTX who the key belongs to. That is a request about the key's own account, so it
     sends no address to OTX and counts as no lookup."""
@@ -875,6 +888,8 @@ async def alienvault_otx(client: ApiClient, target: Target) -> Verdict:
     refused = "OTX didn't accept the key. Copy it again from your OTX account's settings."
     if gone := unavailable(reply, "OTX"):
         return gone
+    if reply.status == 429:
+        return Verdict(True, OTX_LIMITED, held=True)
     if bad := problem(reply, "OTX", refused=refused, forbidden=refused):
         return bad
     account = as_object(reply.json())
@@ -922,12 +937,7 @@ async def nvd(client: ApiClient, target: Target) -> Verdict:
         if reply.status == 404 and said and "apikey" in said.lower():
             return Verdict(False, "NVD didn't accept the key. Request a new one from NVD.")
         if reply.status in (403, 429):
-            return Verdict(
-                False,
-                "NVD turned the request away (HTTP "
-                f"{reply.status}), which it does when the key is wrong or its limit is reached. "
-                "Check the key, or try again in a minute.",
-            )
+            return Verdict(True, NVD_LIMITED, held=True)
     if bad := problem(reply, "NVD"):
         return bad
     answer = as_object(reply.json())

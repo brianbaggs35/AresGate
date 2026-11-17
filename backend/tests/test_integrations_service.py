@@ -20,6 +20,7 @@ from tests.stubs import Answer, Serve, make_certificate
 
 NOW = datetime(2099, 1, 1, 12, 0, tzinfo=UTC)
 LATER = NOW + timedelta(hours=1)
+EARLIER = NOW - timedelta(hours=1)
 OPNSENSE = registry.OPNSENSE
 NTOPNG = registry.NTOPNG
 WAZUH = registry.WAZUH
@@ -846,10 +847,36 @@ def test_a_held_connection_is_not_counted_as_a_success() -> None:
         base_url="https://www.virustotal.com",
         tls_mode="system",
         options={},
-        last_success_at=None,
+        last_success_at=EARLIER,
         last_error="An earlier failure.",
     )
 
     service.record_attempt(row, Verdict(True, "Held.", held=True), NOW)
 
-    assert (row.last_attempt_at, row.last_success_at, row.last_error) == (NOW, None, None)
+    assert (row.last_attempt_at, row.last_success_at, row.last_error) == (NOW, EARLIER, None)
+
+
+def test_a_hold_on_a_connection_that_passed_before_leaves_it_as_it_was(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+    service.record_attempt(row, Verdict(True, "ok"), NOW)
+    service.record_attempt(row, Verdict(False, "Broke"), NOW)
+
+    service.record_attempt(row, Verdict(True, "Busy", held=True), LATER)
+
+    assert (row.last_success_at, row.last_error) == (NOW, None)
+    assert service.connection_status(row) is service.Status.CONNECTED
+
+
+def test_a_hold_on_a_connection_that_never_passed_is_a_failure_that_says_why(
+    session: Session, settings: Settings
+) -> None:
+    save(session, settings, OPNSENSE, {"api": opnsense_api()})
+    row = service.rows_for(session, "opnsense")["api"]
+
+    service.record_attempt(row, Verdict(True, "Busy, so not tested.", held=True), NOW)
+
+    assert (row.last_success_at, row.last_error) == (None, "Busy, so not tested.")
+    assert service.connection_status(row) is service.Status.PROBLEM

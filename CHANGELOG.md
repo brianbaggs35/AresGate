@@ -4,6 +4,17 @@ Every release's notes are here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.2.0
+
+### Fixed
+
+- **A busy service no longer shows as a broken connection.** When AlienVault OTX answered the
+  five-minute connection check with a 429, or NVD with a 403 or 429, the check marked the
+  connection as failing, the Integrations card showed an error and the Threat intelligence tabs
+  said no service was connected and took away the search, until the next check. A limit says
+  nothing against the key: the check now leaves the connection as it was and says the service asked
+  for fewer requests. A connection that has never passed a test is told it wasn't tested.
+
 ## 0.1.9
 
 ### Added
