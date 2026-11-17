@@ -19,6 +19,11 @@ Every release's notes are here, newest first. The format follows
   called malicious, showed no standing at all unless VirusTotal had looked at it too. They now show
   the most serious answer any connected service kept, counted the way that service counts: engines
   for VirusTotal, pulses for OTX, the classification for GreyNoise.
+- **Agents are ready with any threat intelligence service, not only VirusTotal.** The Intelligence
+  analyst and the Health watch said they needed a VirusTotal key, and the Intelligence analyst
+  showed *It needs a little setup first* with only AlienVault OTX or GreyNoise connected, though it
+  reads what those kept as well. Any one of the three now makes them ready, and the setup steps say
+  so.
 
 ## 0.1.9
 

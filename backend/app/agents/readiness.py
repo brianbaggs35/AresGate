@@ -1,8 +1,8 @@
 """Whether an agent has what it needs to do its job, in words the owner can act on.
 
 A kind of agent is only as good as what AresGate can show it: an intelligence analyst with no
-VirusTotal key has nothing to read, and a threat hunter with no firewall connected has few
-alerts. Each template names what it needs (app/agents/catalog.py) and this says, for each, whether
+threat intelligence service connected has nothing to read, and a threat hunter with no firewall
+connected has few alerts. Each template names what it needs (app/agents/catalog.py) and this says, for each, whether
 it is there and, when it is not, where to get it.
 """
 
@@ -20,6 +20,8 @@ from app.models import Agent, AgentRun, Device, IntegrationConnection
 PURPOSE: Final = "agent"
 # The programs that tell AresGate about alerts and what the firewall turned away.
 ALERT_SOURCES: Final = ("opnsense", "wazuh", "crowdsec", "ntopng")
+# The services that say what is known about an address, any one of which is something to read.
+INTEL_SERVICES: Final = ("virustotal", "otx", "greynoise")
 # Where in the web app the integrations are connected.
 INTEGRATIONS: Final = "/integrations"
 
@@ -80,17 +82,18 @@ def _firewall(db: Session, now: datetime) -> Check:
 def _intel(db: Session, now: datetime) -> Check:
     return Check(
         "intel",
-        _connected(db, ("virustotal",)),
-        "VirusTotal connected, for what is known about addresses",
-        "Add a free VirusTotal key, which AresGate uses to ask who an address belongs to.",
-        f"{INTEGRATIONS}/virustotal",
+        _connected(db, INTEL_SERVICES),
+        "VirusTotal, AlienVault OTX or GreyNoise connected, for what is known about addresses",
+        "Add a free VirusTotal, AlienVault OTX or GreyNoise key, which AresGate uses to ask who an "
+        "address belongs to.",
+        INTEGRATIONS,
     )
 
 
 def _integrations(db: Session, now: datetime) -> Check:
     return Check(
         "integrations",
-        _connected(db, (*ALERT_SOURCES, "virustotal")),
+        _connected(db, (*ALERT_SOURCES, *INTEL_SERVICES)),
         "At least one integration connected, to watch",
         "Connect an integration first: there is nothing to watch the health of yet.",
         INTEGRATIONS,

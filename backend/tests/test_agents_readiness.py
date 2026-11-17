@@ -1,6 +1,7 @@
 """Whether an agent has what it needs: each kind says what it needs, and the page says whether it
 is there and where to get it."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -34,6 +35,27 @@ def test_nothing_is_ready_before_anything_is_connected(session: Session) -> None
     assert [check.key for check in found] == ["ai", "intel", "alerts"]
     assert not readiness.ready(found)
     assert all(check.fix and check.link.startswith("/") for check in found)
+
+
+@pytest.mark.parametrize("service", ["virustotal", "otx", "greynoise"])
+def test_any_threat_intelligence_service_makes_the_analyst_ready(
+    session: Session, service: str
+) -> None:
+    assert checks(session, catalog.INTELLIGENCE_ANALYST)["intel"] is False
+    assert checks(session, catalog.HEALTH_WATCH)["integrations"] is False
+
+    connected(session, service)
+
+    assert checks(session, catalog.INTELLIGENCE_ANALYST)["intel"] is True
+    assert checks(session, catalog.HEALTH_WATCH)["integrations"] is True
+
+
+def test_a_service_that_is_not_threat_intelligence_does_not_make_the_analyst_ready(
+    session: Session,
+) -> None:
+    connected(session, "nvd")
+
+    assert checks(session, catalog.INTELLIGENCE_ANALYST)["intel"] is False
 
 
 def test_connecting_an_integration_makes_what_needs_it_ready(session: Session) -> None:
@@ -82,7 +104,7 @@ class TestTheApi:
         analyst = next(item for item in body["templates"] if item["key"] == "intelligence_analyst")
         assert analyst["ready"] is False
         assert [check["key"] for check in analyst["checks"]] == ["ai", "intel", "alerts"]
-        assert analyst["setup"][0].startswith("Make a free VirusTotal account")
+        assert analyst["setup"][0].startswith("Make a free account with VirusTotal")
 
     def test_an_agent_shows_whether_its_kind_is_ready(
         self, client: TestClient, csrf_token: str, session: Session

@@ -106,11 +106,11 @@ THREAT_HUNTER: Final = Template(
 INTELLIGENCE_ANALYST: Final = Template(
     key="intelligence_analyst",
     name="Intelligence analyst",
-    tagline="Checks who is behind the traffic against what VirusTotal has reported",
+    tagline="Checks who is behind the traffic against what threat intelligence has reported",
     description=(
         "Takes the addresses behind the open incidents and the most blocked sources, reads what "
-        "AresGate has kept of VirusTotal's reports on them, and says which are known to be bad, "
-        "which are clean and which nobody has asked about yet."
+        "AresGate has kept of what VirusTotal, AlienVault OTX and GreyNoise said of them, and says "
+        "which are known to be bad, which are clean and which nobody has asked about yet."
     ),
     icon="telescope",
     brief=(
@@ -134,9 +134,10 @@ INTELLIGENCE_ANALYST: Final = Template(
     interval_minutes=360,
     needs=("ai", "intel", "alerts"),
     setup=(
-        "Make a free VirusTotal account and copy its API key from your profile.",
-        "Add the key under Integrations > VirusTotal. AresGate asks about addresses itself, within "
-        "the free key's daily limit; this agent only reads what it kept.",
+        "Make a free account with VirusTotal, AlienVault OTX or GreyNoise and copy its API key "
+        "from your profile. Any one of them is enough.",
+        "Add the key under Integrations. AresGate asks about addresses itself, within the free "
+        "key's limit; this agent only reads what it kept.",
         CHOOSE_AI,
     ),
 )
@@ -485,8 +486,8 @@ INCIDENT_INVESTIGATOR: Final = Template(
     setup=(
         "Connect at least one source of alerts under Integrations, so that there are incidents to "
         "look into.",
-        "Add a free VirusTotal key under Integrations if you want it to say who is behind an "
-        "address; it works without one.",
+        "Add a free VirusTotal, AlienVault OTX or GreyNoise key under Integrations if you want it "
+        "to say who is behind an address; it works without one.",
         CHOOSE_AI,
     ),
 )
