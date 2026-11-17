@@ -50,6 +50,14 @@ const reportOpen = ref(false)
 const checking = ref(false)
 const problem = ref<string | null>(null)
 
+/** What to say when nothing is kept. Only internet addresses are looked up on their own, for the
+ * incidents that name them: a domain or a web address is asked about only when someone searches. */
+const emptyDescription = computed(() =>
+  props.kind === 'ip'
+    ? `The first answer from a search, or from a lookup about an incident, shows up here for ${type.value.plural}.`
+    : `AresGate asks about ${type.value.about} only when you search for one, so nothing is kept until you do. Search above, and its answer shows up here.`,
+)
+
 const filtered = computed(() => text.value !== '' || judgement.value !== null)
 
 /** How many answers the text matches, of every judgement. */
@@ -204,7 +212,7 @@ onMounted(load)
     <EmptyState
       v-else-if="!kept(page) && !filtered"
       title="Nothing is kept yet"
-      :description="`The first answer from a search, or from a lookup about an incident, shows up here for ${type.plural}.`"
+      :description="emptyDescription"
       data-test="known-empty"
     />
 

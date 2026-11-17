@@ -147,9 +147,9 @@ def test_a_search_needs_a_key_that_still_opens(
         ("", subjects.EMPTY),
         (
             "192.168.1.20",
-            "192.168.1.20 isn't a public internet address, so it isn't sent to VirusTotal.",
+            "192.168.1.20 isn't a public internet address, so it isn't sent to a service.",
         ),
-        ("router.lan", "router.lan is a name on your own network, so it isn't sent to VirusTotal."),
+        ("router.lan", "router.lan is a name on your own network, so it isn't sent to a service."),
         ("not a thing", subjects.MALFORMED),
         ("http://user:pass@example.com", subjects.CREDENTIALS),
     ],

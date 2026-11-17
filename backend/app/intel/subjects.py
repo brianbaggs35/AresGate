@@ -43,7 +43,7 @@ LETTERS = frozenset(string.ascii_letters + string.digits + "-")
 EMPTY = "Enter an IP address, a domain or a web address that starts with https://."
 TOO_LONG = f"Enter at most {MAX_LENGTH} characters."
 MALFORMED = "That isn't an IP address, a domain or a web address that starts with https://."
-CREDENTIALS = "A web address with a username or password isn't sent to VirusTotal."
+CREDENTIALS = "A web address with a username or password isn't sent to a service."
 
 
 class Refusal(ValueError):
@@ -110,7 +110,7 @@ def _host(text: str) -> tuple[str, Address | None]:
     except ValueError:
         return _domain(text), None
     if address.is_multicast or not address.is_global:
-        raise Refusal(f"{address} isn't a public internet address, so it isn't sent to VirusTotal.")
+        raise Refusal(f"{address} isn't a public internet address, so it isn't sent to a service.")
     return str(address), address
 
 
@@ -128,7 +128,7 @@ def _domain(text: str) -> str:
     ):
         raise Refusal(MALFORMED)
     if len(labels) < 2 or tld in INTERNAL_TLDS:
-        raise Refusal(f"{name} is a name on your own network, so it isn't sent to VirusTotal.")
+        raise Refusal(f"{name} is a name on your own network, so it isn't sent to a service.")
     return name
 
 
