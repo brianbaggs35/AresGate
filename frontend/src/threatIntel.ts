@@ -301,9 +301,9 @@ export function standingTally(
   if (!standing || standing.reported === 'unknown') return ''
   const flagged = standing.malicious + standing.suspicious
   if (standing.provider === 'otx') {
-    return standing.reported === 'clean'
-      ? 'AlienVault OTX lists it as safe'
-      : `${formatCount(flagged)} ${flagged === 1 ? 'pulse names' : 'pulses name'} it on AlienVault OTX`
+    if (standing.reported === 'clean') return 'AlienVault OTX lists it as safe'
+    const pulses = flagged === 1 ? 'pulse names' : 'pulses name'
+    return `${formatCount(flagged)} ${pulses} it on AlienVault OTX`
   }
   if (standing.provider === 'greynoise') {
     return `GreyNoise: ${JUDGEMENT[standing.reported].short.toLowerCase()}`
