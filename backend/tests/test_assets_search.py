@@ -151,7 +151,10 @@ class TestFindingByChoices:
         assert [asset.name for asset in search(found, Query(interface=iot), limit=9).assets] == [
             "camera"
         ]
-        assert search(found, Query(interface=99), limit=9).total == 0
+        # An id nothing holds. The ids come from the database's sequence, so a fixed number is
+        # one some other test run may well have handed to a network of this one.
+        unheld = max(home, iot) + 1
+        assert search(found, Query(interface=unheld), limit=9).total == 0
 
     def test_new_finds_what_was_first_listed_after_the_first_day_in_the_last_week(
         self, found: Inventory
