@@ -2,8 +2,8 @@
 
 A kind of agent is only as good as what AresGate can show it: an intelligence analyst with no
 threat intelligence service connected has nothing to read, and a threat hunter with no firewall
-connected has few alerts. Each template names what it needs (app/agents/catalog.py) and this says, for each, whether
-it is there and, when it is not, where to get it.
+connected has few alerts. Each template names what it needs (app/agents/catalog.py) and this
+says, for each, whether it is there and, when it is not, where to get it.
 """
 
 from dataclasses import dataclass
