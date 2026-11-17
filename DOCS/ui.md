@@ -512,7 +512,9 @@ the words and defaults are in `src/devices.ts`), as on the Assets page.
   words and an arrow, the source and destination (the other end links to its own page), the port with
   the service it stands for, and how often and when. Below are *Your device* for an asset (its name,
   maker, hardware address, what the owner said it is, and what Fingerbank says it is), *What threat
-  intelligence says* for an address on the Internet (what is kept, the owner's ruling over it), the
+  intelligence says* for an address on the Internet (what is kept, the owner's ruling over it; where
+  several services kept an answer, the most serious one is shown, counted as its service counts:
+  engines for VirusTotal, pulses for AlienVault OTX, the classification for GreyNoise), the
   incidents it is in, each with links to its kind of threat and its attack chain, and the latest
   events. On a phone the connections stack and on a computer they are a table, by the card's own
   width.

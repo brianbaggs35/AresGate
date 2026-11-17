@@ -21,7 +21,7 @@ import { STATUS as INCIDENT_STATUS } from '@/incidents'
 import { eventsNoteOf } from '@/inventory'
 import { usePolling } from '@/polling'
 import { useSessionStore } from '@/stores/session'
-import { JUDGEMENT, RULING } from '@/threatIntel'
+import { JUDGEMENT, RULING, standingTally } from '@/threatIntel'
 
 /** How often the page asks again while it is on screen. */
 const REFRESH_SECONDS = 30
@@ -79,11 +79,9 @@ const description = computed(() => {
   return [nameOf(device), SCOPE[device.scope].label].filter(Boolean).join(' · ')
 })
 
-/** How many engines flagged the address, of how many gave a verdict. */
+/** What the service that answered made of the address, in its own counts. */
 const flagged = computed(() => {
-  const { standing } = (data.value as DeviceDetail).device
-  if (!standing || standing.reported === 'unknown') return ''
-  return `${formatCount(standing.malicious + standing.suspicious)} of ${formatCount(standing.engines)} engines flagged it`
+  return standingTally((data.value as DeviceDetail).device.standing)
 })
 
 onMounted(() => load())

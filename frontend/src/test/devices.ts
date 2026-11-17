@@ -56,6 +56,7 @@ export const yours = (overrides: Partial<Device> = {}): Device =>
 export const standing = (overrides: Partial<AssetStanding> = {}): AssetStanding => ({
   judgement: 'malicious',
   reported: 'malicious',
+  provider: 'virustotal',
   ruling: null,
   ruling_note: null,
   malicious: 4,

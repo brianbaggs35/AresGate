@@ -164,6 +164,24 @@ describe('DeviceView', () => {
       expect(find('device-ruling').exists()).toBe(false)
     })
 
+    it.each([
+      ['otx', 'malicious', 'pulses name it on AlienVault OTX'],
+      ['greynoise', 'malicious', 'GreyNoise: malicious'],
+    ] as const)(
+      'counts as %s does what it made of the device (%s)',
+      async (provider, reported, said) => {
+        const { text } = await open({
+          answer: deviceDetail({
+            device: device({ standing: standing({ provider, reported }) }),
+          }),
+        })
+
+        const section = text('device-standing-section')
+        expect(section).toContain(said)
+        expect(section).not.toContain('engines flagged')
+      },
+    )
+
     it('says what the owner ruled, which stands over it', async () => {
       const { text } = await open({
         answer: deviceDetail({

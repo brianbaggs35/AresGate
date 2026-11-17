@@ -840,3 +840,35 @@ def test_answers_are_found_for_the_addresses_asked_about_with_or_without_a_repor
         ADDRESS: "malicious",
         OTHER: "unknown",
     }
+
+
+def test_the_standing_of_an_address_is_the_most_serious_answer_of_any_service(
+    session: Session,
+) -> None:
+    clean = replace(REPORT, malicious=0, suspicious=0, harmless=80)
+    store.keep(session, "otx", subjects.of_address(ADDRESS), virustotal.Reported(REPORT), NOW)
+    store.keep(session, PROVIDER, subjects.of_address(ADDRESS), virustotal.Reported(clean), NOW)
+    store.keep(session, PROVIDER, subjects.of_address(OTHER), virustotal.Reported(clean), NOW)
+    store.keep(
+        session, "otx", subjects.of_address(OTHER), virustotal.Unknown(), NOW + timedelta(days=1)
+    )
+
+    assert store.standings_for(session, []) == {}
+    found = store.standings_for(session, [ADDRESS, OTHER, HOME])
+    assert {address: (row.provider, row.judgement) for address, row in found.items()} == {
+        ADDRESS: ("otx", "malicious"),
+        OTHER: (PROVIDER, "clean"),
+    }
+
+
+def test_of_two_equally_serious_answers_the_newer_is_the_standing(session: Session) -> None:
+    store.keep(session, PROVIDER, subjects.of_address(ADDRESS), virustotal.Reported(REPORT), NOW)
+    store.keep(
+        session,
+        "otx",
+        subjects.of_address(ADDRESS),
+        virustotal.Reported(REPORT),
+        NOW + timedelta(hours=1),
+    )
+
+    assert store.standings_for(session, [ADDRESS])[ADDRESS].provider == "otx"

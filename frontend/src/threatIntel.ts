@@ -14,6 +14,7 @@ import {
 } from '@lucide/vue'
 
 import { formatCount } from '@/format'
+import type { AssetStanding } from '@/api/assets'
 import type { Judgement, Lookup, Provider, Ruling, SubjectKind, Verdict } from '@/api/threatIntel'
 import type { DeviceState } from '@/api/threatCatalog'
 
@@ -286,6 +287,28 @@ export function tallyOf(lookup: Lookup): string {
     return `${formatCount(flagged)} ${flagged === 1 ? 'pulse' : 'pulses'}`
   }
   return JUDGEMENT[lookup.reported_judgement].short
+}
+
+/** What a kept answer about an address comes to, in a few words, as the service that gave it
+ * counts: engines flagging it for VirusTotal, pulses naming it for OTX, how GreyNoise classifies
+ * it. Nothing where no service had a report, or there is no standing. */
+export function standingTally(
+  standing:
+    | Pick<AssetStanding, 'provider' | 'reported' | 'malicious' | 'suspicious' | 'engines'>
+    | null
+    | undefined,
+): string {
+  if (!standing || standing.reported === 'unknown') return ''
+  const flagged = standing.malicious + standing.suspicious
+  if (standing.provider === 'otx') {
+    return standing.reported === 'clean'
+      ? 'AlienVault OTX lists it as safe'
+      : `${formatCount(flagged)} ${flagged === 1 ? 'pulse names' : 'pulses name'} it on AlienVault OTX`
+  }
+  if (standing.provider === 'greynoise') {
+    return `GreyNoise: ${JUDGEMENT[standing.reported].short.toLowerCase()}`
+  }
+  return `${formatCount(flagged)} of ${formatCount(standing.engines)} engines flagged it`
 }
 
 export interface DeviceStateLook {

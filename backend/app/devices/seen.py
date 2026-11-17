@@ -26,7 +26,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from app.assets import detail, inventory
 from app.assets.detail import EventSeen, PortSeen, Standing
 from app.assets.inventory import Asset
-from app.intel import overrides, virustotal
+from app.intel import overrides
 from app.intel import store as intel_store
 from app.models import AddressName, Event, Incident, IncidentFamily
 
@@ -279,7 +279,7 @@ def _ports(
 def _standings(db: Session, addresses: list[Address]) -> dict[Address, Standing]:
     """What threat intelligence has kept of the addresses on the Internet side among these."""
     outside = [address for address in addresses if address.is_global]
-    kept = intel_store.answers_for(db, virustotal.PROVIDER, outside)
+    kept = intel_store.standings_for(db, outside)
     rulings = overrides.for_addresses(db, outside)
     standings: dict[Address, Standing] = {}
     for address in outside:
