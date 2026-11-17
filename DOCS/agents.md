@@ -13,7 +13,7 @@ agent still looks, but it only keeps what it saw, and the page says why the AI c
 | Kind | What it does | By default |
 | --- | --- | --- |
 | Threat hunter | Reads the open incidents, the latest alerts and who the firewall turned away most, follows up on what looks wrong, and says what, if anything, needs you. | Every hour |
-| Intelligence analyst | Checks who is behind the traffic against what VirusTotal has reported (it reads what AresGate kept; it asks VirusTotal nothing). | Every 6 hours |
+| Intelligence analyst | Checks who is behind the traffic against what VirusTotal, AlienVault OTX and GreyNoise have reported (it reads what AresGate kept; it asks them nothing). | Every 6 hours |
 | Health watch | Notices when an integration or a collector stops working. | Every 2 hours |
 | Noise cleaner | Finds duplicate, stale and noisy incidents across your integrations and suggests tidying them. | Every 6 hours |
 | Exposure scanner | Tests your devices for services that should not be open. | Only when you start it |
@@ -39,7 +39,7 @@ more than its kind can.
 A kind is only as good as what AresGate can show it, so each one says what it needs and whether it
 is there. The sheet that makes an agent, the Agents page and the agent's own page show a check for
 each: an AI for the agents to ask (Settings > Agents), an alert source such as OPNsense or Wazuh, a
-VirusTotal key for the intelligence analyst, known devices for the exposure scanner. A missing one
+VirusTotal, AlienVault OTX or GreyNoise key (any one) for the intelligence analyst, known devices for the exposure scanner. A missing one
 says what to do and links to where, and *How to set it up* lists the steps for the kind. An agent
 whose kind is not ready is marked *It needs a little setup first* on its card. It can still run;
 it just has less to read.
