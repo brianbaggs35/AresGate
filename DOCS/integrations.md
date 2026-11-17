@@ -1010,7 +1010,9 @@ OTX publishes no limit on requests, so these are AresGate's own, kept so that a 
 service isn't asked for more than it can bear. A search by hand is held back only by the few
 seconds between any two lookups and by the day's count. If OTX ever answers 429, nothing is sent for
 five minutes, and the integration's page says so while it holds. That is never a sign the
-connection is broken.
+connection is broken: a check that OTX turns away with a 429 leaves the connection as it was, and
+says that OTX asked for fewer requests. (A connection that has never passed a test has nothing to
+stay as, so there the check says it wasn't tested.)
 
 ### What is asked about, and what comes back
 
@@ -1218,7 +1220,9 @@ encrypted and never shown again.
 If NVD answers 403, 429 or 503, which it does when a limit is reached, nothing is sent for two
 minutes. That is never a sign the connection is broken. The connection is tested with one lookup
 of `CVE-2021-44228`, by hand and on the periodic check, and it passes when NVD answers with a list
-of CVEs. NVD says a key it doesn't know in a header named `message`, which the test shows.
+of CVEs. NVD says a key it doesn't know in a header named `message`, which the test shows. A test
+that NVD turns away with a 403 or 429 leaves the connection as it was and says a limit was reached;
+a connection that has never passed a test has nothing to stay as, so there it says it wasn't tested.
 
 ### What is asked about, and what is kept
 

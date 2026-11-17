@@ -450,7 +450,9 @@ async def look_up(
 
 def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) -> list[str]:
     """Keeps how an attempt went. A success clears the last failure's reason. A held connection
-    isn't tested now, so its last success stays as it was, but its failure is cleared.
+    isn't tested now, so its last success stays as it was, but its failure is cleared. One that
+    never passed a test has no success to stand on, so a hold there is a failure that says why the
+    test didn't go.
 
     The first time a connection works, the modules it found installed but not running are switched
     off (the keys of those are returned), so that AresGate doesn't read what isn't there to read.
@@ -459,7 +461,7 @@ def record_attempt(row: IntegrationConnection, verdict: Verdict, now: datetime) 
     switched_off: list[str] = []
     if verdict.modules is not None:
         row.module_states = {key: state.value for key, state in verdict.modules.items()}
-    if verdict.ok:
+    if verdict.ok and not (verdict.held and row.last_success_at is None):
         if not verdict.held:
             if verdict.modules is not None and row.last_success_at is None:
                 switched_off = sorted(

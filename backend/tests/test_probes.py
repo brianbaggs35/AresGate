@@ -1431,16 +1431,22 @@ def test_nvd_naming_the_key_in_its_message_is_a_key_it_refused(serve: Serve) -> 
 
 
 @pytest.mark.parametrize("status", [403, 429])
-def test_nvd_turning_the_request_away_asks_for_the_key_to_be_checked(
+def test_nvd_turning_the_request_away_is_a_limit_that_holds_the_test(
     serve: Serve, status: int
 ) -> None:
     result, _, _ = verdict(
         serve, "nvd", "api", lambda seen: Answer(status=status), options={"access": "none"}
     )
 
-    assert not result.ok
-    assert f"HTTP {status}" in result.message
-    assert "try again in a minute" in result.message
+    assert result == Verdict(True, probes.NVD_LIMITED, held=True)
+
+
+def test_otx_asking_for_fewer_requests_is_a_limit_that_holds_the_test(serve: Serve) -> None:
+    result, _, _ = verdict(
+        serve, "otx", "api", lambda seen: Answer(status=429), secrets={"api_key": "k"}
+    )
+
+    assert result == Verdict(True, probes.OTX_LIMITED, held=True)
 
 
 @pytest.mark.parametrize(
