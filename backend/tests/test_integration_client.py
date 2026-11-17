@@ -524,8 +524,10 @@ def test_a_failed_request_made_for_an_sdk_has_its_kind_and_advice_too(serve: Ser
         async with ApiClient(where, log, HOME_NETWORK_AND_LOOPBACK) as client:
             await client.sdk_http().get(f"{server.url}/x")
 
+    job = go()
+
     with pytest.raises(CallFailed) as failed:
-        asyncio.run(go())
+        asyncio.run(job)
 
     assert failed.value.kind is Failure.DROPPED
     assert log.calls[0].detail is not None
