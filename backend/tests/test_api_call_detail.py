@@ -176,6 +176,24 @@ def test_a_certificate_that_is_not_there_or_cannot_be_read_is_none(
     assert calldetail.certificate_of(Stream(Secured(b"not a certificate"))) is None
 
 
+@pytest.mark.parametrize("error", [ValueError("handshake not done yet"), OSError("closed")])
+def test_a_connection_whose_handshake_is_not_done_has_no_certificate_instead_of_failing(
+    error: Exception,
+) -> None:
+    class Unfinished(ssl.SSLObject):
+        def __init__(self) -> None:
+            pass
+
+        def getpeercert(self, binary_form: bool = False) -> Any:
+            raise error
+
+    class Stream:
+        def get_extra_info(self, name: str) -> object:
+            return Unfinished()
+
+    assert calldetail.certificate_of(Stream()) is None
+
+
 # -- what the client keeps of a request
 
 

@@ -138,6 +138,13 @@ Every release's notes are here, newest first. The format follows
   audit log, and the log fills again with what AresGate asks next. See
   [Integrations](DOCS/ui.md#integrations).
 
+### Fixed
+
+- **A request to an integration no longer fails because its certificate could not be read for the
+  API log.** When the connection was no longer encrypted by the time the log read the certificate
+  ("handshake not done yet"), the whole request failed as an unexpected error. The log entry now
+  just has no certificate.
+
 ## 0.1.8
 
 ### Added
