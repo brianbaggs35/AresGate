@@ -63,7 +63,7 @@ class Scheduler:
         *,
         enabled: bool = True,
         collectors: Sequence[Collector] = COLLECTORS,
-        timing: Timing = Timing(),  # noqa: B008  # frozen, so one shared copy is safe
+        timing: Timing = Timing(),
     ) -> None:
         self._settings = settings
         self._new_session = new_session
