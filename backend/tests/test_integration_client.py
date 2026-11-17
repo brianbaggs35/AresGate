@@ -5,7 +5,6 @@ import re
 import ssl
 import urllib.request
 from dataclasses import replace
-from http.client import HTTPResponse
 from typing import Any, cast
 
 import pytest
@@ -680,7 +679,7 @@ def test_the_jar_that_keeps_nothing_keeps_nothing() -> None:
         )
     )
     jar.add_cookie_header(sent)
-    jar.extract_cookies(cast("HTTPResponse", None), sent)
+    jar.extract_cookies(cast(Any, None), sent)
 
     assert len(jar) == 0
     assert not sent.has_header("Cookie")
