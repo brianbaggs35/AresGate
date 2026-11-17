@@ -224,13 +224,10 @@ const caption = computed(() => {
             >
           </dd>
         </div>
-        <p
-          class="text-body-medium text-medium-emphasis flow-page__caption"
-          data-test="flow-caption"
-        >
-          {{ caption }}
-        </p>
       </dl>
+      <p class="text-body-medium text-medium-emphasis flow-page__caption" data-test="flow-caption">
+        {{ caption }}
+      </p>
 
       <div class="flow-page__main">
         <v-card class="pa-4 pa-sm-5 flow-page__chart" data-test="flow-card">
@@ -296,7 +293,6 @@ const caption = computed(() => {
 }
 
 .flow-page__caption {
-  flex-basis: 100%;
   margin: 0;
 }
 
