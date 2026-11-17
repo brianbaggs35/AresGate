@@ -448,9 +448,10 @@ def test_each_way_a_request_gets_no_answer_has_its_kind_and_what_to_try(
 
     monkeypatch.setattr(ApiClient, "_send", broken)
     log = Log()
+    where = target(server)
 
     with pytest.raises(CallFailed, match=re.escape(words)) as failed:
-        request(target(server), log, "GET", "/lua/rest/v2/get/alert/severity/counters.lua")
+        request(where, log, "GET", "/lua/rest/v2/get/alert/severity/counters.lua")
 
     assert failed.value.kind is kind
     assert failed.value.advice == advise(
@@ -464,9 +465,10 @@ def test_each_way_a_request_gets_no_answer_has_its_kind_and_what_to_try(
 def test_a_connection_that_is_dropped_says_what_to_check(serve: Serve) -> None:
     server = serve(lambda seen: Answer(drop=True))
     log = Log()
+    where = target(server)
 
     with pytest.raises(CallFailed, match="broke, or it isn't a web server") as failed:
-        request(target(server), log, "GET", "/x")
+        request(where, log, "GET", "/x")
 
     assert failed.value.kind is Failure.DROPPED
     assert "https://" in str(failed.value.advice)
@@ -516,8 +518,10 @@ def test_a_failed_request_made_for_an_sdk_has_its_kind_and_advice_too(serve: Ser
     server = serve(lambda seen: Answer(drop=True))
     log = Log()
 
+    where = target(server)
+
     async def go() -> None:
-        async with ApiClient(target(server), log, HOME_NETWORK_AND_LOOPBACK) as client:
+        async with ApiClient(where, log, HOME_NETWORK_AND_LOOPBACK) as client:
             await client.sdk_http().get(f"{server.url}/x")
 
     with pytest.raises(CallFailed) as failed:
