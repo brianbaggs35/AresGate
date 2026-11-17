@@ -28,6 +28,11 @@ Every release's notes are here, newest first. The format follows
   connecting would show* listed only OPNsense, Wazuh, ntopng, CrowdSec and VirusTotal, so an
   incident never suggested the other four, however much they would have said about its addresses,
   CVEs and devices.
+- **The empty Domains and Web addresses tabs say why.** They said the first answer would show up
+  from a lookup about an incident, but only internet addresses are looked up that way: a domain or
+  a web address is asked about only when someone searches for one. The tabs now say so, and a
+  search that is refused before it is sent no longer says it wasn't sent to VirusTotal when the
+  search was for AlienVault OTX or GreyNoise.
 
 ## 0.1.9
 

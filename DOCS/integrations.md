@@ -920,6 +920,12 @@ subject of another kind is refused with the reason (`POST /api/threat-intel/look
 optional `kind` of `ip`, `domain` or `url`), so an address typed under Domains is not answered as
 a domain.
 
+Only internet addresses are looked up in the background, for the incidents that name them, so the
+**IP addresses** tab fills by itself. The **Domains** and **Web addresses** tabs hold only what was
+searched for, and say so while they are empty. What is refused before it is sent (a private
+address, a name on your own network, a web address with a password) says that it isn't sent to a
+service, whichever service the search was for.
+
 The **CVEs** tab lists what NVD says of the CVEs that incidents name, and the **Devices** tab what
 Fingerbank made of each device. Neither is searched by hand: both are asked in the background, one
 item at a time and within the service's own limits, so the tabs read what was kept and count

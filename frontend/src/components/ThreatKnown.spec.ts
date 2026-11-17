@@ -225,8 +225,30 @@ describe('ThreatKnown', () => {
     )
 
     expect(find('known-empty').text()).toContain('Nothing is kept yet')
+    expect(find('known-empty').text()).toContain('from a lookup about an incident')
     expect(find('known-form').exists()).toBe(false)
   })
+
+  it.each([
+    ['domain', 'a domain'],
+    ['url', 'a web address'],
+  ] as const)(
+    'says a %s is kept only once someone searches for one, since none is looked up by itself',
+    async (kind, about) => {
+      const { find } = await mountKnown(
+        knownPage({
+          total: 0,
+          items: [],
+          counts: { malicious: 0, suspicious: 0, clean: 0, unknown: 0 },
+        }),
+        kind,
+      )
+
+      const text = find('known-empty').text()
+      expect(text).toContain(`AresGate asks about ${about} only when you search for one`)
+      expect(text).not.toContain('lookup about an incident')
+    },
+  )
 
   it('shows more of a long list on request', async () => {
     const { fetch, find } = await mountKnown(knownPage({ total: 40 }))

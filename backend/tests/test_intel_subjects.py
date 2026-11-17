@@ -132,7 +132,7 @@ def test_a_web_address_with_a_username_or_password_is_refused_so_it_is_not_sent(
 def test_a_private_address_is_refused(text: str) -> None:
     assert refusal_of(text) == (
         f"{text.removeprefix('https://').split('/')[0]} isn't a public internet address, "
-        "so it isn't sent to VirusTotal."
+        "so it isn't sent to a service."
     )
 
 
@@ -154,5 +154,5 @@ def test_a_private_address_is_refused(text: str) -> None:
 def test_a_name_on_a_network_of_its_own_is_refused_so_it_is_not_sent(text: str) -> None:
     host = text.removeprefix("https://").split("/")[0]
     assert refusal_of(text) == (
-        f"{host} is a name on your own network, so it isn't sent to VirusTotal."
+        f"{host} is a name on your own network, so it isn't sent to a service."
     )
