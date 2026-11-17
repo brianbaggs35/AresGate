@@ -2,7 +2,7 @@
 import type { AssetPeer } from '@/api/assets'
 import { formatAgo, formatCount } from '@/format'
 import { describePort } from '@/ports'
-import { JUDGEMENT, RULING } from '@/threatIntel'
+import { JUDGEMENT, RULING, standingTally } from '@/threatIntel'
 
 /**
  * The other addresses an asset's traffic went to, and the ones that sent it traffic, over the last
@@ -18,11 +18,9 @@ function events(count: number): string {
   return `${formatCount(count)} ${count === 1 ? 'event' : 'events'}`
 }
 
-/** How many engines flagged the address, of how many gave a verdict. */
+/** What the service that answered made of the address, in its own counts. */
 function flagged(peer: AssetPeer): string {
-  const standing = peer.standing
-  if (!standing || standing.reported === 'unknown') return ''
-  return `${formatCount(standing.malicious + standing.suspicious)} of ${formatCount(standing.engines)} engines flagged it`
+  return standingTally(peer.standing)
 }
 
 /** What the owner ruled of the address, if they did: it stands over what the service said. */

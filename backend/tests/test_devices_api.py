@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.events.event import Severity
+from app.intel import otx, subjects, virustotal
 from app.intel import store as intel_store
-from app.intel import subjects, virustotal
 from app.models import (
     AddressName,
     Device,
@@ -302,6 +302,35 @@ class TestTheList:
         assert found[SERVER]["standing"]["judgement"] in {"malicious", "suspicious"}
         assert found[SCANNER]["standing"] is None
         assert found[LAPTOP_IP]["standing"] is None
+
+    def test_what_otx_kept_of_an_outside_address_is_shown_with_it(
+        self, client: TestClient, csrf_token: str, session: Session, settings: Settings
+    ) -> None:
+        stock(session, settings)
+        intel_store.keep(
+            session,
+            otx.PROVIDER,
+            subjects.parse(SERVER),
+            virustotal.Reported(
+                virustotal.Report(
+                    malicious=3,
+                    suspicious=1,
+                    harmless=0,
+                    undetected=0,
+                    reputation=0,
+                    analysed_at=utcnow(),
+                )
+            ),
+            utcnow(),
+        )
+        session.commit()
+
+        found = {item["address"]: item for item in get(client).json()["items"]}
+
+        assert (found[SERVER]["standing"]["judgement"], found[SERVER]["standing"]["provider"]) == (
+            "malicious",
+            "otx",
+        )
 
     def test_what_fingerbank_says_of_a_device_is_shown_with_it(
         self, client: TestClient, csrf_token: str, session: Session, settings: Settings

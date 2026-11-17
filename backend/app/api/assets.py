@@ -418,6 +418,8 @@ class StandingOut(BaseModel):
     owner: str | None
     country: str | None
     checked_at: AwareDatetime
+    # The service whose answer it is, or none where only the owner has ruled.
+    provider: Literal["virustotal", "otx", "greynoise"] | None
     # What the owner of the network ruled of the peer, and why, if they did.
     ruling: Literal["safe", "suspicious"] | None
     ruling_note: str | None
@@ -550,6 +552,7 @@ def standing_out(standing: detail.Standing | None) -> StandingOut | None:
         owner=standing.owner,
         country=standing.country,
         checked_at=standing.checked_at,
+        provider=cast("Literal['virustotal', 'otx', 'greynoise'] | None", standing.provider),
         ruling=cast("Literal['safe', 'suspicious'] | None", standing.ruling),
         ruling_note=standing.ruling_note,
     )

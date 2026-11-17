@@ -14,6 +14,11 @@ Every release's notes are here, newest first. The format follows
   said no service was connected and took away the search, until the next check. A limit says
   nothing against the key: the check now leaves the connection as it was and says the service asked
   for fewer requests. A connection that has never passed a test is told it wasn't tested.
+- **An address AlienVault OTX or GreyNoise flagged now shows on the Devices and Assets pages.**
+  Those pages read only what VirusTotal had kept, so an address OTX named in a pulse, or GreyNoise
+  called malicious, showed no standing at all unless VirusTotal had looked at it too. They now show
+  the most serious answer any connected service kept, counted the way that service counts: engines
+  for VirusTotal, pulses for OTX, the classification for GreyNoise.
 
 ## 0.1.9
 

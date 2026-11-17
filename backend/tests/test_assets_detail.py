@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.assets import detail, inventory
 from app.config import Settings
 from app.events.event import Severity
-from app.intel import overrides, subjects, virustotal
+from app.intel import greynoise, otx, overrides, subjects, virustotal
 from app.intel import store as intel_store
 from app.metrics.store import record as record_samples
 from app.models import DeviceAddress, IntegrationConnection, Interface, User, utcnow
@@ -482,6 +482,87 @@ def test_a_peer_shows_what_threat_intelligence_kept_of_it_and_asks_nothing(
     assert peers["52.1.2.4"]["standing"]["judgement"] == "unknown"
     assert peers["52.1.2.6"]["standing"] is None
     assert (peers["192.168.1.30"]["internal"], peers["192.168.1.30"]["standing"]) == (True, None)
+
+
+PULSES = virustotal.Report(
+    malicious=3,
+    suspicious=1,
+    harmless=0,
+    undetected=0,
+    reputation=0,
+    analysed_at=datetime(2026, 11, 7, tzinfo=UTC),
+)
+SCANNER_NOISE = virustotal.Report(
+    malicious=1,
+    suspicious=0,
+    harmless=0,
+    undetected=0,
+    reputation=0,
+    analysed_at=datetime(2026, 11, 7, tzinfo=UTC),
+)
+
+
+@pytest.mark.parametrize(
+    ("provider", "report"),
+    [(otx.PROVIDER, PULSES), (greynoise.PROVIDER, SCANNER_NOISE)],
+)
+def test_a_peer_shows_what_a_service_other_than_virustotal_kept_of_it(
+    client: TestClient,
+    csrf_token: str,
+    session: Session,
+    settings: Settings,
+    provider: str,
+    report: virustotal.Report,
+) -> None:
+    stock(session)
+    now = utcnow()
+    factories.events(
+        session, settings, now, [EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3")]
+    )
+    intel_store.keep(
+        session, provider, subjects.parse("52.1.2.3"), virustotal.Reported(report), now
+    )
+    session.commit()
+
+    [peer] = page_of(client, session, "laptop")["talks_to"]
+
+    assert (peer["standing"]["judgement"], peer["standing"]["provider"]) == ("malicious", provider)
+
+
+def test_a_peer_shows_the_most_serious_answer_of_the_services_that_kept_one(
+    client: TestClient, csrf_token: str, session: Session, settings: Settings
+) -> None:
+    stock(session)
+    now = utcnow()
+    factories.events(
+        session, settings, now, [EventSpec(src_address=LAPTOP_IP, dst_address="52.1.2.3")]
+    )
+    clean = virustotal.Report(
+        malicious=0,
+        suspicious=0,
+        harmless=70,
+        undetected=10,
+        reputation=3,
+        analysed_at=now,
+    )
+    address = subjects.parse("52.1.2.3")
+    # The clean answer is the newer one, and still is not what is shown.
+    intel_store.keep(
+        session,
+        greynoise.PROVIDER,
+        address,
+        virustotal.Reported(SCANNER_NOISE),
+        now - timedelta(days=1),
+    )
+    intel_store.keep(session, virustotal.PROVIDER, address, virustotal.Reported(clean), now)
+    session.commit()
+
+    [peer] = page_of(client, session, "laptop")["talks_to"]
+
+    assert (peer["standing"]["judgement"], peer["standing"]["provider"]) == (
+        "malicious",
+        greynoise.PROVIDER,
+    )
 
 
 def test_a_peer_the_owner_ruled_on_is_shown_as_ruled_beside_what_the_service_said(

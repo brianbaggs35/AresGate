@@ -17,6 +17,7 @@ import {
   judgementLabel,
   providerOf,
   providersFor,
+  standingTally,
   summaryOf,
   tallyOf,
   typeOf,
@@ -153,5 +154,30 @@ describe('threatIntel', () => {
     expect(tallyOf(answer(OTX_LOOKUP, 'clean'))).toBe('Listed as safe')
     expect(tallyOf(GREYNOISE_LOOKUP)).toBe('Suspicious')
     expect(tallyOf(answer(GREYNOISE_LOOKUP, 'clean'))).toBe('Clean')
+  })
+
+  it('tallies what a kept answer about an address comes to, in what its service counts', () => {
+    const base = { malicious: 4, suspicious: 1, engines: 70 }
+    expect(standingTally({ ...base, provider: 'virustotal', reported: 'malicious' })).toBe(
+      '5 of 70 engines flagged it',
+    )
+    expect(standingTally({ ...base, provider: null, reported: 'malicious' })).toBe(
+      '5 of 70 engines flagged it',
+    )
+    expect(standingTally({ ...base, provider: 'otx', reported: 'malicious' })).toBe(
+      '5 pulses name it on AlienVault OTX',
+    )
+    expect(standingTally({ ...base, malicious: 0, provider: 'otx', reported: 'suspicious' })).toBe(
+      '1 pulse names it on AlienVault OTX',
+    )
+    expect(standingTally({ ...base, provider: 'otx', reported: 'clean' })).toBe(
+      'AlienVault OTX lists it as safe',
+    )
+    expect(standingTally({ ...base, provider: 'greynoise', reported: 'suspicious' })).toBe(
+      'GreyNoise: suspicious',
+    )
+    expect(standingTally({ ...base, provider: 'virustotal', reported: 'unknown' })).toBe('')
+    expect(standingTally(null)).toBe('')
+    expect(standingTally(undefined)).toBe('')
   })
 })

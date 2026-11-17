@@ -70,6 +70,7 @@ describe('AssetPeers', () => {
             standing: {
               judgement: 'malicious',
               reported: 'malicious',
+              provider: 'virustotal',
               ruling: null,
               ruling_note: null,
               malicious: 4,
@@ -93,6 +94,42 @@ describe('AssetPeers', () => {
     )
   })
 
+  it.each([
+    ['otx', 'malicious', 3, 1, 4, '4 pulses name it on AlienVault OTX · Example Hosting, NL'],
+    ['otx', 'suspicious', 0, 1, 1, '1 pulse names it on AlienVault OTX · Example Hosting, NL'],
+    ['otx', 'clean', 0, 0, 0, 'AlienVault OTX lists it as safe · Example Hosting, NL'],
+    ['greynoise', 'malicious', 1, 0, 1, 'GreyNoise: malicious · Example Hosting, NL'],
+    ['greynoise', 'clean', 0, 0, 1, 'GreyNoise: clean · Example Hosting, NL'],
+  ] as const)(
+    'says what %s made of a peer in its own counts (%s)',
+    async (provider, judgement, malicious, suspicious, engines, expected) => {
+      const mounted = await mountWithPlugins(AssetPeers, {
+        props: {
+          talksTo: [
+            peer({
+              standing: {
+                judgement,
+                reported: judgement,
+                provider,
+                ruling: null,
+                ruling_note: null,
+                malicious,
+                suspicious,
+                engines,
+                owner: 'Example Hosting',
+                country: 'NL',
+                checked_at: '2026-11-09T12:00:00Z',
+              },
+            }),
+          ],
+          contactedBy: [],
+        },
+      })
+
+      expect(mounted.wrapper.find('[data-test="peer-intel"]').text()).toBe(expected)
+    },
+  )
+
   it('shows no counts for a peer with no report, and no owner when none is known', async () => {
     const mounted = await mountWithPlugins(AssetPeers, {
       props: {
@@ -101,6 +138,7 @@ describe('AssetPeers', () => {
             standing: {
               judgement: 'unknown',
               reported: 'unknown',
+              provider: 'virustotal',
               ruling: null,
               ruling_note: null,
               malicious: 0,
@@ -145,6 +183,7 @@ describe('AssetPeers', () => {
             standing: {
               judgement: 'suspicious',
               reported: 'suspicious',
+              provider: 'virustotal',
               ruling: null,
               ruling_note: null,
               malicious: 0,
@@ -181,6 +220,7 @@ describe('AssetPeers', () => {
             standing: {
               judgement: 'clean',
               reported: 'malicious',
+              provider: 'virustotal',
               ruling: 'safe',
               ruling_note: 'Mine',
               malicious: 4,
@@ -198,6 +238,7 @@ describe('AssetPeers', () => {
             standing: {
               judgement: 'suspicious',
               reported: 'unknown',
+              provider: 'virustotal',
               ruling: 'suspicious',
               ruling_note: null,
               malicious: 0,

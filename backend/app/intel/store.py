@@ -292,6 +292,33 @@ def answers_for(
     return {found[row.subject]: row for row in rows}
 
 
+# How serious each judgement is, so that the most serious answer about an address is the one shown.
+_SEVERITY = {"malicious": 3, "suspicious": 2, CLEAN: 1, UNKNOWN: 0}
+
+
+def standings_for(db: Session, addresses: Iterable[Address]) -> dict[Address, IntelSubject]:
+    """What the services kept of some addresses, the most serious answer of any of them for each:
+    one that flagged an address comes before one that didn't, and of two as serious the newer. An
+    address no service has answered about is left out. Nothing is asked of a service."""
+    found = {str(address): address for address in addresses}
+    if not found:
+        return {}
+    rows = db.scalars(
+        select(IntelSubject).where(IntelSubject.kind == IP, IntelSubject.subject.in_(list(found)))
+    )
+    standing: dict[Address, IntelSubject] = {}
+    for row in rows:
+        address = found[row.subject]
+        held = standing.get(address)
+        if held is None or _weight(row) > _weight(held):
+            standing[address] = row
+    return standing
+
+
+def _weight(row: IntelSubject) -> tuple[int, datetime]:
+    return _SEVERITY.get(row.judgement, 0), row.checked_at
+
+
 def prune(db: Session, provider: str, now: datetime) -> None:
     """Forgets the lookups that are too old to count toward any allowance."""
     db.execute(

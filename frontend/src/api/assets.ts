@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPut } from '@/api/client'
 import type { IncidentStatus } from '@/api/incidents'
+import type { Provider } from '@/api/threatIntel'
 import type { VerdictKind } from '@/api/verdicts'
 import type { Severity } from '@/severity'
 
@@ -250,12 +251,15 @@ export interface AssetStanding {
   judgement: 'malicious' | 'suspicious' | 'clean' | 'unknown'
   /** What the service made of it, which a ruling does not change. */
   reported: 'malicious' | 'suspicious' | 'clean' | 'unknown'
+  /** The service whose answer it is, the most serious of those kept, or null where only the owner
+   * has ruled. */
+  provider: Provider | null
   /** What the owner of the network ruled of it, and why, if they did. */
   ruling: 'safe' | 'suspicious' | null
   ruling_note: string | null
   malicious: number
   suspicious: number
-  /** How many engines gave a verdict. */
+  /** How many engines (or pulses, for OTX) gave a verdict. */
   engines: number
   owner: string | null
   country: string | null

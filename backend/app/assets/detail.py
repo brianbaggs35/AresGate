@@ -20,7 +20,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.assets import inventory
 from app.assets.inventory import Asset, Network
-from app.intel import overrides, virustotal
+from app.intel import overrides
 from app.intel import store as intel_store
 from app.models import (
     DeviceAddress,
@@ -103,6 +103,9 @@ class Standing:
     owner: str | None
     country: str | None
     checked_at: datetime
+    # The service whose answer it is (the most serious of those kept), or none where only the owner
+    # has ruled.
+    provider: str | None = None
     # What the owner ruled of the peer, and why, if they did.
     ruling: str | None = None
     ruling_note: str | None = None
@@ -316,7 +319,7 @@ def peers_of(
     peers = [(address, count, last) for address, count, last in rows if address is not None]
     ports = _ports(db, ours, theirs, addresses, [address for address, _, _ in peers], since)
     outside = [address for address, _, _ in peers if address.is_global]
-    standing = intel_store.answers_for(db, virustotal.PROVIDER, outside)
+    standing = intel_store.standings_for(db, outside)
     rulings = overrides.for_addresses(db, outside)
     return tuple(
         Peer(
@@ -383,6 +386,7 @@ def standing_of(kept: IntelSubject | None, ruling: IntelOverride | None) -> Stan
         owner=kept.owner if kept else None,
         country=kept.country if kept else None,
         checked_at=when,
+        provider=kept.provider if kept else None,
         ruling=verdict,
         ruling_note=ruling.note if ruling else None,
     )
