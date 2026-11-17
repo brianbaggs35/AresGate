@@ -82,11 +82,17 @@ def address_of(stream: object) -> str | None:
 
 
 def certificate_of(stream: object) -> dict[str, str] | None:
+    """The certificate a connection presented, or None. Writing down what a call looked like must
+    never fail the call, so a connection that is no longer encrypted (its handshake is not done, or
+    it was closed) has no certificate to show rather than an error."""
     getter = getattr(stream, "get_extra_info", None)
     secured = getter("ssl_object") if callable(getter) else None
     if not isinstance(secured, ssl.SSLObject):
         return None
-    der = secured.getpeercert(binary_form=True)
+    try:
+        der = secured.getpeercert(binary_form=True)
+    except ValueError, OSError:
+        return None
     if not der:
         return None
     try:
