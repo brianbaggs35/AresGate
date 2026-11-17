@@ -1013,7 +1013,7 @@ async def run(probe: Probe, client: ApiClient, target: Target) -> Verdict:
     try:
         return await probe(client, target)
     except CallFailed as failure:
-        return Verdict(False, str(failure))
+        return Verdict(False, failure.with_advice)
 
 
 async def look_up(lookup: Lookuper, client: ApiClient, target: Target) -> Lookup:
@@ -1021,4 +1021,4 @@ async def look_up(lookup: Lookuper, client: ApiClient, target: Target) -> Lookup
     try:
         return await lookup(client, target)
     except CallFailed as failure:
-        return Lookup(False, str(failure))
+        return Lookup(False, failure.with_advice)

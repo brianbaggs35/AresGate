@@ -292,6 +292,45 @@ def test_the_certificate_a_secure_request_met_is_kept(serve: Serve) -> None:
     assert log.calls[0].excerpt == "ok"
 
 
+def test_an_answer_that_ends_with_the_connection_closing_keeps_the_certificate(
+    serve: Serve,
+) -> None:
+    """ntopng's scripts send an answer with no length and close the connection after it. Once the
+    body has been read there is no handshake left to ask, so who answered is read as it begins."""
+    chain = make_chain()
+    server = serve(
+        lambda seen: Answer(
+            body='{"rc": 0}', headers={"Content-Type": "application/json"}, unsized=True
+        ),
+        chain.full,
+    )
+    log = Log()
+
+    reply = request(target(server, mode="ca", ca_pem=chain.root_pem), log, "GET", "/")
+
+    assert reply.json() == {"rc": 0}
+    detail = detail_of(log)
+    assert detail["certificate"]["fingerprint"].count(":") == 31
+    assert detail["address"] == "127.0.0.1"
+
+
+def test_a_streamed_answer_that_ends_with_the_connection_closing_keeps_the_certificate(
+    serve: Serve,
+) -> None:
+    chain = make_chain()
+    server = serve(lambda seen: Answer(body="a\nb\n", unsized=True), chain.full)
+    log = Log()
+
+    async def go() -> list[str]:
+        async with ApiClient(
+            target(server, mode="ca", ca_pem=chain.root_pem), log, HOME_NETWORK_AND_LOOPBACK
+        ) as client:
+            return [line async for line in client.stream("GET", "/")]
+
+    assert asyncio.run(go()) == ["a", "b"]
+    assert detail_of(log)["certificate"] is not None
+
+
 def test_a_request_that_got_no_answer_keeps_what_was_asked(serve: Serve) -> None:
     server = serve(lambda seen: Answer(drop=True))
     log = Log()

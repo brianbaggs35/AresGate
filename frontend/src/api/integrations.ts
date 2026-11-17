@@ -289,6 +289,8 @@ export interface CallDetail {
   request_headers: CallPair[]
   /** Which collector or page made it, if that was known. */
   caller: string | null
+  /** What to try, for a request that got no answer. */
+  advice?: string | null
   /** The rest is only there when there was an answer. */
   first_byte_ms?: number | null
   status_line?: string | null

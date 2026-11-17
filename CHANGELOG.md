@@ -140,6 +140,20 @@ Every release's notes are here, newest first. The format follows
 
 ### Fixed
 
+- **A request that got no answer says what to try.** The ntopng collector *Alert counts* failed
+  with "The request failed in a way AresGate didn't expect." and the API log gave nothing to go on.
+  Every request that gets no answer now says what happened (no answer in time, couldn't connect,
+  the connection was cut off or broke, the secure connection failed, or a fault inside AresGate
+  with the kind of error) and what usually puts it right, for ntopng too (a dropped connection
+  isn't a missing permission; a page about alerts asks its alert database). It shows on the request
+  in the API log, on a failed collector and in a connection test.
+- **An answer that ends when the connection closes is no longer thrown away.** ntopng ends some
+  answers by closing the connection, and AresGate then failed the request after reading all of it,
+  while writing down which certificate answered. The address and the certificate are now read as the
+  answer begins, so the log keeps them too.
+- **AresGate keeps no cookies between requests.** A cookie a system set was sent back with every
+  later request on the same connection, and one with a value a request can't carry made them all
+  fail. Each request already holds its own credentials.
 - **A request to an integration no longer fails because its certificate could not be read for the
   API log.** When the connection was no longer encrypted by the time the log read the certificate
   ("handshake not done yet"), the whole request failed as an unexpected error. The log entry now

@@ -1561,6 +1561,14 @@ back to the request that opened it.
 - **How it was answered.** The status line, the headers, the size of the answer, whether it was
   cut at the most that was asked for, its content type, the address it came from, and for an
   `https` request the certificate it presented (subject, issuer, fingerprint and expiry).
+- **What to try.** A request that got no answer says what happened (it didn't answer in time, it
+  couldn't connect, the connection broke or was cut off, the secure connection failed) and what
+  usually puts it right, and a fault inside AresGate says so, with the kind of error and not what
+  it held, and points at AresGate's own log. The same words are on the Collection card of a
+  collector that failed and in the result of a connection test. For ntopng the advice also says that
+  it answers a missing permission with a message, so a connection that is dropped is not one, and
+  that a page about alerts asks ntopng's alert database. It is a hint, not a diagnosis.
+  AresGate keeps no cookies between requests, so a cookie a system sets is never sent back.
 - **How long it took.** Until the answer began and for the whole request. The time to connect and
   to set up the secure connection is not kept apart, because a connection that is already open
   is reused and would have none.

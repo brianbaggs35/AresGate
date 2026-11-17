@@ -156,6 +156,28 @@ describe('ApiCallDialog', () => {
     expect(inSheet('sheet-unanswered')).toBeNull()
   })
 
+  it('says what to try when a request got no answer', async () => {
+    vi.spyOn(api, 'fetchCall').mockResolvedValue(
+      callFull({
+        status_code: null,
+        error: "The connection to ntopng:3001 broke, or it isn't a web server.",
+        detail: callDetail({ advice: 'Check that the address starts with https://.' }),
+      }),
+    )
+    const { text } = await mountSheet({
+      call: call({ status_code: null, error: "The connection broke, or it isn't a web server." }),
+    })
+
+    expect(text('sheet-advice')).toBe('What to try. Check that the address starts with https://.')
+  })
+
+  it('has nothing to try for a request that worked or one that has no advice', async () => {
+    vi.spyOn(api, 'fetchCall').mockResolvedValue(callFull())
+    const { inSheet } = await mountSheet()
+
+    expect(inSheet('sheet-advice')).toBeNull()
+  })
+
   it('says when the answer was cut', async () => {
     vi.spyOn(api, 'fetchCall').mockResolvedValue(
       callFull({ detail: callDetail({ cut: true, certificate: null, content_type: null }) }),
