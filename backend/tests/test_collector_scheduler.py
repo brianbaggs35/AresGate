@@ -16,8 +16,9 @@ from app.collectors.health import WORKER
 from app.collectors.scheduler import Scheduler, Timing
 from app.config import Settings
 from app.integrations import netguard, registry, service
+from app.integrations.advice import Failure
 from app.integrations.apilog import ApiLogRecorder
-from app.integrations.client import Target
+from app.integrations.client import CallFailed, Target
 from app.integrations.probes import Verdict
 from app.integrations.service import Submission
 from app.models import (
@@ -97,6 +98,13 @@ class Unreachable(Hourly):
     async def collect(self, context: Context) -> Outcome:
         await context.client.request("GET", "/anything")
         return Outcome()
+
+
+class Dropped(Hourly):
+    key = "dropped"
+
+    async def collect(self, context: Context) -> Outcome:
+        raise CallFailed("It went away.", Failure.DROPPED, "Try the other port.")
 
 
 class Saving(Hourly):
@@ -398,6 +406,16 @@ def test_a_request_that_gets_no_answer_is_a_failure_with_its_reason(
     record = the_health(session)
     assert record.last_error is not None
     assert f"Couldn't connect to 127.0.0.1:{server.port}" in record.last_error
+
+
+def test_a_request_that_got_no_answer_says_what_to_try_in_the_status(
+    session: Session, settings: Settings, engine: Engine, serve: Serve
+) -> None:
+    connect(session, settings, serve(crowdsec(SECRET)).url)
+
+    asyncio.run(make(settings, engine, Dropped()).run_once())
+
+    assert the_health(session).last_error == "It went away. Try the other port."
 
 
 def test_a_collector_that_breaks_is_logged_and_does_not_leak_why(

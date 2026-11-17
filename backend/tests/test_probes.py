@@ -204,6 +204,7 @@ def test_a_request_that_gets_no_answer_is_a_failed_verdict(serve: Serve) -> None
 
     assert not result.ok
     assert "broke, or it isn't a web server" in result.message
+    assert "Check that the address and port" in result.message
 
 
 def test_zenarmor_is_asked_for_its_policies_with_the_key_as_the_user_name(serve: Serve) -> None:
@@ -812,6 +813,7 @@ def test_ntopng_with_no_interfaces_says_so(serve: Serve) -> None:
         (Answer(status=401), "(HTTP 401, NOT_GRANTED)"),
         (Answer(body="nope"), "doesn't look like ntopng's"),
         (Answer(drop=True), "broke, or it isn't a web server"),
+        (Answer(drop=True), "isn't a permission"),
     ],
 )
 def test_ntopng_that_cannot_list_its_interfaces_says_why(

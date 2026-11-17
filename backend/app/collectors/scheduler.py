@@ -186,7 +186,9 @@ class Scheduler:
                                 target, client, started, version, self._new_session, self._settings
                             )
                         )
-        except (CollectorFailed, service.Incomplete, Refused, CallFailed) as failure:
+        except CallFailed as failure:
+            return failure.with_advice, None
+        except (CollectorFailed, service.Incomplete, Refused) as failure:
             return str(failure), None
         except TimeoutError:
             return f"Didn't finish within {collector.timeout.total_seconds():g} seconds.", None

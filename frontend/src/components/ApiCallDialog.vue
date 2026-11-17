@@ -200,6 +200,16 @@ onBeforeUnmount(() => {
           {{ call.error
           }}<template v-if="limited">. A limit held it back, which isn't a failure.</template>
         </v-alert>
+        <v-alert
+          v-if="call.error && detail?.advice"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mt-3"
+          data-test="sheet-advice"
+        >
+          <strong>What to try.</strong> {{ detail.advice }}
+        </v-alert>
 
         <LoadError
           v-if="failure"

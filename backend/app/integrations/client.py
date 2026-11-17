@@ -16,19 +16,23 @@ import json
 import logging
 import ssl
 import time
+import urllib.request
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
+from http.client import HTTPResponse
+from http.cookiejar import Cookie, CookieJar
 from types import TracebackType
-from typing import Any, Self, cast
+from typing import Any, NamedTuple, Self, cast
 
 import httpx2
 
 from app import __version__, audit
 from app.integrations import calldetail, certdiag, netguard
+from app.integrations.advice import Failure, advise
 from app.integrations.netguard import AddressPolicy, GuardedBackend, GuardedTransport, Origin
 from app.models import utcnow
 
@@ -47,6 +51,8 @@ MAX_PATH = 256
 MAX_ERROR = 500
 HIDDEN = "***"
 REDIRECTED = "Redirected to another address, which AresGate doesn't follow."
+# What a system that closes the connection on a request leaves the operating system saying.
+CUT_OFF = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)
 # Who is making the requests, for the log: the collector, say. A request made where nothing says
 # it has no one named.
 CALLER: ContextVar[str | None] = ContextVar("api_caller", default=None)
@@ -125,7 +131,43 @@ class Reply:
 
 
 class CallFailed(Exception):
-    """No answer came. The message says why, and holds no secret."""
+    """No answer came. The message says why, and holds no secret. ``kind`` is the sort of failure
+    it was and ``advice`` what to try, if anything is known (see ``advice``)."""
+
+    def __init__(
+        self, message: str, kind: Failure = Failure.OTHER, advice: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.advice = advice
+
+    @property
+    def with_advice(self) -> str:
+        """The message followed by what to try, for wherever a person reads it."""
+        return f"{self} {self.advice}" if self.advice else str(self)
+
+
+class Explained(NamedTuple):
+    """Why a request got no answer: in words for whoever set it up, and as a kind."""
+
+    message: str
+    kind: Failure
+
+
+class NoCookies(CookieJar):
+    """A cookie jar that keeps nothing. A request to an integration carries its credentials
+    itself, so a cookie a system sets is of no use, and one that is replayed can only get in the
+    way: a value that is not plain ASCII, which a request can't be sent with, would fail every
+    request after it."""
+
+    def extract_cookies(self, response: HTTPResponse, request: urllib.request.Request) -> None:
+        return None
+
+    def add_cookie_header(self, request: urllib.request.Request) -> None:
+        return None
+
+    def set_cookie(self, cookie: Cookie) -> None:
+        return None
 
 
 class NotSuccess(Exception):
@@ -179,6 +221,7 @@ class ApiClient:
             trust_env=False,
             follow_redirects=False,
             timeout=self._timeout,
+            cookies=NoCookies(),
             headers={"User-Agent": f"AresGate/{__version__}", "Accept": "application/json"},
         )
 
@@ -204,6 +247,7 @@ class ApiClient:
             trust_env=False,
             follow_redirects=False,
             timeout=self._timeout,
+            cookies=NoCookies(),
         )
 
     @asynccontextmanager
@@ -238,25 +282,42 @@ class ApiClient:
             text = text.replace(value, HIDDEN)
         return (audit.clean(text, MAX_ERROR) or "")[:MAX_ERROR]
 
-    async def _explain(self, error: BaseException) -> str:
-        """What went wrong with a request that got no answer, in words for whoever set it up."""
+    async def _explain(self, error: BaseException) -> Explained:
+        """What went wrong with a request that got no answer, in words for whoever set it up, and
+        what sort of failure it was."""
         where = f"{self._target.origin.host}:{self._target.origin.port}"
         if isinstance(error, CallFailed):
-            return str(error)
+            return Explained(str(error), error.kind)
         if refusal := in_chain(error, netguard.Refused):
-            return str(refusal)
+            return Explained(str(refusal), Failure.REFUSED)
         if untrusted := in_chain(error, ssl.SSLCertVerificationError):
-            return await self._explain_certificate(untrusted)
+            return Explained(await self._explain_certificate(untrusted), Failure.SECURE)
         if failed := in_chain(error, ssl.SSLError):
-            return f"The secure connection to {where} failed ({failed.reason or 'TLS error'})."
+            reason = failed.reason or "TLS error"
+            return Explained(f"The secure connection to {where} failed ({reason}).", Failure.SECURE)
         if isinstance(error, TimeoutError | httpx2.TimeoutException):
-            return f"{where} didn't answer in time."
+            return Explained(f"{where} didn't answer in time.", Failure.TIMEOUT)
         if refused := in_chain(error, OSError):
-            return f"Couldn't connect to {where}: {refused.strerror or 'the connection failed'}."
+            if isinstance(refused, CUT_OFF):
+                cause = refused.strerror or "it was reset"
+                return Explained(
+                    f"The connection to {where} was cut off ({cause}).", Failure.DROPPED
+                )
+            return Explained(
+                f"Couldn't connect to {where}: {refused.strerror or 'the connection failed'}.",
+                Failure.UNREACHABLE,
+            )
         if isinstance(error, httpx2.HTTPError):
-            return f"The connection to {where} broke, or it isn't a web server."
+            return Explained(
+                f"The connection to {where} broke, or it isn't a web server.", Failure.DROPPED
+            )
         logger.error("A request to %s failed in an unexpected way", where, exc_info=error)
-        return "The request failed in a way AresGate didn't expect."
+        # Only the kind of error is said: what it holds can be anything, a secret among it.
+        return Explained(
+            f"AresGate ran into a fault of its own ({type(error).__name__}) while making the "
+            f"request, which has nothing to do with {where}.",
+            Failure.INTERNAL,
+        )
 
     async def _explain_certificate(self, untrusted: ssl.SSLCertVerificationError) -> str:
         """Why the system's certificate wasn't trusted. OpenSSL's own words are the same for a
@@ -293,6 +354,7 @@ class ApiClient:
         occurred_at = utcnow()
         status: int | None = None
         error: str | None = None
+        advice: str | None = None
         built: httpx2.Request | None = None
         seen: calldetail.Seen | None = None
         try:
@@ -308,12 +370,23 @@ class ApiClient:
                 error = _phrase(status)
             return reply
         except Exception as problem:
-            error = self._scrub(await self._explain(problem))
-            raise CallFailed(error) from None
+            explained = await self._explain(problem)
+            error = self._scrub(explained.message)
+            advice = advise(self._target.integration, explained.kind, clean_path(path))
+            raise CallFailed(error, explained.kind, advice) from None
         finally:
             await self._log(
                 self._logged(
-                    started, occurred_at, method, path, built, auth is not None, seen, status, error
+                    started,
+                    occurred_at,
+                    method,
+                    path,
+                    built,
+                    auth is not None,
+                    seen,
+                    status,
+                    error,
+                    advice,
                 )
             )
 
@@ -334,6 +407,7 @@ class ApiClient:
         occurred_at = utcnow()
         status: int | None = None
         error: str | None = None
+        advice: str | None = None
         built: httpx2.Request | None = None
         seen: calldetail.Seen | None = None
         try:
@@ -342,12 +416,13 @@ class ApiClient:
             built = self._http.build_request(method, path, json=json_body, headers=headers)
             async with asyncio.timeout(self._deadline):
                 response = await self._http.send(built, stream=True)
+                peer = calldetail.peer_of(response)
                 try:
                     status = response.status_code
                     first_byte = round((time.monotonic() - started) * 1000)
                     if not 200 <= status < 300:
                         error = REDIRECTED if 300 <= status < 400 else _phrase(status)
-                        seen = self._looked_at(response, b"", 0, first_byte)
+                        seen = self._looked_at(response, b"", 0, first_byte, peer=peer)
                         raise NotSuccess(status)
                     read = 0
                     kept = bytearray()
@@ -360,17 +435,21 @@ class ApiClient:
                                 kept += line.encode() + b"\n"
                             yield line
                     finally:
-                        seen = self._looked_at(response, bytes(kept), read, first_byte)
+                        seen = self._looked_at(response, bytes(kept), read, first_byte, peer=peer)
                 finally:
                     await response.aclose()
         except NotSuccess:
             raise
         except Exception as problem:
-            error = self._scrub(await self._explain(problem))
-            raise CallFailed(error) from None
+            explained = await self._explain(problem)
+            error = self._scrub(explained.message)
+            advice = advise(self._target.integration, explained.kind, clean_path(path))
+            raise CallFailed(error, explained.kind, advice) from None
         finally:
             await self._log(
-                self._logged(started, occurred_at, method, path, built, False, seen, status, error)
+                self._logged(
+                    started, occurred_at, method, path, built, False, seen, status, error, advice
+                )
             )
 
     async def _send(
@@ -385,6 +464,7 @@ class ApiClient:
             raise CallFailed(ONLY_READ)
         async with asyncio.timeout(self._deadline):
             response = await self._http.send(built, stream=True, auth=auth)
+            peer = calldetail.peer_of(response)
             try:
                 first_byte = round((time.monotonic() - started) * 1000)
                 body = bytearray()
@@ -404,7 +484,7 @@ class ApiClient:
                     {name.lower(): value for name, value in response.headers.items()},
                     bytes(body) if keep_bytes is not None else b"",
                     cut,
-                    self._looked_at(response, bytes(body), len(body), first_byte, cut),
+                    self._looked_at(response, bytes(body), len(body), first_byte, cut, peer),
                 )
             finally:
                 await response.aclose()
@@ -421,8 +501,9 @@ class ApiClient:
         size: int,
         first_byte: int,
         cut: bool = False,
+        peer: calldetail.Peer | None = None,
     ) -> calldetail.Seen:
-        return calldetail.look_at(response, kept, size, cut, first_byte, self._mask)
+        return calldetail.look_at(response, kept, size, cut, first_byte, self._mask, peer)
 
     def _logged(
         self,
@@ -435,6 +516,7 @@ class ApiClient:
         seen: calldetail.Seen | None,
         status: int | None,
         error: str | None,
+        advice: str | None = None,
     ) -> Call:
         """The log entry of a request that has ended."""
         shown = clean_path(path)
@@ -443,7 +525,7 @@ class ApiClient:
             if signed:
                 built.headers["Authorization"] = HIDDEN
             detail = calldetail.describe(
-                self._target.origin, built, shown, CALLER.get(), seen, self._mask
+                self._target.origin, built, shown, CALLER.get(), seen, self._mask, advice
             )
         return Call(
             occurred_at=occurred_at,
@@ -482,11 +564,18 @@ class ApiClient:
             response = await self._transport.handle_async_request(request)
             response.request = request
         except Exception as problem:
-            error = self._scrub(await self._explain(problem))
+            explained = await self._explain(problem)
+            error = self._scrub(explained.message)
+            advice = advise(self._target.integration, explained.kind, clean_path(path))
             await self._log(
-                self._logged(started, occurred_at, method, path, request, False, None, None, error)
+                self._logged(
+                    started, occurred_at, method, path, request, False, None, None, error, advice
+                )
             )
-            raise CallFailed(error) from None
+            raise CallFailed(error, explained.kind, advice) from None
+        # Read now, while the connection is open: a system that closes it after answering has
+        # nothing to tell once the body has been read.
+        peer = calldetail.peer_of(response)
         status = response.status_code
         error = None
         if 300 <= status < 400:
@@ -496,7 +585,7 @@ class ApiClient:
         first_byte = round((time.monotonic() - started) * 1000)
 
         async def finish(kept: bytes, read: int, failure: str | None) -> None:
-            seen = self._looked_at(response, kept, read, first_byte)
+            seen = self._looked_at(response, kept, read, first_byte, peer=peer)
             await self._log(
                 self._logged(
                     started,
@@ -512,7 +601,7 @@ class ApiClient:
             )
 
         async def explain(problem: BaseException) -> str:
-            return self._scrub(await self._explain(problem))
+            return self._scrub((await self._explain(problem)).message)
 
         return httpx2.Response(
             status,

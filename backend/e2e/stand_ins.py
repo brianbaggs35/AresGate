@@ -56,6 +56,9 @@ class Answer:
     drop: bool = False
     # Wait this long (seconds) before answering.
     delay: float = 0.0
+    # Say nothing of how long the body is and close the connection after it, which is how a web
+    # server that builds its answer as it goes (ntopng's scripts) ends one.
+    unsized: bool = False
 
 
 Handler = Callable[[Seen], Answer]
@@ -256,7 +259,10 @@ class StubServer:
                     return
                 body = answer.body.encode() if isinstance(answer.body, str) else answer.body
                 self.send_response(answer.status)
-                self.send_header("Content-Length", str(len(body)))
+                if answer.unsized:
+                    self.send_header("Connection", "close")
+                else:
+                    self.send_header("Content-Length", str(len(body)))
                 for name, value in answer.headers.items():
                     self.send_header(name, value)
                 self.end_headers()

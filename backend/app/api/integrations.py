@@ -239,6 +239,8 @@ class CallDetailOut(BaseModel):
     request_headers: list[PairOut]
     # Which collector or page made the request, if that was known.
     caller: str | None = None
+    # What to try, for a request that got no answer.
+    advice: str | None = None
     # What follows is only there if there was an answer.
     first_byte_ms: int | None = None
     status_line: str | None = None

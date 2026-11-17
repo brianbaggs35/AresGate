@@ -1,13 +1,18 @@
 import asyncio
+import http.cookiejar
 import logging
+import re
 import ssl
+import urllib.request
 from dataclasses import replace
-from typing import Any
+from http.client import HTTPResponse
+from typing import Any, cast
 
 import pytest
 
 from app.integrations import client as client_module
 from app.integrations import netguard
+from app.integrations.advice import Failure, advise
 from app.integrations.client import ApiClient, Call, CallFailed, Reply, Target
 from app.integrations.netguard import HOME_NETWORK, HOME_NETWORK_AND_LOOPBACK, Origin
 from tests.stubs import Answer, Seen, Serve, StubServer, make_certificate
@@ -398,9 +403,130 @@ def test_an_unexpected_error_is_logged_and_reported_without_its_details(
     with caplog.at_level(logging.ERROR), pytest.raises(CallFailed) as raised:
         request(where, log, "GET", "/x")
 
-    assert str(raised.value) == "The request failed in a way AresGate didn't expect."
+    assert str(raised.value) == (
+        f"AresGate ran into a fault of its own (ValueError) while making the request, which has "
+        f"nothing to do with 127.0.0.1:{server.port}."
+    )
+    assert raised.value.kind is Failure.INTERNAL
+    assert "fault inside AresGate" in str(raised.value.advice)
     assert "internal detail" not in str(log.calls[0].error)
+    assert "internal detail" not in raised.value.with_advice
     assert "failed in an unexpected way" in caplog.text
+
+
+def _tls_error() -> ssl.SSLError:
+    error = ssl.SSLError(1, "boom")
+    error.reason = "BOOM"
+    return error
+
+
+@pytest.mark.parametrize(
+    ("raised", "kind", "words"),
+    [
+        (TimeoutError(), Failure.TIMEOUT, "didn't answer in time"),
+        (
+            ConnectionRefusedError(111, "Connection refused"),
+            Failure.UNREACHABLE,
+            "Couldn't connect",
+        ),
+        (ConnectionResetError(104, "Connection reset by peer"), Failure.DROPPED, "was cut off"),
+        (BrokenPipeError(32, "Broken pipe"), Failure.DROPPED, "was cut off (Broken pipe)"),
+        (ConnectionResetError(), Failure.DROPPED, "was cut off (it was reset)"),
+        (_tls_error(), Failure.SECURE, "secure connection to"),
+    ],
+)
+def test_each_way_a_request_gets_no_answer_has_its_kind_and_what_to_try(
+    serve: Serve,
+    monkeypatch: pytest.MonkeyPatch,
+    raised: Exception,
+    kind: Failure,
+    words: str,
+) -> None:
+    server = serve(lambda seen: Answer())
+
+    async def broken(*_: Any, **__: Any) -> Reply:
+        raise raised
+
+    monkeypatch.setattr(ApiClient, "_send", broken)
+    log = Log()
+
+    with pytest.raises(CallFailed, match=re.escape(words)) as failed:
+        request(target(server), log, "GET", "/lua/rest/v2/get/alert/severity/counters.lua")
+
+    assert failed.value.kind is kind
+    assert failed.value.advice == advise(
+        "opnsense", kind, "/lua/rest/v2/get/alert/severity/counters.lua"
+    )
+    assert log.calls[0].detail is not None
+    assert log.calls[0].detail.get("advice") == failed.value.advice
+    assert failed.value.with_advice.startswith(str(failed.value))
+
+
+def test_a_connection_that_is_dropped_says_what_to_check(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(drop=True))
+    log = Log()
+
+    with pytest.raises(CallFailed, match="broke, or it isn't a web server") as failed:
+        request(target(server), log, "GET", "/x")
+
+    assert failed.value.kind is Failure.DROPPED
+    assert "https://" in str(failed.value.advice)
+    assert log.calls[0].detail is not None
+    assert log.calls[0].detail["advice"] == failed.value.advice
+
+
+def test_an_answer_that_is_a_failure_has_no_advice_of_its_own(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(status=500))
+    log = Log()
+
+    request(target(server), log, "GET", "/x")
+
+    assert log.calls[0].detail is not None
+    assert "advice" not in log.calls[0].detail
+
+
+def test_a_cookie_a_system_sets_is_not_kept_or_sent_back(serve: Serve) -> None:
+    """ntopng sets a session cookie, and a value that isn't plain ASCII can't be sent back: every
+    request after it would have failed. A request carries its own credentials, so none is kept."""
+    server = serve(lambda seen: Answer(headers={"Set-Cookie": "session=caf\xe9; path=/; HttpOnly"}))
+
+    async def go() -> list[int]:
+        async with ApiClient(target(server), Log(), HOME_NETWORK_AND_LOOPBACK) as client:
+            return [(await client.request("GET", "/x")).status for _ in range(2)]
+
+    assert asyncio.run(go()) == [200, 200]
+    assert all("cookie" not in seen.headers for seen in server.seen)
+
+
+def test_the_http_client_an_sdk_uses_keeps_no_cookie_either(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(headers={"Set-Cookie": "session=abc; path=/"}))
+
+    async def go() -> None:
+        async with ApiClient(target(server), Log(), HOME_NETWORK_AND_LOOPBACK) as client:
+            http = client.sdk_http()
+            for _ in range(2):
+                await http.get(f"{server.url}/x")
+            await http.aclose()
+
+    asyncio.run(go())
+
+    assert all("cookie" not in seen.headers for seen in server.seen)
+
+
+def test_a_failed_request_made_for_an_sdk_has_its_kind_and_advice_too(serve: Serve) -> None:
+    server = serve(lambda seen: Answer(drop=True))
+    log = Log()
+
+    async def go() -> None:
+        async with ApiClient(target(server), log, HOME_NETWORK_AND_LOOPBACK) as client:
+            await client.sdk_http().get(f"{server.url}/x")
+
+    with pytest.raises(CallFailed) as failed:
+        asyncio.run(go())
+
+    assert failed.value.kind is Failure.DROPPED
+    assert log.calls[0].detail is not None
+    assert log.calls[0].detail["advice"] == failed.value.advice
 
 
 def test_a_reply_that_is_not_json_has_no_json() -> None:
@@ -527,3 +653,34 @@ def test_a_service_that_is_only_read_is_not_streamed_a_change(serve: Serve) -> N
         lines_of(connection, log, "POST", "/x", policy=reading)
 
     assert server.seen == []
+
+
+def test_the_jar_that_keeps_nothing_keeps_nothing() -> None:
+    jar = client_module.NoCookies()
+    sent = urllib.request.Request("http://127.0.0.1/")
+
+    jar.set_cookie(
+        http.cookiejar.Cookie(
+            0,
+            "a",
+            "b",
+            None,
+            False,
+            "127.0.0.1",
+            False,
+            False,
+            "/",
+            False,
+            False,
+            None,
+            False,
+            None,
+            None,
+            {},
+        )
+    )
+    jar.add_cookie_header(sent)
+    jar.extract_cookies(cast("HTTPResponse", None), sent)
+
+    assert len(jar) == 0
+    assert not sent.has_header("Cookie")

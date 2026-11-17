@@ -447,8 +447,24 @@ def test_one_request_is_opened_to_show_everything_kept_of_it(
     assert detail["status_line"].endswith("200 OK")
     assert detail["content_type"] == "application/json"
     assert detail["certificate"] is None
+    assert detail["advice"] is None
     assert SECRET not in response.text
     assert {"name": "x-api-key", "value": None} in detail["request_headers"]
+
+
+def test_a_request_that_got_no_answer_shows_what_to_try(
+    client: TestClient, csrf_token: str, serve: Serve
+) -> None:
+    server = serve(lambda seen: Answer(drop=True))
+    put(client, csrf_token, "crowdsec", crowdsec_body(server))
+    client.post(f"{BASE}/crowdsec/test", headers=headers(csrf_token))
+    [listed] = client.get(f"{BASE}/crowdsec/calls").json()["calls"]
+
+    body = client.get(f"{BASE}/crowdsec/calls/{listed['id']}").json()
+
+    assert body["status_code"] is None
+    assert "broke, or it isn't a web server" in body["error"]
+    assert "reverse proxy" in body["detail"]["advice"]
 
 
 def test_a_request_from_before_the_detail_was_kept_says_so_with_what_it_has(
@@ -521,7 +537,8 @@ def test_a_test_where_nothing_answers_says_so(
     assert f"Couldn't connect to 127.0.0.1:{server.port}" in body["checks"][0]["message"]
     [call] = client.get(f"{BASE}/crowdsec/calls").json()["calls"]
     assert call["status_code"] is None
-    assert call["error"] == body["checks"][0]["message"]
+    assert body["checks"][0]["message"].startswith(call["error"])
+    assert "container may not be able to reach it" in body["checks"][0]["message"]
 
 
 def test_a_secret_that_has_gone_is_reported_not_crashed_on(

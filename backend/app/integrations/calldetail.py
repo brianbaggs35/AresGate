@@ -43,6 +43,15 @@ Mask = Callable[[str], str]
 
 
 @dataclass(frozen=True)
+class Peer:
+    """Who answered, as the connection showed it when the answer began. It is read then because a
+    system that closes the connection after answering leaves nothing to ask afterwards."""
+
+    address: str | None
+    certificate: dict[str, str] | None
+
+
+@dataclass(frozen=True)
 class Seen:
     """What came back, as far as it is known."""
 
@@ -140,13 +149,31 @@ def excerpt_of(body: bytes, content_type: str | None, mask: Mask) -> str | None:
     return text[: EXCERPT_CHARS - 1] + "…" if len(text) > EXCERPT_CHARS else text
 
 
+def peer_of(response: httpx2.Response) -> Peer:
+    """Where an answer came from and the certificate it was secured with. Ask as soon as the
+    headers are in: once the body has been read a connection that is closed after one answer has
+    nothing to tell."""
+    stream = response.extensions.get("network_stream")
+    return Peer(
+        address=address_of(stream),
+        certificate=certificate_of(stream) if response.request.url.scheme == "https" else None,
+    )
+
+
 def look_at(
-    response: httpx2.Response, body: bytes, size: int, cut: bool, first_byte_ms: int, mask: Mask
+    response: httpx2.Response,
+    body: bytes,
+    size: int,
+    cut: bool,
+    first_byte_ms: int,
+    mask: Mask,
+    peer: Peer | None = None,
 ) -> Seen:
     """What a response shows of itself. ``body`` is the start of what was read of it, which was
-    ``size`` bytes."""
+    ``size`` bytes. ``peer`` is who answered, as ``peer_of`` read it when the answer began; if it
+    wasn't, it is read now."""
     kind = response.headers.get("content-type")
-    stream = response.extensions.get("network_stream")
+    peer = peer or peer_of(response)
     return Seen(
         status_line=(
             f"{response.http_version} {response.status_code} {response.reason_phrase}".strip()
@@ -155,8 +182,8 @@ def look_at(
         size=size,
         cut=cut,
         first_byte_ms=first_byte_ms,
-        address=address_of(stream),
-        certificate=certificate_of(stream) if response.request.url.scheme == "https" else None,
+        address=peer.address,
+        certificate=peer.certificate,
         excerpt=excerpt_of(body, kind, mask),
     )
 
@@ -168,9 +195,10 @@ def describe(
     caller: str | None,
     seen: Seen | None,
     mask: Mask,
+    advice: str | None = None,
 ) -> dict[str, Any]:
     """The detail of one request for the log: where it went, what it carried and, if it was
-    answered, what the answer was."""
+    answered, what the answer was. ``advice`` is what to try when it got no answer."""
     detail: dict[str, Any] = {
         "scheme": origin.scheme,
         "host": origin.host,
@@ -180,6 +208,8 @@ def describe(
         "request_headers": pairs(request.headers.multi_items(), mask),
         "caller": caller,
     }
+    if advice:
+        detail["advice"] = advice
     if seen is not None:
         detail |= {
             "first_byte_ms": seen.first_byte_ms,
