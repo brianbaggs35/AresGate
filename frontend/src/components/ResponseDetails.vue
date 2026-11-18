@@ -68,8 +68,8 @@ const facts = computed(() => turnedAway(done.value, moment.value))
           </p>
           <p class="text-body-medium text-medium-emphasis">
             Read by AresGate
-            <time :datetime="ban.seen_at">{{ formatDateTime(ban.seen_at) }}</time
-            >. <span data-test="response-ban-ends">{{ banEnds(ban, moment) }}</span>
+            <time :datetime="ban.seen_at">{{ formatDateTime(ban.seen_at) }}</time>.
+            <span data-test="response-ban-ends">{{ banEnds(ban, moment) }}</span>
           </p>
         </li>
       </ul>

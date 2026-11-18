@@ -32,8 +32,8 @@ const rows = computed(() =>
 <template>
   <div data-test="addresses">
     <p v-if="rule" class="text-body-large" data-test="addresses-rule">
-      This incident is about a rule, <span class="addresses__mono">{{ rule }}</span
-      >, whose signals named no address.
+      This incident is about a rule, <span class="addresses__mono">{{ rule }}</span>, whose signals
+      named no address.
     </p>
     <ul v-if="rows.length" class="addresses__list">
       <li v-for="row in rows" :key="row.address" class="addresses__item" data-test="address">

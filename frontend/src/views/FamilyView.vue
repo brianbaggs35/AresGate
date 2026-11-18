@@ -140,8 +140,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         </ul>
         <p class="kind__changed text-body-medium">
           First noticed
-          <time :datetime="changedAt">{{ formatAgo(changedAt) }}</time
-          >.
+          <time :datetime="changedAt">{{ formatAgo(changedAt) }}</time>.
           {{
             family.owner_call
               ? 'Your word on it stands, but it may not be what you called any more.'

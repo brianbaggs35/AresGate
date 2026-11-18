@@ -166,8 +166,7 @@ async function clear() {
       <div class="suggestion">
         <span>
           Its name or maker suggests it is a
-          <strong>{{ asset.suggested_label?.toLowerCase() }}</strong
-          >.
+          <strong>{{ asset.suggested_label?.toLowerCase() }}</strong>.
         </span>
         <v-btn
           size="small"

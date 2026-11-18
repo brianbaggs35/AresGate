@@ -67,8 +67,8 @@ const hour = (value: number) => `${value.toString().padStart(2, '0')}:00`
       <h3 class="text-title-small">Far above usual lately</h3>
       <ul class="baseline__list" data-test="baseline-deviations">
         <li v-for="item in series.deviations" :key="item.at" class="text-body-medium">
-          <time :datetime="item.at">{{ formatDateTime(item.at) }}</time
-          >: {{ formatBytes(item.observed) }} against {{ formatBytes(item.usual) }} usual.
+          <time :datetime="item.at">{{ formatDateTime(item.at) }}</time>:
+          {{ formatBytes(item.observed) }} against {{ formatBytes(item.usual) }} usual.
         </li>
       </ul>
     </section>

@@ -87,9 +87,8 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
         <p class="text-body-large">{{ certainty(chain) }}</p>
         <p class="text-body-medium">
           First seen
-          <time :datetime="chain.first_seen_at">{{ formatAgo(chain.first_seen_at) }}</time
-          >, last <time :datetime="chain.last_seen_at">{{ formatAgo(chain.last_seen_at) }}</time
-          >.
+          <time :datetime="chain.first_seen_at">{{ formatAgo(chain.first_seen_at) }}</time>, last
+          <time :datetime="chain.last_seen_at">{{ formatAgo(chain.last_seen_at) }}</time>.
         </p>
       </v-alert>
 

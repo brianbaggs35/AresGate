@@ -227,8 +227,9 @@ onMounted(load)
           Costs are estimates, worked out from the prices on each provider's own pricing page as
           they were on {{ usage.prices.as_of }}:
           <template v-for="(source, index) in usage.prices.sources" :key="source.url">
-            <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.provider }}</a
-            ><template v-if="index < usage.prices.sources.length - 1">, </template>
+            <a :href="source.url" target="_blank" rel="noopener noreferrer">{{
+              source.provider
+            }}</a><template v-if="index < usage.prices.sources.length - 1">, </template>
           </template>
           . Prices change, so what you are billed can differ.
           <template v-if="usage.totals.unpriced > 0">
