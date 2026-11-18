@@ -228,8 +228,7 @@ usePolling(() => load(true), REFRESH_SECONDS * 1000)
               First seen
               <time :datetime="item.first_seen_at" :title="formatDateTime(item.first_seen_at)">{{
                 formatAgo(item.first_seen_at)
-              }}</time
-              >, last seen
+              }}</time>, last seen
               <time :datetime="item.last_seen_at" :title="formatDateTime(item.last_seen_at)">{{
                 formatAgo(item.last_seen_at)
               }}</time>

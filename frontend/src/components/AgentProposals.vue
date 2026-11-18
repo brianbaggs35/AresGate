@@ -99,8 +99,7 @@ const has = computed(() => (list: ProposalList) => list.pending.length + list.re
               <RouterLink
                 :to="{ name: 'incident', params: { id } }"
                 data-test="proposal-incident"
-                >{{ id }}</RouterLink
-              ><template v-if="at < shown(proposal).length - 1">, </template>
+                >{{ id }}</RouterLink><template v-if="at < shown(proposal).length - 1">, </template>
             </template>
             <template v-if="more(proposal)"> and {{ more(proposal) }} more</template>
             <template v-if="proposal.keep_id !== null">

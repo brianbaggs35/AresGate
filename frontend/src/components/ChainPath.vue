@@ -72,8 +72,7 @@ function shown(step: ChainStep) {
             <span v-if="step.subject_name" data-test="step-subject-name">
               ({{ step.subject_name }})
             </span>
-            at <time :datetime="step.first_seen_at">{{ formatClock(step.first_seen_at) }}</time
-            >,
+            at <time :datetime="step.first_seen_at">{{ formatClock(step.first_seen_at) }}</time>,
             {{ formatAgo(step.first_seen_at) }}
           </p>
           <p class="text-body-large path__reason" data-test="step-reason">{{ step.reason }}</p>

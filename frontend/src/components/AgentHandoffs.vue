@@ -58,8 +58,7 @@ defineProps<{ list: HandoffList }>()
             v-if="item.incident_id !== null"
             :to="{ name: 'incident', params: { id: item.incident_id } }"
             data-test="handoff-incident"
-            >{{ item.subject }}</RouterLink
-          ><template v-else>{{ item.subject }}</template
+            >{{ item.subject }}</RouterLink><template v-else>{{ item.subject }}</template
           >: {{ item.reason }}
         </p>
         <p

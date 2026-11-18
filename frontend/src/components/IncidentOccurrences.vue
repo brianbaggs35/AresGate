@@ -54,8 +54,7 @@ function toggle(index: number) {
         <p class="text-body-medium text-medium-emphasis">
           <b class="tabular-nums" data-test="occurrence-count">{{ formatCount(item.count) }}</b>
           {{ item.count === 1 ? 'time' : 'times' }} from {{ item.signal.source_name }}, the last
-          <time :datetime="item.last_at">{{ formatAgo(item.last_at) }}</time
-          >.
+          <time :datetime="item.last_at">{{ formatAgo(item.last_at) }}</time>.
           <span v-if="item.duplicates > 0" data-test="occurrence-duplicates">
             <v-icon :icon="Copy" size="16" aria-hidden="true" />
             {{ formatCount(item.duplicates) }} also reported by {{ agreedBy(item) }}, counted once.

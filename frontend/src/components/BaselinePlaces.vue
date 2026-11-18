@@ -140,8 +140,9 @@ async function forget() {
             </v-chip>
             <span class="text-body-medium text-medium-emphasis">
               Visits: {{ formatCount(place.hits) }}, since
-              <time :datetime="place.first_seen_at">{{ formatDateTime(place.first_seen_at) }}</time
-              >, last
+              <time :datetime="place.first_seen_at">{{
+                formatDateTime(place.first_seen_at)
+              }}</time>, last
               <time :datetime="place.last_seen_at">{{ formatDateTime(place.last_seen_at) }}</time>
             </span>
           </div>
