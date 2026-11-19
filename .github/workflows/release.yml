@@ -151,6 +151,7 @@ jobs:
           version: v0.76.1
           scan-type: image
           image-ref: aresgate:release
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           limit-severities-for-sarif: true
@@ -167,6 +168,7 @@ jobs:
           skip-setup-trivy: true
           scan-type: image
           image-ref: aresgate:release
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           format: table
@@ -235,8 +237,8 @@ jobs:
 
       - name: Check the pushed image is the one that was tested
         env:
-          TESTED: ${{ fromJSON(steps.build.outputs.metadata)['containerimage.config.digest'] }}
-          PUSHED: ${{ fromJSON(steps.push.outputs.metadata)['containerimage.config.digest'] }}
+          TESTED: ${{ steps.build.outputs.imageid }}
+          PUSHED: ${{ steps.push.outputs.imageid }}
         run: |
           echo "tested: $TESTED"
           echo "pushed: $PUSHED"
