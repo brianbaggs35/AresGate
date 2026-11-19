@@ -1,3 +1,5 @@
+@use 'sass:list';
+
 // The colors of every chart, as variables, so each theme has its own steps of the same hues and
 // the charts themselves name a color by its job (see src/charts/palette.ts). They are checked
 // with the data-visualization validator against each theme's card (#ffffff and #0e1626).
@@ -140,7 +142,7 @@ $dashes: none, '6 3', '2 3', '8 3 2 3', '1 4', '10 4', '4 2 1 2', '3 3 9 3';
     }
 
     .chart-dash-#{$i} {
-      stroke-dasharray: #{nth($dashes, $i)};
+      stroke-dasharray: #{list.nth($dashes, $i)};
     }
   }
 
