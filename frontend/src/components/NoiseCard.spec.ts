@@ -116,11 +116,9 @@ describe('NoiseCard', () => {
         },
         expect.any(String),
       )
-      const [[said]] = wrapper.findComponent(NoiseCard).emitted('judged') as [
-        [{ kind: string; rule: unknown }],
-      ]
-      expect(said.kind).toBe('low_priority')
-      expect(said.rule).toEqual(given())
+      const said = wrapper.findComponent(NoiseCard).emitted('judged')?.[0]?.[0]
+      expect(said?.kind).toBe('low_priority')
+      expect(said?.rule).toEqual(given())
     })
 
     it('says so when it could not', async () => {

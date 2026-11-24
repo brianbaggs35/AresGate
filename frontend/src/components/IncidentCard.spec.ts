@@ -317,7 +317,7 @@ describe('IncidentCard', () => {
         { verdict: 'not_suspicious', address: '93.184.216.34' },
         'a-security-token',
       )
-      const [[said]] = judged() as [[{ kind: string; scope: { key: string } }]]
+      const said = judged()[0]?.[0]
       expect(said).toMatchObject({ kind: 'not_suspicious', scope: { key: 'address' } })
     })
 
