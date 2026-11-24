@@ -707,7 +707,7 @@ for (const theme of ['light', 'dark'] as const) {
       await aiSettings.apiKey('anthropic').fill('sk-a-key-for-the-stand-in')
       await aiSettings.test('anthropic').click()
       await expect(aiSettings.status('anthropic')).toHaveText('Connected')
-      await aiSettings.enabled.check()
+      await aiSettings.turnOn()
       await expectAccessible(page)
 
       await aiSettings.choose('openai')

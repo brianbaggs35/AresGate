@@ -144,7 +144,7 @@ test.describe('Settings > AI', () => {
     expect(await page.content()).not.toContain(KEY)
 
     await expect(aiSettings.enabled).toBeEnabled()
-    await aiSettings.enabled.check()
+    await aiSettings.turnOn()
 
     await expect(aiSettings.state).toHaveText('On · Claude Haiku 5.5')
     await expect(aiSettings.option('anthropic')).toContainText('In use')
@@ -334,7 +334,7 @@ test.describe('Settings > AI', () => {
     await aiSettings.choose('anthropic')
     await aiSettings.apiKey('anthropic').fill(KEY)
     await aiSettings.test('anthropic').click()
-    await aiSettings.enabled.check()
+    await aiSettings.turnOn()
     await expect(aiSettings.enabled).toBeChecked()
 
     await aiSettings.remove('anthropic').click()
@@ -371,7 +371,7 @@ test.describe('Settings > AI', () => {
     await aiSettings.apiKey('anthropic').fill(KEY)
     await aiSettings.test('anthropic').click()
     await expect(aiSettings.status('anthropic')).toHaveText('Connected')
-    await aiSettings.enabled.check()
+    await aiSettings.turnOn()
     await expect(aiSettings.state).toHaveText('On · Claude Haiku 5.5')
 
     // A hosted provider is never shown everything.

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 /** The settings page for AI: a card to choose where it runs, and the settings of the one chosen. */
 export class AiSettingsPage {
@@ -22,6 +22,15 @@ export class AiSettingsPage {
     this.headings = page.getByRole('heading', { level: 2 })
     this.choosePrompt = page.getByTestId('ai-choose')
     this.error = page.getByTestId('ai-error')
+  }
+
+  /**
+   * Turns AI on and waits until the switch says so. The switch shows what AresGate last answered,
+   * so it stays off until the answer comes: `check()` would fail, as it looks right after the click.
+   */
+  async turnOn(): Promise<void> {
+    await this.enabled.click()
+    await expect(this.enabled).toBeChecked()
   }
 
   /** The radio button of one level of what the provider is shown: strict, balanced or local. */
