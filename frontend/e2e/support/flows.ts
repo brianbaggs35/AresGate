@@ -59,6 +59,6 @@ export async function turnOnAi(harness: Harness, aiSettings: AiSettingsPage): Pr
   await aiSettings.apiKey('anthropic').fill(AI_KEY)
   await aiSettings.test('anthropic').click()
   await expect(aiSettings.status('anthropic')).toHaveText('Connected')
-  await aiSettings.enabled.check()
+  await aiSettings.turnOn()
   await expect(aiSettings.state).toHaveText('On · Claude Haiku 5.5')
 }
